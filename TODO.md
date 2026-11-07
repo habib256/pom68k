@@ -65,10 +65,10 @@ dans le même processus — aucune ne se déduit d'une autre.
 
 Ordre : Socle → Convergence → Justesse → Temps → Interprète → JIT →
 Surface. Qui gagne un arbitrage est écrit (`CLAUDE.md § Evidence grades`,
-`oracle/README.md`) : le manuel sur l'oracle, sauf exception connue. Sans dépendance et à prendre d'abord :
-la re-vérification x64 des polls positionnés (› JIT justesse). Les cellules à la main des
-règles qu'aucun corpus n'atteint s'ajoutent à `moira_rules_test`
-(`cmake/Pom68kCpuGates.cmake`).
+`oracle/README.md`) : le manuel sur l'oracle, sauf exception connue. Les
+cellules à la main des règles qu'aucun corpus n'atteint s'ajoutent à
+`moira_rules_test` (`cmake/Pom68kCpuGates.cmake`) ; l'ordre et la date de
+chaque cycle bus du 68000 sont tenus par `sst68000`.
 
 Hors de ce fichier : ce que NeoST doit faire chez lui (périmètre
 TT/Falcon/accélérateurs, aujourd'hui hors périmètre dans ses propres
@@ -94,19 +94,33 @@ boot.
   d'instruction des frames $2), D23a (frame FPU $3 sur 68030) et D23b
   (FRESTORE $41 sur un 68882) — plus deux règles 68000 (sortie anticipée
   de DIVS, ASR au-delà de la largeur). Chacune est tenue par des vecteurs
-  épinglés : la renverser demande soit une preuve de grade A, soit un
-  mécanisme de divergences assumées dans les harnais `sst` (comme les deux
-  vecteurs exclus de `sst68000`). Reste aussi à passer au crible les
+  épinglés : la renverser demande soit une preuve de grade A, soit le
+  mécanisme de divergences assumées — il existe depuis le 2026-11-07 dans
+  `sst68030` et `sst68040` (`--known`, `tests/SstKnown.h` : liste nommée
+  par décision, gate rouge si un vecteur listé se met à passer), ce qui
+  permet de renverser D23a et D12 sans perdre un vecteur. **D23b est
+  tranchée** : le « hack » FRESTORE n'existe que dans le réglage permissif
+  de l'oracle, celui des quatre vecteurs épinglés ; en réglage strict le
+  même oracle prend l'erreur de format du manuel (trois vecteurs de
+  `sst68030_fpuraw`). Reste à l'appliquer : retirer la branche $41 du
+  FRESTORE 6888x, lister les quatre vecteurs de `sst68030` comme connus,
+  vider le bloc D23b de `tests/sst68030_fpuraw.known`. *Précaution avant
+  de le faire :* l'hybride 68LC040 + 68882 logiciel, défaut produit des
+  LC 475/575/580 (› Justesse 68040), présente un 6888x à un système qui
+  se croit sur 68040 ; s'il restaure une frame IDLE $41 construite à la
+  main, c'est cette branche qui la laisse passer. Passer d'abord les
+  etalons `q605_*` et `lc475_*` avec la branche retirée. Reste aussi à passer au crible les
   règles 6888x que l'audit soupçonne sans que les notes disent ce qu'en
   dit le manuel : FPIAR, vecteur d'exception gardé armé, longs internes de
   FSAVE IDLE, bit 9 du SSW, PTEST niveau 0, PMOVE TC invalide.
-- [ ] **Épingler les trois corpus de vecteurs et les rendre récupérables.**
-  `tests/data/sst68000`, `sst68030` et `sst68040` (1,1 Go, 116 Mo, 315 Mo)
-  n'existent que dans un répertoire ignoré de deux hôtes et sur le disque
-  privé : aucune empreinte dans `assets.lock`, graines et lignes de
-  commande des corpus 030/040 non enregistrées, et `tests/fetch_sst_68000.sh`
-  suit `main` au lieu d'un commit. Corriger au passage
-  `POM68K_VENDOR.md § How to read this file`, qui les dit absents.
+- [ ] **Rendre les corpus épinglés d'origine récupérables.** Les deux
+  corpus du 2026-11-06 (`sst68030_solo`, `sst68040_8k`) se régénèrent à
+  l'identique depuis l'arbre : leur recette est dans
+  `tests/sst_corpora.lock`. Les deux corpus d'origine (`sst68030`,
+  116 Mo ; `sst68040`, 315 Mo) n'ont pas de recette enregistrée et
+  n'existent que sur deux hôtes et le disque privé : les publier (asset de
+  release, sortie WinUAE sans donnée Apple), ou les remplacer par des
+  corpus à recette une fois celle-ci retrouvée.
 - [ ] **Exécuter un corpus de vecteurs en CI, et sous sanitizers.** Les
   corpus 030/040 sont de la sortie WinUAE, pas des données Apple : un
   sous-ensemble public épinglé peut devenir `asset-none`. Aujourd'hui aucun
@@ -117,26 +131,35 @@ boot.
   `oracle_uae_smoke` et `oracle_uae_smoke040` vivent dans le projet CMake
   séparé `oracle/uae`, hors registre et hors CI ; le 040 n'a pas
   d'équivalent de `loop.sh`.
-- [ ] **Régénérer le corpus 030 en WinUAE seul.** Les cellules core, mmu et
-  random datent du 2026-07-15 et ne gardent que les vecteurs où Musashi
-  était d'accord (`oracle/fuzz/disputes/NOTES.md`) : les cas disputés en
-  sont exclus par construction. Manquent aussi `mmu_tt` et `random_tt`.
 - [ ] **Élargir la géométrie MMU du fuzzer 030.** `gen030.py` n'a qu'un TC
   (pages de 32 Ko, un niveau, descripteurs courts, CRP sans limite) : ni
   FCL/SRE, ni tables à plusieurs niveaux, ni terminaison anticipée, ni
   descripteurs indirects ou longs, ni violation de limite, et la cellule
   `tt` ne parcourt jamais l'arbre. Les géométries réelles ne sont prouvées
   que par les boots. `oracle/README.md` annonce plus que le code ne fait.
-- [ ] **Ajouter au fuzzer 040 les pages de 8 Ko (TC.P = 1) et des TTR
-  variés.** Cellule écrite mais jamais exercée (`POM68K_VENDOR.md § Model
-  support in this copy`) ; `gen040.py` fige `TC040_FUZZ` et une seule
-  disposition de TTR. Les coutures JIT supposent 4 Ko par endroits
-  (`kSliceShift`).
-- [ ] **Donner un corpus différentiel au FPU intégré du 68040.**
-  `sst68040` force `FPUModel::NONE` et `fpu040_test` est écrit à la main ;
-  `oracle/uae/glue.c` accepte déjà `fpu_model 68040`. Corriger la colonne
-  Gate des rangs 27 et 28, qui nomment `sst68040` alors que ce corpus ne
-  voit ni le FPU ni les caches (`cacr` vaut 0 dans tous les vecteurs).
+- [ ] **Varier les TTR du fuzzer 040 et balayer des graines neuves à
+  chaque passe.** Les pages de 8 Ko ont leur corpus (`sst68040_8k`,
+  4 000 vecteurs, recette dans `tests/sst_corpora.lock`) ; reste la
+  disposition des TTR, figée (ITT0 = tout, DTT0 = superviseur seul). Deux
+  leçons : le 2026-11-06, 13 100 vecteurs de graines neuves ont trouvé
+  trois défauts que les 7 200 épinglés ne contenaient pas ; le 2026-11-07,
+  une famille ciblée (`fline`, la fenêtre F-line brute) est partie de
+  3 074 / 4 500 là où la famille `random` ne plaçait que quatre vecteurs
+  épinglés. Un corpus épinglé est un plancher, pas une couverture, et une
+  famille aléatoire ne remplace pas une famille par fenêtre de décodage.
+  Faire du balayage de graines neuves une étape de la boucle
+  (`oracle/fuzz/loop.sh` n'a pas d'équivalent 040), et écrire les familles
+  brutes qui manquent : extensions complètes d'EA réservées, et une
+  famille `fault` bâtie sur les opcodes de `core`. La fenêtre
+  `$F400-$F7FF` (CINV/CPUSH/PFLUSH/PTEST/MOVE16) a la sienne (`sysraw`,
+  6 000 / 6 000 au premier rejeu, non épinglée). La fenêtre cpID 1 du
+  68030 a la sienne depuis le 2026-11-07 (`sst68030_fpuraw`, 6 000
+  vecteurs contre l'oracle strict).
+- [ ] **Donner au corpus FPU du 68040 les exceptions armées et les
+  caches.** `sst68040_fpu` (7 500 vecteurs) pose FPCR avec des exceptions
+  armées sur un vecteur sur dix seulement, et aucun corpus 68040 n'a
+  `cacr` ≠ 0 : le rang 28 (caches porteurs de données) n'a que
+  `cache040_test`, écrit à la main.
 - [ ] **Couvrir le 68020 nu par l'oracle.** Aucun corpus 020 ;
   `callm_rtm_test`, calculé à la main, est le seul test qui pose
   `Model::M68020`. Le chemin à file de préfetch du 020 ne repose que sur
@@ -160,36 +183,42 @@ boot.
 
 ### Convergence avec la copie NeoST
 
-Notre copie part de NeoST `47d6c39` (2026-07-11). Depuis, NeoST a corrigé
-son 68000 de huit groupes que nous n'avons pas encore (le neuvième, les
-valeurs absolues de DIVS, est le rang 38), et les deux forks ont
-réécrit les mêmes lignes amont dans des sens opposés : nous avons suivi
-SingleStepTests, NeoST suit Hatari et la transcription du microcode. Un
-cœur fusionné doit satisfaire les deux jeux de gates.
+Notre copie part de NeoST `47d6c39` (2026-07-11). Des neuf groupes que
+NeoST a ajoutés depuis à son 68000, sept sont portés (rangs 38, 40 et 42).
+Les deux forks avaient aussi réécrit les mêmes lignes amont dans des sens
+opposés — nous sur SingleStepTests, NeoST sur Hatari et la transcription
+du microcode. Depuis le 2026-11-06 `sst68000` juge aussi l'ordre et la
+date de chaque cycle bus (rang 41), ce qui donne un juge commun : un cœur
+fusionné doit le garder à 1 000 058 / 1 000 058.
 
-- [ ] **Rétro-porter les correctifs 68000 de NeoST postérieurs à la
-  copie.** Un changement par groupe, `sst68000` puis
-  `compact_timing_etalon` à chaque fois : `illegalOpcodeHook` ;
-  `willProcessFault` ; bornes de cycle bus `willAccessBus`/`didAccessBus`
-  (l'accès long devient `SYNC(2)` + hook + `SYNC(2)`) ; `setBusLock` autour
-  du TAS ; `fullPrefetch` du MOVE to SR ; double rechargement de
-  ANDI/ORI/EORI #,SR, #,CCR et MOVE to CCR ; cycles internes de DIVU/DIVS
-  avant le préfetch ; STOP+8 (`stopGraceUntil`, réveil quantifié, STOP en
-  4 cycles sans cycle bus), qui touche le bloc `CHECK_IRQ` d'`execute()`
-  où vit notre `irqDelay`. Les séquences bus de MOVE to SR et ANDI #,SR
-  peuvent contredire le corpus SST : c'est la ligne suivante.
-- [ ] **Arbitrer les règles 68000 où les deux forks se contredisent.** Une
-  décision enregistrée par règle dans `POM68K_VENDOR.md`. SingleStepTests
-  et Hatari sont tous deux de grade D, donc aucun ne départage l'autre :
-  il faut le manuel, la transcription du microcode que NeoST utilise (à
-  grader : lecture du silicium, pas d'un émulateur) ou une mesure.
-  Règles en cause : attente de l'erreur d'adresse
-  (0/2 cycles ici, 8 en amont) et les `SYNC(2)` retirés dans celle de
-  DIVS/DIVU/CMPM/CHK ; sortie anticipée de DIVS en débordement ; drapeau Z
-  de la division par zéro ; ADDQ/SUBQ.l sur An à 6 cycles contre 8 (notre
-  table `CYCLES_AN` dit encore 8) ; FC « data » forcé sur les lectures
-  relatives au PC. La note vendor demande déjà de revérifier DIVS et ASR
-  contre un second oracle.
+- [ ] **Décider des bornes de cycle bus de NeoST.** `willAccessBus` /
+  `didAccessBus` (NeoST `ce1cc52`) est le dernier hook non porté : deux
+  appels virtuels par accès bus, donc derrière un commutateur de
+  compilation éteint ici, et à dupliquer dans `pomJitFetch000`, qui
+  contourne `read<>`. Plan prêt : `scratchpad/2026-11-06/neost_backports/`,
+  groupe 3. À porter quand NeoST prend ce cœur, pas avant : rien ici ne le
+  consomme.
+- [ ] **Trancher STOP+8 avant de le porter.** NeoST `993ce5e` puis
+  `2fc53a8` (plan : `scratchpad/2026-11-06/neost_backports/`, groupe 8) : `stopGraceUntil`, réveil quantifié sur 4 cycles, STOP sans
+  cycle bus. Trois obstacles lus : son code final facture 0 cycle au STOP
+  (une IRQ en attente serait prise à +4, pas +8, contrairement à sa
+  note) ; le réveil arrondi toucherait aussi nos STOP 020/030/040 s'il
+  n'est pas gardé ; il partage le bloc `CHECK_IRQ` d'`execute()` avec
+  `irqDelay` et demande un champ de save-state. Le corpus n'a aucun
+  vecteur STOP. *Bloqué : un témoin — le microcode, ou une mesure.*
+- [ ] **Proposer à NeoST les règles 68000 que le corpus a tranchées.**
+  Sa copie garde l'ordre amont que le rang 41 corrige (frame de groupe 0,
+  RTE/RTR, JSR, CHK, MOVEM.l, écritures et lectures longues) et diffère
+  encore sur ce que `sst68000` tient ici au cycle près : attente de
+  l'erreur d'adresse (2 ou 4 cycles avant la frame, 8 chez lui),
+  `SYNC(2)` de l'erreur d'adresse de DIVS/DIVU/CMPM/CHK, sortie anticipée
+  de DIVS en débordement, drapeau Z de la division par zéro, ADDQ/SUBQ.l
+  sur An à 6 cycles (notre table `CYCLES_AN` dit encore 8), FC « data »
+  des lectures relatives au PC. SingleStepTests et Hatari sont tous deux
+  de grade D : la transcription du microcode, qui a donné raison au
+  corpus sur les trois groupes du rang 40, est le témoin à consulter pour
+  chacune. Le harnais `tests/sst68000.cpp` ne lie que Moira et se porte
+  tel quel.
 - [ ] **Unifier les chemins de fetch du 68000.** `read<>`, `prefetch`,
   `fullPrefetch` et `pomJitFetch000` : ce dernier réimplémente la séquence
   de `SYNC` sans hook par accès, donc la fenêtre et un arbitrage de bus par
@@ -201,19 +230,38 @@ cœur fusionné doit satisfaire les deux jeux de gates.
 
 ### Justesse 68030, 68020 et 6888x
 
-- [ ] **Faire accepter au RTE du 030 la frame $3 qu'il empile lui-même.**
-  *À reproduire.* `execFpuException` pousse un format $3 sur le 020/030
-  (décision D23), mais le RTE ne l'accepte qu'à partir du 68EC040 : un
-  handler qui fait simplement RTE prendrait une erreur de format.
-  `fpu_sanity` vérifie la frame empilée, jamais son retour. La question de
-  fond ($2 du manuel, grade B, contre $3 de l'oracle, grade D) se rejuge
-  en › Socle ; une preuve A demanderait *une frame empilée par un vrai
-  68030*.
+- [ ] **Sortir la frame FPU $3 du 68030 de l'incohérence de l'oracle.**
+  `execFpuException` pousse un format $3 sur le 020/030 (décision D23a) et
+  le RTE ne l'accepte qu'à partir du 68EC040 : un handler qui fait RTE
+  prend une erreur de format. Ce n'est pas un écart du fork — WinUAE fait
+  exactement les deux (`oracle/uae/upstream/gencpu.c`, `i_RTE`, branche
+  `cpu_level >= 4`) : l'oracle empile sur 68030 une frame que son propre
+  RTE refuse. Le $2 du manuel, lui, est accepté par le RTE dès le 68020.
+  Revenir à $2 fait tomber dix vecteurs épinglés de `sst68030` : à faire
+  avec le mécanisme de divergences assumées de › Socle, ou sur *une frame
+  empilée par un vrai 68030*.
+- [ ] **Faire toucher aux champs de bits mémoire les seuls octets qu'ils
+  couvrent.** `execBitFieldEa` lit et réécrit toujours un long (plus un
+  octet au-delà de 32 bits) ; l'oracle (`get_bitfield`/`put_bitfield`)
+  accède à 1, 2, 3, 4 ou 5 octets selon l'étendue du champ. Visible dans
+  la taille du SSW d'une faute — dix vecteurs reproductibles :
+  `fuzz040.py --family random --mmu identity --page 8k --seed 405
+  --n 400`, #174 et #281, et huit autres dans le balayage du 2026-11-07
+  (`oracle/fuzz/disputes/NOTES.md`, graines 828, 845, 846) — et, plus
+  grave, en fautes ou en accès de
+  périphérique en trop quand le long déborde d'une page ou d'un registre.
+  Vaut pour 68020, 68030 et 68040. Le contrat mémoire de l'IR du JIT
+  (`JitIr.h` : « Memory bitfields always begin with a longword access »)
+  et les deux émetteurs suivent le même long : à changer ensemble, donc
+  avec une session AArch64.
 - [ ] **Sérialiser l'état en vol, ou refuser de sauver quand il est
   vivant.** *À reproduire.* `MoiraSnapshot::visitCpuCommon` omet
-  l'opération 6888x suspendue (`fpu.busy` et ses registres), les mots de
-  pipe capturés après un PMOVE (`mmuPipe*`) et le verrou armé par un RTE à
-  DF effacé (`mmuRteSubst*`). Les gates de déterminisme ne le voient que si
+  l'opération 6888x suspendue (`fpu.busy` et ses registres), le
+  micro-état FSAVE UNIMP/BUSY du FPU 68040 (`fpu.cmdreg1b` … `wbt`), les
+  mots de pipe capturés après un PMOVE (`mmuPipe*`), le verrou armé par un
+  RTE à DF effacé (`mmuRteSubst*`) et le verrou de reprise MOVEM du 68040
+  (`mmu040MovemArmed`, `mmu040MovemEa`) — table complète dans
+  `POM68K_SURFACE.md` § 8. Les gates de déterminisme ne le voient que si
   une sauvegarde tombe dans une de ces fenêtres : en construire une par
   fenêtre.
 - [ ] **Porter le verrou « accès déjà rejoué » du RTE $B au 68020 nu.**
@@ -233,6 +281,53 @@ cœur fusionné doit satisfaire les deux jeux de gates.
 - [ ] **Généraliser le report du pipe de préfetch.** `mmuCapturePipe`
   capture quatre mots après PMOVE TC/CRP/SRP seulement, pour un idiome de
   la ROM LC II ; PFLUSH, une écriture de TT ou une cible de saut n'ont rien.
+- [ ] **Résorber les quatre restes 68030 du balayage de 60 000
+  vecteurs.** Tous dans des frames de faute, reproducteurs nommés dans
+  `oracle/fuzz/disputes/NOTES.md` (graines 802, 803, 807, 809, 811) :
+  le compteur d'accès de la frame $B d'un MOVEM.L vers une adresse
+  impaire qui faute ($11 ici, $22 dans l'oracle) ; le PC empilé d'un JMP
+  indexé vers une cible impaire (PC+2 contre PC+6) ; deux octets de queue
+  de frame pour un opmode FPU indéfini à EA fautif. (Le FBcc pris vers
+  une cible impaire, quatrième reste du balayage, est devenu la décision
+  D28 : le fork garde l'erreur d'adresse, comme pour Bcc et comme le
+  manuel ; l'oracle n'en lève jamais.)
+- [ ] **Fusionner le marquage « dernière écriture » des RMW du 68030 et
+  le CLR sans lecture — après les paliers machine.** La famille `rmw`
+  (`gen030.py`, 2026-11-07 : treize formes dont le dernier accès est une
+  écriture mémoire, A0 visant une mauvaise page) rejoue à **5 052 / 6 000**
+  sur cet arbre : sept handlers (ADD/SUB vers la mémoire, ABCD/SBCD/NBCD,
+  ADDX/SUBX, décalages mémoire, BCHG/BCLR/BSET) appellent `writeM` sans
+  marquer la dernière écriture — frame $B et redémarrage là où le 68030
+  empile $A et termine — et CLR lit sa destination sur 68020/68030 alors
+  que seuls « the MC68000 and MC68008 » le font (M68000PRM). Le correctif
+  est écrit et tenu par ses vecteurs sur la branche
+  `fix/m68030-rmw-last-write` (5 989 / 6 000, corpus `sst68030_rmw`,
+  rang 51, cellule `moira_rules_test`) ; il n'est **pas fusionné** parce
+  que le CLR sans lecture retire un cycle de bus à tous les profils
+  68020/68030 et qu'aucun etalon n'a tourné avec. Le 68040 n'a pas la
+  classe (`fuzz040.py --family rmw` : 6 000 / 6 000). Même balayage, un
+  vecteur : PTEST laisse MMUSR.I à zéro (`mmu/tt seed=1006 #1188`,
+  `scratchpad/2026-11-07/FUZZ_SWEEP2.md`).
+- [ ] **Repasser les corpus 68030 à l'oracle strict en appliquant D23b.**
+  Tous les corpus 68030 antérieurs au 2026-11-07 ont été produits avec
+  `fpu_no_unimplemented = false`, où WinUAE laisse un 6888x exécuter les
+  opmodes FSxxx/FDxxx du 68040 et accepter ses frames. Le compte est
+  pris : `sst68030_solo` régénéré avec `--strict-fpu` ne diffère que sur
+  6 vecteurs sur 5 592, tous des FRESTORE d'une frame 68040 (`fpu/off
+  seed=710` #184 et #206, `fpu/identity seed=711` #71, `fpu/tt seed=712`
+  #49, #65, #221) — exactement D23b, rien d'autre. Le jour où D23b est
+  appliquée (› Socle), régénérer `sst68030_solo` en strict plutôt que de
+  lister ces six vecteurs.
+- [ ] **Trancher les champs EA $3D-$3F sur 68030 (D29).** Le fork laisse le
+  coprocesseur décider (un registre-à-registre s'exécute, une forme
+  mémoire efface l'octet d'état puis prend un Line-F) ; la table d'opcodes
+  de l'oracle les refuse d'emblée. 63 vecteurs listés. *Tranche :
+  `$F23D $0000` sur un vrai 68030 + 68882.*
+- [ ] **Décider le sixième bit du prédicat FBcc sur preuve.** Depuis le
+  2026-11-07 FBcc évalue cinq bits sur tout FPU, comme FScc/FDBcc/FTRAPcc
+  et comme l'oracle ; l'ancien Line-F venait d'une lecture du bloc mort
+  de `fpp_cond`. Aucun manuel sous la main ne tranche (grade F au site).
+  *Tranche : FBcc `$F2A1` sur un vrai 68882 et un vrai 68040.*
 - [ ] **Trancher l'ordre de lecture de FMOVEM en EA indirect mémoire à
   extension complète avant un Line-F de direction.** Laissé « still open »
   dans `POM68K_VENDOR.md § MC68882 FPU execution` ; le correctif du
@@ -240,6 +335,55 @@ cœur fusionné doit satisfaire les deux jeux de gates.
 
 ### Justesse 68040
 
+- [ ] **Remplir les champs internes des frames d'état BUSY et UNIMP du
+  68040.** Depuis l'application de D24 (rang 50) une exception armée est
+  postée et le handler la lit par FSAVE ; `fpuCheckArithException` y
+  laisse à zéro le résultat intermédiaire (WBT), ses bits de garde (GRS)
+  et, pour FMOVE/FABS/FNEG, FPTEMP/ETEMP arrondis, que l'oracle tire de
+  l'état interne de softfloat (`fpp_get_internal*`). Le FPSP s'en sert
+  pour finir l'opération. Trois vecteurs nommés dans
+  `tests/sst68040_fpu2.known` ; la famille `fpu2` avec FSAVE en seconde
+  instruction en produira d'autres.
+- [ ] **Donner des vecteurs à plusieurs instructions aux autres états en
+  vol.** `fuzz030.py`/`fuzz040.py --steps` et le champ `steps` des
+  vecteurs existent (2026-11-07) ; ils tiennent D24 (`sst68040_fpu2`) et
+  les exceptions postées du 6888x (`sst68030_fpu2`, 5 979 / 6 000, le
+  reste étant D23b). Le même outil sert l'ATC ci-dessous (remplacement,
+  bit S), le pipe de préfetch et le verrou du RTE $B du 68030 : il y
+  faut des familles dont la première instruction arme l'état.
+- [ ] **Livrer la trappe de type de donnée des opclasses 000/010 en
+  pré-instruction (D30).** Le manuel (M68040UM § 9.7, types non
+  supportés) la place comme les exceptions arithmétiques de D24 : postée,
+  prise en pré-instruction (format $0) par l'instruction FPU suivante ;
+  le fork et l'oracle la prennent immédiatement en format $3, et l'oracle
+  le dit lui-même (« simplification: always mid/post-instruction
+  exception »). Des centaines de vecteurs épinglés tiennent la
+  simplification : à faire avec le mécanisme de D24 étendu au vecteur 55,
+  des vecteurs à deux instructions, et une liste de divergences connues
+  le temps de régénérer. Noté le 2026-11-07 en lisant § 9.7 pour D24.
+- [ ] **Six octets de frame IDLE 68882 après une sortie mémoire qui
+  trappe.** Famille `fpuh` (FSAVE en tête des handlers, trois pas, sur la
+  branche `engine/next`), 68030 + 68882, oracle strict : 5 977 / 6 000 ;
+  17 sont D23b, six sont une sortie FMOVE vers la mémoire ou un entier
+  dont l'exception est prise, et dont la frame IDLE sauvée par le handler
+  diffère d'un octet (offset $29 : `fpuh/tt seed=1313 #1298`, `#869`,
+  `#1388`, `#1501`, `fpuh/off seed=1311 #1078`, `#1393`). Même famille sur
+  le 68040 : voir rang 51 de la branche.
+- [ ] **Trancher FMOVE.P vers Dn (D25) et le pas (An)± du k-facteur
+  dynamique (D26).** D25 : Line-F ici (`fpu040_test`), trappe de type de
+  donnée dans l'oracle — 27 vecteurs. D26 : le fork avance An de 12, la
+  table de tailles de l'oracle contient 0 pour le format 7 — 16 vecteurs ;
+  là le manuel donne raison au fork. *Tranche : la même instruction sur
+  un vrai 68040.*
+- [ ] **Évaluer l'EA avant le Line-F d'un déplacement de registres de
+  contrôle vers une destination relative au PC (D27).** Un vecteur : un
+  EA indirect mémoire marque une page « utilisée » dans l'oracle. Même
+  famille que l'ordre de lecture de FMOVEM (› Justesse 68030).
+- [ ] **Corriger le PC empilé d'un MOVEP qui faute en cours de route.**
+  *À reproduire :* `fuzz040.py --family random --mmu identity --page 8k
+  --seed 845 --n 2000`, #1967 (`0789 54F5`, MOVEP.W D3,(d16,A1)) : la
+  frame $7 empile PC+4 de trop. Le marqueur « dernière écriture » s'arme
+  sur la première des écritures d'octet.
 - [ ] **Donner à l'ATC du 68040 sa géométrie et son tag.** Trente-deux
   entrées associatives sans bit S, là où l'oracle (et le manuel) ont 4
   voies × 16 jeux taggés par S. Avec URP ≠ SRP un accès superviseur peut
@@ -323,27 +467,28 @@ par `cacheBoost` ; le reste est correction locale.
 
 ### Interprète — performance du mode normal
 
-Chaque ligne n'ouvre qu'avec un profil temporel reproductible.
+Chaque ligne n'ouvre qu'avec un profil temporel reproductible. Les profils
+de référence sont `scratchpad/2026-11-06/INTERP_PROFILE.md` et, pour le
+68040 après le chemin chaud du 2026-11-07,
+`scratchpad/2026-11-07/INTERP_HOT040.md` (bancs à budget fixe, 1 500
+trames, empreintes `a2036281a5c2ac55` et `663d67e4bc2d9714`) : le 68040
+interprété passe désormais 31 % de son temps en traduction d'adresse
+(63 % avant) et 30 % dans ses handlers ; le 68030, un tiers dans le fetch
+d'instruction.
 
-- [ ] **Donner à l'interpréteur son chemin de fetch rapide sans
-  `jit::Engine`.** `mmuFetchWord` + `Cpu030::read16` pèsent 44,4 % des
-  instructions du LC II interprété, et le Quadra 605 interprété tient
-  ×0,96 du temps réel contre ×1,94 pour le LC II. Or le fetch fusionné
-  `ird`/`irc` (rang 33), la fenêtre de fetch et la fenêtre de données 030
-  (rang 34) ne s'arment que par le moteur : `Engine::setEnabled(false)`
-  vide la fenêtre, donc `POM68K_CPU_ENGINE=interp` — et tout portage de
-  l'interpréteur seul — les perd. Sur 040 chaque instruction paie deux
-  `mmu040Read<Word>` complets.
-- [ ] **Re-mesurer avant de compacter `mmu040InstrStart`.** Les 3,26 %
-  venaient d'un profil périmé par le cache de dispatch ; le seau MMU/cache
-  est à 7,1 % de la phase de jeu. `mmu040Translate` pèse 38,6 % du temps
-  interprète et un indice O(1) d'ATC a été mesuré plat : le coût est dans
-  la marche et la tenue par accès.
+- [ ] **Donner à l'interpréteur son fetch fusionné et sa fenêtre sans
+  `jit::Engine`.** C'est la marche suivante sur les deux familles. Sur
+  68040, la traduction inlinée (rang 48), ce qui reste d'un fetch est
+  l'appel bus virtuel : `mmu040InstrStart` 18,1 %, `readExt` 9,3 %,
+  `Q605Memory::read16` 8,1 %. Sur 68030 `mmuFetchWord` pèse 22,1 % et la
+  lecture bus qu'il atteint 11,5 %. Le fetch fusionné `ird`/`irc`
+  (rang 33), la fenêtre de fetch et la fenêtre de données (rang 34) ne
+  s'arment que par le moteur : `POM68K_CPU_ENGINE=interp` et tout hôte qui
+  exécute `Moira::execute()` nu les perdent (`POM68K_SURFACE.md` § 9.2).
 - [ ] **Alléger la remise à zéro par instruction du mode 5.**
-  `mmuExecuteStart` efface le journal d'accès et les fixups et sauve le
-  CCR à chaque instruction 030, sous un `try`, avec `sync()` et les
-  lectures en virtuel et un `dynamic_cast` dans `processException`. Aucun
-  profil n'en attribue le coût : mesurer d'abord.
+  `mmuExecuteStart` (5,8 %) efface le journal d'accès et les fixups et
+  sauve le CCR à chaque instruction 030, sous un `try`, avec `sync()` et
+  les lectures en virtuel et un `dynamic_cast` dans `processException`.
 - [ ] **Re-mesurer la fenêtre de données 040 après la géométrie de
   l'ATC.** Éteinte parce que le TLB plafonne aux 32 pages de l'ATC
   (≈ 10 % plus lent, pire sous mémoire virtuelle) ; le passage à 64
@@ -351,12 +496,6 @@ Chaque ligne n'ouvre qu'avec un profil temporel reproductible.
 
 ### JIT justesse et parité des hôtes
 
-- [ ] **Re-vérifier sur x64 le chemin sans cache des instructions mémoire
-  à deux polls IPL.** L'émetteur a64 a reçu le 2026-10-02 la règle « poll
-  après le dernier accès → ré-échantillonner, sinon repli exact » ; x64 ne
-  refuse cette classe que cache actif. Sa trace AFP est verte sans qu'on
-  sache pourquoi. Un oracle sans asset suffit : une lecture MMIO qui lève
-  une seconde IRQ. L'hôte est là.
 - [ ] **Expliquer pourquoi le moment d'armement d'une fenêtre change
   l'état invité sous le D-cache 040.** Un backoff croissant a fait
   diverger les deux locksteps cache actif au premier pas grossier
@@ -446,22 +585,16 @@ Le regroupement des hooks derrière une interface virtuelle reste refusé
 (≈ 11 % mesurés, `POM68K_VENDOR.md § Status`) : la séparation se fait à la
 compilation et dans la documentation.
 
-- [ ] **Retirer les trois lectures de `NEOST_EXC_DIAG` du cœur.** Dernier
-  `getenv` de `extern/moira/Moira/` (`Moira.cpp`, `MoiraExceptions_cpp.h`,
-  `MoiraDataflow_cpp.h`) depuis que le commutateur de cache 68040 et son
-  histogramme sont injectés (rang 39). Ce diagnostic de NeoST concerne
-  tous les cœurs, 68000 compris, or `Cpu68k`, `PortableCpu` et `IIfxCpu`
-  ne reçoivent qu'une configuration JIT : il faut lui choisir un porteur
-  (un drapeau membre et son setter, déclaré avec `RTCDBG` et `SCCDBG`
-  dans `StartupOptions.h`) sans élargir quatorze constructeurs pour un
-  traceur.
-- [ ] **Écrire le contrat de la surface d'extension, sans Macintosh.**
-  Chaque couture `pom*`, chaque hook virtuel ou pointeur de fonction,
-  `jit::MemoryHooks`, `CodeGuard` (tout écrivain non CPU doit le
-  notifier), le contrat `missPenalty` de `PomIcache`, les champs ajoutés à
-  `Registers` et `PomJitLayout`, dont le code généré lit les décalages
-  bruts. Dire pour chacun s'il est générique 68k ou réglé sur un invité
-  Mac.
+- [ ] **Lever les points « unverified » du contrat de surface.**
+  `extern/moira/POM68K_SURFACE.md` décrit ce que le cœur expose et ce que
+  l'hôte lui doit ; neuf affirmations y sont lues dans le code sans gate :
+  ce que rapporte un `extBusError` levé pendant la lecture d'un
+  descripteur de table 030, `setFPUModel` sur 68000/68010, la valeur à
+  rendre sur une lecture CIR FC = 7 d'un FPU présent, l'audit complet de
+  l'état global de softfloat, les chemins 68EC030/68EC040, l'identité
+  d'horloge d'un restore sous i-cache 030 armé, et l'appel de
+  `Engine::flushAll()` à la restauration. Chacune devient un gate ou une
+  phrase corrigée.
 - [ ] **Déplacer la sérialisation du CPU dans un visiteur côté Moira,
   avec un aller-retour sur Moira nu.** Le visiteur vit dans
   `src/MoiraSnapshot.h` et n'est prouvé que par des bancs Macintosh ;
@@ -518,6 +651,15 @@ compilation et dans la documentation.
 **Sortie :** chaque fenêtre a un gate ou une passe manuelle datée ; un run
 complet publié par la CI sur un runner à assets ; version 0.3.
 
+- [ ] **`-Werror` + `POM68K_NATIVE=ON` ne compile pas sous GCC 15.**
+  `src/AtalkStack.cpp:565` (`std::vector::resize` dans `handleAtp`) :
+  « writing 16 bytes into a region of size between 1 and 15
+  [-Werror=stringop-overflow=] », faux positif de la vectorisation sous
+  `-march=native`. Les builds `-Werror` de l'arbre et de la CI ont
+  `NATIVE=OFF`, le défaut produit a `NATIVE=ON` sans `-Werror` : personne
+  ne voit la combinaison sauf à la demander (vu le 2026-11-07 sur un
+  worktree). Soit un `reserve`/`assign` qui calme l'analyse, soit un
+  `-Wno-error=stringop-overflow` ciblé sur le fichier.
 - [ ] **Installer un runner auto-hébergé avec les assets.** Rendre le palier
   `full` déclenchable par push et publier `LastTest.log` + le census
   exécutés/soft-skips. *Bloqué : infrastructure/hôte à provisionner.*

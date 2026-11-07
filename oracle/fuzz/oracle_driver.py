@@ -124,7 +124,8 @@ class Oracle:
     040 MMU, no FPU — the Q1 gate configuration; must precede oracle_init).
     """
 
-    def __init__(self, so_path: str, model: int = 68030):
+    def __init__(self, so_path: str, model: int = 68030, fpu: int = 0,
+                 strict_fpu: bool = False):
         self.lib = ctypes.CDLL(so_path)
         self.lib.oracle_name.restype = ctypes.c_char_p
         self.lib.oracle_init.restype = ctypes.c_int
@@ -136,7 +137,12 @@ class Oracle:
         if model != 68030:
             self.lib.oracle_set_model.argtypes = [ctypes.c_int, ctypes.c_int]
             self.lib.oracle_set_model.restype = None
-            self.lib.oracle_set_model(model, 0)
+            self.lib.oracle_set_model(model, fpu)   # fpu 68040 = full 68040
+        if strict_fpu:
+            # 6888x strictness (oracle_api.h): must precede oracle_init.
+            self.lib.oracle_set_fpu_strict.argtypes = [ctypes.c_int]
+            self.lib.oracle_set_fpu_strict.restype = None
+            self.lib.oracle_set_fpu_strict(1)
         self.mem = (ctypes.c_uint8 * MEM_SIZE)()
         rc = self.lib.oracle_init(self.mem, MEM_SIZE)
         if rc != 0:

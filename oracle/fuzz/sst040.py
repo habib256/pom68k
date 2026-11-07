@@ -38,13 +38,20 @@ def dict_to_state(d: dict) -> State:
 
 
 def vector(name: str, initial: State, final: State,
-           final_ram: list[tuple[int, int]], length: int) -> dict:
-    return {
+           final_ram: list[tuple[int, int]], length: int,
+           steps: int = 1) -> dict:
+    v = {
         "name": name,
         "initial": state_to_dict(initial, initial.ram),
         "final": state_to_dict(final, final_ram),
         "length": length,
     }
+    # A vector of several instructions (fuzz040.py --steps): the final state
+    # is the one after `steps` oracle steps. Absent = 1, so every corpus
+    # written before 2026-11-07 keeps its bytes.
+    if steps != 1:
+        v["steps"] = steps
+    return v
 
 
 save = sst030.save

@@ -284,7 +284,7 @@ Twelve wrappers, one per platform: `Cpu68k` (the compacts, cycle-exact
 
   The 68000 compacts are **not** on a batch at all: `Cpu68k::sync()` runs
   before every bus access and calls `catchUp()` unconditionally
-  (`Cpu68k.cpp:100-110`), so their peripheral time is exact; a VIA access
+  (`Cpu68k.cpp:101-111`), so their peripheral time is exact; a VIA access
   there is additionally a /VPA cycle landed on the E clock
   (`Cpu68k::applyContention`, MAME's `vpa_sync`), gated against MAME's
   boot-time bus calibration by `compact_timing_etalon`.

@@ -37,12 +37,29 @@ from oracle_driver import State
 from gen030 import (MASK, VEC_BASE, CODE_BASE, DATA_BASE,
                     STACK_ISP, STACK_MSP, STACK_USP,
                     build_vector_table, _w16, _w32,
-                    _op_random, _op_core, _op_fault)
+                    _op_random, _op_core, _op_fault,
+                    _op_fpu, _op_fpuraw, _op_fpu2, _op_rmw, _fp_special_words)
 
 # ── 040 MMU table builder (M68040UM § 3.1/3.2) ─────────────────────────────
 TC040_FUZZ = 0x8000        # E=1, P=0 → 4K pages
 PAGE_SHIFT = 12
 PAGE_SIZE = 1 << PAGE_SHIFT
+PGI_BITS = 18 - PAGE_SHIFT     # page-index bits: 6 for 4K pages, 5 for 8K
+
+
+def set_page_shift(shift: int) -> None:
+    """Select the page size of every tree built afterwards: 12 = 4K (TC.P
+    clear, the default and what Mac OS uses), 13 = 8K (TC.P set: the page
+    index loses a bit, a page table holds 32 descriptors and the physical
+    field starts at bit 13 — M68040UM § 3.1.1/3.2). The pinned corpus was
+    generated at 12 only; the 8K cell exists since 2026-11-06."""
+    global TC040_FUZZ, PAGE_SHIFT, PAGE_SIZE, PGI_BITS
+    if shift not in (12, 13):
+        raise ValueError("the 68040 has 4K and 8K pages only")
+    PAGE_SHIFT = shift
+    PAGE_SIZE = 1 << shift
+    PGI_BITS = 18 - shift
+    TC040_FUZZ = 0x8000 | (0x4000 if shift == 13 else 0)
 
 TABLE_BASE = 0x200000
 ROOT_T = TABLE_BASE            # 128 entries × 4 B (512-byte aligned)
@@ -75,12 +92,13 @@ def build_identity_tables(ram: dict[int, int], rng: random.Random,
     for k, pi in enumerate(MAPPED_PI):
         table = PAGE_T + k * 0x100
         _w32(ram, PTR_T + 4 * pi, table | UDT_RESIDENT)
-        for i in range(64):
-            page = (pi << 6) | i
+        for i in range(1 << PGI_BITS):
+            page = (pi << PGI_BITS) | i
             _w32(ram, table + 4 * i, (page << PAGE_SHIFT) | PDT_RESIDENT)
 
     def entry(idx: int) -> int:
-        return PAGE_T + MAPPED_PI.index(idx >> 6) * 0x100 + (idx & 63) * 4
+        return (PAGE_T + MAPPED_PI.index(idx >> PGI_BITS) * 0x100
+                + (idx & ((1 << PGI_BITS) - 1)) * 4)
 
     # Bad pages only inside the data window — never the infrastructure
     # (vectors/stacks/pads/code < $15000, tables at $200000).
@@ -195,8 +213,31 @@ def _op_fault040(rng: random.Random) -> list[int]:
     ])
 
 
+# "fpu" (2026-11-06) reuses the 68881/68882 opcode generator: the encodings
+# are the same, and what the integrated 68040 FPU does NOT implement (the
+# transcendentals, FSCALE/FREM/FMOD, packed decimal, FMOVECR…) must trap as
+# unimplemented — which is exactly the half a hand-written test covers least.
+# It needs the oracle in its full-68040 configuration (fuzz040.py does that).
+# "fline" and "fpuraw" share gen030's _op_fpuraw (the raw cpID-1 window,
+# any extension word): the first on the FPU-less 68LC040,
+# the second on the full 68040.
+def _op_sysraw040(rng: random.Random) -> list[int]:
+    """Raw $F400-$F7FF window: CINV/CPUSH ($F4xx), PFLUSH/PTEST ($F5xx),
+    MOVE16 ($F6xx) and the unassigned $F7xx, every field value, followed by
+    unconstrained words. The core and mmu families only emit the valid
+    encodings; this is the same question the fline family asked of the
+    cpID-1 window — what a decoder does with the rest.
+    """
+    op = 0xF400 | rng.getrandbits(10)
+    return [op] + [rng.getrandbits(16) for _ in range(rng.randrange(0, 4))]
+
+
+FPU_FAMILIES = ("fpu", "fpuraw", "fpu2")
 FAMILIES = {"random": _op_random, "core": _op_core040, "mmu": _op_mmu040,
-            "fault": _op_fault040}
+            "sysraw": _op_sysraw040, "rmw": _op_rmw,
+            "fpu2": _op_fpu2,
+            "fault": _op_fault040, "fpu": _op_fpu,
+            "fline": _op_fpuraw, "fpuraw": _op_fpuraw}
 
 
 def gen_state(rng: random.Random, family: str = "core",
@@ -241,7 +282,7 @@ def gen_state(rng: random.Random, family: str = "core",
         st.dtt0 = TT040_SUPER
     # else: MMU off (tc040.E = 0, roots/windows zero)
 
-    if family == "fault":
+    if family in ("fault", "rmw"):
         # Aim A0 at a bad page; offsets include odd addresses and page
         # boundaries so sub-accesses straddle good/bad 4K pages.
         bad = sorted(kinds)
@@ -265,6 +306,31 @@ def gen_state(rng: random.Random, family: str = "core",
             st.a[0] = rng.getrandbits(32)
 
     words = FAMILIES[family](rng)
+
+    if family in FPU_FAMILIES:
+        # Same seeding as gen030's fpu family: a special value in every FP
+        # register, random rounding and precision, exception enables on
+        # one vector in ten, and a raw extended value on both sides of each
+        # A-register target so every memory format reads something meaningful.
+        st.fp = [_fp_special_words(rng) for _ in range(8)]
+        fpcr = rng.getrandbits(8) & 0xF0
+        if rng.random() < (0.70 if family == "fpu2" else 0.10):
+            fpcr |= (rng.getrandbits(8) << 8) & 0xFF00
+        st.fpcr = fpcr
+        st.fpsr = rng.getrandbits(32) & 0x0FFFFFF8
+        for i in range(8):
+            base = st.a[i] & MASK
+            for org, w in ((base, _fp_special_words(rng)),
+                           (base - 12, _fp_special_words(rng))):
+                if rng.random() < 0.8:
+                    _w32(ram, org, w[0])
+                    _w32(ram, org + 4, w[1])
+                    _w32(ram, org + 8, w[2])
+                else:
+                    for off in range(12):
+                        ram[(org + off) & MASK] = rng.getrandbits(8)
+            for off in range(12, 24):
+                ram[(base + off) & MASK] = rng.getrandbits(8)
 
     if family in ("core", "fault"):
         # MOVE16 sources must show in the RAM diff: seed one 16-byte line

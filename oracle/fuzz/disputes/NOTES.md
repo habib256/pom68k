@@ -585,3 +585,158 @@ pinned corpora is history — existing pinned files replay unchanged and
 merge into the standard `${family}_${mmu}.json` names on the next
 repin (`loop.sh`). `fuzz030.py --b` keeps the differential slot open
 should a second oracle return. D1-D22 above stay as recorded.
+
+## The integrated 68040 FPU and the F-line window (2026-11-07)
+
+Three families were added to `gen040.py`/`fuzz040.py`: `fpu` (gen030's
+assembler-shaped generator on a full 68040), `fpuraw` and `fline` (the raw
+cpID-1 window `$F200-$F37F` with unconstrained extension words, on the full
+68040 and on the FPU-less 68LC040). First replays: `fpu` 2 963 / 3 000,
+`fline` 3 074 / 4 500, `fpuraw` 3 962 / 4 500.
+
+**The oracle was wrong twice before the core was.** (1) `glue.c` left
+`fpu_no_unimplemented` false: WinUAE then executes FSIN or a packed operand
+on a 68040 like a 6888x (first `fpu` replay 1 783 / 3 000). (2) `mmufixup[]`
+leaked across vectors: a 68040 access fault restores whatever fixup is
+armed, several fpp.c paths arm one and never disarm it, and a later
+faulting vector had an address register overwritten from an earlier one
+(seventeen `fpuraw` vectors, e.g. "040 fpuraw/identity seed=962 #1007",
+FRESTORE through A5 leaving A4 changed). Both fixed in the glue
+(`uae/VENDOR.md` patches 9 and 10); `sst68030_solo` and `sst68040_8k`
+regenerate hash-identically afterwards.
+
+**Followed the oracle** (`extern/moira/POM68K_VENDOR.md` rows 44-47): the
+unimplemented-instruction trap outranks the datatype trap; no FPU
+instruction ends on a "last write", (An)± is restored and FPIAR set before
+the operand access; on a FPU-less 68040 what is no instruction takes a
+plain Line-F (or vector 4 for opmodes $78-$7F, PC past the extension word)
+instead of the format $4 frame; FBcc evaluates five predicate bits. After
+them: `fline` 4 500 / 4 500, `fpu` 2 986 / 3 000, `fpuraw` 4 448 / 4 500,
+and fresh seeds (971-973, 911-913, 981-983; 6 000 vectors each) replay at
+6 000, 5 979 and 5 944 with every residual in the four classes below.
+
+### D24. Delivery of an enabled arithmetic exception on the 68040  [applied 2026-11-07: manual + oracle]
+The oracle's `fpsr_check_arithmetic_exception` returns "nonmaskable" only
+for SNAN/OPERR on an integer move-out; every other enabled exception of an
+opclass 000/010 instruction stays pending and is taken by the NEXT FPU
+instruction as a pre-instruction exception. The fork stacks a format $3
+frame at once, and `fpu040_test` says so ("Enabled arithmetic exceptions
+are immediate on the integrated 040") without a source. 22 pinned vectors,
+all of the shape "A7 got $17F4 want $1800". Not changed: the hand-written
+gate would go red.
+
+**The manual sides with the oracle** (read the same night, M68040 User's
+Manual, 1993 revision, § 9.7; grade B):
+- § 9.7.2.1 b, SNAN, p. 9-27: "the processor posts an exception and
+  another floating-point instruction is eventually encountered; a
+  pre-instruction exception is reported at that time."
+- § 9.7.3.1 b, OPERR, p. 9-30: "an OPERR exception is posted. The next
+  floating-point instruction that is encountered takes a pre-instruction
+  exception."
+- § 9.7.6, divide by zero: "the exception is reported as a pre-instruction
+  exception when the next floating-point instruction is attempted" (the
+  manual's a/b labels for enabled/disabled are swapped there).
+- § 9.7.4.2, overflow, register destination: "either a pre-instruction or
+  a post-instruction exception is reported"; the post-instruction case is
+  the one where an FMOVE OUT depending on the result is already executing
+  (the FADD FP2,FP0 / FMOVE FP0,<ea> example). Memory or integer
+  destination: "a post-instruction exception is taken immediately".
+- § 9.7.3.2 and 9.7.2.2: SNAN/OPERR on a move to byte, word or long are
+  nonmaskable and "taken immediately" — the oracle's one immediate case.
+- State frame fields, T bit: "only an opclass 3 instruction can indicate a
+  post-instruction exception".
+So the ruling flips to the oracle: pending, format $0, at the next FPU
+instruction.
+
+**Applied the same night** (`POM68K_VENDOR.md` row 50), once two-instruction
+vectors existed to hold the second half (`fuzz040.py --steps 2`, family
+`fpu2`: an FPU instruction, then FNOP / FMOVE / FTST / FADD / FSAVE /
+FMOVE FPSR,D0 / NOP / MOVEQ, FPCR enables armed seven times in ten).
+6 000 vectors: 5 763 before, 5 997 after. The 22 single-instruction
+vectors left `tests/sst68040_fpu.known`; fresh `fpu` seeds 911-913 replay
+at 6 000 / 6 000. It turned out to be the delivery decision plus one rule
+the immediate delivery had hidden — on a 68040 any overflow or underflow
+leaves the destination register untouched — the pending machinery being
+the 68882's. The three vectors that remain are not the ruling: an FSAVE
+after a posted exception writes zeros where the oracle has the
+intermediate result (WBT) and its guard bits (`tests/sst68040_fpu2.known`).
+
+### D25. FMOVE.P to a data register on the 68040  [open — fork kept]
+Oracle: unsupported-datatype trap ("68040+ generates unimplemented
+effective mode exception even if destination EA is Dn or An", fpp.c
+`put_fp_value`). Fork: Line-F, asserted by `fpu040_test` ("040
+packed-to-Dn should take ordinary Line-F"). 27 pinned vectors.
+
+### D26. (An)± step of a packed move-out with a dynamic k-factor  [open — fork kept, manual]
+fpp.c steps An by `sz1[size]`, and `sz1[7]` is 0: FMOVE.P FPn,(An)+{Dn}
+leaves An where it was, FMOVE.P FPn,(An)+{#k} adds 12. A packed operand
+is twelve bytes in both forms (MC68881/MC68882 UM; M68040UM § 1, data
+formats: "Packed BCD real data format (96 bits, 12 bytes)"); the fork
+adds 12 in both. 16 pinned vectors. The manual outranks a table slot.
+
+### D27. EA evaluated before a control-register Line-F  [open — fork kept]
+`F23B A7B0`: FMOVEM control registers to a (d8,PC,Xn) destination. Both
+sides take a Line-F; the oracle walks the memory-indirect EA first and the
+page descriptor comes back Used. One vector.
+
+### Not disputes: 68030 leftovers of the 60 000-vector sweep (seeds 801-846)
+Recorded here so that they are not rediscovered; each is in `TODO.md`.
+- `core/identity seed=802 #139`, `core/tt seed=803 #635`: MOVEM.L to an odd,
+  faulting address — the $B frame's access counter reads $11, the oracle
+  $22, and the saved-access slots differ.
+- `random/off seed=807 #681`: JMP (d8,A3,D4.L*8) to an odd target — the
+  address-error frame stacks PC+2, the oracle PC+6.
+- `fpu/identity seed=811 #1003`: `F26E 0017`, an undefined opmode with a
+  faulting EA — two bytes of the $B frame's tail differ.
+- `random/tt seed=809 #7, #1854, #1999`: FBcc taken to an odd target — the
+  fork raises the address error inside the branch (as for Bcc), the oracle
+  only sets the PC.
+
+## The raw F-line window on the 68030 + 68882, and the oracle's strict setting (2026-11-07)
+
+`gen030.py` gained the `fpuraw` family (the generator gen040 used for
+`fline`/`fpuraw`, moved there). First replay against the oracle as every
+earlier corpus used it: 5 529 / 6 000.
+
+**Two of the largest classes were the oracle's configuration, not the fork.**
+WinUAE's `fpu_no_unimplemented` was false for the 68030 + 68882. In that
+permissive setting a 6888x executes the 68040's FSxxx/FDxxx opmodes
+($40-$77), sends $78-$7F to the illegal vector, and lets FRESTORE accept a
+68040 frame — fpp.c's own "horrible hack to support on the fly 6888x <>
+68040 FPU switching". With the option true, opmodes $40-$7F take a Line-F
+("Only opmodes 0x40-0x7f generate F-line exception", fpp.c
+`fault_if_unimplemented_6888x`) and a foreign frame a format error: what
+the MC68881/MC68882 manual says, and what the fork already did for the
+opmodes. `oracle_set_fpu_strict(1)` selects it (`uae/VENDOR.md` patch 12,
+`fuzz030.py --strict-fpu`); the default stays permissive so that the pinned
+corpora keep their recipe. Strict replay: 5 802 / 6 000.
+
+**D23b, revisited.** The ruling "FRESTORE accepts a version-$41 frame on a
+68882" was recorded as the oracle against the manual. It is the PERMISSIVE
+oracle against the manual: the strict oracle takes the format error (three
+vectors of this corpus, e.g. "fpuraw/identity seed=722 #311"). The four
+pinned `sst68030` vectors that hold the fork's acceptance were generated in
+the permissive setting. Manual (B) and strict oracle (D) agree; the ruling is
+due to flip, with those four vectors listed as known.
+
+### D28. FBcc / FDBcc taken to an odd address  [fork kept, manual]
+The oracle sets the PC and raises nothing — `fpuop_bcc`/`fpuop_dbcc` lack
+the odd-target test gencpu gives Bcc/DBcc, and its fetch path never checks
+— so a 68030 would run from an odd address. The fork takes the address
+error inside the branch, as for Bcc (MC68030UM: an instruction fetch from
+an odd address is an address error). 114 vectors; the frame itself cannot
+be compared, the oracle has none.
+
+### D29. EA fields $3D-$3F on the 68030  [open — fork kept]
+WinUAE's opcode table holds no FPU opcode with those EA fields: plain
+Line-F, nothing touched. The fork lets the coprocessor protocol decide: a
+register-to-register operation never asks for the EA and runs; a memory
+form clears the status byte and then takes the Line-F. On a 68030 the main
+processor validates an EA only when the coprocessor asks for it, which is
+the fork's reading; nothing at hand states it for these three fields. 63
+vectors. (On the 68040, where the CPU decodes the instruction itself, the
+fork follows the oracle — row 46.)
+
+The corpus is pinned as `sst68030_fpuraw` (6 000 vectors, strict oracle)
+with `tests/sst68030_fpuraw.known`: D23b 3, D26 15, D27 2, D28 114, D29 63,
+and one open defect (two tail bytes of a $B frame).

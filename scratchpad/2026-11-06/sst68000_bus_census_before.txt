@@ -1,0 +1,251 @@
+[sst68000] dir=tests/data/sst68000 files=124 cycles=on
+  ABCD         :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  ADD.b        :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  ADD.l        :   8065/8065   OK
+                 bus order   2795/8065    timed +0      0  +2   2795  +4      0
+  ADD.w        :   8065/8065   OK
+                 bus order   5117/8065    timed +0      0  +2   5117  +4      0
+  ADDA.l       :   8065/8065   OK
+                 bus order   5372/8065    timed +0      0  +2   5372  +4      0
+  ADDA.w       :   8065/8065   OK
+                 bus order   5431/8065    timed +0      0  +2   5431  +4      0
+  ADDX.b       :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  ADDX.l       :   8065/8065   OK
+                 bus order   4065/8065    timed +0      0  +2   4065  +4      0
+  ADDX.w       :   8065/8065   OK
+                 bus order   5465/8065    timed +0      0  +2   5465  +4      0
+  AND.b        :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  AND.l        :   8065/8065   OK
+                 bus order   4745/8065    timed +0      0  +2   4745  +4      0
+  AND.w        :   8065/8065   OK
+                 bus order   4668/8065    timed +0      0  +2   4668  +4      0
+  ANDItoCCR    :   8065/8065   OK
+                 bus order      0/8065    timed +0      0  +2      0  +4      0
+  ANDItoSR     :   8065/8065   OK
+                 bus order      0/8065    timed +0      0  +2      0  +4      0
+  ASL.b        :   8063/8063   OK
+                 bus order   8063/8063    timed +0      0  +2   8063  +4      0
+  ASL.l        :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  ASL.w        :   8065/8065   OK
+                 bus order   7127/8065    timed +0      0  +2   7127  +4      0
+  ASR.b        :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  ASR.l        :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  ASR.w        :   8065/8065   OK
+                 bus order   7142/8065    timed +0      0  +2   7142  +4      0
+  BCHG         :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  BCLR         :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  BSET         :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  BSR          :   8065/8065   OK
+                 bus order   4085/8065    timed +0      0  +2   4085  +4      0
+  BTST         :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   7927  +4      0
+  Bcc          :   8065/8065   OK
+                 bus order   5865/8065    timed +0      0  +2   5865  +4      0
+  CHK          :   8065/8065   OK
+                 bus order    676/8065    timed +0      0  +2      0  +4      0
+  CLR.b        :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  CLR.l        :   8065/8065   OK
+                 bus order   4903/8065    timed +0      0  +2   4903  +4      0
+  CLR.w        :   8065/8065   OK
+                 bus order   4896/8065    timed +0      0  +2   4896  +4      0
+  CMP.b        :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  CMP.l        :   8065/8065   OK
+                 bus order   5034/8065    timed +0      0  +2   5034  +4      0
+  CMP.w        :   8065/8065   OK
+                 bus order   5024/8065    timed +0      0  +2   5024  +4      0
+  CMPA.l       :   8065/8065   OK
+                 bus order   5450/8065    timed +0      0  +2   5450  +4      0
+  CMPA.w       :   8065/8065   OK
+                 bus order   5360/8065    timed +0      0  +2   5360  +4      0
+  DBcc         :   8065/8065   OK
+                 bus order   6101/8065    timed +0      0  +2   6101  +4      0
+  DIVS         :   8065/8065   OK
+                 bus order   4992/8065    timed +0      0  +2      0  +4      0
+  DIVU         :   8065/8065   OK
+                 bus order   4964/8065    timed +0      0  +2      1  +4      0
+  EOR.b        :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  EOR.l        :   8065/8065   OK
+                 bus order   4904/8065    timed +0      0  +2   4904  +4      0
+  EOR.w        :   8065/8065   OK
+                 bus order   4930/8065    timed +0      0  +2   4930  +4      0
+  EORItoCCR    :   8065/8065   OK
+                 bus order      0/8065    timed +0      0  +2      0  +4      0
+  EORItoSR     :   8065/8065   OK
+                 bus order      0/8065    timed +0      0  +2      0  +4      0
+  EXG          :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  EXT.l        :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  EXT.w        :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  JMP          :   8065/8065   OK
+                 bus order   4259/8065    timed +0      0  +2   4259  +4      0
+  JSR          :   8065/8065   OK
+                 bus order      0/8065    timed +0      0  +2      0  +4      0
+  LEA          :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  LINK         :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  LSL.b        :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  LSL.l        :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  LSL.w        :   8065/8065   OK
+                 bus order   7161/8065    timed +0      0  +2   7161  +4      0
+  LSR.b        :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  LSR.l        :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  LSR.w        :   8065/8065   OK
+                 bus order   7103/8065    timed +0      0  +2   7103  +4      0
+  MOVE.b       :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  MOVE.l       :   8065/8065   OK
+                 bus order   3270/8065    timed +0      0  +2   3270  +4      0
+  MOVE.q       :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  MOVE.w       :   8065/8065   OK
+                 bus order   3368/8065    timed +0      0  +2   3368  +4      0
+  MOVEA.l      :   8065/8065   OK
+                 bus order   5379/8065    timed +0      0  +2   5379  +4      0
+  MOVEA.w      :   8065/8065   OK
+                 bus order   5322/8065    timed +0      0  +2   5322  +4      0
+  MOVEM.l      :   8065/8065   OK
+                 bus order   1518/8065    timed +0      0  +2   1518  +4      0
+  MOVEM.w      :   8065/8065   OK
+                 bus order   4281/8065    timed +0      0  +2   4281  +4      0
+  MOVEP.l      :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  MOVEP.w      :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  MOVEfromSR   :   8065/8065   OK
+                 bus order   5017/8065    timed +0      0  +2   5017  +4      0
+  MOVEfromUSP  :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  MOVEtoCCR    :   8065/8065   OK
+                 bus order      0/8065    timed +0      0  +2      0  +4      0
+  MOVEtoSR     :   8065/8065   OK
+                 bus order      0/8065    timed +0      0  +2      0  +4      0
+  MOVEtoUSP    :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  MULS         :   8065/8065   OK
+                 bus order   4943/8065    timed +0      0  +2   4943  +4      0
+  MULU         :   8065/8065   OK
+                 bus order   4992/8065    timed +0      0  +2   4992  +4      0
+  NBCD         :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  NEG.b        :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  NEG.l        :   8065/8065   OK
+                 bus order   5031/8065    timed +0      0  +2   5031  +4      0
+  NEG.w        :   8065/8065   OK
+                 bus order   4911/8065    timed +0      0  +2   4911  +4      0
+  NEGX.b       :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  NEGX.l       :   8065/8065   OK
+                 bus order   4919/8065    timed +0      0  +2   4919  +4      0
+  NEGX.w       :   8065/8065   OK
+                 bus order   4979/8065    timed +0      0  +2   4979  +4      0
+  NOP          :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  NOT.b        :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  NOT.l        :   8065/8065   OK
+                 bus order   4925/8065    timed +0      0  +2   4925  +4      0
+  NOT.w        :   8065/8065   OK
+                 bus order   4957/8065    timed +0      0  +2   4957  +4      0
+  OR.b         :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  OR.l         :   8065/8065   OK
+                 bus order   4730/8065    timed +0      0  +2   4730  +4      0
+  OR.w         :   8065/8065   OK
+                 bus order   4650/8065    timed +0      0  +2   4650  +4      0
+  ORItoCCR     :   8065/8065   OK
+                 bus order      0/8065    timed +0      0  +2      0  +4      0
+  ORItoSR      :   8065/8065   OK
+                 bus order      0/8065    timed +0      0  +2      0  +4      0
+  PEA          :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  RESET        :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  ROL.b        :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  ROL.l        :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  ROL.w        :   8065/8065   OK
+                 bus order   7074/8065    timed +0      0  +2   7074  +4      0
+  ROR.b        :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  ROR.l        :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  ROR.w        :   8065/8065   OK
+                 bus order   7187/8065    timed +0      0  +2   7187  +4      0
+  ROXL.b       :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  ROXL.l       :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  ROXL.w       :   8065/8065   OK
+                 bus order   7128/8065    timed +0      0  +2   7128  +4      0
+  ROXR.b       :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  ROXR.l       :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  ROXR.w       :   8065/8065   OK
+                 bus order   7172/8065    timed +0      0  +2   7172  +4      0
+  RTE          :   8065/8065   OK
+                 bus order      0/8065    timed +0      0  +2      0  +4      0
+  RTR          :   8065/8065   OK
+                 bus order      0/8065    timed +0      0  +2      0  +4      0
+  RTS          :   8065/8065   OK
+                 bus order   4008/8065    timed +0      0  +2   4008  +4      0
+  SBCD         :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  SUB.b        :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  SUB.l        :   8065/8065   OK
+                 bus order   2767/8065    timed +0      0  +2   2767  +4      0
+  SUB.w        :   8065/8065   OK
+                 bus order   5121/8065    timed +0      0  +2   5121  +4      0
+  SUBA.l       :   8065/8065   OK
+                 bus order   5329/8065    timed +0      0  +2   5329  +4      0
+  SUBA.w       :   8065/8065   OK
+                 bus order   5386/8065    timed +0      0  +2   5386  +4      0
+  SUBX.b       :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  SUBX.l       :   8065/8065   OK
+                 bus order   4069/8065    timed +0      0  +2   4069  +4      0
+  SUBX.w       :   8065/8065   OK
+                 bus order   5387/8065    timed +0      0  +2   5387  +4      0
+  SWAP         :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  Scc          :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  TAS          :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  TRAP         :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  TRAPV        :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  TST.b        :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+  TST.l        :   8065/8065   OK
+                 bus order   4963/8065    timed +0      0  +2   4963  +4      0
+  TST.w        :   8065/8065   OK
+                 bus order   4928/8065    timed +0      0  +2   4928  +4      0
+  UNLINK       :   8065/8065   OK
+                 bus order   8065/8065    timed +0      0  +2   8065  +4      0
+[sst68000] OK: 1000058/1000058 across 124 file(s)
+[sst68000] bus census: order 736983/1000058; timed at stamp offset +0 0, +2 726214, +4 0

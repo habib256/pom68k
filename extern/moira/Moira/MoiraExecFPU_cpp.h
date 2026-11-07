@@ -697,6 +697,14 @@ Moira::fpuMakeStatus()
 
     u32 exception = fpu.fpsr & fpu.fpcr & (FPSR_SNAN | FPSR_OPERR | FPSR_DZ);
 
+    // POM68K (ruling D24): on the 68040 an overflow or an underflow always
+    // goes to the FPSP, enabled or not, and the destination register keeps
+    // its value ([B] M68040UM § 9.7.4.2: "the register is not affected";
+    // [D] WinUAE fpp.c fpsr_make_status @ Hatari e77819f7). Invisible while
+    // every such exception was delivered before the store.
+    if (fpuModel == FPUModel::M68040)
+        exception |= fpu.fpsr & (FPSR_OVFL | FPSR_UNFL);
+
     if (fpu.fpsr & (FPSR_BSUN | FPSR_SNAN | FPSR_OPERR)) fpu.fpsr |= FPSR_AE_IOP;
     if ((fpu.fpsr & FPSR_UNFL) && (fpu.fpsr & FPSR_INEX2)) fpu.fpsr |= FPSR_AE_UNFL;
     if (fpu.fpsr & FPSR_DZ) fpu.fpsr |= FPSR_AE_DZ;
@@ -799,9 +807,9 @@ Moira::fpuCheckArithException(
     u32 opclass = ext >> 13 & 7;
 
     if (fpuModel == FPUModel::M68040) {
-        // Integrated-FPU exception state. Enabled exceptions are delivered
-        // immediately (post-instruction); OVFL/UNFL are nonmaskable. The
-        // frame fields mirror WinUAE's revision-$41 UNIMP/BUSY capture.
+        // Integrated-FPU exception state. The frame fields mirror WinUAE's
+        // revision-$41 UNIMP/BUSY capture; who delivers the exception is
+        // decided by the return value at the end of this branch.
         fpu.expState = 1;
         fpu.fpiarCu = fpu.fpiar;
         fpu.cmdreg1b = ext;
@@ -834,7 +842,25 @@ Moira::fpuCheckArithException(
                                ((ext & 0x0004) << 3));
             fpu.wbte15 = fpu.expPend == 51 ? 1 : 0;
         }
-        return true;
+
+        // POM68K (ruling D24): an exception the user ENABLED is posted — the
+        // instruction completes and the next floating-point instruction
+        // takes it as a pre-instruction exception (fpuCheckPending, format
+        // $0). Only an exception that is pending without being enabled —
+        // the 68040's nonmaskable OVFL/UNFL, or SNAN/OPERR on a move to an
+        // integer — is taken at once, post-instruction, by the caller.
+        // [B] M68040UM § 9.7.2.1 b: "the processor posts an exception and
+        //     another floating-point instruction is eventually encountered;
+        //     a pre-instruction exception is reported at that time";
+        //     § 9.7.3.1 b, § 9.7.6 likewise; § 9.7.3.2 for the immediate
+        //     integer case.
+        // [D] WinUAE fpp.c fpsr_check_arithmetic_exception @ Hatari e77819f7:
+        //     nonmaskable = the latched vector is not the one the enabled
+        //     set alone would give.
+        // Until 2026-11-07 every exception was delivered at once here.
+        // Gate: sst68040 (fpu, fpuraw and the two-instruction fpu2 cells),
+        //       fpu040_test.
+        return fpu.expPend != fpuVectorFor(fpu.fpsr & fpu.fpcr & 0xff00);
     }
 
     fpu.fsaveEo[0] = fpu.fsaveEo[1] = fpu.fsaveEo[2] = 0;
@@ -934,11 +960,41 @@ Moira::fpuArmFixup(int n)
     // cpu_restore_fixup), while the frame's wb2/wb3 status byte stays 0
     // (mmu030fixupreg needs the 0x300 flag bits fpp.c never sets). Bit 7
     // marks the fixup as plain; bit 6 = valid (slot occupancy).
-    if (cpuModel != Model::M68030) return;
+    //
+    // POM68K: the 68040 arms it too. [D] WinUAE fpp.c get_fp_value /
+    // put_fp_value @ Hatari e77819f7 set mmufixup[0] for modes 3 and 4 on
+    // every model, and m68k_run_mmu040's CATCH restores it: a faulting FPU
+    // operand access leaves An as it was (execMmu040BusError, which never
+    // treats an FPU instruction as ending on a "last write").
+    if (cpuModel != Model::M68030 && cpuModel < Model::M68EC040) return;
 
     int slot = mmuFixupReg[0] ? 1 : 0;
     mmuFixupReg[slot] = u8(n | 0x40 | 0x80);
     mmuFixupVal[slot] = reg.a[n];
+}
+
+template <Core C> void
+Moira::execFpuIllegalOpmode040()
+{
+    // POM68K: arithmetic opmodes $78-$7F on the 68040 family take the
+    // ILLEGAL vector, not Line-F, with the stacked PC past the extension
+    // word.
+    // [D] WinUAE fpp.c fault_if_nonexisting_opmode @ Hatari e77819f7
+    //     ("Unexpected, isn't it?!" -> Exception(4) with m68k_getpc()).
+    //     Vector and PC come from the same reading; until 2026-11-07 the
+    //     vector was the oracle's and the PC the generic illegal-opcode
+    //     one, a pair nobody had observed.
+    // [F] Not in M68040UM, which sends every F-line hole to vector 11.
+    //     Settled by: the frame of $F200 $0078 on a real 68040.
+    // Gate: sst68040 (fline and fpuraw cells).
+    u16 status = getSR();
+
+    setSupervisorMode(true);
+    clearTraceFlags();
+    flags &= ~State::TRACE_EXC;
+
+    writeStackFrame0000<C>(status, reg.pc, 4);
+    jumpToVector<C, AE_SET_CB3>(4);
 }
 
 template <Core C> void
@@ -1420,6 +1476,17 @@ Moira::fpuGetSource(u16 opcode, u16 ext, FpuExtended &src, u32 &ea)
     const int n = _____________xxx(opcode);
     const int size = ___xxx__________(ext);
 
+    // POM68K: on the 68040 an UNIMPLEMENTED instruction takes vector 11
+    // whatever its source looks like; the unsupported-datatype trap
+    // (vector 55: packed, denormal, unnormal) belongs to the instructions
+    // the chip executes itself. The caller raises vector 11 right after
+    // this fetch, so the datatype trap must not pre-empt it here.
+    // [D] WinUAE @ Hatari e77819f7, get_fp_value: fault_if_unimplemented_680x0
+    // precedes every fp_unimp_datatype; first seen on fuzz vector
+    // "040 fpu/identity seed=902 #299" (FMOD with a packed source).
+    const bool datatype040 =
+        fpuModel == FPUModel::M68040 && fpuIsImplemented040(ext);
+
     if constexpr (M == Mode::DN) {
 
         switch (size) {
@@ -1429,7 +1496,7 @@ Moira::fpuGetSource(u16 opcode, u16 ext, FpuExtended &src, u32 &ea)
             {
                 const u32 raw = readD(n);
                 fpuToSingleV(src, raw); fpuNormalize(src);
-                if (fpuModel == FPUModel::M68040 && fpuSingleDenormal040(raw)) {
+                if (datatype040 && fpuSingleDenormal040(raw)) {
                     execFpuDatatype040<C>(opcode, ext, src, (ext >> 7) & 7,
                                           size, 0, nullptr, true);
                     return -1;
@@ -1440,12 +1507,28 @@ Moira::fpuGetSource(u16 opcode, u16 ext, FpuExtended &src, u32 &ea)
             case 6: fpuFromIntV(src, i8(readD(n))); return 1;               // B
 
             default:
-                return 0;   // X, P, D from Dn: F-line (fpp.c:1563-1576)
+                // X, P, D from Dn: F-line (fpp.c:1563-1576) — except that
+                // the 68040 traps an unimplemented instruction first, for
+                // every size but packed ([D] WinUAE get_fp_value case 0 @
+                // Hatari e77819f7; gate: sst68040 fpuraw cells).
+                if (fpuModel == FPUModel::M68040 && size != 3 &&
+                    !fpuIsImplemented040(ext)) {
+                    execFpuUnimplemented040<C>(opcode, ext, src,
+                                               (ext >> 7) & 7, size, 0);
+                    return -1;
+                }
+                return 0;
         }
 
     } else if constexpr (M == Mode::AN || M == Mode::IP) {
 
-        return 0;           // fpp.c:1579-1584 / get_fp_ad default
+        // fpp.c:1579-1584 / get_fp_ad default; same 68040 priority as Dn.
+        if (fpuModel == FPUModel::M68040 && !fpuIsImplemented040(ext)) {
+            execFpuUnimplemented040<C>(opcode, ext, src, (ext >> 7) & 7,
+                                       size, 0);
+            return -1;
+        }
+        return 0;
 
     } else if constexpr (M == Mode::IM) {
 
@@ -1461,7 +1544,7 @@ Moira::fpuGetSource(u16 opcode, u16 ext, FpuExtended &src, u32 &ea)
             {
                 const u32 raw = readI<C, Long>();
                 fpuToSingleV(src, raw); fpuNormalize(src);
-                if (fpuModel == FPUModel::M68040 && fpuSingleDenormal040(raw)) {
+                if (datatype040 && fpuSingleDenormal040(raw)) {
                     execFpuDatatype040<C>(opcode, ext, src, (ext >> 7) & 7,
                                           size, 0, nullptr, true);
                     return -1;
@@ -1475,7 +1558,7 @@ Moira::fpuGetSource(u16 opcode, u16 ext, FpuExtended &src, u32 &ea)
             {
                 u32 wrd[3];
                 wrd[0] = readI<C, Long>(); wrd[1] = readI<C, Long>(); wrd[2] = readI<C, Long>();
-                if (fpuModel == FPUModel::M68040) {
+                if (datatype040) {
                     const FpuExtended zero { 0, 0 };
                     execFpuDatatype040<C>(opcode, ext, zero, (ext >> 7) & 7,
                                           size, 0, wrd);
@@ -1487,7 +1570,7 @@ Moira::fpuGetSource(u16 opcode, u16 ext, FpuExtended &src, u32 &ea)
             case 5:
                 e0 = readI<C, Long>(); e1 = readI<C, Long>();
                 fpuToDoubleV(src, e0, e1); fpuNormalize(src);
-                if (fpuModel == FPUModel::M68040 && fpuDoubleDenormal040(e0, e1)) {
+                if (datatype040 && fpuDoubleDenormal040(e0, e1)) {
                     execFpuDatatype040<C>(opcode, ext, src, (ext >> 7) & 7,
                                           size, 0, nullptr, true);
                     return -1;
@@ -1531,7 +1614,7 @@ Moira::fpuGetSource(u16 opcode, u16 ext, FpuExtended &src, u32 &ea)
             {
                 const u32 raw = readM<C, M, Long>(ad);
                 fpuToSingleV(src, raw); fpuNormalize(src);
-                if (fpuModel == FPUModel::M68040 && fpuSingleDenormal040(raw)) {
+                if (datatype040 && fpuSingleDenormal040(raw)) {
                     execFpuDatatype040<C>(opcode, ext, src, (ext >> 7) & 7,
                                           size, ea, nullptr, true);
                     return -1;
@@ -1551,7 +1634,7 @@ Moira::fpuGetSource(u16 opcode, u16 ext, FpuExtended &src, u32 &ea)
                 wrd[0] = readM<C, M, Long>(ad);
                 wrd[1] = readM<C, M, Long>(ad + 4);
                 wrd[2] = readM<C, M, Long>(ad + 8);
-                if (fpuModel == FPUModel::M68040) {
+                if (datatype040) {
                     const FpuExtended zero { 0, 0 };
                     execFpuDatatype040<C>(opcode, ext, zero, (ext >> 7) & 7,
                                           size, ea, wrd);
@@ -1565,7 +1648,7 @@ Moira::fpuGetSource(u16 opcode, u16 ext, FpuExtended &src, u32 &ea)
                 u32 w1 = readM<C, M, Long>(ad);
                 u32 w2 = readM<C, M, Long>(ad + 4);
                 fpuToDoubleV(src, w1, w2); fpuNormalize(src);
-                if (fpuModel == FPUModel::M68040 && fpuDoubleDenormal040(w1, w2)) {
+                if (datatype040 && fpuDoubleDenormal040(w1, w2)) {
                     execFpuDatatype040<C>(opcode, ext, src, (ext >> 7) & 7,
                                           size, ea, nullptr, true);
                     return -1;
@@ -1766,10 +1849,16 @@ Moira::execFBcc(u16 opcode)
 
     if (fpuCheckPending<C>()) return;
 
-    // POM68K Q4: pseudo-conditions ($20-$3F, registered on the 040 family
-    // only) are Line-F when an FPU is present (WinUAE fpp_cond -> -1 ->
-    // fpu_op_illg -> op_illg)
-    if ((opcode & 0x3f) >= 0x20) { execLineF<C, I, M, S>(opcode); FINALIZE return; }
+    // POM68K: the predicate is five bits wide; bit 5 of the opcode's
+    // six-bit field is ignored, as fpuCondEval already does for FScc,
+    // FDBcc and FTRAPcc.
+    // [D] WinUAE fpp.c fpp_cond @ Hatari e77819f7 opens on
+    //     `condition &= 0x1f` for every FPU model. Until 2026-11-07 this
+    //     handler took a Line-F instead, from a reading of the dead
+    //     `#if 0` block of that same function — no source ever said so.
+    // [F] No manual at hand states what a 68882 or a 68040 does with bit
+    //     5. Settled by: FBcc $F2A1 (predicate $21) on real hardware.
+    // Gate: sst68040 (fpuraw cells); fuzz seeds 808, 809 on the 68030.
 
     fpu.state = 1;                          // maybe_idle_state (fpp.c:2186)
 
@@ -2368,12 +2457,9 @@ Moira::execFRestore(u16 opcode)
                 fpuClearStatus();
                 const bool store = fpuArithmetic(src, dst, cmd);
                 if (store) fpu.fp[(cmd >> 7) & 7] = dst;
-                if (fpuCheckArithException(src, opcode, cmd, fpu.ea)) {
-                    execFpuException<C>(u16(fpu.expPend), false);
-                    CYCLES_68020(ck)
-                    FINALIZE
-                    return;
-                }
+                // Whatever the resumed operation raises stays posted: the
+                // oracle ignores the verdict here (fpp.c fpuop_restore).
+                (void)fpuCheckArithException(src, opcode, cmd, fpu.ea);
             }
             fpu.state = 1;
             fpu.expState = 0;
@@ -2414,13 +2500,33 @@ Moira::execFGen(u16 opcode)
     // the sub-handlers.
     u16 ext = queue.irc;
 
+    // POM68K: on the 68040 family the EA fields $3D-$3F are not FPU
+    // opcodes at all — a plain Line-F ahead of every FPU consideration
+    // (pending exception, status byte, "no FPU" frame).
+    // [D] WinUAE table68k @ Hatari e77819f7 lists no such EA for FPP, so
+    //     the opcode never reaches fpp.c. The 68020/68030 keep their
+    //     historic path: there the coprocessor, not the CPU, decides
+    //     whether the EA is ever evaluated.
+    // Gate: sst68040 (fline and fpuraw cells).
+    if constexpr (M == Mode::IP) {
+        if (cpuModel >= Model::M68EC040) {
+            execLineF<C, I, M, S>(opcode);
+            return;
+        }
+    }
+
     // An as EA is only decodable for FPx-to-FPx and control-register
-    // moves (mirrors dasmFGen; WinUAE returns "no instruction" for the
-    // other opclasses). On a FPU-less 040 the no-FPU hook below decides
-    // first: get_fp_value's An case reaches fault_if_unimplemented_680x0
-    // -> format $4 (fresh-seed arbitrated 2026-07-18), not Line-F.
+    // moves. FMOVEM (opclasses 110/111) refuses it here; an An source or
+    // destination (opclasses 010/011) is refused by the operand helpers,
+    // AFTER the pending-exception check and the status-byte clear the
+    // oracle performs first (fpp.c fpuop_arithmetic2: fpsr_clear_status
+    // precedes get_fp_value / put_fp_value), and on the 68040 after the
+    // unimplemented-instruction trap. On a FPU-less 040 the no-FPU hook
+    // below decides first: get_fp_value's An case reaches
+    // fault_if_unimplemented_680x0 -> format $4 (fresh-seed arbitrated
+    // 2026-07-18), not Line-F.
     if constexpr (M == Mode::AN) {
-        if ((ext & 0x4000) &&
+        if ((ext & 0xC000) == 0xC000 &&
             !(cpuModel >= Model::M68EC040 && !hasFPU())) {
             execLineF<C, I, M, S>(opcode);
             return;
@@ -2441,6 +2547,54 @@ Moira::execFGen(u16 opcode)
 
         // get_fp_value/put_fp_value operand sizes (fpp.c sz1/sz2)
         static constexpr int sz1[8] = { 4, 4, 12, 12, 2, 8, 1, 0 };
+
+        // POM68K: what is not an instruction at all is refused BEFORE the
+        // "no FPU" frame is considered — a plain format $0 Line-F, or the
+        // illegal-instruction vector for opmodes $78-$7F.
+        // [D] WinUAE fpp.c fpuop_arithmetic2 @ Hatari e77819f7: opclass 001
+        //     falls to fpu_noinst; fault_if_nonexisting_opmode runs ahead
+        //     of get_fp_value (hence of fault_if_no_fpu) and is not
+        //     conditioned on an FPU being present; put_fp_value2 returns
+        //     "no instruction" for An, for X/P/D to Dn and for PC-relative
+        //     or immediate destinations before it tests the FPU.
+        // [F] No manual states the order on a 68LC040. Settled by: the
+        //     stacked frame of $F200 $0005 on a real 68LC040.
+        // Gate: sst68040 (fline cells).
+        if (opclass == 1) {
+            execLineF<C, I, M, S>(opcode);
+            return;
+        }
+        if ((opclass == 0 || opclass == 2) && (x & 0xFC00) != 0x5C00) {
+            if ((x & 0x7f) >= 0x78) {
+                execFpuIllegalOpmode040<C>();
+                return;
+            }
+            if (fpuIsNonexistent040(x)) {
+                execLineF<C, I, M, S>(opcode);
+                return;
+            }
+            // A packed source in Dn is no instruction either (get_fp_value
+            // case 0: `case 3: ... return 0` ahead of fault_if_no_fpu).
+            if constexpr (M == Mode::DN) {
+                if (opclass == 2 && size == 3) {
+                    execLineF<C, I, M, S>(opcode);
+                    return;
+                }
+            }
+        }
+        if (opclass == 3) {
+            bool noInstruction = false;
+            if constexpr (M == Mode::DN) {
+                noInstruction = size == 2 || size == 3 || size == 5 || size == 7;
+            } else if constexpr (M == Mode::AN || M == Mode::DIPC ||
+                                 M == Mode::IXPC || M == Mode::IM) {
+                noInstruction = true;
+            }
+            if (noInstruction) {
+                execLineF<C, I, M, S>(opcode);
+                return;
+            }
+        }
 
         if (opclass == 6 || opclass == 7) {
 
@@ -2465,9 +2619,18 @@ Moira::execFGen(u16 opcode)
             // the #imm form consumes one long per selected register first
             // (fpp.c:3288-3296); memory forms compute the EA
             if constexpr (M == Mode::IM) {
-                if (x & 0x1000) (void)readI<C, Long>();
-                if (x & 0x0800) (void)readI<C, Long>();
-                if (x & 0x0400) (void)readI<C, Long>();
+                // An immediate destination is no instruction; with no
+                // register selected the source is one long, for FPIAR
+                // ([D] WinUAE fpp.c "No control register bits set: FPIAR"
+                // and "immediate as destination" @ Hatari e77819f7).
+                if (x & 0x2000) {
+                    execLineF<C, I, M, S>(opcode);
+                    return;
+                }
+                const u16 sel = (x & 0x1C00) ? u16(x & 0x1C00) : u16(0x0400);
+                if (sel & 0x1000) (void)readI<C, Long>();
+                if (sel & 0x0800) (void)readI<C, Long>();
+                if (sel & 0x0400) (void)readI<C, Long>();
                 execFpuDisabled040<C>(0);
                 return;
             } else if constexpr (M == Mode::DN || M == Mode::AN) {
@@ -2620,7 +2783,7 @@ Moira::execFGeneric(u16 opcode)
     // reserves $78-$7F for the illegal-instruction vector.
     if (fpuModel == FPUModel::M68040) {
         if ((ext & 0x7f) >= 0x78) {
-            execException<C>(M68kException::ILLEGAL);
+            execFpuIllegalOpmode040<C>();
             return;
         }
         if (fpuIsNonexistent040(ext)) {
@@ -2638,6 +2801,11 @@ Moira::execFGeneric(u16 opcode)
 
     fpuSetMode();
     fpuClearStatus();
+
+    // POM68K: the 68040 latches FPIAR before the operand is fetched, so a
+    // faulting source read already shows it. [D] WinUAE fpp.c "68040 and
+    // 68060 always set FPIAR" @ Hatari e77819f7, ahead of get_fp_value.
+    if (fpuModel == FPUModel::M68040) fpu.fpiar = reg.pc0;
 
     FpuExtended src;
     u32 ea = 0;

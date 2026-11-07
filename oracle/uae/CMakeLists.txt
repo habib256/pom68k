@@ -71,13 +71,15 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
         -Wno-unused-variable -Wno-unused-function -Wno-unused-label
         -Wno-sign-compare -Wno-missing-braces -Wno-implicit-fallthrough
         -Wno-unused-but-set-variable
+        # Vendored Hatari debugging helpers intentionally retain old-style
+        # implicit declarations. AppleClang 17+ promotes those to errors, and
+        # so does GCC from 14 on: the flag was APPLE-only until 2026-11-06,
+        # when the oracle turned out not to rebuild on a Linux host whose
+        # compiler had moved to GCC 15 since the .so was last built.
+        -Wno-error=implicit-function-declaration
         -fvisibility=hidden
         -ffunction-sections -fdata-sections)
     if(APPLE)
-        # Vendored Hatari debugging helpers intentionally retain old-style
-        # implicit declarations; AppleClang 17+ promotes those to errors.
-        target_compile_options(oracle_uae PRIVATE
-            -Wno-error=implicit-function-declaration)
         target_link_options(oracle_uae PRIVATE -Wl,-dead_strip)
     else()
         target_link_options(oracle_uae PRIVATE -Wl,--gc-sections)

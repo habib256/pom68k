@@ -1,0 +1,60 @@
+22014 samples x 1000 us = 22.0 s CPU attribués
+
+== buckets ==
+ 30.59%  MMU/cache
+ 29.54%  interpréteur (fallback)
+ 14.38%  moteur — runtime/fenêtres
+ 12.28%  carte mémoire/thunks
+ 11.93%  LLE/périphériques
+  0.79%  autre
+  0.49%  hôte/harnais
+
+== top 6 par bucket ==
+
+-- MMU/cache
+   18.05%  bool moira::Moira::mmu040InstrStart<(moira::Core)2>()
+    5.58%  unsigned int moira::Moira::mmu040Read<(moira::Core)2, 1>(unsigned int, bool)
+    2.48%  void moira::Moira::mmu040Write<(moira::Core)2, 4>(unsigned int, unsigned int, bool)
+    2.48%  unsigned int moira::Moira::mmu040Read<(moira::Core)2, 4>(unsigned int, bool)
+    1.00%  moira::Moira::mmu040AtcTouch(moira::Moira::Mmu040AtcEntry*, int&, int) [clone .constprop.0]
+    0.75%  moira::Moira::mmu040AtcLookup(bool, unsigned int, bool)
+
+-- interpréteur (fallback)
+    9.32%  void moira::Moira::readExt<(moira::Core)2>()
+    5.76%  void moira::Moira::execBitImEa<(moira::Core)2, (moira::Instr)31, (moira::Mode)5, 1>(unsigned short)
+    4.22%  void moira::Moira::execBcc<(moira::Core)2, (moira::Instr)22, (moira::Mode)12, 1>(unsigned short)
+    1.99%  moira::Moira::execute()
+    0.79%  moira::Moira::pollIpl()
+    0.75%  void moira::Moira::execMove0<(moira::Core)2, (moira::Instr)71, (moira::Mode)3, 4>(unsigned short)
+
+-- moteur — runtime/fenêtres
+    6.41%  moira::Moira::pomJitExecOne()
+    3.38%  pom68k::MoiraCpu<Cpu040, Q605Memory>::sync(int)
+    2.55%  Cpu040::flushTicks()
+    1.43%  pom68k::MoiraCpu<Cpu040, Q605Memory>::read16(unsigned int) const
+    0.25%  pom68k::MoiraCpu<Cpu040, Q605Memory>::write16(unsigned int, unsigned short) const
+    0.24%  moira::Moira::pomJitDataSlow(unsigned int, unsigned int, bool)
+
+-- carte mémoire/thunks
+    8.07%  Q605Memory::read16(unsigned int)
+    1.46%  Q605Memory::tick(int)
+    1.26%  Q605Memory::write16(unsigned int, unsigned short)
+    0.91%  Q605Memory::cyclesToNextEvent() const
+    0.42%  Q605Memory::read8(unsigned int)
+    0.10%  Q605Memory::ioRead8(unsigned int)
+
+-- LLE/périphériques
+    2.36%  Dafb::tick(int)
+    2.04%  Q605Memory::syncSwimFromCpu()
+    1.76%  CudaLle::tick(int)
+    1.76%  Dafb::cyclesToNextEvent() const
+    1.11%  Scc8530::cyclesToNextEvent() const
+    0.66%  M68hc05::execOne()
+
+-- autre
+    0.79%  DiskTimeline::blockHash(unsigned int, unsigned char const*, unsigned int)
+    0.00%  DiskTimeline::detach()
+
+-- hôte/harnais
+    0.48%  [libc.so.6]
+    0.01%  main

@@ -508,6 +508,23 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-07 (eighth)** — [66 000 fresh vectors on the night's final core: every class corrected today stays closed, five vectors are new](#2026-11-07-fresh-sweep-final)
+- **2026-11-07 (seventh)** — [The 68882's posted exceptions hold across an instruction boundary: 5 979 of 6 000 two-instruction vectors, the rest being D23b](#2026-11-07-fpu2-68030)
+- **2026-11-07 (sixth)** — [Ruling D24 applied: an enabled 68040 FPU exception is posted and taken by the next FPU instruction — held by 6 000 two-instruction oracle vectors](#2026-11-07-d24-applied)
+- **2026-11-07 (fifth)** — [The oracle had a strict setting it was never run in: two 68030 FPU classes and ruling D23b were its permissive mode, not the hardware](#2026-11-07-oracle-strict-6888x)
+- **2026-11-07 (fourth)** — [Ruling D24 is settled by the manual, against the fork: an enabled 68040 FPU exception waits for the next FPU instruction](#2026-11-07-d24-manual)
+- **2026-11-07 (third)** — [The Moira core reads no environment variable: NeoST's exception trace is switched by its host](#2026-11-07-core-env-free)
+- **2026-11-07 (later)** — [The 68040 interpreter runs 1.46 times faster on an unchanged machine: the common translation inlined, the TTR test from a table](#2026-11-07-interp040-hot-path)
+- **2026-11-07** — [The 68040's FPU and its F-line window get an oracle: 12 000 pinned vectors, four rule groups corrected, four rulings opened, and two faults found in the oracle itself](#2026-11-07-fpu040-differential)
+- **2026-11-06 (fourteenth)** — [The 68030 passes a complete WinUAE-solo corpus on fresh seeds: 5 592 / 5 592 over fourteen cells, pinned with its recipe](#2026-11-06-sst68030-solo)
+- **2026-11-06 (thirteenth)** — [13 100 fresh oracle vectors: the 8 KB page path is right, DIVU.L/DIVS.L swallowed access faults, and CHK2/CMP2 clobbered two flags on the 68040](#2026-11-06-fuzz-fresh-seeds)
+- **2026-11-06 (twelfth)** — [The 68040 interpreter spends 63 % of its time translating addresses and 12 % executing instructions](#2026-11-06-interp-profile)
+- **2026-11-06 (eleventh)** — [Ruling D23a rests on an oracle that contradicts itself: WinUAE stacks a format $3 frame on a 68030 and its own RTE refuses it](#2026-11-06-d23-oracle-inconsistent)
+- **2026-11-06 (tenth)** — [The three CPU vector corpora are pinned: a manifest of 147 hashes, a gate, and a fetch script that no longer follows `main`](#2026-11-06-sst-corpora-lock)
+- **2026-11-06 (ninth)** — [The fork gets its host-side contract: POM68K_SURFACE.md says what the core exposes and what a host owes it](#2026-11-06-moira-surface)
+- **2026-11-06 (eighth)** — [A bus error on the Portable's 68000 would have left execute() as a C++ exception; three NeoST host hooks come back with the fix](#2026-11-06-68000-host-hooks)
+- **2026-11-06 (seventh)** — [sst68000 was green on a million vectors while a quarter of them had the wrong bus sequence: the harness now compares every bus cycle, and the 68000 core matches all of them](#2026-11-06-68000-bus-cycles)
+- **2026-11-06 (sixth)** — [The x64 generator took an interrupt one instruction late when the read itself raised it: an asset-free oracle shows it, and A64's rule closes it](#2026-11-06-x64-late-ipl)
 - **2026-11-06 (fifth)** — [The 68040 cache switch leaves the environment: Moira's constructor no longer calls getenv, and the cache-on lockstep now fails if the wire is lost](#2026-11-06-core-no-getenv)
 - **2026-11-06 (fourth)** — ["The oracle wins" gives way to the evidence grades for new rulings; three rulings taken against a manual are kept as known exceptions](#2026-11-06-oracle-vs-manual)
 - **2026-11-06 (third)** — [DIVS of $80000000: the undefined abs() NeoST removed is back-ported, and a bare-Moira gate reaches it under UBSan](#2026-11-06-divs-int-min)
@@ -1198,6 +1215,797 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-11-07-fresh-sweep-final"></a>
+## 2026-11-07 (eighth) — 66 000 fresh vectors on the night's final core: every class corrected today stays closed, five vectors are new
+
+After the last core change (D24), a sweep on seeds nothing had seen:
+forty cells of 1 500 vectors over every family of both generators, the
+68030 against the strict oracle, plus a new raw family for the 68040's
+`$F400-$F7FF` window (`sysraw`: CINV/CPUSH, PFLUSH/PTEST, MOVE16 and the
+unassigned `$F7xx`, every field value). Full table:
+`scratchpad/2026-11-07/FUZZ_SWEEP2.md`.
+
+65 969 vectors, 230 divergences. 225 are inside a ruling or a defect that
+already has a name — D23b, D25 to D29, the bit-field access width, the
+state-frame internals. **None belongs to a class corrected today**: no
+F-line frame shape, no posted-exception delivery, no FBcc predicate, no
+FPU store treated as a last write. `fline` replays at 4 500 / 4 500 and
+`sysraw` at 6 000 / 6 000 on its first run — that window needed nothing.
+
+The five new ones are in `TODO.md § Moteur › Justesse 68030`: four
+read-modify-write instructions whose write faults in user mode, where the
+oracle stacks the short frame $A and the fork the long $B — forms the
+`fault` family, with its own opcode list, never emits — and one PTEST that
+leaves MMUSR.I clear.
+
+<a id="2026-11-07-fpu2-68030"></a>
+## 2026-11-07 (seventh) — The 68882's posted exceptions hold across an instruction boundary: 5 979 of 6 000 two-instruction vectors, the rest being D23b
+
+The pending-exception path the 68040 now uses was the 68882's, written in
+July and held since then by single-instruction vectors only — which see the
+exception posted but never taken. `fuzz030.py --steps` and the `fpu2` family
+(moved to `gen030.py`, shared with the 68040 generator; the pinned
+`sst68040_fpu2` cell regenerates byte-identically) give it the same
+two-instruction evidence, against the strict oracle.
+
+6 000 vectors, seeds 941-943: **5 979 pass on the first replay.** The 21
+others have a FRESTORE as their first instruction and take the format error
+of ruling D23b in the oracle — the same class as this morning, nothing
+about posted exceptions. So an FPU exception posted by a 68882 and taken by
+FNOP, FMOVE, FTST, FADD or a control-register move, or left alone by FSAVE,
+NOP and MOVEQ, is delivered as the oracle delivers it, frame for frame.
+
+Pinned as `sst68030_fpu2`, with `tests/sst68030_fpu2.known` listing the 21.
+Ten corpora are now locked; five of them did not exist yesterday.
+
+<a id="2026-11-07-d24-applied"></a>
+## 2026-11-07 (sixth) — Ruling D24 applied: an enabled 68040 FPU exception is posted and taken by the next FPU instruction — held by 6 000 two-instruction oracle vectors
+
+The fourth entry of the day recorded D24 as settled by the manual and
+"not applied": the second half of the behaviour — what the *next*
+instruction does — cannot be seen in a single-instruction vector. So the
+vectors came first.
+
+**Two-instruction vectors.** `fuzz040.py --steps N` steps the oracle N times
+from one state; the vector carries `"steps"` when it is not 1 and
+`sst68040` executes as many. The `fpu2` family is an FPU instruction
+followed by one of FNOP, FMOVE FP0,FP1, FTST, FADD, FSAVE, FMOVE FPSR,D0,
+NOP, MOVEQ — the eight ways a posted exception is, or is not, delivered —
+with the FPCR enables armed seven times in ten. Every pinned cell
+regenerates byte-identically.
+
+**A leak in the harnesses, found on the way.** `sst68030` and `sst68040`
+never cleared their 16 MB bus: a vector reading a byte outside its initial
+list saw what an earlier vector had left. Nine `fpu2` vectors failed for
+that reason alone — an FMOVEM from the stack reading a previous vector's
+exception frame — and passed when run alone. Both now zero what the
+previous vector set or wrote, as the oracle does. No pinned corpus changes
+its score: the leak had hidden nothing there. It is the same defect as the
+oracle's `mmufixup` this morning, on the other side of the comparison.
+
+**The change** (`POM68K_VENDOR.md` row 50) is two decisions:
+
+- `fpuCheckArithException` reports an exception as immediate only when it
+  is pending *without being enabled* — the 68040's nonmaskable overflow and
+  underflow, SNAN/OPERR on a move to an integer. An enabled one stays in
+  `expPend`; the next FPU instruction takes it pre-instruction, format $0,
+  through the path the 68882 already used.
+- `fpuMakeStatus`: on a 68040 any overflow or underflow leaves the
+  destination register untouched (M68040UM § 9.7.4.2, "the register is not
+  affected"). The immediate delivery had hidden that rule — it returned
+  before the store.
+
+| | before | after |
+|---|---|---|
+| `fpu2`, two instructions, seeds 931-933 | 5 763 / 6 000 | **5 997** |
+| `sst68040_fpu`, pinned | 7 434 (+66 listed) | 7 456 (+44 listed) |
+| `fpu`, fresh seeds 911-913 | 5 979 / 6 000 | **6 000** |
+
+The 22 vectors of D24 leave `tests/sst68040_fpu.known`; the gate would have
+refused the change otherwise ("listed in --known but passes: remove it"),
+which is the mechanism doing its job on its first day.
+
+`fpu040_test` asserted the old behaviour — "Enabled arithmetic exceptions
+are immediate on the integrated 040" — and is rewritten from the manual: a
+divide by zero with DZ enabled completes, leaves FP0 alone, and the FNOP
+behind it takes vector 50 with a format $0 frame whose PC is the FNOP's.
+
+**What remains** is not the ruling. An FSAVE after a posted exception
+writes a BUSY or UNIMP frame whose intermediate-result fields are zero here
+and filled from softfloat's internal state in the oracle: three vectors,
+listed in `tests/sst68040_fpu2.known`, and a `TODO.md` item — the FPSP
+reads those fields to finish the operation.
+
+**Pinned** as `sst68040_fpu2` (6 000 vectors, recipe in
+`tests/sst_corpora.lock`).
+
+<a id="2026-11-07-oracle-strict-6888x"></a>
+## 2026-11-07 (fifth) — The oracle had a strict setting it was never run in: two 68030 FPU classes and ruling D23b were its permissive mode, not the hardware
+
+The raw F-line family that found so much on the 68LC040 this morning was
+given to the 68030 + 68882 (`gen030.py`, `--family fpuraw`). First replay:
+5 529 / 6 000, with two large classes that did not look like the fork's —
+on a 6888x the oracle *executed* opmodes $40-$77 (the 68040's FSADD, FDDIV
+and friends) and sent $78-$7F to the illegal vector.
+
+`fpp.c` gates both on `fpu_no_unimplemented`, which the glue left false for
+the 68030. That is WinUAE's permissive mode. In it a 6888x runs 68040
+opmodes and FRESTORE accepts a 68040 frame, by what the source itself calls
+a "horrible hack to support on the fly 6888x <> 68040 FPU switching". With
+the option true, `fault_if_unimplemented_6888x` says "Only opmodes 0x40-0x7f
+generate F-line exception" and a foreign frame takes a format error — the
+MC68881/MC68882 manual, and what the fork already did for the opmodes.
+
+**So ruling D23b was never the oracle against the manual.** It was the
+permissive oracle against the manual, and the strict oracle sides with the
+manual: three vectors of the new corpus take the format error the fork does
+not. The four `sst68030` vectors that pin the fork's acceptance were
+generated in the permissive mode. This is the second of yesterday's three
+"known exceptions" (after D23a, [eleventh entry](#2026-11-06-d23-oracle-inconsistent))
+to turn out to rest on the oracle rather than on the hardware; like D24
+this morning it is recorded as settled and due, not applied tonight.
+
+**What was added.**
+
+- `oracle_set_fpu_strict(int)`, a seventh entry point of the oracle
+  (`oracle/uae/VENDOR.md` patch 12), and `fuzz030.py --strict-fpu`. The
+  default stays permissive so that every pinned corpus keeps its recipe;
+  `sst68030_solo` and `sst68040_8k` regenerate hash-identically.
+- `sst68030_fpuraw`: 6 000 vectors against the strict oracle, pinned with
+  its recipe and a gate. Strict replay 5 802 / 6 000.
+- `tests/SstKnown.h`: the known-divergence list of this morning, shared by
+  both harnesses. `sst68030 --known` now exists, which is what
+  `TODO.md § Moteur › Socle` wanted before D12 or D23a could be reversed.
+- The 198 remaining vectors, by name, in `tests/sst68030_fpuraw.known`:
+
+| | vectors | |
+|---|---|---|
+| **D28** | 114 | FBcc / FDBcc taken to an odd address: the fork takes the address error, as for Bcc and as the manual has it; the oracle sets the PC and never raises one |
+| **D29** | 63 | EA fields $3D-$3F on a 68030: the fork lets the coprocessor decide, the oracle's opcode table refuses them |
+| D26 | 15 | (An)± with a dynamic k-factor — the same table slot as on the 68040 |
+| D23b | 3 | the format error above |
+| D27 | 2 | an EA evaluated before a Line-F |
+| defect | 1 | two tail bytes of a $B frame (`TODO.md`) |
+
+**How much of the pinned 68030 evidence the permissive mode touches: six
+vectors.** `sst68030_solo` regenerated with `--strict-fpu` differs from the
+pinned corpus on 6 vectors of 5 592, every one a FRESTORE of a 68040 frame —
+D23b and nothing else. The other 5 586 are the same under either setting,
+so yesterday's 5 592 / 5 592 stands as evidence about a 6888x, not about a
+mode of the oracle. When D23b is applied the corpus is regenerated strict
+(`TODO.md § Moteur › Justesse 68030`).
+
+<a id="2026-11-07-d24-manual"></a>
+## 2026-11-07 (fourth) — Ruling D24 is settled by the manual, against the fork: an enabled 68040 FPU exception waits for the next FPU instruction
+
+The first entry of the day left four rulings open and kept the fork's
+answer on each. For D24 it said that the oracle's reading "is the one the
+FPSP's E1/E3 split implies". The M68040 User's Manual says it in so many
+words (§ 9.7, 1993 revision):
+
+- SNAN, § 9.7.2.1: "the processor posts an exception and another
+  floating-point instruction is eventually encountered; a pre-instruction
+  exception is reported at that time."
+- OPERR, § 9.7.3.1: "The next floating-point instruction that is
+  encountered takes a pre-instruction exception."
+- Divide by zero, § 9.7.6: "reported as a pre-instruction exception when
+  the next floating-point instruction is attempted."
+- Immediate — post-instruction, format $3 — only for a move out (to memory
+  or an integer register) and for the overflow case where a dependent
+  FMOVE OUT is already executing; the state frame's T bit note: "only an
+  opclass 3 instruction can indicate a post-instruction exception".
+
+That is the oracle's model exactly, including its single immediate case.
+The fork's "immediate, format $3, for every arithmetic instruction" comes
+from `fpu040_test`, which cites nothing. By the evidence grades a manual
+(B) and the oracle (D) outrank an unsourced assertion (E): the ruling
+flips.
+
+**It is recorded, not applied.** The change is more than the delivery
+point: the handler's FSAVE must then produce a BUSY frame describing the
+instruction that posted the exception, and a single-instruction vector
+cannot show what the *next* instruction does. `TODO.md § Moteur ›
+Justesse 68040` now carries it as work with a stated prerequisite —
+two-instruction oracle vectors — instead of as a question. The 22 vectors
+stay listed in `tests/sst68040_fpu.known` until then.
+
+For D26 the same manual gives the packed format as "96 bits, 12 bytes",
+which is the fork's side. D25 and D27 it does not address.
+
+<a id="2026-11-07-core-env-free"></a>
+## 2026-11-07 (third) — The Moira core reads no environment variable: NeoST's exception trace is switched by its host
+
+`extern/moira/Moira/` had three `getenv` left after the 68040 cache switch
+was injected ([2026-11-06](#2026-11-06-core-no-getenv)): the same
+`NEOST_EXC_DIAG`, read by a function-local `static const bool` in
+`Moira::setIPL`, `execInterrupt<C68000>` and `jumpToVector`. They came with
+the core from NeoST, where they drive a cycle-exact trace of the exception
+sequence.
+
+They are now one member, `pomExceptionDiag`, set by
+`setPomExceptionDiag(bool)` (`POM68K_VENDOR.md` row 49). The name of the
+variable does not change and neither does what it prints; who reads it
+does:
+
+```text
+NEOST_EXC_DIAG → ProcessEnvironment → StartupSnapshot
+              → jit::ResolvedConfig::exceptionDiag
+              → MoiraCpu<> constructor (thirteen wrappers) and Cpu68k
+              → Moira::setPomExceptionDiag
+```
+
+`jit::ResolvedConfig` is not the natural home of an exception trace. It is
+the home of the 68040 cache switch for the same reason: it is the one
+configuration every CPU wrapper and every test rig already receives, and
+widening fourteen constructors for a tracer would cost more than the name
+is worth. The comment at the field says so.
+
+**Why it matters for a second host.** A core that reads its host's
+environment cannot be embedded twice with two answers, and a `static const`
+froze the first one for the life of the process. NeoST's wrapper can call
+the same setter from its own settings; nothing in the core knows where the
+value came from.
+
+**Held by** `docs_test`: no `getenv(` in any file of `extern/moira/Moira/`,
+beside the existing rule that only `ProcessEnvironment.cpp` reads the
+environment under `src/`. The startup schema counts 147 options, 44 of them
+in the JIT domain.
+
+<a id="2026-11-07-interp040-hot-path"></a>
+## 2026-11-07 (later) — The 68040 interpreter runs 1.46 times faster on an unchanged machine: the common translation inlined, the TTR test from a table
+
+The 2026-11-06 profile said where the 68040 interpreter's time went: 63 % in
+address translation, behind `mmu040Translate` (16.6 %), `mmu040Read<Word>`
+(12.6 %), `mmu040MatchTTR` (9.9 %) and `mmu040AtcLookup` (9.1 %) — three
+out-of-line calls on every access, instruction fetches included. It proposed
+a one-entry instruction micro-TLB. Reading the code showed the micro-TLB
+already there: `mmu040AtcLookup` opens on a last-hit probe. What cost was
+getting to it.
+
+**What changed** (`POM68K_VENDOR.md` row 48):
+
+- `mmu040TranslateHot`, inlined at the bus accessors: the TTR test, the
+  MMU-off identity, then the last-hit ATC line with the permission test —
+  the same decisions as `mmu040Translate`, in the same order. Whatever it
+  does not finish (a walk, a fault, a write to a page not yet modified, the
+  cache model, a locked read-modify-write) goes to `mmu040Translate`
+  untouched. `mmu040AtcTouch` runs only once the access is known to succeed
+  in the hot path, so the slow path always starts from the state it would
+  have found.
+- `mmu040FetchWord`: `mmu040Read<Word>` for an instruction word, without the
+  data-space branches. It leaves the same in-flight access stamp
+  (`pomJitStampAccess`), which an external /BERR on the bus read needs.
+- `mmu040MatchTTR` answers from a table of its 512 possible inputs
+  (privilege × address MSB) per register pair. The table is rebuilt from the
+  reference test itself when the pair has changed — it compares the
+  registers on every call, so reset, MOVEC, the setters and a snapshot load
+  need no hook, and it is not serialized.
+
+**Measured** (`scratchpad/2026-11-07/INTERP_HOT040.md`; `jit_bench`,
+`POM68K_CPU_ENGINE=interp`, 625 000 500 machine cycles, one pinned core,
+interleaved runs):
+
+| | wall | |
+|---|---|---|
+| before | 32.17 s | ×0.78 real time |
+| TTR table + hot translate | 25.45 s | −20.9 % |
+| + instruction fetch | 21.97 s | **−31.7 %**, ×1.14 real time |
+
+Fingerprint `a2036281a5c2ac55` on all fourteen runs, the value the profile
+recorded the day before. JIT mode is flat, as it should be: the fetch window
+and native code bypass these paths (3 000 frames: 9.19 s before, 9.17 s
+after, fingerprint `b9e4eacc7fc3933c` on all eight).
+
+The translation share of the profile falls from 63 % to 31 %; what remains
+of a fetch is the virtual bus call into the board. That makes the next step
+the fetch window, which only the JIT engine arms today — the surviving line
+of `TODO.md § Moteur › Interprète`; the two lines this closes leave it.
+
+**Held by.** The four 68040 corpora (23 200 vectors) and the bare gates
+replay unchanged; `moira_rules_test` gains a cell that changes each TTR of
+the data pair in turn on one CPU object and checks the fault a
+write-protected match must give. The strongest evidence is the fingerprint:
+a boot's worth of ATC replacement, table walks and Used/Modified bits
+written back, identical to the last bit.
+
+*What it does not change.* The 68030, whose fetch was already inlined
+(row 16). The cache-model path (`POM68K_040_DCACHE=1`), which always takes
+the slow door.
+
+<a id="2026-11-07-fpu040-differential"></a>
+## 2026-11-07 — The 68040's FPU and its F-line window get an oracle: 12 000 pinned vectors, four rule groups corrected, four rulings opened, and two faults found in the oracle itself
+
+Until tonight the integrated FPU of the 68040 was the one part of the fork
+with no differential evidence: `sst68040` runs a 68LC040, and `fpu040_test`
+is written by hand. Three fuzz families now cover it (`oracle/fuzz/gen040.py`):
+
+| Family | Machine | What it emits |
+|---|---|---|
+| `fpu` | full 68040 | gen030's assembler-shaped FPU instructions |
+| `fpuraw` | full 68040 | the raw cpID-1 window `$F200-$F37F`, any extension word |
+| `fline` | 68LC040 | the same raw window, with no FPU |
+
+**The oracle had to be corrected first, twice.** `oracle/uae/glue.c` left
+`fpu_no_unimplemented` false, so WinUAE executed FSIN or a packed operand on
+a 68040 as a 6888x would; the first `fpu` replay read 1 783 / 3 000 and
+measured nothing. Then `mmufixup[]` leaked from one vector to the next: the
+68040 loop restores whatever (An)± fixup is armed on any access fault, and
+several `fpp.c` paths arm one without disarming it — seventeen `fpuraw`
+vectors had an address register overwritten with a value from an earlier
+vector ("FRESTORE through A5 leaves A4 changed"). Both are glue-side
+(`oracle/uae/VENDOR.md` patches 9 and 10), in the line of the 2026-07
+determinism patches. The proof that they change nothing else:
+`sst68030_solo` (5 592) and `sst68040_8k` (4 000) regenerate from their
+recipes **hash-identically**. The oracle also no longer built under GCC 15
+(patch 11).
+
+**What the replays found, and the fork now does** (`POM68K_VENDOR.md` rows
+44-47):
+
+| | before | after |
+|---|---|---|
+| `fpu`, seeds 901-903 | 2 963 / 3 000 | 2 986 (+14 listed) |
+| `fline`, seeds 951-953 | 3 074 / 4 500 | **4 500** |
+| `fpuraw`, seeds 961-963 | 3 962 / 4 500 | 4 448 (+52 listed) |
+
+- *Row 44.* An unimplemented instruction takes vector 11 whatever its
+  operand; the unsupported-datatype trap (vector 55) belongs to the
+  instructions the chip executes. FMOD with a packed source went to the
+  wrong FPSP handler.
+- *Row 45.* No FPU instruction ends on a "last write": a faulting
+  FMOVE/FMOVEM/FSAVE store restarts, (An)± is restored, FPIAR is latched
+  before the operand is fetched. The fork stacked the next instruction's PC
+  and kept An stepped — a handler that maps the page and returns then
+  skipped the store.
+- *Row 46.* On a FPU-less 68040, what is no instruction (opclass 001, an
+  opmode with nothing behind it, X/P/D to a data register, an immediate
+  destination…) takes a plain format $0 Line-F, and opmodes $78-$7F the
+  illegal vector with the PC past the extension word. The hook answered
+  format $4 — "an FPU instruction met no FPU" — to nearly everything. This
+  is the largest class, and the one that concerns a product default: the
+  LC 475/575/580 and Centris 610/650 run a 68LC040.
+- *Row 47.* FBcc evaluates five predicate bits, like FScc, FDBcc and
+  FTRAPcc. Its Line-F on predicates $20-$3F came from reading the dead
+  `#if 0` block of the oracle's `fpp_cond`; the live code opens on
+  `condition &= 0x1f`. No manual at hand rules on bit 5: the site says so
+  and names what would settle it.
+
+**Fresh seeds confirm the classes are closed.** 18 000 vectors on seeds the
+fixes never saw (971-973, 911-913, 981-983): `fline` 6 000 / 6 000 on the
+first replay; `fpu` 5 979 and `fpuraw` 5 944, every residual in one of the
+four classes below.
+
+**Four rulings opened, and kept the fork's way** (`oracle/README.md`,
+`oracle/fuzz/disputes/NOTES.md` D24-D27). The rule of the night was that
+nothing lands which turns a gate red, and two of these are asserted by
+`fpu040_test`:
+
+- **D24** — an enabled arithmetic exception: immediate here, pending until
+  the next FPU instruction in the oracle. 22 vectors. The oracle's reading
+  is the one the FPSP's E1/E3 split implies; this is the ruling to look at
+  first.
+- **D25** — FMOVE.P to Dn: Line-F here, datatype trap there. 27 vectors.
+- **D26** — (An)± with a dynamic k-factor: 12 here, 0 in the oracle's size
+  table. 16 vectors; the manual is on the fork's side.
+- **D27** — an EA evaluated before a Line-F. One vector.
+
+**A mechanism for assumed divergences.** `sst68040 --known FILE` takes a
+list of vector names. A listed vector that fails is counted apart; one that
+passes, or that the corpus no longer holds, fails the run. The 66 names are
+in `tests/sst68040_fpu.known`, grouped by ruling. This is what
+`TODO.md § Moteur › Socle` asked for before D12 or D23a could be reversed
+without losing pinned vectors; it now exists for the 68040 harness.
+
+**Pinned.** `sst68040_fline` (4 500 vectors) and `sst68040_fpu` (7 500),
+each with a gate, a recipe in `tests/sst_corpora.lock` and its own
+directory. `moira_rules_test` gains three cells — the 68LC040 frame shapes,
+the FBcc predicate on a 68030 + 68882 and on a 68040, the restarted FPU
+store — so that the rules hold on a host without the corpora, CI included.
+
+**The 60 000-vector sweep of the evening** (seeds 801-846, launched before
+this work) replays at 27 937 / 27 944 on the 68030 and 37 991 / 38 000 on
+the 68040 with tonight's core. The 68040 leftovers are eight bit-field
+faults — the known "always a long" item — and one MOVEP fault PC. The seven
+68030 leftovers are all inside fault frames and are named in the notes.
+
+*What it does not change.* The 68030 path keeps its Line-F for EA fields
+$3D-$3F: there the coprocessor decides whether an EA is ever evaluated, and
+the oracle's table is not evidence for it. FPCR enables exceptions on one
+`fpu` vector in ten only, and no 68040 corpus runs with a cache on.
+
+<a id="2026-11-06-sst68030-solo"></a>
+## 2026-11-06 (fourteenth) — The 68030 passes a complete WinUAE-solo corpus on fresh seeds: 5 592 / 5 592 over fourteen cells, pinned with its recipe
+
+The pinned `sst68030` has two known weaknesses: several of its cells date
+from the two-oracle period and keep only the vectors the retired Musashi
+oracle agreed on — the disputed cases are excluded by construction — and it
+has no `mmu_tt` and no `random_tt` cell. A fresh sweep answers both.
+
+Fourteen cells (`core`, `mmu`, `random`, `fpu` × `off`, `identity`, `tt`,
+then `fault` × `identity`, `tt`), 400 vectors each, seeds 701 to 714, WinUAE
+alone. Replayed on Moira with the fixes of the thirteenth entry:
+**5 592 / 5 592**.
+
+**The eight missing vectors are the oracle's, not Moira's.** The first replay
+read 5 592 / 5 600: eight `PMOVE (An),CRP` loading an invalid root pointer,
+on which WinUAE cannot stack its own MMU configuration exception and halts.
+`oracle_step()` returns −1 there and the post-halt state is not
+architectural. `fuzz040.py` has always skipped such vectors;
+`fuzz030.py` kept them with `"length": -1`. It now skips them too, and says
+how many.
+
+**Pinned as `sst68030_solo`**, with a gate of the same name and fourteen
+lines in `tests/sst_corpora.lock`. The recipe is in the manifest header; one
+cell regenerated from it hashes identically. Like `sst68040_8k` it lives in
+its own directory, so a host without the files soft-skips.
+
+This is the "regenerate the 030 corpus WinUAE-solo" item of
+`TODO.md § Moteur › Socle`, done as an addition rather than a replacement:
+the original corpus keeps its role as the record of what was pinned in
+July. What it does not change: the generator still builds a single MMU
+geometry (the next item of that section).
+
+---
+
+<a id="2026-11-06-fuzz-fresh-seeds"></a>
+## 2026-11-06 (thirteenth) — 13 100 fresh oracle vectors: the 8 KB page path is right, DIVU.L/DIVS.L swallowed access faults, and CHK2/CMP2 clobbered two flags on the 68040
+
+`extern/moira/POM68K_VENDOR.md` ended on an admission: the 68040's 8 KB page
+cell (TC.P = 1) was "implemented but not exercised by the fuzzer". The
+generator now has it (`gen040.set_page_shift`, `fuzz040.py --page 8k`: a
+5-bit page index, 32-descriptor page tables, TC = `$C000`), and the first
+runs did what a fuzzer is for.
+
+**The sweep.** Against the WinUAE oracle (Hatari e77819f7), then replayed on
+Moira:
+
+| vectors | cells | before the fixes | after |
+|---|---|---|---|
+| 3 200 | 8 KB, seed 401-408 | 3 197 | 3 198 |
+| 4 000 | 8 KB, seed 601-608 | 3 999 | 4 000 |
+| 5 500 | 4 KB, fresh seed 501-511 | 5 498 | 5 500 |
+| 400 | 4 KB, seed 405 | 399 | 400 |
+
+**The 8 KB path itself is right**: every `core`, `mmu` and `fault` cell is at
+100 %. All seven divergences sit in the `random` cells and none depends on
+the page size. Three causes:
+
+1. **`execDivlMoira` swallowed every access fault on its operand.** Upstream
+   wraps that `readOp` in `catch(...) { return false; }` — dead code in stock
+   Moira, where a 68020+ data read never throws. Here it caught the
+   `MmuBusError` of a 68030 or 68040 page fault, and of an external /BERR:
+   the instruction took **no exception** and returned half-way, PC left
+   inside its extension words. Vector `040 random/identity/8k seed=405 #120`
+   (a DIVx.L through a memory-indirect PC-relative operand on an unmapped
+   page): the oracle stacks a format $7 frame, Moira stacked nothing. The
+   catch is removed. Under virtual memory this was a guest-visible bug on
+   every 68030 and 68040 profile.
+2. **CHK2/CMP2 clobbered N and V on the 68040.** They are undefined. For the
+   68020/68030 the fork follows WinUAE's table (ruling D14); for the 68040
+   the same oracle returns early and leaves both flags as they were, which
+   upstream's port of the table lacked. Four vectors (seeds 405, 507, 509,
+   605). `execChkCmp2` now applies the table below the 68EC040 only. The JIT
+   treats CHK2/CMP2 as `Kind::Unsafe`, so nothing changes there.
+3. **Memory bitfields access a long whatever the field spans** — two
+   vectors, the size field of the fault's SSW. NOT fixed here: the JIT's IR
+   memory contract and both emitters assume the same long, so it has to move
+   with an AArch64 session. `TODO.md § Moteur › Justesse 68030` carries it
+   with the two reproducers.
+
+**Gates.** `moira_rules_test` gains two cells: DIVU.L and DIVS.L on a /BERR
+operand must take vector 2 on a 68020, a 68030 and a 68LC040 (before the fix:
+PC0 still on the instruction, nothing stacked), and CMP2.B from an all-set
+CCR must give `$10`/`$14` on the 68020/68030 and `$1A`/`$1E` on the 68040.
+Against the unfixed core the gate failed 16 checks.
+
+**The 8 KB cells are pinned as their own corpus**, `sst68040_8k` (4 000
+vectors, seeds 601-608), with a gate of the same name and eight lines in
+`tests/sst_corpora.lock`. Its recipe is in the manifest header and was
+checked: two cells regenerated from it hash identically. It lives in its own
+directory so a host that does not have the files soft-skips instead of
+failing the manifest.
+
+**The lesson is in the numbers.** 7 200 pinned vectors were green for months;
+13 100 fresh ones found three defects, one of them serious. A pinned corpus
+is a regression floor, not coverage. `TODO.md § Moteur › Socle` now asks for
+a fresh-seed sweep as a step of the loop.
+
+`extern/moira/POM68K_VENDOR.md` row 43. Pinned corpora unchanged: `sst68000`
+1 000 058 / 1 000 058 with bus cycles, `sst68030` 3 082 / 3 082, `sst68040`
+7 200 / 7 200.
+
+---
+
+<a id="2026-11-06-interp-profile"></a>
+## 2026-11-06 (twelfth) — The 68040 interpreter spends 63 % of its time translating addresses and 12 % executing instructions
+
+`TODO.md § Moteur` carried "re-measure before compacting `mmu040InstrStart`",
+on a 3.26 % figure from a profile the dispatch cache had made stale. It is
+re-measured, on the pure interpreter and both families
+(`scratchpad/2026-11-06/INTERP_PROFILE.md`; gperftools at 1 kHz, the
+no-LTO profiling build, 1 500 frames of each fixed-budget bench, fingerprints
+`a2036281a5c2ac55` and `663d67e4bc2d9714`).
+
+**68040 (Quadra 605).** MMU and cache helpers 63.2 %: `mmu040Translate`
+16.6 %, `mmu040Read<Word>` 12.6 %, `mmu040MatchTTR` 9.9 %, `mmu040AtcLookup`
+9.1 %, the physical read door 6.4 %, `mmu040InstrStart` itself 3.5 %. The
+instruction handlers and the run loop are 11.9 %; the board's memory map
+9.5 %. `mmu040InstrStart` is not where the time is: it is in what each of its
+two fetches re-derives.
+
+**68030 (LC II).** `mmuFetchWord` 22.1 % and the bus read it lands on,
+`V8Memory::read16`, 11.5 %: the instruction fetch is about a third of the
+interpreter. The data side is already cheap — the interpreter data window
+answered 72.6 M accesses and refused 13.7 M.
+
+The shares are quotable; the wall clock is not (a gate tier was running on
+the host). `TODO.md § Moteur › Interprète` is rewritten on these numbers: a
+one-entry instruction micro-TLB and a precomputed TTR test for the 68040, a
+fetch window the interpreter owns for both. None is done here.
+
+---
+
+<a id="2026-11-06-d23-oracle-inconsistent"></a>
+## 2026-11-06 (eleventh) — Ruling D23a rests on an oracle that contradicts itself: WinUAE stacks a format $3 frame on a 68030 and its own RTE refuses it
+
+The audit of this day read in the fork that a 68030 FPU post-instruction
+exception stacks a format $3 frame (ruling D23a, 2026-08-18: "the oracle
+pushes $3 on the 030 too, and oracle wins over spec") while the 68020/030 RTE
+accepts $3 only from the 68EC040 up — so a handler that simply returns takes a
+format error. It was filed as a defect of the fork to reproduce.
+
+It is not the fork's. `oracle/uae/upstream/gencpu.c` generates RTE with
+
+```
+if (cpu_level >= 4) {
+    // 68040+
+    out("else if (frame == 0x3) {\nm68k_areg(regs, 7) += offset + 4; break; }\n");
+}
+```
+
+so WinUAE (Hatari e77819f7) does exactly both: it stacks format $3 on a
+68030 and its 68030 RTE falls through to the format error. Moira mirrors the
+oracle on each half, which is why 3 082 vectors agree.
+
+**What it changes.** Nothing in the code: the maintainer's rule of this day is
+to apply the evidence grades only where no gate turns red, and returning to
+the manual's format $2 turns ten pinned `sst68030` vectors red. But it changes
+the weight of the ruling. D23 was taken on the argument that the pin is "the
+oracle's living word". An oracle that cannot return from the frame it stacks
+is not describing a 68030 at that point, and the manual's format $2 — which
+every 68020+ RTE accepts, the oracle's included — is the coherent reading.
+`oracle/README.md` § *Rulings taken against a manual* and
+`TODO.md § Moteur › Justesse 68030` now say so.
+
+---
+
+<a id="2026-11-06-sst-corpora-lock"></a>
+## 2026-11-06 (tenth) — The three CPU vector corpora are pinned: a manifest of 147 hashes, a gate, and a fetch script that no longer follows `main`
+
+The corpora behind `sst68000`, `sst68030` and `sst68040` live in git-ignored
+`tests/data/` — 1.1 GB, 116 MB and 315 MB. `assets.lock` pins every ROM and
+reference disk; nothing pinned these. Two hosts could be green against
+different files, and `tests/fetch_sst_68000.sh` downloaded from the upstream
+branch `main`, so a later upstream change would have turned a fresh clone's
+corpus into another one without a word.
+
+- `tests/sst_corpora.lock` records size and SHA-256 for each of the 147
+  files, and each corpus's provenance in its header.
+- `tools/verify_sst_corpora.py` checks a present corpus file for file (and
+  refuses an unlisted `.json` beside the listed ones); an absent corpus
+  prints `SKIP:` unless `--strict`; `--write` re-records. The three corpora
+  hash in 3.2 s.
+- `sst_corpora_lock_test` registers it, asset-optional like the harnesses.
+- **The 68000 corpus is identified**: upstream commit
+  `e0d5ece9670205cc84a0101081837deb446f86a3` (2024-05-14), the only commit
+  that touches `68000/v1`. Five files re-fetched at that commit unpack to
+  the bytes this host holds. The fetch script now names it.
+
+`extern/moira/POM68K_VENDOR.md` § *How to read this file* said the corpora
+were "absent here"; they are present on this host and were on the M4 since
+2026-09-16. Its paragraph now says what is true.
+
+Open, in `TODO.md § Moteur › Socle`: the 68030 and 68040 corpora were
+generated here and are published nowhere, and their generation command
+lines are not recorded — the seeds are in the vector names, the rest is not.
+
+---
+
+<a id="2026-11-06-moira-surface"></a>
+## 2026-11-06 (ninth) — The fork gets its host-side contract: POM68K_SURFACE.md says what the core exposes and what a host owes it
+
+`extern/moira/POM68K_VENDOR.md` records what was changed in Moira and why. It
+does not tell someone writing the HOST side — a wrapper, a board, a save-state
+visitor — what the core expects of them, and that is the document a
+re-implementation in NeoST starts from. `extern/moira/POM68K_SURFACE.md` is
+that contract, in twelve sections: models and cores; the virtual interface a
+host implements and when each member is called; the configuration it injects;
+interrupts and time; MMU and bus faults; the FPU and its softfloat
+dependency; the 68040 caches; the save-state contract; the JIT seam, member
+by member, and what an interpreter-only host gets; which seams are generic
+68k and which were tuned on a Macintosh guest; what a port must bring along;
+and where the two copies of Moira stand against each other.
+
+It cites `file` + identifier, never a line number, and marks as "unverified"
+what was read in the code without a gate; those nine statements are an open
+item of `TODO.md § Moteur › Surface`.
+
+**What writing it found**, beyond the document itself:
+
+- the 68000 external bus error that would have left `execute()` (fixed in the
+  eighth entry of this day);
+- the save-state visitor omits five pieces of state that outlive an
+  instruction boundary, not three: also the integrated 68040 FPU's FSAVE
+  micro-state and the 68040 MOVEM restart latch. `TODO.md § Moteur ›
+  Justesse 68030` carries the full list;
+- the fused 68030 `ird`/`irc` fetch and the fetch window arm only through
+  `jit::Engine`, and the 68030 data window only when an `Engine` object
+  exists to bind its fill callback: a host that runs bare `Moira::execute()`
+  gets none of the three (`TODO.md § Moteur › Interprète`).
+
+`CLAUDE.md` names the new file beside the vendor record, on the same line —
+its size ceiling does not move.
+
+---
+
+<a id="2026-11-06-68000-host-hooks"></a>
+## 2026-11-06 (eighth) — A bus error on the Portable's 68000 would have left execute() as a C++ exception; three NeoST host hooks come back with the fix
+
+Writing the host-side contract of the Moira fork (the audit that prepares the
+NeoST re-implementation) turned up a defect by reading: `extBusError()` — the
+door a board uses to assert /BERR from a bus callback — stacks a 68020/68030
+frame from an in-flight stamp and throws an `MmuBusError`.
+`processException<C>` handles that type only under
+`if constexpr (C == Core::C68020)`. On a 68000 core the exception falls
+through to the trailing `throw exc;` and leaves `execute()`.
+
+`src/PortableMemory.cpp` `PortableMemory::busError` called it on a 68000
+wrapper, for a SCSI pseudo-DMA access with DRQ inactive (Macintosh Portable
+and PowerBook 100). No gate reaches that path, so nothing had crashed.
+
+**The fix.** `Moira::extBusError000(addr, write)` is the 68000/68010 entry
+point: it throws the `moira::BusError` that `execBusError<C>` turns into a
+group-0 frame. The frame recipe is NeoST's `Cpu68k::raiseBusError` — status
+word = IR bits 15-5, R/W, function code; then the access address, IR, SR and
+PC as they stand at the fault — so a 68000 host no longer has to build the
+frame itself. `PortableMemory::busError` now passes the address and the
+direction.
+
+**Three host hooks**, back-ported from NeoST in the same change because they
+are what its wrapper overrides and none sits on a hot path:
+`illegalOpcodeHook` (NeoST `fdbce2e`), `willProcessFault` and `setBusLock`
+(`ce1cc52`). All default to no-ops. NeoST's per-bus-cycle hooks are not
+ported: two virtual calls on every access, and nothing here consumes them.
+Seven of NeoST's nine post-copy groups are now in; the bus-cycle hooks and
+STOP+8 remain (`TODO.md § Moteur › Convergence`).
+
+**Gate.** `moira_rules_test` gains two cells on a bare 68000: a read fault
+(`TST.B (A0)`) and a write fault (`MOVE.B D0,(A0)`) on a byte the test board
+answers with /BERR — the exception is contained, vector 2 is taken, and the
+fourteen bytes of the frame are pinned (`$4A15`/`$1085`, the address, the IR,
+SR `$2700`/`$2704`, PC); then the hooks — an unhandled ILLEGAL takes vector
+4, a handled one costs 4 cycles and moves PC by 2, `TAS (A0)` brackets its
+bus cycles `LrwU`, a TAS on the faulting byte still releases the lock (`LU`),
+and an address error reaches `willProcessFault` with its frame.
+`extern/moira/POM68K_VENDOR.md` row 42.
+
+---
+
+<a id="2026-11-06-68000-bus-cycles"></a>
+## 2026-11-06 (seventh) — sst68000 was green on a million vectors while a quarter of them had the wrong bus sequence: the harness now compares every bus cycle, and the 68000 core matches all of them
+
+`sst68000` compares registers, SR, PC, the prefetch queue, the touched RAM and
+the cycle total, and has held 1 000 058 / 1 000 058 since 2026-07-14. The
+SingleStepTests corpus records more than that: for every vector, the list of
+bus cycles — read or write, function code, address, size, value — and the
+idle cycles between them. The harness parsed past that list. An audit of the
+NeoST back-ports noticed that the lists sided with NeoST's 68000 on three
+points where the two forks differ, which the gate could not see.
+
+**The census.** `tests/sst68000.cpp` now records every bus callback with its
+clock stamp and compares it with the corpus. First run, core unchanged:
+
+```
+[sst68000] OK: 1000058/1000058 across 124 file(s)
+[sst68000] bus census: order 736983/1000058; timed … +2 726214
+```
+
+A quarter of the corpus had the right result through the wrong bus sequence.
+Sorted by cause, on a 500-vector sample per file: the stacking order of the
+address-error frame (10 914); the immediates to SR and CCR (3 000); JSR, RTE,
+RTR and long ADD/SUB/ADDX/SUBX/MOVEM order (1 234); MOVE to SR/CCR and MOVEM.l
+content (755); CHK, one bus cycle short (288).
+
+**The fixes**, each `C == Core::C68000` only, each leaving the gate at
+1 000 058 / 1 000 058 (`extern/moira/POM68K_VENDOR.md` rows 40 and 41):
+
+| change | vectors in order after it |
+|---|---|
+| start | 736 983 |
+| group-0 frame stacked PC low, SR, PC high, IR, address low, status word, address high; its two idle cycles before the frame, not after | 905 220 |
+| long ADD/SUB/ADDQ/SUBQ/ADDI/SUBI to memory write the low word first | 909 894 |
+| NeoST's three fixes (MOVE to SR, #,SR / #,CCR / MOVE to CCR reload both prefetch words; DIV idles before its prefetch); RTE and RTR unstack PC high, SR, PC low; JSR fetches before it pushes; a trapping CHK discards a prefetch; `MOVEM.l <ea>,list` reads its extra word last | 994 939 |
+| `MOVEM.l list,-(An)` low word first; ADDX.l/SUBX.l read low word first; CHK prefetches before idling; `BTST Dn,#imm` idles after its prefetch | 1 000 058 |
+
+Timing follows order: every bus cycle now also starts on the corpus's cycle,
+1 000 058 / 1 000 058.
+
+**NeoST's three back-ports are confirmed by a third reading.** NeoST took
+them from the microcode transcription and from Hatari CE; the corpus lists
+show the same sequences on every non-exception vector. The DIV one needed
+care here: `execDivsMoira` keeps this fork's early overflow exit, so the
+quotient is computed before the idle cycles are spent.
+
+**From census to gate.** The comparison is now part of the verdict: a vector
+passes only if its bus sequence and each cycle's start match
+(`--no-transactions` restores the state-only comparison). The full corpus
+runs in 4.4 s. Neither fork's copy of Moira had this: upstream's stacking
+order for the group-0 frame is the same in NeoST, so the harness and row 41
+are a contribution in that direction too (`TODO.md § Moteur › Convergence`).
+
+**Evidence grade.** D throughout — a corpus produced by another
+implementation — and for the three NeoST groups also the microcode
+transcription. The other cores keep upstream's order: there is no corpus for
+them.
+
+---
+
+<a id="2026-11-06-x64-late-ipl"></a>
+## 2026-11-06 (sixth) — The x64 generator took an interrupt one instruction late when the read itself raised it: an asset-free oracle shows it, and A64's rule closes it
+
+`src/jit/POM68K_JIT.md` had carried since 2026-10-02 the sentence "the x64
+emitter's cacheless path has not been re-checked on an x86-64 host", and
+`TODO.md § Moteur › JIT justesse` the item. The check is done, and the answer
+is that x64 had the hole A64 had.
+
+**The mechanism.** The interpreter samples the interrupt pins after the
+operand read of a memory-source ALU instruction (`execAndEaRg`: `readOp`,
+then `POLL_IPL`). x64 emitted `pollIpl()` at the head of each instruction
+only, and refused the multi-poll class only under `L_.cache040Live`. The
+exact read thunk reaches Moira's own `mmu040Read`, which can raise the pin
+but contains no poll. So when a read raised the pin, the body ended with a
+stale `reg.ipl`, the next instruction's guard exited on `CHECK_IRQ`,
+`checkForIrq()` saw the stale latch, and the interrupt was taken one
+instruction late.
+
+**Why no gate had seen it.** The access that exposed A64 — the VIA1 IFR read
+on the Quadra 605 — never runs natively on x64: `viaSync()` always stalls, the
+traced cycles exceed the table cost, and `emitAluEaRg` refuses on the cost
+cross-check. x64 was protected by an unrelated refusal, for that one device.
+A read that raises the pin with no bus wait has no such protection.
+
+**The oracle.** `jit_asset_free_lockstep_test` gains `runLateIplPoll`: a
+device register whose read raises level 2 with zero added clock and whose
+write acknowledges; a loop `AND.B $800(A1),D0 / ADDQ.L #1,D1 / ADDQ.L #1,D2 /
+BRA.S`; a handler that logs the stacked PC. It first runs unarmed and
+requires the loop to be native with no fallback, then arms both machines.
+Before the fix, on this host:
+
+```
+late-IPL divergence at armed checkpoint 0: first stacked PC 00001104/00001106,
+D1 00000080/00000081
+```
+
+— the interpreter interrupts after the AND, x64 after the ADDQ. The test
+also pins the interpreter's answer (`kCode + 4`), so a generator and an
+interpreter drifting together would still be caught.
+
+**The fix** is A64's rule, verbatim, in `JitBackendX64.cpp`'s emit loop: when
+every non-head poll follows the final data access, the body stays native and
+re-samples the pin at its end; any other placement takes the interpreter;
+with the cache model armed the admission stays behind
+`POM68K_JIT_040_LATE_POLL`, which x64 now reads too. After it the case passes
+with `slow=0`: `late-IPL compiled=1 runs=106 native=552 slow=0 acks=43 first
+stacked PC=00001104`.
+
+This is not free: cacheless x64 forms whose second poll is NOT after the
+final access now replay through the interpreter where they ran native. A64
+measured +1.35 % on `jit_bench` for the same rule; the x64 price is not
+measured in this entry and is carried by the re-baselining item of
+`TODO.md § Moteur › JIT performance`.
 
 ---
 

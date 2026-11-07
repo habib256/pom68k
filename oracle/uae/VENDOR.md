@@ -112,6 +112,29 @@ is vendored and linked — `-Wl,--gc-sections` trims the .so on ELF,
    `volatile struct flag_struct f` (identical C11 longjmp clobber).
    Verified by `smoke040.c` (e): CCR-carrying frames + single-step exit
    at the exception boundary.
+9. `glue.c pom_default_prefs()` (2026-11-06) — `fpu_no_unimplemented` is
+   true for the full 68040 (`cpu_model == fpu_model == 68040`) and false
+   otherwise. Left false, WinUAE executes the transcendentals, FSCALE,
+   FREM/FMOD, FMOVECR and the packed format on a 68040 as a 6888x would;
+   real silicon traps them to the FPSP. The 68030 + 6888x and 68LC040
+   configurations of the earlier corpora are untouched (fpp.c also gates
+   its 6888x FRESTORE version hack on this option).
+10. `glue.c oracle_set_state()` (2026-11-07) — disarms `mmufixup[0]` and
+   `mmufixup[1]`. The 68040 loop calls `cpu_restore_fixup()` on any access
+   fault and never disarms the latch at instruction start; several fpp.c
+   paths arm it and return without clearing it, so a later faulting
+   VECTOR had an address register overwritten from fuzz-run history
+   (same rationale as patch 6 / D9). `sst68030_solo` and `sst68040_8k`
+   regenerate hash-identically with patches 9 and 10.
+11. `CMakeLists.txt` (2026-11-06) — `-Wno-error=implicit-function-declaration`
+   for GCC and Clang: GCC 14 made that diagnostic an error and the
+   extraction relies on it in a handful of Hatari stubs.
+12. `glue.c oracle_set_fpu_strict()` + `oracle_uae.map` (2026-11-07) — a
+   seventh entry point: WinUAE's `fpu_no_unimplemented` for a 6888x,
+   selectable before `oracle_init`. Off by default (the setting every
+   68030 corpus pinned before that date was generated with); on, opmodes
+   $40-$7F take a Line-F and FRESTORE refuses a 68040 frame, as the
+   MC68881/MC68882 manual has it. `fuzz030.py --strict-fpu`.
 
 No other vendored file is modified.
 

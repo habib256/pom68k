@@ -26,10 +26,12 @@
 //     detached => F2xx opcodes take the F-line trap.
 //
 // Usage: sst68040 <dir> [--max N] [--only NAME,..] [--skip NAME,..]
-//                 [--cycles] [--skip-translation] [--verbose] [--dump] [--examples K]
+//                 [--cycles] [--skip-translation] [--fpu] [--verbose] [--dump]
+//                 [--examples K]
 // Exit 0 = all matched / no data (soft skip); 1 = mismatch; 2 = usage.
 
 #include "Moira.h"
+#include "SstKnown.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -73,6 +75,7 @@ struct Vector {
     std::string name;
     CpuState initial, fin;
     long length = -1;
+    long steps = 1;             // instructions to run (fuzz040.py --steps)
 };
 
 // ── Flat 16 MB test bus (no Mac hardware, no contention) ─────────────────
@@ -81,13 +84,26 @@ public:
     TestCpu() : mem(1 << 24, 0) { setModel(moira::Model::M68LC040); }
     std::vector<uint8_t> mem;
 
+    // Every byte a vector set or wrote, so that the next one starts from the
+    // zeroed memory the oracle gives each of its own. Until 2026-11-07 the
+    // bus was never cleared: a vector reading a byte outside its initial
+    // list saw whatever an earlier vector had left there (first seen on an
+    // FMOVEM from the stack, which read a previous vector's exception frame).
+    std::vector<uint32_t> dirty;
+    void clearDirty() {
+        for (uint32_t a : dirty) mem[a] = 0;
+        dirty.clear();
+    }
+
 private:
     moira::u8  read8(moira::u32 a) const override { return mem[a & 0xFFFFFF]; }
     moira::u16 read16(moira::u32 a) const override {
         return moira::u16((mem[a & 0xFFFFFF] << 8) | mem[(a + 1) & 0xFFFFFF]);
     }
     void write8(moira::u32 a, moira::u8 v) const override {
-        const_cast<TestCpu*>(this)->mem[a & 0xFFFFFF] = v;
+        auto& self = *const_cast<TestCpu*>(this);
+        self.mem[a & 0xFFFFFF] = v;
+        self.dirty.push_back(a & 0xFFFFFF);
     }
     void write16(moira::u32 a, moira::u16 v) const override {
         write8(a, moira::u8(v >> 8)); write8(a + 1, moira::u8(v));
@@ -188,7 +204,7 @@ void parseState(const char*& p, CpuState& st) {
 
 bool parseVector(const char*& p, Vector& v) {
     skipWs(p); if (*p!='{') return false; ++p;
-    v.name.clear(); v.length=-1;
+    v.name.clear(); v.length=-1; v.steps=1;
     while (true) {
         skipWs(p);
         if (*p=='}'){++p;break;}
@@ -200,6 +216,7 @@ bool parseVector(const char*& p, Vector& v) {
             else if (kl==7 && !std::strncmp(key,"initial",7)) parseState(p, v.initial);
             else if (kl==5 && !std::strncmp(key,"final",5))   parseState(p, v.fin);
             else if (kl==6 && !std::strncmp(key,"length",6))  v.length = long(parseUint(p));
+            else if (kl==5 && !std::strncmp(key,"steps",5))   v.steps = long(parseUint(p));
             else skipValue(p);
         }
         skipWs(p);
@@ -224,16 +241,29 @@ void loadState(TestCpu& cpu, const CpuState& s) {
     cpu.setIRC(r16(s.pc + 2));
 }
 
+bool gFpu = false;                     // --fpu: full 68040 with its FPU
+
 bool runVector(TestCpu& cpu, const Vector& v, bool checkCycles, std::string& why) {
-    // Q2/Q4: the target CPU is the 68LC040 — NO FPU, ever. The corpus
-    // still carries the (all-zero) FP keys because the shared SST030
+    // Q2/Q4: the default target is the 68LC040 — NO FPU. Those corpora
+    // still carry the (all-zero) FP keys because the shared SST030
     // serializer emits them; they are ignored: F2xx opcodes must take the
     // format $4 "FP disabled" exception, which an attached 68882 would
-    // mask.
-    cpu.setFPUModel(moira::FPUModel::NONE);
+    // mask. --fpu (2026-11-06) replays a corpus generated against the full
+    // 68040: integrated FPU, FP registers loaded and compared.
+    cpu.setFPUModel(gFpu ? moira::FPUModel::M68040 : moira::FPUModel::NONE);
     cpu.reset();                           // clears STOP/halt state from prior vectors
-    for (const RamCell& c : v.initial.ram) cpu.mem[c.addr & 0xFFFFFF] = c.val;
+    cpu.clearDirty();
+    for (const RamCell& c : v.initial.ram) {
+        cpu.mem[c.addr & 0xFFFFFF] = c.val;
+        cpu.dirty.push_back(c.addr & 0xFFFFFF);
+    }
     loadState(cpu, v.initial);             // after RAM: prefetch refill reads it
+    if (gFpu) {
+        for (int i = 0; i < 8; i++) cpu.setFP(i, v.initial.fp[i]);
+        cpu.setFPCR(v.initial.fpcr);
+        cpu.setFPSR(v.initial.fpsr);
+        cpu.setFPIAR(v.initial.fpiar);
+    }
     cpu.setVBR(v.initial.vbr);
     cpu.setSFC(v.initial.sfc);
     cpu.setDFC(v.initial.dfc);
@@ -259,7 +289,8 @@ bool runVector(TestCpu& cpu, const Vector& v, bool checkCycles, std::string& why
     cpu.setMMUSR040(v.initial.mmusr040);
 
     const moira::i64 c0 = cpu.getClock();
-    cpu.execute();                         // one instruction (+ its exception, if any)
+    // One instruction (+ its exception, if any) per step: the oracle's unit.
+    for (long step = 0; step < (v.steps > 0 ? v.steps : 1); ++step) cpu.execute();
     const long cyc = long(cpu.getClock() - c0);
 
     bool ok = true; char buf[256];
@@ -293,6 +324,18 @@ bool runVector(TestCpu& cpu, const Vector& v, bool checkCycles, std::string& why
     if (cpu.getDTT0()  !=v.fin.dtt0)   fail("DTT0",  cpu.getDTT0(),  v.fin.dtt0);
     if (cpu.getDTT1()  !=v.fin.dtt1)   fail("DTT1",  cpu.getDTT1(),  v.fin.dtt1);
     if (cpu.getMMUSR040()!=v.fin.mmusr040) fail("MMUSR040",cpu.getMMUSR040(),v.fin.mmusr040);
+    if (gFpu) {
+        for (int i = 0; i < 8; i++) {
+            uint32_t w[3]; cpu.getFP(i, w);
+            for (int j = 0; j < 3; j++) if (w[j] != v.fin.fp[i][j]) {
+                char what[16]; std::snprintf(what, sizeof what, "FP%d.%d", i, j);
+                fail(what, w[j], v.fin.fp[i][j]);
+            }
+        }
+        if (cpu.getFPCR() != v.fin.fpcr)  fail("FPCR",  cpu.getFPCR(),  v.fin.fpcr);
+        if (cpu.getFPSR() != v.fin.fpsr)  fail("FPSR",  cpu.getFPSR(),  v.fin.fpsr);
+        if (cpu.getFPIAR()!= v.fin.fpiar) fail("FPIAR", cpu.getFPIAR(), v.fin.fpiar);
+    }
     if (checkCycles && v.length >= 0 && cyc != v.length) {
         if (ok) { std::snprintf(buf,sizeof buf,"cycles got %ld want %ld",cyc,v.length); why=buf; } ok=false;
     }
@@ -332,10 +375,11 @@ std::set<std::string> parseNameList(const char* s) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    if (argc < 2) { std::fprintf(stderr,"usage: %s <dir> [--max N] [--only NAME,..] [--skip NAME,..] [--cycles] [--skip-translation] [--verbose] [--dump] [--examples K]\n",argv[0]); return 2; }
+    if (argc < 2) { std::fprintf(stderr,"usage: %s <dir> [--max N] [--only NAME,..] [--skip NAME,..] [--cycles] [--skip-translation] [--fpu] [--known FILE] [--verbose] [--dump] [--examples K]\n",argv[0]); return 2; }
     const std::string dir = argv[1];
     long maxPerFile=-1; int examples=3; bool verbose=false, checkCycles=false, skipTranslation=false;
     std::set<std::string> only, skip;
+    sstknown::List known;                   // --known FILE (tests/SstKnown.h)
     for (int i=2;i<argc;++i){ std::string a=argv[i];
         if      (a=="--max"&&i+1<argc) maxPerFile=std::strtol(argv[++i],nullptr,10);
         else if (a=="--examples"&&i+1<argc) examples=int(std::strtol(argv[++i],nullptr,10));
@@ -346,6 +390,10 @@ int main(int argc, char** argv) {
         else if (a=="--skip-translation") skipTranslation=true;
         else if (a=="--verbose") verbose=true;
         else if (a=="--dump") gDump=true;
+        else if (a=="--fpu") gFpu=true;
+        else if (a=="--known"&&i+1<argc) {
+            if (!known.load(argv[++i])) { std::fprintf(stderr,"cannot open --known '%s'\n",argv[i]); return 2; }
+        }
         else { std::fprintf(stderr,"unknown arg '%s'\n",a.c_str()); return 2; }
     }
 
@@ -357,10 +405,11 @@ int main(int argc, char** argv) {
     if (files.empty()) { std::fprintf(stderr,"SKIP: [sst68040] '%s' holds no .json\n",dir.c_str()); return 0; }
 
     TestCpu cpu;
+    if (gFpu) cpu.setModel(moira::Model::M68040);   // full 68040, integrated FPU
     std::printf("[sst68040] dir=%s files=%zu cycles=%s mmu=%s\n", dir.c_str(), files.size(),
                 checkCycles?"on":"off(advisory)", skipTranslation?"SKIP-TRANSLATION(debug)":"full");
 
-    long grandTotal=0, grandPass=0, grandMmuSkip=0, filesRun=0; bool anyFail=false;
+    long grandTotal=0, grandPass=0, grandMmuSkip=0, grandKnown=0, filesRun=0; bool anyFail=false;
     for (const fs::path& f : files) {
         const std::string stem=f.stem().string();
         if (!only.empty()&&!only.count(stem)) continue;
@@ -369,7 +418,7 @@ int main(int argc, char** argv) {
         if (!in){ std::fprintf(stderr,"  %-16s: cannot open\n",stem.c_str()); anyFail=true; continue; }
         std::string buf((std::istreambuf_iterator<char>(in)),std::istreambuf_iterator<char>());
         const char* p=buf.c_str(); eat(p,'[');
-        long total=0,passed=0,mmuSkip=0; std::vector<std::pair<std::string,std::string>> firstFew; Vector v;
+        long total=0,passed=0,mmuSkip=0,knownHere=0,stale=0; std::vector<std::pair<std::string,std::string>> firstFew; Vector v;
         while (true) {
             skipWs(p); if (*p==']'||*p=='\0') break;
             if (!parseVector(p,v)) break;
@@ -381,18 +430,32 @@ int main(int argc, char** argv) {
             std::string why; bool ok;
             try { ok = runVector(cpu,v,checkCycles,why); }
             catch (const std::exception& e) { ok=false; why=std::string("threw: ")+e.what(); }
-            ++total; if (ok)++passed; else if (int(firstFew.size())<examples) firstFew.push_back({v.name,why});
+            ++total;
+            const bool isKnown = known.listed(v.name);
+            if (ok && isKnown) {
+                ++stale;
+                if (int(firstFew.size())<examples) firstFew.push_back({v.name,sstknown::List::kStale});
+            } else if (ok) ++passed;
+            else if (isKnown) ++knownHere;
+            else if (int(firstFew.size())<examples) firstFew.push_back({v.name,why});
             if (maxPerFile>0&&total>=maxPerFile) break;
             skipWs(p); if (*p==','){++p;continue;} if (*p==']'){++p;break;}
         }
-        ++filesRun; grandTotal+=total; grandPass+=passed; grandMmuSkip+=mmuSkip;
-        const bool fileOk=(passed==total); if (!fileOk) anyFail=true;
-        std::printf("  %-16s : %6ld/%-6ld %s%s\n",stem.c_str(),passed,total,fileOk?"OK":"FAIL",
+        ++filesRun; grandTotal+=total; grandPass+=passed; grandMmuSkip+=mmuSkip; grandKnown+=knownHere;
+        const bool fileOk=(passed+knownHere==total)&&stale==0; if (!fileOk) anyFail=true;
+        std::printf("  %-16s : %6ld/%-6ld %s%s%s\n",stem.c_str(),passed,total,fileOk?"OK":"FAIL",
+                    knownHere?(" (+"+std::to_string(knownHere)+" known)").c_str():"",
                     mmuSkip?(" (+"+std::to_string(mmuSkip)+" mmu-skipped)").c_str():"");
         if (!fileOk||verbose) for (auto& mm:firstFew) std::printf("        x \"%s\"  %s\n",mm.first.c_str(),mm.second.c_str());
     }
-    std::printf("[sst68040] %s: %ld/%ld across %ld file(s), %ld mmu-skipped%s\n",
-                anyFail?"FAIL":"OK", grandPass, grandTotal, filesRun, grandMmuSkip,
+    // A listed name the corpus does not hold means the list has drifted
+    // (only checked on a whole-corpus run).
+    if (known.active() && only.empty() && skip.empty() && maxPerFile<0 && filesRun>0 &&
+        known.reportMissing(examples)) anyFail=true;
+    const std::string knownNote = !known.active() ? std::string()
+        : " " + std::to_string(grandKnown) + " known divergence(s),";
+    std::printf("[sst68040] %s: %ld/%ld across %ld file(s),%s %ld mmu-skipped%s\n",
+                anyFail?"FAIL":"OK", grandPass, grandTotal, filesRun, knownNote.c_str(), grandMmuSkip,
                 anyFail?"  <<< MISMATCH":"");
     if (filesRun==0) { std::fprintf(stderr,"SKIP: [sst68040] no files matched\n"); return 0; }
     return anyFail?1:0;

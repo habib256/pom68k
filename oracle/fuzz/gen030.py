@@ -510,8 +510,99 @@ def _op_fpu(rng: random.Random) -> list[int]:
     return w
 
 
+def _op_fpuraw(rng: random.Random) -> list[int]:
+    """Raw cpID-1 window ($F200-$F37F) with unconstrained extension words.
+
+    The fpu family only emits what an assembler would; this one emits what a
+    decoder must survive: reserved opclasses, opmodes with no instruction
+    behind them, formats an EA cannot carry, predicates above $1F. gen040
+    uses it for its `fline` and `fpuraw` families (2026-11-07: the 68LC040
+    cell started at 3 074 / 4 500); here it is the 68030 + 68882 cell. A
+    family of its own, so the streams of the five older ones do not move.
+    """
+    r = rng.random()
+    if r < 0.70:                                   # general: opclass 0-7
+        op = 0xF200 | rng.getrandbits(6)
+        ext = rng.getrandbits(16)
+        if rng.random() < 0.5:                     # bias towards opclass 0-3
+            ext &= 0x7FFF
+    elif r < 0.80:                                 # FScc / FDBcc / FTRAPcc
+        op = 0xF240 | rng.getrandbits(6)
+        ext = rng.getrandbits(6) if rng.random() < 0.7 else rng.getrandbits(16)
+    elif r < 0.90:                                 # FBcc.W / FBcc.L
+        op = 0xF280 | rng.getrandbits(7)
+        ext = rng.choice([2, 4, 8, 0x10, 0x20])
+    else:                                          # FSAVE / FRESTORE
+        op = 0xF300 | rng.getrandbits(7)
+        ext = rng.getrandbits(16)
+    return [op, ext] + [rng.getrandbits(16) for _ in range(rng.randrange(0, 5))]
+
+
+def _op_rmw(rng: random.Random) -> list[int]:
+    """Integer instructions whose LAST access is a write to memory through
+    A0 — the register gen_state aims at a bad page for this family, as it
+    does for `fault`. The fault family has its own short opcode list; a
+    write fault on an ALU destination, a memory shift, a bit operation or a
+    BCD/extended -(Ay),-(Ax) reached the harness only through `random`
+    (four vectors in 4 500 on 2026-11-07, all wrong: frame $B where the
+    oracle stacks the short $A of a last write).
+    """
+    mode = rng.choice([0x10, 0x18, 0x20, 0x28])       # (A0) (A0)+ -(A0) d16(A0)
+    size = rng.choice([0x00, 0x40, 0x80])             # B W L
+    dn = rng.randrange(8) << 9
+
+    def ea_ext() -> list[int]:
+        return [rng.getrandbits(16) & 0x00FE] if mode == 0x28 else []
+
+    def imm() -> list[int]:
+        return ([rng.getrandbits(16), rng.getrandbits(16)] if size == 0x80
+                else [rng.getrandbits(16)])
+
+    forms = [
+        lambda: [rng.choice([0xD100, 0x9100, 0xC100, 0x8100, 0xB100])
+                 | dn | size | mode] + ea_ext(),       # ADD/SUB/AND/OR/EOR Dn,<ea>
+        lambda: [rng.choice([0x5000, 0x5100]) | dn | size | mode] + ea_ext(),  # ADDQ/SUBQ
+        lambda: [rng.choice([0x0600, 0x0400, 0x0200, 0x0000, 0x0A00])
+                 | size | mode] + imm() + ea_ext(),    # ADDI/SUBI/ANDI/ORI/EORI
+        lambda: [rng.choice([0x4400, 0x4000, 0x4600, 0x4200])
+                 | size | mode] + ea_ext(),            # NEG/NEGX/NOT/CLR
+        lambda: [rng.choice([0x0140, 0x0180, 0x01C0]) | dn | mode] + ea_ext(),   # BCHG/BCLR/BSET Dn
+        lambda: [rng.choice([0x0840, 0x0880, 0x08C0]) | mode,
+                 rng.randrange(8)] + ea_ext(),         # BCHG/BCLR/BSET #
+        lambda: [0xE0C0 | rng.randrange(8) << 8 | mode] + ea_ext(),   # memory shift/rotate
+        lambda: [0x50C0 | rng.randrange(16) << 8 | mode] + ea_ext(),  # Scc
+        lambda: [0x4AC0 | mode] + ea_ext(),            # TAS
+        lambda: [0x4800 | mode] + ea_ext(),            # NBCD
+        lambda: [rng.choice([0xC108, 0x8108]) | 1],    # ABCD/SBCD -(A1),-(A0)
+        lambda: [rng.choice([0xD108, 0x9108]) | size | 1],   # ADDX/SUBX -(A1),-(A0)
+        lambda: [rng.choice([0x1000, 0x3000, 0x2000])
+                 | (mode & 0x38) << 3 | rng.randrange(8)] + ea_ext(),  # MOVE Dn,<ea>
+    ]
+    return rng.choice(forms)()
+
+
+def _op_fpu2(rng: random.Random) -> list[int]:
+    """An FPU instruction, then a second one that decides when a posted
+    exception is delivered. For fuzz030.py / fuzz040.py --steps 2; gen_state
+    arms the FPCR enables seven times in ten for this family.
+    """
+    second = rng.choice([
+        [0xF280, 0x0000],                       # FNOP
+        [0xF200, 0x0080],                       # FMOVE FP0,FP1
+        [0xF200, 0x003A],                       # FTST FP0
+        [0xF200, 0x0422],                       # FADD FP1,FP0
+        [0xF327],                               # FSAVE -(A7)
+        [0xF200, 0xA800],                       # FMOVE FPSR,D0
+        [0x4E71],                               # NOP: nothing is delivered
+        [0x7001],                               # MOVEQ #1,D0: nor here
+    ])
+    return _op_fpu(rng) + second
+
+
+FPU_FAMILIES = ("fpu", "fpuraw", "fpu2")
 FAMILIES = {"random": _op_random, "core": _op_core, "mmu": _op_mmu,
-            "fault": _op_fault, "fpu": _op_fpu}
+            "fault": _op_fault, "fpu": _op_fpu, "fpuraw": _op_fpuraw,
+            "fpu2": _op_fpu2, "rmw": _op_rmw}
 
 
 def gen_state(rng: random.Random, family: str = "core",
@@ -549,7 +640,7 @@ def gen_state(rng: random.Random, family: str = "core",
         st.tt0 = (0x00 << 24) | (0xFF << 16) | (1 << 15) | (1 << 10) | (7 << 4)
     # else: MMU off (tc.E = 0)
 
-    if family == "fault":
+    if family in ("fault", "rmw"):
         # Aim A0 at one of the table's bad pages (O4 slice 3); with no
         # bad page available (mmu off) fall back to a random data page.
         # Offsets deliberately include odd addresses and page boundaries
@@ -568,13 +659,13 @@ def gen_state(rng: random.Random, family: str = "core",
     # seeding can aim at its operands (FRESTORE frame planting below).
     words = FAMILIES[family](rng)
 
-    if family == "fpu":
+    if family in FPU_FAMILIES:
         # 68881/68882 initial state (O5 slice 1): special values in every
         # FP register, random rounding/precision, exception enables mostly
         # masked (they trap through vectors 48-54 when set — ~10 %).
         st.fp = [_fp_special_words(rng) for _ in range(8)]
         fpcr = rng.getrandbits(8) & 0xF0             # PREC+RND, bits 7-4
-        if rng.random() < 0.10:
+        if rng.random() < (0.70 if family == "fpu2" else 0.10):
             fpcr |= (rng.getrandbits(8) << 8) & 0xFF00   # enable byte
         st.fpcr = fpcr                               # fpcr_mask 0xfff0
         st.fpsr = rng.getrandbits(32) & 0x0FFFFFF8   # CC/quot/EXC/AEXC

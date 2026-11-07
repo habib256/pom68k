@@ -8,20 +8,21 @@
 template <Core C> void
 Moira::writeStackFrameAEBE(StackFrame &frame)
 {
-    // Push PC
-    push<C, Word>((u16)frame.pc);
-    push<C, Word>(frame.pc >> 16);
-
-    // Push SR and IRD
-    push<C, Word>(frame.sr);
-    push<C, Word>(frame.ird);
-
-    // Push address
-    push<C, Word>((u16)frame.addr);
-    push<C, Word>(frame.addr >> 16);
-
-    // Push memory access type and function code
-    push<C, Word>(frame.code);
+    // POM68K: the 68000 does not stack its group-0 frame top-down. The bus
+    // order is PC low, SR, PC high, IR, access address low, status word,
+    // access address high — the three-word order of writeStackFrame0000,
+    // continued. Upstream pushed the seven words strictly downwards.
+    // [D] SingleStepTests/680x0 v1, `transactions` of every address-error
+    //     vector (e.g. "426a [CLR.w (d16, A2)] 1"); counted by
+    //     `sst68000 --transactions`.
+    U32_DEC(reg.sp, 14);
+    write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 12) & ~1, (u16)frame.pc);
+    write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp,  8) & ~1, frame.sr);
+    write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 10) & ~1, frame.pc >> 16);
+    write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp,  6) & ~1, frame.ird);
+    write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp,  4) & ~1, (u16)frame.addr);
+    write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp,  0) & ~1, frame.code);
+    write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp,  2) & ~1, frame.addr >> 16);
 }
 
 template <Core C> void
@@ -555,7 +556,10 @@ Moira::execAddressError(StackFrame frame, int delay)
     // cycles fewer than upstream Moira, instruction-flow faults 6 fewer.
     // The I/N bit (code bit 3, set at the throw sites) is the discriminator:
     // PC-relative OPERAND reads carry FC=program but still get 0 idle.
-    SYNC(C == Core::C68000 ? ((frame.code & 0x8) ? 2 : 0) : 8);
+    // POM68K: and the two idle cycles upstream spent AFTER the frame sit
+    // BEFORE it on the 68000 — same total, same corpus evidence as the
+    // stacking order in writeStackFrameAEBE.
+    SYNC(C == Core::C68000 ? ((frame.code & 0x8) ? 4 : 2) : 8);
 
     // A misaligned stack pointer will cause a double fault
     if (misaligned<C>(reg.sp)) throw DoubleFault();
@@ -565,8 +569,8 @@ Moira::execAddressError(StackFrame frame, int delay)
         writeStackFrameAEBE<C>(frame);
     } else {
         writeStackFrame1000<C>(frame, status, frame.pc, reg.pc0, 3, frame.addr);
+        SYNC(2);
     }
-    SYNC(2);
 
     // Jump to exception vector
     jumpToVector<C>(3);
@@ -837,9 +841,9 @@ Moira::execInterrupt(u8 level)
 
         case Core::C68000:
         {
-            // NEOST : diag cycle-exact de la séquence d'exception (NEOST_EXC_DIAG=1) —
+            // NEOST : diag cycle-exact de la séquence d'exception (setPomExceptionDiag) —
             // horloge à chaque étape, pour le diff pas-à-pas avec WinUAE Exception_ce000.
-            static const bool excDiag = std::getenv("NEOST_EXC_DIAG") != nullptr;
+            const bool excDiag = pomExceptionDiag;
             i64 t0 = excDiag ? getClock() : 0;
 
             SYNC(6);

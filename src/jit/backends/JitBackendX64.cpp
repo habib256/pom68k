@@ -4998,24 +4998,25 @@ bool Emitter::emit() {
             emitted = i + 1;
             continue;
         }
-        // On a cache-active 040 an exact data access can stall and advance
-        // peripherals in the middle of the instruction. Some Moira handlers
-        // then cross a second POLL_IPL site, while others deliberately do
-        // not; moving that sample to a generic generated boundary would be
-        // wrong for both the before-write and after-read variants. The IR
-        // now records each poll's access-relative position
-        // (Instr::iplPollMask) and the A64 backend admits the
-        // poll-after-final-access class with an end-of-body re-sample;
-        // this backend keeps the exact interpreter path until the same
-        // admission is proved on an x86-64 host — its locksteps cannot
-        // execute on the machine that carried the A64 proof. Register-only
-        // two-poll forms cannot advance the clock before their final
-        // cycle charge.
-        if (!L_.is030 && L_.cache040Live &&
-            ir_.instrs[i].memory.count != 0 && ir_.instrs[i].iplPolls > 1) {
-            a_.jmp(staticStub(i));
-            emitted = i + 1;
-            continue;
+        // A handler's later IPL sample can see a pin the head sample missed —
+        // a cache fill, or an exact MMIO read that raises it. Same rule as
+        // JitBackendA64.cpp (its comment has the reasoning): poll after the
+        // FINAL access -> native body, re-sampled at its end; any other
+        // placement -> interpreter. Oracle: runLateIplPoll, asset-free test.
+        bool lateIplPoll = false;
+        if (!L_.is030 && ir_.instrs[i].memory.count != 0 &&
+            ir_.instrs[i].iplPolls > 1) {
+            const Instr& in = ir_.instrs[i];
+            const uint8_t n = in.memory.count;
+            lateIplPoll = (!L_.cache040Live || cache040LatePollEnabled()) &&
+                in.iplPollPosValid &&
+                n >= 1 && n <= MemoryContract::MaxAccesses &&
+                in.iplPollMask == uint8_t(1u << (n - 1));
+            if (!lateIplPoll) {
+                a_.jmp(staticStub(i));
+                emitted = i + 1;
+                continue;
+            }
         }
         // No traced fetch count, no charge: an emitted charge that guesses
         // words + 1 over-fetches every SKIP_LAST_RD form. IRs recorded by
@@ -5048,6 +5049,8 @@ bool Emitter::emit() {
         }
         native_++;
         if (ir_.instrs[i].kind == Kind::Branch) break;   // it committed its own
+
+        if (lateIplPoll) pollIpl();     // the handler's post-access sample
 
         // The 68030 i-cache charge — on the SUCCESS path only, after every
         // runtime bail the body can take, so no exit can ever carry a

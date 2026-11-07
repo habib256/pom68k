@@ -24,10 +24,10 @@
 >   not read by anything here; `Moira.h:602-604` (`pomJitSimpleIpl`) depends
 >   on the feature staying off, since generated code models `POLL_IPL` as the
 >   assignment.
-> - **`NEOST_EXC_DIAG`** (presence-only, stderr) survives and is the only
->   environment variable the vendored core reads besides the `POM68K_040_*`
->   pair — `Moira.cpp:1257`, `MoiraExceptions_cpp.h:830`,
->   `MoiraDataflow_cpp.h:1040`.
+> - **`NEOST_EXC_DIAG`** (presence-only, stderr) survives as a NAME only:
+>   since 2026-11-07 the core no longer reads it. Its three sites test
+>   `Moira::setPomExceptionDiag(bool)`, and the host reads the variable
+>   (`POM68K_VENDOR.md` row 49).
 > - Everything else it names — `docs/MOIRA_WINUAE_CONVERGENCE.md`,
 >   `tools/make_trace_odd_test.py`, `roms/tos106us.img`, the `Cpu68k::run` STOP
 >   guard, the 19/19 Atari etalons, the `trace_odd` gate — is **NeoST-side and
@@ -125,6 +125,47 @@ différentes pour `0x80000000 / 0x8000` (banc `cpu_div_ram` de NeoST : vert sous
 *(Texte de NeoST, commit `74b2f2d`. C'est le premier correctif NeoST postérieur à la copie
 du 2026-07-11 à être rétro-porté ; il est marqué `POM68K` dans le source et porte le rang 38
 de `POM68K_VENDOR.md`. Les autres sont listés dans `TODO.md § Moteur › Convergence`.)*
+
+## Préfetch après écriture de SR/CCR, et cycles internes de DIV (NeoST 2026-10-19/20, portés ici le 2026-11-06)
+
+Trois groupes de NeoST, rang 40 de `POM68K_VENDOR.md`, marqués `POM68K` dans le source :
+
+- **MOVE to SR** (`execMoveToSr`, NeoST `ce1cc52`) : `fullPrefetch<POLL>` remplace la
+  lecture fictive de `pc+2` suivie de `prefetch`.
+- **ANDI/ORI/EORI #,SR et #,CCR, MOVE to CCR** (`execAndisr`, `execAndiccr`,
+  `execMoveToCcr`, NeoST `d8d33bb`) : même correctif. La [transcription du
+  microcode](https://og.kervella.org/m68k/all.txt) donne la queue `1cc stiw1` →
+  `321 stiw4` → `1e1 malw3` → `363 b` → `34c mmrw3` : accès pc0+4, **pc0+4**, pc0+6 au
+  lieu de pc0+4, pc0+6, pc0+6 ; IRD reçoit le mot relu APRÈS l'écriture de SR/CCR, en
+  espace PROGRAMME. Hatari CE fait de même. Nombre de cycles inchangé.
+- **DIVU/DIVS** (`execDivuMoira`, `execDivsMoira`, NeoST `262f63a`, amont `f90fc50`) :
+  sur 68000 les cycles internes précèdent `writeD` et le préfetch. Chez POM68K la
+  sortie anticipée du débordement de DIVS (16/18 cycles, SingleStepTests) est gardée :
+  le quotient est calculé d'abord.
+
+*(Ce que POM68K ajoute à la preuve de NeoST : les listes de transactions du corpus
+SingleStepTests/680x0 montrent exactement ces séquences sur tous les vecteurs sans
+exception, et `sst68000` compare désormais les cycles bus. Restent à porter : les
+quatre hooks — `illegalOpcodeHook`, `willProcessFault`, bornes de cycle bus,
+`setBusLock` — et STOP+8 ; voir `TODO.md § Moteur › Convergence`.)*
+
+## Hooks d'hôte : opcode illégal, faute, verrou de bus (NeoST 2026-10-01 et 2026-10-19, portés ici le 2026-11-06)
+
+Rang 42 de `POM68K_VENDOR.md`, marqués `POM68K` dans le source, inertes par défaut :
+
+- `illegalOpcodeHook(u16)` (NeoST `fdbce2e`) : appelé par `execIllegal` avant
+  l'exception ; `true` = opcode consommé comme un NOP. NeoST y sert ses appels hôte
+  GEMDOS (`$0008`-`$000A`).
+- `willProcessFault(const StackFrame&)` (NeoST `ce1cc52`) : la faute en cours de
+  traitement, y compris celle qui interrompt une exception (double faute → HALT).
+- `setBusLock(bool)` (NeoST `ce1cc52`) : /RMC du TAS — `true` avant la lecture,
+  `false` après l'écriture, et aussi si l'une des deux lève une exception.
+
+*(Non portées : les bornes de cycle bus `willAccessBus`/`didAccessBus`, deux appels
+virtuels par accès — `TODO.md § Moteur › Convergence`. POM68K ajoute
+`extBusError000(addr, write)`, qui lève la `moira::BusError` de groupe 0 avec la
+recette de `Cpu68k::raiseBusError` de NeoST : un hôte 68000 n'a plus à construire
+la trame lui-même.)*
 
 *(NeoST's original closing line — "toute modif future d'un fichier `Moira/` se
 commit normalement dans NeoST" — is superseded in this repo: see the POM68K

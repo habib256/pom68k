@@ -1,0 +1,226 @@
+# Vectors of tests/data/sst68030_fpuraw on which the fork deliberately does not
+# follow the oracle: one name per line, grouped by ruling
+# (oracle/fuzz/disputes/NOTES.md). See tests/SstKnown.h for the rules: a
+# listed vector that passes, or is missing, fails the gate.
+
+# D23b - FRESTORE of a 68040 frame on a 68882. The fork accepts it, as the
+# permissive oracle of the pinned sst68030 does (WinUAE's "horrible hack"); the
+# STRICT oracle this corpus was generated with takes the format error the
+# manual asks for.
+fpuraw/identity seed=722 #46
+fpuraw/identity seed=722 #311
+fpuraw/off seed=721 #1717
+
+# D26 - FMOVE.P FPn,(An)+{Dn} and -(An){Dn}. The fork steps An by the twelve
+# bytes of a packed operand; the oracle's size table holds 0 for the dynamic
+# k-factor format.
+fpuraw/identity seed=722 #237
+fpuraw/identity seed=722 #646
+fpuraw/identity seed=722 #797
+fpuraw/identity seed=722 #1742
+fpuraw/identity seed=722 #1980
+fpuraw/off seed=721 #41
+fpuraw/off seed=721 #1634
+fpuraw/off seed=721 #1649
+fpuraw/off seed=721 #1901
+fpuraw/off seed=721 #1985
+fpuraw/tt seed=723 #18
+fpuraw/tt seed=723 #222
+fpuraw/tt seed=723 #365
+fpuraw/tt seed=723 #474
+fpuraw/tt seed=723 #1641
+
+# D27 - FMOVE(M) control registers to a PC-relative destination. Both refuse
+# the instruction; the oracle evaluates the EA first (a page marked Used, or a
+# bus fault from the walk).
+fpuraw/identity seed=722 #837
+fpuraw/tt seed=723 #1982
+
+# D28 - FBcc / FDBcc taken to an odd address. The fork takes the address error
+# inside the branch, as it does for Bcc; the oracle only sets the PC and never
+# raises one.
+fpuraw/identity seed=722 #92
+fpuraw/identity seed=722 #109
+fpuraw/identity seed=722 #200
+fpuraw/identity seed=722 #304
+fpuraw/identity seed=722 #324
+fpuraw/identity seed=722 #369
+fpuraw/identity seed=722 #405
+fpuraw/identity seed=722 #589
+fpuraw/identity seed=722 #656
+fpuraw/identity seed=722 #737
+fpuraw/identity seed=722 #746
+fpuraw/identity seed=722 #768
+fpuraw/identity seed=722 #790
+fpuraw/identity seed=722 #922
+fpuraw/identity seed=722 #977
+fpuraw/identity seed=722 #1039
+fpuraw/identity seed=722 #1129
+fpuraw/identity seed=722 #1166
+fpuraw/identity seed=722 #1178
+fpuraw/identity seed=722 #1216
+fpuraw/identity seed=722 #1226
+fpuraw/identity seed=722 #1305
+fpuraw/identity seed=722 #1349
+fpuraw/identity seed=722 #1389
+fpuraw/identity seed=722 #1464
+fpuraw/identity seed=722 #1479
+fpuraw/identity seed=722 #1491
+fpuraw/identity seed=722 #1505
+fpuraw/identity seed=722 #1541
+fpuraw/identity seed=722 #1566
+fpuraw/identity seed=722 #1598
+fpuraw/identity seed=722 #1620
+fpuraw/identity seed=722 #1625
+fpuraw/identity seed=722 #1641
+fpuraw/identity seed=722 #1649
+fpuraw/identity seed=722 #1772
+fpuraw/identity seed=722 #1940
+fpuraw/identity seed=722 #1972
+fpuraw/identity seed=722 #1992
+fpuraw/off seed=721 #29
+fpuraw/off seed=721 #91
+fpuraw/off seed=721 #129
+fpuraw/off seed=721 #168
+fpuraw/off seed=721 #320
+fpuraw/off seed=721 #382
+fpuraw/off seed=721 #421
+fpuraw/off seed=721 #437
+fpuraw/off seed=721 #560
+fpuraw/off seed=721 #565
+fpuraw/off seed=721 #590
+fpuraw/off seed=721 #625
+fpuraw/off seed=721 #680
+fpuraw/off seed=721 #775
+fpuraw/off seed=721 #804
+fpuraw/off seed=721 #808
+fpuraw/off seed=721 #811
+fpuraw/off seed=721 #929
+fpuraw/off seed=721 #1024
+fpuraw/off seed=721 #1136
+fpuraw/off seed=721 #1147
+fpuraw/off seed=721 #1148
+fpuraw/off seed=721 #1208
+fpuraw/off seed=721 #1221
+fpuraw/off seed=721 #1225
+fpuraw/off seed=721 #1241
+fpuraw/off seed=721 #1261
+fpuraw/off seed=721 #1287
+fpuraw/off seed=721 #1347
+fpuraw/off seed=721 #1374
+fpuraw/off seed=721 #1380
+fpuraw/off seed=721 #1493
+fpuraw/off seed=721 #1521
+fpuraw/off seed=721 #1537
+fpuraw/off seed=721 #1679
+fpuraw/off seed=721 #1706
+fpuraw/off seed=721 #1725
+fpuraw/off seed=721 #1759
+fpuraw/off seed=721 #1773
+fpuraw/off seed=721 #1827
+fpuraw/tt seed=723 #125
+fpuraw/tt seed=723 #143
+fpuraw/tt seed=723 #186
+fpuraw/tt seed=723 #239
+fpuraw/tt seed=723 #255
+fpuraw/tt seed=723 #413
+fpuraw/tt seed=723 #477
+fpuraw/tt seed=723 #511
+fpuraw/tt seed=723 #561
+fpuraw/tt seed=723 #600
+fpuraw/tt seed=723 #762
+fpuraw/tt seed=723 #780
+fpuraw/tt seed=723 #782
+fpuraw/tt seed=723 #787
+fpuraw/tt seed=723 #798
+fpuraw/tt seed=723 #807
+fpuraw/tt seed=723 #901
+fpuraw/tt seed=723 #1028
+fpuraw/tt seed=723 #1047
+fpuraw/tt seed=723 #1062
+fpuraw/tt seed=723 #1087
+fpuraw/tt seed=723 #1145
+fpuraw/tt seed=723 #1198
+fpuraw/tt seed=723 #1201
+fpuraw/tt seed=723 #1242
+fpuraw/tt seed=723 #1339
+fpuraw/tt seed=723 #1348
+fpuraw/tt seed=723 #1361
+fpuraw/tt seed=723 #1712
+fpuraw/tt seed=723 #1785
+fpuraw/tt seed=723 #1786
+fpuraw/tt seed=723 #1905
+fpuraw/tt seed=723 #1943
+fpuraw/tt seed=723 #1952
+fpuraw/tt seed=723 #1995
+
+# D29 - EA fields $3D-$3F on the 68030. The fork lets the coprocessor decide
+# (a register-to-register operation runs, a memory one clears the status byte
+# and takes a Line-F); the oracle's opcode table refuses them outright.
+fpuraw/identity seed=722 #9
+fpuraw/identity seed=722 #27
+fpuraw/identity seed=722 #313
+fpuraw/identity seed=722 #515
+fpuraw/identity seed=722 #517
+fpuraw/identity seed=722 #590
+fpuraw/identity seed=722 #623
+fpuraw/identity seed=722 #634
+fpuraw/identity seed=722 #644
+fpuraw/identity seed=722 #674
+fpuraw/identity seed=722 #703
+fpuraw/identity seed=722 #928
+fpuraw/identity seed=722 #952
+fpuraw/identity seed=722 #981
+fpuraw/identity seed=722 #1138
+fpuraw/identity seed=722 #1215
+fpuraw/identity seed=722 #1272
+fpuraw/identity seed=722 #1296
+fpuraw/identity seed=722 #1300
+fpuraw/identity seed=722 #1390
+fpuraw/identity seed=722 #1825
+fpuraw/identity seed=722 #1969
+fpuraw/off seed=721 #117
+fpuraw/off seed=721 #271
+fpuraw/off seed=721 #376
+fpuraw/off seed=721 #408
+fpuraw/off seed=721 #486
+fpuraw/off seed=721 #620
+fpuraw/off seed=721 #638
+fpuraw/off seed=721 #863
+fpuraw/off seed=721 #888
+fpuraw/off seed=721 #956
+fpuraw/off seed=721 #993
+fpuraw/off seed=721 #1107
+fpuraw/off seed=721 #1143
+fpuraw/off seed=721 #1216
+fpuraw/off seed=721 #1226
+fpuraw/off seed=721 #1233
+fpuraw/off seed=721 #1372
+fpuraw/off seed=721 #1438
+fpuraw/off seed=721 #1479
+fpuraw/off seed=721 #1515
+fpuraw/off seed=721 #1548
+fpuraw/off seed=721 #1579
+fpuraw/off seed=721 #1639
+fpuraw/off seed=721 #1779
+fpuraw/off seed=721 #1957
+fpuraw/off seed=721 #1996
+fpuraw/tt seed=723 #250
+fpuraw/tt seed=723 #309
+fpuraw/tt seed=723 #331
+fpuraw/tt seed=723 #341
+fpuraw/tt seed=723 #598
+fpuraw/tt seed=723 #661
+fpuraw/tt seed=723 #676
+fpuraw/tt seed=723 #680
+fpuraw/tt seed=723 #759
+fpuraw/tt seed=723 #1035
+fpuraw/tt seed=723 #1299
+fpuraw/tt seed=723 #1456
+fpuraw/tt seed=723 #1614
+fpuraw/tt seed=723 #1921
+fpuraw/tt seed=723 #1922
+
+# Open defect, not a ruling (TODO.md § Moteur › Justesse 68030): two bytes of
+# the $B frame's tail for an FPU instruction whose EA faults.
+fpuraw/identity seed=722 #1890

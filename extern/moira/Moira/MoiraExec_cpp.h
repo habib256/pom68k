@@ -111,6 +111,15 @@ Moira::execIllegal(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
+    // POM68K (ported from NeoST fdbce2e): opcode handled by the subclass ->
+    // consumed like a NOP (see Moira.h illegalOpcodeHook).
+    if (illegalOpcodeHook(opcode)) {
+
+        prefetch<C, POLL>();
+        FINALIZE
+        return;
+    }
+
     execException<C>(M68kException::ILLEGAL);
 
     CYCLES_68000(34)
@@ -379,7 +388,10 @@ Moira::execAddRgEa(u16 opcode)
 
     looping<I>() ? noPrefetch<C>(2) : prefetch<C, POLL>();
 
-    writeM<C, M, S>(ea, result);
+    // POM68K: a long result goes back LOW word first on the 68000 — the
+    // carry chain ran that way. [D] SingleStepTests/680x0 v1 transactions
+    // (ADD.l, SUB.l to memory); `sst68000 --transactions`.
+    writeM<C, M, S, C == Core::C68000 ? REVERSE : 0>(ea, result);
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -500,7 +512,8 @@ Moira::execAddiEa(u16 opcode)
     result = addsub<C, I, S>(src, data);
     prefetch<C>();
 
-    writeOp<C, M, S, POLL>(dst, ea, result);
+    // POM68K: low word first on the 68000 (see execAddRgEa).
+    writeOp<C, M, S, POLL | (C == Core::C68000 ? REVERSE : 0)>(dst, ea, result);
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -576,7 +589,8 @@ Moira::execAddqEa(u16 opcode)
     result = addsub<C, I, S>(src, data);
     prefetch<C, POLL>();
 
-    writeOp<C, M, S>(dst, ea, result);
+    // POM68K: low word first on the 68000 (see execAddRgEa).
+    writeOp<C, M, S, C == Core::C68000 ? REVERSE : 0>(dst, ea, result);
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -630,7 +644,9 @@ Moira::execAddxEa(u16 opcode)
     // POM68K: no AE_INC_PC (data faults stack getPC()-2 uniformly) and no
     // predecrement undo — the real 68000 keeps An fully decremented when
     // the access faults (SingleStepTests/680x0)
-    const u64 flags = (S == Long) ? AE_INC_A : 0;
+    // POM68K: on the 68000 both long operands are READ low word first
+    // ([D] SingleStepTests/680x0 transactions, ADDX.l / SUBX.l).
+    const u64 flags = (S == Long) ? (AE_INC_A | (C == Core::C68000 ? REVERSE : 0)) : 0;
 
     int src = _____________xxx(opcode);
     int dst = ____xxx_________(opcode);
@@ -829,7 +845,12 @@ Moira::execAndiccr(u16 opcode)
         u8  dst = getCCR();
         setCCR(u8(logic<C, I, S>(src, dst)));
         SYNC(8);
-        (void)read<C, AddrSpace::DATA, Word>(reg.pc + 2);
+        // POM68K (ported from NeoST d8d33bb): microcode 003c/023c/0a3c —
+        // 1cc stiw1 (back two bytes) -> 321 stiw4 -> 1e1 malw3 -> 363 b:
+        // re-read pc0+4 THEN pc0+6, in PROGRAM space; IRD receives the word
+        // re-read after the CCR change (see execMoveToSr). Hatari CE does
+        // the same; so do the SingleStepTests transaction lists.
+        fullPrefetch<C, POLL>();
 
     } else {
 
@@ -837,9 +858,8 @@ Moira::execAndiccr(u16 opcode)
         u32 src = readI<C, S>();
         u8  dst = getCCR();
         setCCR(u8(logic<C, I, S>(src, dst)));
+        prefetch<C, POLL>();
     }
-
-    prefetch<C, POLL>();
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -864,8 +884,17 @@ Moira::execAndisr(u16 opcode)
     u32 result = logic<C, I, S>(src, dst);
     setSR((u16)result);
 
-    (void)read<C, AddrSpace::DATA, Word>(reg.pc + 2);
-    prefetch<C, POLL>();
+    if constexpr (C == Core::C68000) {
+        // POM68K (ported from NeoST d8d33bb): microcode 007c/027c/0a7c, same
+        // tail as MOVE to SR (1cc stiw1 -> 321 stiw4 -> 1e1 malw3 -> 363 b).
+        // Both words are re-read AFTER the SR write, hence with the new FC:
+        // ANDI #$DFFF,SR returns to user mode and re-reads pc0+4 as user
+        // program (the old dummy read was pc0+6 in DATA space).
+        fullPrefetch<C, POLL>();
+    } else {
+        (void)read<C, AddrSpace::DATA, Word>(reg.pc + 2);
+        prefetch<C, POLL>();
+    }
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -1058,10 +1087,12 @@ Moira::execBitDxEa(u16 opcode)
     data = bit<C, I>(data, b);
 
     if constexpr (I == Instr::BCLR && C == Core::C68010) { SYNC(2); }
-    // POM68K: BTST Dn,#imm takes 10 cycles, not 8 (SingleStepTests/680x0)
-    if constexpr (I == Instr::BTST && M == Mode::IM) { SYNC(2); }
+    // POM68K: BTST Dn,#imm takes 10 cycles, not 8 (SingleStepTests/680x0);
+    // on the 68000 the two extra cycles FOLLOW the prefetch (transactions).
+    if constexpr (I == Instr::BTST && M == Mode::IM && C != Core::C68000) { SYNC(2); }
 
     prefetch<C, POLL>();
+    if constexpr (I == Instr::BTST && M == Mode::IM && C == Core::C68000) { SYNC(2); }
     if constexpr (I != Instr::BTST) writeM<C, M, Byte>(ea, data);
 
     [[maybe_unused]] auto c = I == Instr::BTST ? 0 : I == Instr::BCLR && C == Core::C68010 ? 6 : 4;
@@ -1797,7 +1828,22 @@ Moira::execChk(u16 opcode)
     }
     dy = readD<S>(dst);
 
-    SYNC_68000(6);
+    // POM68K: when CHK traps, the 68000 spends the first four of these idle
+    // cycles on a bus cycle — it fetches the next word, and discards it.
+    // Same total. [D] SingleStepTests/680x0 v1 transactions (CHK.json).
+    // Without a trap the same bus cycle is the instruction's own prefetch,
+    // and the six idle cycles follow it.
+    if constexpr (C == Core::C68000 && !MOIRA_MIMIC_MUSASHI) {
+        if (SEXT<S>(dy) > SEXT<S>(data) || SEXT<S>(dy) < 0) {
+            (void)read<C, AddrSpace::PROG, Word>(reg.pc + 2);
+            SYNC(2);
+        } else {
+            prefetch<C, POLL>();
+            SYNC(6);
+        }
+    } else {
+        SYNC_68000(6);
+    }
 
     if (MOIRA_MIMIC_MUSASHI) {
 
@@ -1891,7 +1937,7 @@ Moira::execChk(u16 opcode)
         return;
     }
 
-    prefetch<C, POLL>();
+    if constexpr (!(C == Core::C68000 && !MOIRA_MIMIC_MUSASHI)) prefetch<C, POLL>();
     SYNC_68010(4);
 
     //           00  10  20        00  10  20        00  10  20
@@ -1952,7 +1998,13 @@ Moira::execChkCmp2(u16 opcode)
             reg.sr.c = compare < bound1 && compare > bound2;
         }
         reg.sr.z = compare == bound1 || compare == bound2;
-        setUndefinedCHK2<C, S>(bound1, bound2, compare);
+        // POM68K: N and V are undefined for CHK2/CMP2. The 68020/68030
+        // table below is WinUAE's; on the 68040 the same oracle leaves both
+        // flags untouched (setchk2undefinedflags returns early for
+        // cpu_model 68040). [D] WinUAE @ Hatari e77819f7; the manual is
+        // silent. Fresh fuzz seeds 405/507/509/605 hit it, the pinned
+        // corpus did not.
+        if (cpuModel < Model::M68EC040) setUndefinedCHK2<C, S>(bound1, bound2, compare);
     }
 
     if ((ext & 0x800) && reg.sr.c) {
@@ -2797,13 +2849,17 @@ Moira::execJsr(u16 opcode)
                 throw AddressError(makeFrame<AE_PROG|AE_SET_CB3>(ea, U32_SUB(ea, 4)));
             }
 
+            // POM68K: the first word of the target is fetched BEFORE the
+            // return address is pushed; the second follows the push.
+            // [D] SingleStepTests/680x0 v1 transactions (JSR.json).
+            queue.irc = (u16)read<C, AddrSpace::PROG, Word>(ea);
+
             // Save return address on stack
             push<C, Long>(reg.pc);
 
             // Jump to new address
             reg.pc = ea;
 
-            queue.irc = (u16)read<C, AddrSpace::PROG, Word>(ea);
             prefetch<C, POLL>();
             break;
 
@@ -3902,7 +3958,11 @@ Moira::execMovemEaRg(u16 opcode)
     }
 
     // POM68K Q3: the 68040 has no 68000-style guard reads either
-    if constexpr (S == Long) { if (!mmu030 && cpuModel < Model::M68EC040) (void)read<C, AddrSpace::DATA, Word>(ea); }
+    // POM68K: on the 68000 the extra bus cycle of a long MOVEM load is not a
+    // guard read BEFORE the transfers but one word read AFTER the last, as
+    // for the word form. [D] SingleStepTests/680x0 v1 transactions
+    // (MOVEM.l.json). Other cores keep upstream's position.
+    if constexpr (S == Long && C != Core::C68000) { if (!mmu030 && cpuModel < Model::M68EC040) (void)read<C, AddrSpace::DATA, Word>(ea); }
 
     if constexpr (M == Mode(3)) {     // (An)+
 
@@ -3932,7 +3992,7 @@ Moira::execMovemEaRg(u16 opcode)
             if (mmu030) mmuState[0]++;
         }
     }
-    if constexpr (S == Word) { if (!mmu030 && cpuModel < Model::M68EC040) (void)read<C, AddrSpace::DATA, Word>(ea); }
+    if constexpr (S == Word || C == Core::C68000) { if (!mmu030 && cpuModel < Model::M68EC040) (void)read<C, AddrSpace::DATA, Word>(ea); }
 
     if (mmu030) mmuLogging = logSave;
     if (cpuModel >= Model::M68EC040) mmu040MovemArmed = false;  // POM68K Q3
@@ -4045,7 +4105,10 @@ Moira::execMovemRgEa(u16 opcode)
                 if constexpr (C == Core::C68020 && !MOIRA_MIMIC_MUSASHI) {
                     if (cnt == 0) writeA(dst, U32_SUB(readA(dst), S));
                 }
-                writeM<C, M, S, MOIRA_MIMIC_MUSASHI ? REVERSE : 0>(ea, reg.r[i]);
+                // POM68K: a predecremented long goes out LOW word first on
+                // the 68000 ([D] SingleStepTests/680x0 transactions) — what
+                // upstream reserved for its Musashi mode.
+                writeM<C, M, S, (MOIRA_MIMIC_MUSASHI || C == Core::C68000) ? REVERSE : 0>(ea, reg.r[i]);
             }
             cnt++;
             if (mmu030) mmuState[0]++;
@@ -4466,8 +4529,15 @@ Moira::execMoveToCcr(u16 opcode)
     SYNC(4);
     setCCR((u8)data);
 
-    (void)read<C, AddrSpace::PROG, Word>(reg.pc + 2);
-    prefetch<C, POLL>();
+    if constexpr (C == Core::C68000) {
+        // POM68K (ported from NeoST d8d33bb): microcode 44c0..44fc —
+        // 301 rstw1 / 159 mstw1 (back two bytes) -> 321 stiw4 -> 1e1 malw3
+        // -> 363 b, like MOVE to SR.
+        fullPrefetch<C, POLL>();
+    } else {
+        (void)read<C, AddrSpace::PROG, Word>(reg.pc + 2);
+        prefetch<C, POLL>();
+    }
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -4587,8 +4657,18 @@ Moira::execMoveToSr(u16 opcode)
     SYNC(4);
     setSR((u16)data);
 
-    (void)read<C, AddrSpace::PROG, Word>(reg.pc + 2);
-    prefetch<C, POLL>();
+    if constexpr (C == Core::C68000) {
+        // POM68K (ported from NeoST ce1cc52): microcode 301 rstw1 -> 321 stiw4
+        // -> 1e1 malw3 -> 363 b reloads BOTH prefetch words after the SR (so
+        // FC) change: the word at reg.pc is re-read, then reg.pc + 2. The old
+        // dummy read of reg.pc + 2 kept the stale opcode in IRD. The
+        // SingleStepTests transaction lists show exactly this pair, in the new
+        // FC (tests/data/sst68000/MOVEtoSR.json, every non-exception vector).
+        fullPrefetch<C, POLL>();
+    } else {
+        (void)read<C, AddrSpace::PROG, Word>(reg.pc + 2);
+        prefetch<C, POLL>();
+    }
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -5025,18 +5105,40 @@ Moira::execDivsMoira(u16 opcode, bool *divByZero)
     }
 
     result = divsMoira<C>(dividend, divisor);
-    writeD(dst, result);
-    prefetch<C, POLL>();
 
-    // POM68K: every overflow exits early at 16/18 cycles total
-    // (SingleStepTests/680x0, CLK rule)
-    if (reg.sr.v) {
-        SYNC((i32(dividend) < 0) ? 14 : 12);
-        return;
+    // POM68K (ported from NeoST 262f63a = upstream Moira f90fc50, "Fixed
+    // DIVU/DIVS prefetch timing"): on the 68000 the internal cycles precede
+    // the prefetch (Hatari CE op_80c0_13: do_cycles_ce000_internal, then
+    // get_word_ce000_prefetch). Every non-exception DIVS vector of
+    // tests/data/sst68000 shows the idle cycles before the final read,
+    // overflow exits included. divsMoira() touches no bus, so it runs first:
+    // V decides the early overflow exit below, and cyclesDiv() stays
+    // unreached on overflow (row 38's argument holds).
+    if constexpr (C == Core::C68000) {
+
+        // POM68K: every overflow exits early at 16/18 cycles total
+        // (SingleStepTests/680x0, CLK rule)
+        const int cycles = reg.sr.v ? ((i32(dividend) < 0) ? 14 : 12)
+                                    : cyclesDiv<C, I>(dividend, (u16)divisor) - 4;
+        SYNC(cycles);
+        writeD(dst, result);
+        prefetch<C, POLL>();
+
+    } else {
+
+        writeD(dst, result);
+        prefetch<C, POLL>();
+
+        // POM68K: every overflow exits early at 16/18 cycles total
+        // (SingleStepTests/680x0, CLK rule)
+        if (reg.sr.v) {
+            SYNC((i32(dividend) < 0) ? 14 : 12);
+            return;
+        }
+
+        [[maybe_unused]] auto cycles = cyclesDiv<C, I>(dividend, (u16)divisor) - 4;
+        SYNC(cycles);
     }
-
-    [[maybe_unused]] auto cycles = cyclesDiv<C, I>(dividend, (u16)divisor) - 4;
-    SYNC(cycles);
 }
 
 template <Core C, Instr I, Mode M, Size S> void
@@ -5177,12 +5279,25 @@ Moira::execDivuMoira(u16 opcode, bool *divByZero)
         return;
     }
 
-    result = divuMoira<C>(dividend, divisor);
-    writeD(dst, result);
-    prefetch<C, POLL>();
-
     [[maybe_unused]] auto cycles = cyclesDiv<C, I>(dividend, (u16)divisor) - 4;
-    SYNC(cycles);
+
+    // POM68K (ported from NeoST 262f63a = upstream Moira f90fc50): on the
+    // 68000 the internal cycles precede the prefetch (Hatari CE op_80c0_13;
+    // every non-exception DIVU vector of tests/data/sst68000 agrees).
+    if constexpr (C == Core::C68000) {
+
+        SYNC(cycles);
+        result = divuMoira<C>(dividend, divisor);
+        writeD(dst, result);
+        prefetch<C, POLL>();
+
+    } else {
+
+        result = divuMoira<C>(dividend, divisor);
+        writeD(dst, result);
+        prefetch<C, POLL>();
+        SYNC(cycles);
+    }
 }
 
 template <Core C, Instr I, Mode M, Size S> void
@@ -5268,7 +5383,14 @@ Moira::execDivlMoira(u16 opcode, bool *divByZero)
     int dh  = _____________xxx(ext);
     int dl  = _xxx____________(ext);
 
-    try { readOp<C, M, S>(src, &ea, &divisor); } catch(...) { return false; }
+    // POM68K: upstream wrapped this read in `catch(...) { return false; }`.
+    // Dead code there (a 68020+ data read never throws in stock Moira), it
+    // swallowed every 68030/68040 access fault here — a page fault or an
+    // external /BERR on the operand of DIVU.L/DIVS.L took NO exception and
+    // abandoned the instruction half-way. [B] a faulting operand read takes
+    // the bus error; [D] WinUAE @ Hatari e77819f7, fuzz vector
+    // "040 random/identity/8k seed=405 #120". Gate: moira_rules_test.
+    readOp<C, M, S>(src, &ea, &divisor);
 
     if (ext & 0x400) {
         dividend = (u64)readD(dh) << 32 | readD(dl);
@@ -5826,11 +5948,14 @@ Moira::execRte(u16 opcode)
 
         case Core::C68000:
         {
-            // Status register
-            newsr = (u16)pop<C, Word>();
-
-            // Program counter
-            newpc = pop<C, Long>();
+            // POM68K: the 68000 unstacks PC high, then SR, then PC low —
+            // not bottom-up. [D] SingleStepTests/680x0 v1 transactions
+            // (RTE.json); `sst68000 --transactions`.
+            const u32 hi = read<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 2));
+            newsr = (u16)read<C, AddrSpace::DATA, Word>(reg.sp);
+            const u32 lo = read<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 4));
+            newpc = hi << 16 | lo;
+            reg.sp += 6;
             break;
         }
         case Core::C68010:
@@ -6315,12 +6440,27 @@ Moira::execRtr(u16 opcode)
         throw AddressError(makeFrame<AE_SET_RW|AE_SET_DF>(reg.sp));
     }
 
-    u16 newccr = (u16)readM<C, M, Word>(reg.sp);
+    u16 newccr;
+    u32 newpc;
 
-    reg.sp += 2;
+    if constexpr (C == Core::C68000) {
 
-    u32 newpc = read<C, AddrSpace::DATA, Long>(reg.sp);
-    reg.sp += 4;
+        // POM68K: PC high, CCR, PC low — the RTE order (see execRte).
+        const u32 hi = read<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 2));
+        newccr = (u16)readM<C, M, Word>(reg.sp);
+        const u32 lo = read<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 4));
+        newpc = hi << 16 | lo;
+        reg.sp += 6;
+
+    } else {
+
+        newccr = (u16)readM<C, M, Word>(reg.sp);
+
+        reg.sp += 2;
+
+        newpc = read<C, AddrSpace::DATA, Long>(reg.sp);
+        reg.sp += 4;
+    }
 
     setCCR((u8)newccr);
 
@@ -6562,16 +6702,25 @@ Moira::execTasEa(u16 opcode)
 
     if (C == Core::C68000) {
 
-        readOp<C, M, Byte>(dst, &ea, &data);
+        // POM68K (ported from NeoST ce1cc52): /RMC forbids a bus grant
+        // between the read and the write. Release the lock as well if
+        // readOp/writeOp throws (address or bus error).
+        setBusLock(true);
+        try {
 
-        reg.sr.n = NBIT<Byte>(data);
-        reg.sr.z = ZERO<Byte>(data);
-        reg.sr.v = 0;
-        reg.sr.c = 0;
-        data |= 0x80;
+            readOp<C, M, Byte>(dst, &ea, &data);
 
-        if (!isRegMode(M)) SYNC(2);
-        writeOp<C, M, S>(dst, ea, data);
+            reg.sr.n = NBIT<Byte>(data);
+            reg.sr.z = ZERO<Byte>(data);
+            reg.sr.v = 0;
+            reg.sr.c = 0;
+            data |= 0x80;
+
+            if (!isRegMode(M)) SYNC(2);
+            writeOp<C, M, S>(dst, ea, data);
+
+        } catch (...) { setBusLock(false); throw; }
+        setBusLock(false);
 
         prefetch<C, POLL>();
 

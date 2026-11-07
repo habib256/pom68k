@@ -1100,12 +1100,25 @@ protected:
     virtual bool writeModuleCpuSpace32(u32 addr, u32 val) const {
         (void)addr; (void)val; return false;
     }
+
+    // POM68K (ported from NeoST ce1cc52): the fault being processed,
+    // including one that interrupts an exception (double fault -> HALT).
+    // Called for AddressError/BusError, whose StackFrame it receives; the
+    // 68030/68040 MMU faults (MmuBusError, format $A/$B/$7) are NOT reported.
+    // Fault path only, so virtual regardless of MOIRA_VIRTUAL_API, as in NeoST.
+    virtual void willProcessFault(const StackFrame & /*frame*/) { }
     
 #if MOIRA_VIRTUAL_API == true
     
     // Advances the internal clock by the specified number of cycles
     virtual void sync(int cycles) { clock += cycles; }
     
+    // POM68K (ported from NeoST ce1cc52): /RMC of the 68000 TAS read-modify-
+    // write — a bus master must not be granted the bus between the read and
+    // the write. Called with true before the read and false after the write
+    // (also on an exception out of either). TAS only: not a hot path.
+    virtual void setBusLock(bool /*locked*/) { }
+
     // Reads a value from memory
     virtual u8 read8(u32 addr) const = 0;
     virtual u16 read16(u32 addr) const = 0;
@@ -1167,6 +1180,16 @@ protected:
     // d'horloge y est déjà quantifiée par l'alignement bus du push PClo.
     virtual int iackSyncBefore(u8 level) { return 4; }
     virtual int iackSyncAfter(u8 level) { return 4; }
+
+    // POM68K (ported from NeoST fdbce2e): delegable illegal instruction.
+    // Called by execIllegal<C>() BEFORE the ILLEGAL exception is taken, so
+    // only when the instruction really executes (interrupts and trace have
+    // already been arbitrated by execute()). Returning true means the
+    // subclass handled the opcode: it is then consumed like a NOP
+    // (prefetch<C, POLL>: 4 cycles on the 68000/68010; nothing is charged on
+    // Core::C68020, where SYNC is empty). Default false = upstream behaviour.
+    // NeoST serves its GEMDOS host-call opcodes ($0008-$000A) through it.
+    virtual bool illegalOpcodeHook(u16 /*opcode*/) { return false; }
 
     // Called when the CPU jumps to an exception vector
     virtual void didJumpToVector(int nr, u32 addr) { }
@@ -1305,6 +1328,8 @@ protected:
     // Advances the internal clock by the specified number of cycles
     void sync(int cycles);
     
+    void setBusLock(bool) { }  // POM68K (ported from NeoST ce1cc52)
+
     // Reads a value from memory
     u8 read8(u32 addr) const;
     u16 read16(u32 addr) const;
@@ -1539,6 +1564,10 @@ public:
     // POM68K M0 probe (docs/CACHE_040.md): histogram the descriptor CM bits
     // per ATC fill, printed at process exit. Host-injected diagnostic.
     void setPomCmStats040(bool on) { pomCmStats040 = on; }
+    // POM68K: NeoST's cycle-exact exception trace ([PIN], [EXC], [JTV] on
+    // stderr). The core read NEOST_EXC_DIAG itself, at three sites; the
+    // host now decides and says so here — the core reads no environment.
+    void setPomExceptionDiag(bool on) { pomExceptionDiag = on; }
     bool pomCache040Active() const {
         return pomCache040On && cpuModel >= Model::M68EC040;
     }
@@ -1702,6 +1731,7 @@ private:
     // FRESTORE invalid-frame format error (vector 14) — stacks WinUAE's
     // PC (past all consumed words), ruling D21
     template <Core C> void execFRestoreFormatError();
+    template <Core C> void execFpuIllegalOpmode040();   // POM68K
 
     // POM68K Q4: 68LC040/68EC040 F2xx with no FPU — vector 11, format $4
     // "FP disabled" frame {SR, PC-after-consumed-words, $402C, EA,
@@ -1910,6 +1940,17 @@ public:
     // produce. Throws MmuBusError (never returns); the per-instruction
     // handler turns it into a vector-2 exception, a nested fault → HALT.
     [[noreturn]] void extBusError();
+
+    // POM68K: external /BERR on the 68000 and 68010 cores. extBusError()
+    // above stacks a 68020/68030 frame from a stamp those cores do not keep,
+    // and processException<C68000> has no branch for the MmuBusError it
+    // throws — the exception would leave execute(). A 68000 board calls this
+    // instead, from inside the faulting bus callback, with the address and
+    // direction of the access: it throws the BusError that execBusError<C>
+    // turns into a group-0 frame. The frame recipe is NeoST's
+    // (Cpu68k::raiseBusError): status word = IR bits 15-5, R/W, function
+    // code; PC and SR as they stand at the fault.
+    [[noreturn]] void extBusError000(u32 addr, bool write);
 
 protected:
 
@@ -2219,8 +2260,24 @@ private:
 
     // Transparent translation: 0 = no match, 1 = match, 2 = match + WP;
     // cm (optional out) = the matched TTR's CM field (M1 cache model)
-    int mmu040MatchTTR(u32 addr, bool super, bool data,
-                       u32 *cm = nullptr) const;
+    MOIRA_HOT_INLINE int mmu040MatchTTR(u32 addr, bool super, bool data,
+                                        u32 *cm = nullptr) const;
+
+    // POM68K: mmu040MatchTTR's answer for every (privilege, address MSB) —
+    // the only two inputs the test has besides the registers. Derived
+    // state: rebuilt by the first call that finds the register pair
+    // changed, so reset, MOVEC, the setters and a snapshot load need no
+    // hook, and it is never serialized. [0] = ITT0/ITT1, [1] = DTT0/DTT1.
+    // Entry: bits 1-0 = 0 / 1 / 2 (no match, match, match + WP),
+    // bits 3-2 = the matched register's CM field.
+    struct Mmu040TtrTable {
+        u32 ttr[2] { };
+        u8 entry[2][256] { };
+    };
+    mutable Mmu040TtrTable mmu040TtrTab[2];
+    void mmu040TtrRebuild(Mmu040TtrTable &tab, u32 ttr0, u32 ttr1) const;
+    static int mmu040MatchTTRPair(u32 ttr0, u32 ttr1, u32 addr, bool super,
+                                  u32 *cm);
 
     // POM68K M2 (docs/CACHE_040.md) — data-bearing cache plumbing.
     // pomCache040Touch records the translated access attributes; the actual
@@ -2233,6 +2290,7 @@ private:
     // cache/scope/register fields (bit 5 = push).
     bool pomCache040On {false};
     bool pomCmStats040 {false};     // POM68K: setPomCmStats040()
+    bool pomExceptionDiag {false};  // POM68K: setPomExceptionDiag()
     Cache040 pomCache040I, pomCache040D;
     PomCache040Timing pomCache040Timing {};
     int pomCache040Cm {Cache040::CM_NC};
@@ -2255,6 +2313,21 @@ private:
     // Logical -> physical for one (sub-)access; throws MmuBusError
     template <Core C> u32 mmu040Translate(u32 addr, u32 val, bool super,
                                           bool data, bool write, int szCode);
+
+    // POM68K: the common case of mmu040Translate, inlined at the bus
+    // accessors — same tests in the same order, same ATC bookkeeping; any
+    // case it does not finish itself is handed to mmu040Translate untouched
+    // (MoiraExecMMU_cpp.h). The two doors below are the cache-model-off
+    // branch of pomCache040ReadValue / pomCache040WriteValue.
+    template <Core C> MOIRA_HOT_INLINE u32 mmu040TranslateHot(
+        u32 addr, u32 val, bool super, bool data, bool write, int szCode);
+    MOIRA_HOT_INLINE u32 mmu040BusRead(u32 pa, bool data, int bytes);
+    // One instruction-stream word: mmu040Read<C, Word>(addr, false) with
+    // the data-space branches folded away. Watchpoints, the cache model, a
+    // word straddling two pages and MOVES go to mmu040Read itself.
+    template <Core C> MOIRA_HOT_INLINE u16 mmu040FetchWord(u32 addr);
+    MOIRA_HOT_INLINE void mmu040BusWrite(u32 pa, u32 val, bool data,
+                                         int bytes);
 
     // Fault capture + throw (WinUAE mmu_bus_error, 68040 branch);
     // szCode: 0 = byte, 1 = word, 2 = long, 3 = MOVE16 line;

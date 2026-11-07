@@ -213,23 +213,34 @@ int main()
     CHECK(get32(cpu, 0x5000) == 0x41000000,
           "040 IDLE FSAVE id=%08X", get32(cpu, 0x5000));
 
-    // Enabled arithmetic exceptions are immediate on the integrated 040,
-    // use a format-$3 post-instruction frame, and suppress the FP result.
+    // An exception the user enabled is POSTED: the instruction completes
+    // with its destination untouched, and the next floating-point
+    // instruction takes it as a pre-instruction exception — format $0, the
+    // stacked PC being that next instruction's (M68040UM § 9.7.6: "reported
+    // as a pre-instruction exception when the next floating-point
+    // instruction is attempted"; ruling D24). Until 2026-11-07 this cell
+    // asserted an immediate format-$3 frame, with no source.
     prepare(cpu, moira::Model::M68040, 0x0420);          // fdiv.x fp1,fp0
     setFp(cpu, 0, 0x3fff0000, 0x8000000000000000ULL);  // 1
     setFp(cpu, 1, 0x00000000, 0x0000000000000000ULL);  // 0
     cpu.setFPCR(0x0400);                                // enable DZ
     cpu.mem[0x00c8] = 0x00; cpu.mem[0x00c9] = 0x00;    // vector 50 -> $3400
     cpu.mem[0x00ca] = 0x34; cpu.mem[0x00cb] = 0x00;
+    put16(cpu, 0x1004, 0xf280); put16(cpu, 0x1006, 0x0000);   // fnop
     put16(cpu, 0x3400, 0xf310);                         // fsave (a0)
     cpu.setA(0, 0x6000);
     cpu.execute();
-    CHECK(cpu.getPC0() == 0x3400 && cpu.getSP() == 0x7ff4,
-          "040 DZ exception PC0/SP=%08X/%08X", cpu.getPC0(), cpu.getSP());
-    CHECK(get16(cpu, 0x7ffa) == 0x30c8 && get32(cpu, 0x7ffc) == 0,
-          "040 DZ format-$3 frame=%04X/%08X",
-          get16(cpu, 0x7ffa), get32(cpu, 0x7ffc));
+    CHECK(cpu.getPC0() == 0x1004 && cpu.getSP() == 0x8000,
+          "040 DZ is posted, not taken: PC0/SP=%08X/%08X",
+          cpu.getPC0(), cpu.getSP());
     expectOne(cpu, 0, "040 DZ suppresses destination");
+    cpu.execute();                                      // the FNOP takes it
+    CHECK(cpu.getPC0() == 0x3400 && cpu.getSP() == 0x7ff8,
+          "040 DZ pre-instruction exception PC0/SP=%08X/%08X",
+          cpu.getPC0(), cpu.getSP());
+    CHECK(get16(cpu, 0x7ffe) == 0x00c8 && get32(cpu, 0x7ffa) == 0x1004,
+          "040 DZ format-$0 frame=%04X, stacked PC=%08X",
+          get16(cpu, 0x7ffe), get32(cpu, 0x7ffa));
     cpu.execute();
     CHECK(get32(cpu, 0x6000) == 0x41300000,
           "040 DZ FSAVE id=%08X", get32(cpu, 0x6000));

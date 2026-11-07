@@ -1,0 +1,269 @@
+# Identity of the CPU vector corpora (tools/verify_sst_corpora.py).
+# The files live in git-ignored tests/data/<corpus>/; this manifest is what
+# makes two hosts' green runs the same claim.
+#
+# sst68000 — SingleStepTests/680x0, 68000/v1, upstream commit
+#   e0d5ece9670205cc84a0101081837deb446f86a3 (2024-05-14, the only commit that
+#   touches that directory). 124 files x 8 065 vectors, stored upstream as
+#   .json.gz; the hashes below are of the unpacked .json.
+#   Fetch: tests/fetch_sst_68000.sh tests/data/sst68000
+# sst68030 — generated here by oracle/fuzz (gen030.py, fuzz030.py) against the
+#   WinUAE oracle of oracle/uae (Hatari e77819f7). 3 082 vectors. Several
+#   cells date from the two-oracle period and keep only vectors on which the
+#   retired Musashi oracle agreed (oracle/fuzz/disputes/NOTES.md); the fpu
+#   cells are WinUAE-solo (ruling D22). Seeds are in each vector's name
+#   ("core/identity seed=31 #1").
+# sst68030_solo — the same generator, WinUAE alone, all fourteen cells
+#   (mmu_tt and random_tt included), generated 2026-11-06. 5 592 vectors,
+#   reproducible from the tree: for each family in core, mmu, random, fpu
+#   and each mmu in off, identity, tt, in that order, seeds 701 to 712, then
+#   fault with identity (713) and tt (714):
+#         oracle/fuzz/fuzz030.py --a liboracle_uae.so --family F --mmu M
+#         --n 400 --seed S --out F_M.json
+#   (eight vectors on which the oracle halts are skipped by the driver).
+# sst68030_fpuraw — the raw cpID-1 window ($F200-$F37F, unconstrained
+#   extension words) on the 68030 + 68882, against the STRICT oracle
+#   (oracle_set_fpu_strict: opmodes $40-$7F take a Line-F, FRESTORE refuses
+#   a 68040 frame), generated 2026-11-07. 6 000 vectors: for each mmu in
+#   off, identity, tt, seeds 721 to 723:
+#         oracle/fuzz/fuzz030.py --a liboracle_uae.so --family fpuraw --mmu M
+#         --strict-fpu --n 2000 --seed S --out fpuraw_M.json
+#   Replayed with `sst68030 --known tests/sst68030_fpuraw.known`: 198 of
+#   them are rulings the fork does not follow the oracle on (D23b, D26-D29).
+# sst68030_fpu2 — TWO instructions per vector ("steps": 2) on the 68030 +
+#   68882, strict oracle: an FPU instruction, then one that decides when a
+#   posted exception is delivered; FPCR enables armed seven times in ten.
+#   Generated 2026-11-07, 6 000 vectors: for each mmu in off, identity, tt,
+#   seeds 941 to 943:
+#         oracle/fuzz/fuzz030.py --a liboracle_uae.so --family fpu2 --mmu M
+#         --strict-fpu --steps 2 --n 2000 --seed S --out fpu2_M.json
+#   Replayed with `sst68030 --known tests/sst68030_fpu2.known` (21 vectors,
+#   all ruling D23b).
+# sst68040 — generated here by oracle/fuzz (gen040.py, fuzz040.py) against the
+#   same oracle in 68040 mode, 68LC040 (no FPU). 7 200 vectors.
+# sst68040_8k — the same, with 8 KB pages (TC.P = 1), generated 2026-11-06.
+#   4 000 vectors, reproducible from the tree: for each family in core, mmu,
+#   random, fault and each mmu in identity, tt, in that order, seeds 601 to
+#   608:  oracle/fuzz/fuzz040.py --a liboracle_uae.so --family F --mmu M
+#         --page 8k --n 500 --seed S --out F_M_8k.json
+# sst68040_fline — the raw cpID-1 window ($F200-$F37F, unconstrained
+#   extension words) on the FPU-less 68LC040, generated 2026-11-07. 4 500
+#   vectors: for each mmu in off, identity, tt, seeds 951 to 953:
+#         oracle/fuzz/fuzz040.py --a liboracle_uae.so --family fline --mmu M
+#         --n 1500 --seed S --out fline_M.json
+# sst68040_fpu — the full 68040 with its integrated FPU, generated
+#   2026-11-07. 7 500 vectors: the assembler-shaped family, seeds 901 to 903,
+#   then the raw one, seeds 961 to 963, each over off, identity, tt:
+#         oracle/fuzz/fuzz040.py --a liboracle_uae.so --family fpu --mmu M
+#         --n 1000 --seed S --out fpu_M.json
+#         oracle/fuzz/fuzz040.py --a liboracle_uae.so --family fpuraw --mmu M
+#         --n 1500 --seed S --out fpuraw_M.json
+#   Replayed with `sst68040 --fpu --known tests/sst68040_fpu.known`: 44 of
+#   them are open rulings (D25-D27) the fork does not follow the oracle on.
+# sst68040_fpu2 — TWO instructions per vector ("steps": 2) on the full
+#   68040: an FPU instruction, then one that decides when a posted exception
+#   is delivered; FPCR enables armed seven times in ten. Generated
+#   2026-11-07, 6 000 vectors: for each mmu in off, identity, tt, seeds 931
+#   to 933:
+#         oracle/fuzz/fuzz040.py --a liboracle_uae.so --family fpu2 --mmu M
+#         --steps 2 --n 2000 --seed S --out fpu2_M.json
+#   Replayed with `sst68040 --fpu --known tests/sst68040_fpu2.known` (three
+#   vectors: state-frame internals after a posted exception).
+#
+# corpus | file | size | sha256
+sst68000 | ABCD.json | 7962994 | 25cc175c1c4e539519e88a4122dc7cc6f6aa0b9336bbb428fdaed84fb601ceac
+sst68000 | ADD.b.json | 8191139 | ecf71b64880894a9a0fb64809596aa51a6be7f5f0b4b0e2c9deebd44be3bdafe
+sst68000 | ADD.l.json | 10231619 | a49209548d1a6db931d6b136f65511a39bc114a5a712f9520ac2f051b3c82ac8
+sst68000 | ADD.w.json | 9774131 | b1b52758bd0833a8f519fc652ae6eb908006600aac9ebfed4ff35c0cfafbafdf
+sst68000 | ADDA.l.json | 9859494 | cb0ba1d462bc157a9d1f032702ec39c2f1eca7aa172a1a662f291c2c6adfea0e
+sst68000 | ADDA.w.json | 9505941 | 93bed5f0b08cf6ea43a039789b243987045cef499ea48731a2cd92623ef57cc3
+sst68000 | ADDX.b.json | 7925524 | 4928fdb09ad684421d0b24f8c3faec65858df9c55c20b0bbf4fdbb0781350566
+sst68000 | ADDX.l.json | 9737196 | 6810df4a559afad613c79ae552e1b2e51af7301ff359d298bff9283be9fb3b03
+sst68000 | ADDX.w.json | 9303810 | 13141b24a67202b5f66f72d8b43e669e8bade0f1af215afc4970d1d3306e419d
+sst68000 | AND.b.json | 8178161 | 2b9393a45942c177a6b522b595af948c2045f74d5421a0c1ccc32cf844235d5c
+sst68000 | AND.l.json | 10636796 | 2fce08d20508daa214474a3b92ca1aa666b46e05da287bc06bfad161121b4aae
+sst68000 | AND.w.json | 10144742 | cb3f8a5db2bac2f72d028201184a34518edaa31b8fd8b89b685c12847b50b379
+sst68000 | ANDItoCCR.json | 8192798 | b51e26f01ee2e39ddf4562621c9df060ed39a99e13b08fc19b73cdff89c6daa4
+sst68000 | ANDItoSR.json | 8180239 | f01fc5a45a0e420a4fc95fb0376df027808e1e1bcc513283de8b37a0d0304d3b
+sst68000 | ASL.b.json | 7302247 | 6d6a5d0252b4c09505c849ca5a8c3ffd1e01e4c987a32da7b14f31be39df1424
+sst68000 | ASL.l.json | 7286238 | a203d7f22c2170b26acb11cbe0aa74690450e3b97dca6065283686d334afe50c
+sst68000 | ASL.w.json | 8081171 | 5e73180754e267b14d07710a8260458cda1ac8fd8972c0daef93bfc0a465e76b
+sst68000 | ASR.b.json | 7302184 | 5da2cf26bc80ded7168c383b31bd0b97c63935d16cb0dde286517bb6d66f7fb0
+sst68000 | ASR.l.json | 7287557 | 89e0d09878f74723dc99f3a932bf5237b93792e8fb6aa00368a4fef74923017f
+sst68000 | ASR.w.json | 8084995 | 148c18732c6b9e082e3038dfbc41d83cf090c76a4d6327e2d4d2b189a9d7db5e
+sst68000 | BCHG.json | 8247964 | 8b6dec62aeaa374f37a12664496fc0141980dc8b59d641bf275e03eba5d6c6a0
+sst68000 | BCLR.json | 8250091 | eccca1286ef9391234111101ace09a0fdc10b44557c53271577e4889e07cef8e
+sst68000 | BSET.json | 8253977 | 02933c649070a0cc5d4d2469f6bf434d2ecc7fc2607b40f7ea642ce9188baa11
+sst68000 | BSR.json | 10848298 | 2111af50075ac207c6ca98e0851d94c254813c1e9102b137988aefe17b3818b3
+sst68000 | BTST.json | 8037682 | d9db56c7e1cd2f486e51f12f5c7eeda01a2aef1b87f06cf8132da24a0a88e63f
+sst68000 | Bcc.json | 8761332 | d15ab424b3c536b106fd2fd8e334788e00dffb258b363820ffcaf27325f94343
+sst68000 | CHK.json | 11834373 | 2fdf80e7b0fafcdc72be1e3bec6317344ce66debb57f318a7269d8b8bd8d6b3a
+sst68000 | CLR.b.json | 8131963 | 1e00eda2da9bedeab8ed1336e5155389269c1ef726f5d7f6055a4d199ae9bfb3
+sst68000 | CLR.l.json | 10368081 | 9d53777bffba4582450c39c6943c9a3106f831f98517761b50b6d036f3eb033a
+sst68000 | CLR.w.json | 9899236 | c78b0a494ffb6cc65d2b25a04667bbb26e015d556be4a60ba858c11225ce175e
+sst68000 | CMP.b.json | 8078120 | 3c36ea83317c1ea56629c1d75ca1abfd312c24d3306020e06aa3c6d0cf7f2500
+sst68000 | CMP.l.json | 10208405 | 92c649224b01e26810f8876c974b4951e7f3bbbd3f9b1bc508e1f6c534a74f38
+sst68000 | CMP.w.json | 9763200 | a57766e29483b3ead7f542e2fd21d74e748c460bae7ca37649ef3f76959aaf0a
+sst68000 | CMPA.l.json | 9803531 | 93a9e676987544b56dbc362ac24a5549e2a9f8cc70ca3fdbceaab25c2d924130
+sst68000 | CMPA.w.json | 9538114 | 2d677d6b0646e7beb246ef224f943ab3c2eaffc24f3e42c56699aafa6f7c1a63
+sst68000 | DBcc.json | 9055500 | 55ffbacb3d4bed2f88d3ec1f5786ce9ad9c12cf2d6b32897879b43c177195a90
+sst68000 | DIVS.json | 9859438 | 538b1367fbf2e5c78bc49a9caad3beb6a38f3cb49f2ccc3686822fd51431c968
+sst68000 | DIVU.json | 9892642 | 066ec638f8e1f9e4eab9d08b6d3f8d439de902345d087e7f0dccea93a275c40e
+sst68000 | EOR.b.json | 8242395 | 9669b4451598b6f30afcaa671f8b5f25814aaf58f1d602eb8fd7f09c81b63e78
+sst68000 | EOR.l.json | 10595752 | 08061e17d465c47f28fb4948fbdfac4e6e79b158400dfef8a9d67bafb5989707
+sst68000 | EOR.w.json | 10019486 | b7baac85da2dec57a0fcec9acca4fd677d925141336fe6ba55d68a8052badc28
+sst68000 | EORItoCCR.json | 8202968 | 352f8795113c0473d8ac9d9e30a1795b641022425d94922577842ca79ca0f0a7
+sst68000 | EORItoSR.json | 8193958 | edda38f9b15dec791d406331a5f53aca25d7de4b160a7a96612d8003653caf35
+sst68000 | EXG.json | 7275507 | c419cf6b27b081d1cc20a3e9448178cf71be1f49ccde5d7e84269971cca10183
+sst68000 | EXT.l.json | 7159643 | 45d13fe59e11c2eab827bba110e04500a2fb115a5d26d262040da1a0b134dcec
+sst68000 | EXT.w.json | 7178807 | f3412e985def278fbcbd60806d8a61ce63f3bd34fb2061dbaf430b68025fe3b6
+sst68000 | JMP.json | 10181239 | 45f185a80d2bdd1a26a389258a4ea03c33e439c99ead5d4e97527b7566b854bb
+sst68000 | JSR.json | 10657990 | 96768d5bbb452536bcf08d1d09ff2ca05396b7d68db7d4849052f918ddc97074
+sst68000 | LEA.json | 7802707 | 3fdad1ee0ca16f06c7bcea7907b27d2ab8928a6ad127730d17d408f815b0cb08
+sst68000 | LINK.json | 8760954 | dce7ed5832ecf0af95170a4f0093860ab457a19ff0b007eea093ad8911210e0a
+sst68000 | LSL.b.json | 7301682 | 88db5c35dcfae165503fa2b5bd17be51720fb6fb1ad51b01895bb57b963dcd61
+sst68000 | LSL.l.json | 7285816 | 2070452bdfa2c8bd2a53ff75797156f7ccc76f8ff9b4745cbb070f8bbd8b5c3e
+sst68000 | LSL.w.json | 8081282 | 1bc73974957aa298ad96f7d95e3f0364b5540a986fe58fc8071e9b7d21883600
+sst68000 | LSR.b.json | 7301843 | 17d58c179d7ddea49ac0a2d76cd078944c73fd9126be12b66c19223270a26e52
+sst68000 | LSR.l.json | 7271357 | 0ff52c4c08c4cff8432bf9a16d252b8c4a6a7d90ba7bdcb75ce4166a06bd31d7
+sst68000 | LSR.w.json | 8112771 | 37eb27ea78acd6586aedfb98fbb872c3f1538a0bc7bd2b6fb2d653596b1ba872
+sst68000 | MOVE.b.json | 8604349 | 23879f9af0d7c20b21fe2a20533c60b833453b2ee3b7a54a8aa335ea7d637bdf
+sst68000 | MOVE.l.json | 11613733 | eb4f8b76cd8c3b8805b96fde8bfe01e141f61c26d6c1bed5a4ea3a75e4e2254c
+sst68000 | MOVE.q.json | 7182327 | af67b8ad95cc62329e7520d77a5534dd4a6bbeb055a47a304ce012ceb44f8892
+sst68000 | MOVE.w.json | 11112703 | 5497dbb7b40aecb9ce21e41e2d4019041a51c034ed852fc8c49c63f183259d65
+sst68000 | MOVEA.l.json | 9802958 | 8e9b6c6d506f7000cf5480eca877f0fcd13759f0dc071d376211e60624ba112a
+sst68000 | MOVEA.w.json | 9514917 | ad15695c9c85bf0bc239bf8e160d489039f532c565cedbd56d6412eb895a2959
+sst68000 | MOVEM.l.json | 16436590 | 1aac5b9f159511046032c1b2f185fa43199ce08c9094d44575067102dd0342ec
+sst68000 | MOVEM.w.json | 13632015 | 7ebcd32c41360322d38a6774c9e87507c99e06933ee80518c814cfe56a99fc91
+sst68000 | MOVEP.l.json | 9765978 | 0dfea5e4383c7b743e2ecc45ae95ce074b81f28bf79b2cae1830b3de8d363cf3
+sst68000 | MOVEP.w.json | 8854876 | 6434a05e5790b7ab099ac81f7663bcdce006c3fe46802c517ac91273188dc5c7
+sst68000 | MOVEfromSR.json | 9912618 | 4552eca6668f1529fb672f906b1b7d8f61a1037bd887d198eb211c09f3bbe6df
+sst68000 | MOVEfromUSP.json | 7233993 | 018ab7d868715751d021c493b51c1392ad9b4ae3be8dfa83154451d7d28c8024
+sst68000 | MOVEtoCCR.json | 10195656 | 5a593303d4400eb3a4a338a7a5e59d25bb8ea10ab95bfa76aa3ce1edda1cb8e1
+sst68000 | MOVEtoSR.json | 10190568 | aa38a25cb2fc14fc50f7478a6ee36c922ee038ff24eef146e6994f46d516c0d8
+sst68000 | MOVEtoUSP.json | 7205300 | 81c8aa322ea2df0f859e74796c112353fc663dbe4dd1d315de84f5053c1f850d
+sst68000 | MULS.json | 9886013 | 2e330a03b4424dba4fcc36f24e056d1a05749d021a1dfa519abd2568fe7f47a2
+sst68000 | MULU.json | 9856036 | f1053d6598df26e370cdad814990325a512d3e372d7d9dfae4bb1cd61204eac1
+sst68000 | NBCD.json | 8159180 | efc229a32762e00034e27fd0964a24fbd29d7ec204a41caa7ac9854a59d7a1a6
+sst68000 | NEG.b.json | 8151198 | 889d3d52d08f6aa9b2d45db77c44107541431f7ea82781140837050b299d86ff
+sst68000 | NEG.l.json | 10347496 | b1109458f04f780487da0a8b45a2806983de616ced6065401f0365c055b1bed2
+sst68000 | NEG.w.json | 9925345 | c99197dc24019d2fe105555a3f09a4dcc74d196fbca3e9b87923b672f6a953f4
+sst68000 | NEGX.b.json | 8153720 | 76309a107ea56a3921b8802406a0912705904f5b304750ebbaf127201eb554da
+sst68000 | NEGX.l.json | 10415245 | e3ec2b5de20e683d1a56a8c3d646bab7c5b662dd0e690f42c15d70e5d292f6d4
+sst68000 | NEGX.w.json | 9892824 | 46cbb88baddc7dff3ff4924b6d2182cadf39e005492f4728142dd8f17f87ca2a
+sst68000 | NOP.json | 7138870 | 7d62ed681d2779980262f60729c201bec7a3446d442df38f264d90a5ba30c5e8
+sst68000 | NOT.b.json | 8144252 | 97a3d91899f15e6eae60de2796a6b758cb9631fb794106f7d8b3631fb1ffb6b7
+sst68000 | NOT.l.json | 10406376 | db03b24aa08624ac69b314df7d2b96803e6b7cbc597d7acff1cef16161178c91
+sst68000 | NOT.w.json | 9882808 | d70522692066da54d771ac074810e4551233f05ed9ab5bef4fa3c81ef19a0d4c
+sst68000 | OR.b.json | 8180988 | cb6891e92ef24bb03dbb8c12da61dc0cf6d6b40accb04fdad85fa2f9c6518ba6
+sst68000 | OR.l.json | 10638800 | cfe0b252ea70cb40190489684b5c9aa12e0d19f0d7877c4c0789280c572b162e
+sst68000 | OR.w.json | 10153373 | 71c72201e171a22341c2c42d529d95337d2bbdb25847397d8454c1b12d896764
+sst68000 | ORItoCCR.json | 8181207 | 57ce2fede3277c6445fe0e7ec7b667bc5485abd9a02dfa1014e97bb140571fd5
+sst68000 | ORItoSR.json | 8182257 | c8f1899a4e193b9d99f85f2fbb3a3b46b5ba3b98f7f876c9d6f0f5eaf40eeb26
+sst68000 | PEA.json | 8679400 | 9f6a4566d443ce7f0196c6626286d038d6d9eb9fea22a5e45740ceb275ba69df
+sst68000 | RESET.json | 7349056 | 67eecb0a5d86c83755a9e780308709371c87aba90a4c11c0b3b9b85f5ebad811
+sst68000 | ROL.b.json | 7303778 | b86e9c5e1e0d7983411604cf695904ef164a242c8aad8f689fe5212126974f55
+sst68000 | ROL.l.json | 7304765 | de616686272bd1c2a5f02942c5a1fcb4db32be5b165f1cc53b3acf5d911a101b
+sst68000 | ROL.w.json | 8126501 | 06c40ccd8dfb37933458d978f417bf8b1c04f8f4bce41253c9c2c5ca65a90031
+sst68000 | ROR.b.json | 7304551 | b19725dc046a54274c5d7de1c3acf893d33a1f05595bd99ee707ffb725436773
+sst68000 | ROR.l.json | 7305268 | cd97a539e475fe6432f5e4842b76d0258a0147e034830e7431c3eb230c0caad6
+sst68000 | ROR.w.json | 8055024 | 360797e30f7c22d62f664bfc4aa8a55049e6b0771aa17d674de681c239902158
+sst68000 | ROXL.b.json | 7312608 | 82401738108c28c710a6f33c340bf09d66af854dc9016b84ffb4cda97075f7e4
+sst68000 | ROXL.l.json | 7314136 | 5f9a5cf89e00eb6831360542a8845b057b999f397dac62ce9659833de2bd8789
+sst68000 | ROXL.w.json | 8102595 | 8eae1344fb0e76b2585465134afc5161179eaff42d583c47612c522a1c9e9d8d
+sst68000 | ROXR.b.json | 7311598 | ce6ca45ccfb7108262e80e5e4d8d7dcf2b992ffd09c7a4f2fcc5287ee28ac5f1
+sst68000 | ROXR.l.json | 7313524 | 416908887907543f1e6a4fb8b7af1f07b8422cabc26a731ac457d307378c3c1d
+sst68000 | ROXR.w.json | 8071282 | c4430103cd750ed56b5c9a570095d80f13f80f95ca573b26e74336c1aa3a9877
+sst68000 | RTE.json | 11858776 | 39f2f5f01b6e533ae24041ee394edc148766b46438974ca4918f098dd78dc491
+sst68000 | RTR.json | 11849654 | 007bd2a3c43277598fd7ff12fd7cccf3676209ee72627d24f0e3d686769334c8
+sst68000 | RTS.json | 11301800 | 8795b311b658ab3221ec0d292fd2c994a7ec31eaf763d278727375b86a39a8f9
+sst68000 | SBCD.json | 7967881 | 4d7b3b698f119693b7b51c140b798119c94db524a3f6216e76897a2e4a8af77f
+sst68000 | SUB.b.json | 8189047 | 9e4cd72db71a75ee182d80fc9f72b87733c9b705e2e4c74062fa49a3a015d1e4
+sst68000 | SUB.l.json | 10266267 | 70274d734e989ef8b36176ab0112272bb3f1e2b050e495720143649228937f3a
+sst68000 | SUB.w.json | 9782982 | 56bf8dd3223a00fad294d7757f26c38f588d47446ea0a8765631a6e27eebc1ed
+sst68000 | SUBA.l.json | 9867741 | 6ca6a650c582aaac0465bda0a2a392e4847993a8c87661fb89101b5cb7a93903
+sst68000 | SUBA.w.json | 9527311 | 9d7f536be10f1beb5a4e618cd2da8b8d5df19f71ff61ae70720c8ba02708eae4
+sst68000 | SUBX.b.json | 7940013 | 94d5dbbd55803af3d637edb0e81a9b1b7e06a8c3550d9dc539d5cb536339100b
+sst68000 | SUBX.l.json | 9736824 | 0d6479f926bc25c4b73d22e8ef353ad63d1ffbdf6ef13aeaa0af963377896cb7
+sst68000 | SUBX.w.json | 9345992 | 65e7e09d90150e4d3a6c6dbd3f575aad10fe6175a9c06c4784806dc99197ac5a
+sst68000 | SWAP.json | 7170921 | 9caa28417e881918ea1f4ed9d736902aff775a0addfa5775bdafdfdb7166002f
+sst68000 | Scc.json | 8136112 | bbe4ef8359417c13caf423a85a02397db586584d37a79c72275dc21b33c202ac
+sst68000 | TAS.json | 7931135 | e6805567f52f316b58f466eeb48263ab3a6629abcf5b8e26e463859a94633e2f
+sst68000 | TRAP.json | 10512360 | 2e044c1b151ae0ca63b40fe2d322deb523d997529cd8cd122b133507b5033d73
+sst68000 | TRAPV.json | 9053653 | f5421321e9e6b076ab866d472e12400a70e1cc6c0a17a61efd5a3c5a29aff7dd
+sst68000 | TST.b.json | 7922997 | 1f84660ecbac15e389b405c89ee6e76168617353bda48f25ea0eee52eeb87b6b
+sst68000 | TST.l.json | 10139467 | 739e8d2809a6ea9e89f032f2e4e32384f6860adb0d4aadba6e1aaa868b92daaa
+sst68000 | TST.w.json | 9785848 | 41c16ee3c6998c3a10797242de21b43dd221e249b05c1a2174ed573d92e20831
+sst68000 | UNLINK.json | 8802007 | 6b272332f053d24b61a11f1f45f22a9c1e01d125faa2fc127f2c8288446d69e8
+
+sst68030 | core_identity.json | 3077618 | 37c38364d3b580e10d2c0e982af0b249da86cdfda29e7d8d7114e250dd9f7e38
+sst68030 | core_off.json | 2941025 | 3806ff196ef9a4f2c4be11878b74a30bb4d42d03215767f1c5135a7180960650
+sst68030 | core_tt.json | 2497396 | c354f8368544cf7884c6aad7d61715c92bbcda1f7258f755d668e6365869fdab
+sst68030 | fault_identity.json | 3127110 | aca9beaaba7cde5fe9136e645752a04b6f83c7ab4ca406bce7036d0cf0323fd9
+sst68030 | fault_tt.json | 1563742 | 735a6f4af60c246b3def3ca0bfc87c3ba95780bb816e53800641b9b9e202ddbe
+sst68030 | fpu_identity.json | 42439705 | 7a36fe831d45772bac0503d711a723919b7da7aaa155272dc9c7a14c316d8f7d
+sst68030 | fpu_off.json | 35131818 | 4d2924b4a02933d6d995ec7f8a1603205fa72009be761673b190da7a5d9bf126
+sst68030 | fpu_tt.json | 12244001 | c29d868e2a96d3ded262c6d96a83f81b8c16a62121ba7ab5e872ffa8ba795782
+sst68030 | mmu_identity.json | 3077048 | fbda4ff7d4e8204742e1d3b935e2e7493278a879173d4fe052b46ed5e57fde5b
+sst68030 | mmu_off.json | 3860609 | 0d81ed9069972dd59fe0002adfd391893dad204d3acd328026d57062763ff5c3
+sst68030 | random_identity.json | 5398976 | 97e54efa7a318ccb3a55be45a2bb276bfde180e38a2307bb1a5410f27e2733a8
+sst68030 | random_off.json | 5681107 | 2f11f5825617c35e38433dd8a3792ebf4f8928e6e141c2f0736699add50e9af5
+
+sst68030_solo | core_identity.json | 17948556 | e03acbba0b2ef95c9d565431ea7c8d9312edf80f6f7c5ce49017a3c7dd525f88
+sst68030_solo | core_off.json | 9193083 | 55a310a3ac0240d62f96dcc882871677796071455186baade0a28852ee78f491
+sst68030_solo | core_tt.json | 17952241 | 7ed83ba97d06d8312d8ad499c21ae0f094b2dc606e5e051ad6e2e0ca32856c3b
+sst68030_solo | fault_identity.json | 17983959 | 592fcce048968d6b5bd040664c4bfd3d78c3a9ef513efa168f460f31aefb4351
+sst68030_solo | fault_tt.json | 17979769 | 86ffeef3f2e5ccbff6d2edaf28a3104a26d591dbc726bd6376900b80c6fcce33
+sst68030_solo | fpu_identity.json | 19521557 | 895de1cce8db2a3d08c16fa891d4afaa133a8748c995ef7c37722361236339d6
+sst68030_solo | fpu_off.json | 10765079 | cfb8f79bdc3842e55c3d109f4337300de419f908c2bf0a06bdea946c10a9354b
+sst68030_solo | fpu_tt.json | 19530956 | fab31fadd11a3472643702020d387d1e5a45d306f97684576565e30218bf12d3
+sst68030_solo | mmu_identity.json | 17860075 | 5d943988c082ee95970e2a5b48d86e3f0de10c299a54df9c8da0f7b4ebf25120
+sst68030_solo | mmu_off.json | 9190722 | 878e7c03b16cf9d518be4b22c6e7f74dbe7d141c860797b0b03aa4b31c7039c8
+sst68030_solo | mmu_tt.json | 17682785 | 7d85ae1084a5281d14134c969934c85b3a104944c6bdf7437f1330c5236bd5fb
+sst68030_solo | random_identity.json | 17960675 | 8b9d70c61c0b768c8991c7a9d4fe87ab4921770203ff6b4b96cdc630a25a9547
+sst68030_solo | random_off.json | 9201561 | d9b2dcb0d297900aa9598461283ad71e4771a236682e2da3091db9adfb6c94da
+sst68030_solo | random_tt.json | 17963333 | 43489152844816b41e2838f95268f015d2cff923b88cd7af18bc6ffc60662482
+
+sst68030_fpuraw | fpuraw_identity.json | 97724621 | 2550555f949ba2173e5d75eb555487e3f9f678228d9092b0dc3e3dc401e13d01
+sst68030_fpuraw | fpuraw_off.json | 53905468 | ec5102a2b172d75c59ca64ce2c6e4b8cd8ce7de3cafd177ede2c3fd16b0e2435
+sst68030_fpuraw | fpuraw_tt.json | 97728672 | bca9adca1a21d8d0d1ab3e839620ec46582fc35714c3df80924dabeddb0039e0
+
+sst68030_fpu2 | fpu2_identity.json | 97780326 | 3d85b5330228abbeb99c9d9888c025750c1fd93f0b0a15297937c21e332d8ae9
+sst68030_fpu2 | fpu2_off.json | 53967123 | 0191528184199ca4745354545441cbc5c230c17ad41dd050c11c3fe4547e38f3
+sst68030_fpu2 | fpu2_tt.json | 97799751 | 8feaad6dfadd9d2b22ac94762b56ffc2f54ba6313a814314db311a06da3e969c
+
+sst68040 | core_identity.json | 33863644 | 45950bb03a6c85ee807526896b603f453716826ba2eec5125497e317c55d8e95
+sst68040 | core_off.json | 19851417 | 2c6f8104ef2e077ad6b72eda25b5c56f79477b6827155fe82c382fd7919b357b
+sst68040 | core_tt.json | 33846806 | e0b4b582cbcebeef69f21c824c54273d8643293459e026791b42c1d6a716d678
+sst68040 | fault_identity.json | 33897505 | 81bce6fbafbdf974c1655269950359792944ad2c6bedfb4eed6b7ff1b30ac6d0
+sst68040 | fault_tt.json | 33860769 | c18bd4335f8d3ebf71c2b9ed50e9eab810980ca7d52f30a00336eec9b4166a8d
+sst68040 | mmu_identity.json | 32833220 | ab7a50a532ab6c40923745557099399839deb865789d313694cf3743df71f837
+sst68040 | mmu_off.json | 13866483 | da0f4553feb9afe92953c9279df53ac29dddeec06951966a7a6b0b75b56cf920
+sst68040 | mmu_tt.json | 32817663 | a2841f7424bb6237bc14d18173987fe3b609747125c2b9636fef31545c5bdc61
+sst68040 | random_identity.json | 32882661 | 11454c7b48163fabdae4755c4229a9a9b850027b0c68fb79942aef8000bab65f
+sst68040 | random_off.json | 18533813 | 0c704d05f5678f2f43229ab3bbcbcf7a1d5de5ee2348ac20b0e8181bcafabb9d
+sst68040 | random_tt.json | 43811010 | 5934858e39f8863318232105e83e6d552eb0e33ec3369310515f9df3ced12421
+
+sst68040_8k | core_identity_8k.json | 23409490 | e2c22af588627097a32ca853c9b267e6ea8c809034eb7aeeb7947b89779f3908
+sst68040_8k | core_tt_8k.json | 23389519 | 9da8dac8ba6a32e4f4172d1afae6149eb75d7d75ecbfd8157ebac125ae08b5f2
+sst68040_8k | fault_identity_8k.json | 23421288 | c90402dd5480904dcb71014f1a22372a74265c33e29bc2325bd61476d8c6d2ff
+sst68040_8k | fault_tt_8k.json | 23398682 | ce9a30aabb3db8fa769d83c4f47ededac7362749ff578e5c5f34870651791469
+sst68040_8k | mmu_identity_8k.json | 22540597 | 61e0af78de8852b78a2c9da092a4939290cc299b8da494fdaf023c0ab0d4514d
+sst68040_8k | mmu_tt_8k.json | 22529126 | 999d7935f95ca008615fb83f719900100fc3c4ce98381709c4b0a6118278dc36
+sst68040_8k | random_identity_8k.json | 22579466 | 9c6ac145da41f5afa487d70975874f1ea4db6f7b9df9d03ba7b0d19c80b9f139
+sst68040_8k | random_tt_8k.json | 22562752 | 17a2f0553f1f5de7077d31e88ef6f913ee4af5961dcc8b84f9f91fee75dab093
+
+sst68040_fline | fline_identity.json | 82303966 | 0a9c2f5aafe6a5fe049d8e496f635ae4fd659496082b17886abf3fe0e31763e5
+sst68040_fline | fline_off.json | 34865505 | f4d7b83290c4ece49d86fb78f1c2727e329c7b2a9a9f3f187aa4967a895bf960
+sst68040_fline | fline_tt.json | 82241373 | b84db475a18a0e8a13d7d6ee54c9c3d73cfddbed51327743e52f65e1f4aeaf88
+
+sst68040_fpu | fpu_identity.json | 58702466 | 94d840013171aa783f246e996aa3670276db29f55bf66faf5f493b339e526730
+sst68040_fpu | fpu_off.json | 27075770 | f583688cc667ddc8b806c901fa76587b028a05b0330dc1f40f00088c29ed13c9
+sst68040_fpu | fpu_tt.json | 58660629 | d8615671c2157e09710a689981d1ecc681836981c1ec41f9ce13169108204540
+sst68040_fpu | fpuraw_identity.json | 88120066 | 0fa66dc56e028ba2c9e61b9c785a179d63e5fafb74f67449ce2f1d6c430c8163
+sst68040_fpu | fpuraw_off.json | 40675589 | 4cc557a393568e2ea9ce49df690745352865ae19dc9c8afa77bcd07befaf5691
+sst68040_fpu | fpuraw_tt.json | 88048816 | 92c5a55e3e59009f4d05d9a30065d207f4ece75cd0af44c7d4bdf36e3408c203
+
+sst68040_fpu2 | fpu2_identity.json | 117539099 | aadd9a68ea331dfc485024bf69441e3a78edae489525974304ed8690c88f39dd
+sst68040_fpu2 | fpu2_off.json | 54274998 | 4b88ae74618c875c44eeec861c8d2924d61155def9c4714fdc34532946294609
+sst68040_fpu2 | fpu2_tt.json | 117446131 | c1e97672b9d947b7ee2d43f0e6aff9ed790dc30ec4da701125995c94d51df157

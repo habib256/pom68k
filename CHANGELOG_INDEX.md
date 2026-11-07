@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 697 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 714 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,8 +8,8 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 92 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 69 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 93 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 84 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 36 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 31 |
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 21 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 42 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 147 |
+| [Cross-cutting](#cross-cutting) | 148 |
 
 ---
 
@@ -118,6 +118,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-10-02 (sixth)** — [`Disk605.dsk` is `6ea0c1c7…` and is now locked; on x86-64 the AFP trace's `x64` arm equals the interpreter, and the drive-B change moved every Q605 boundary](CHANGELOG.md#2026-10-02-x86-disk605-afp)
 - **2026-11-06** — [TODO.md reorganised around the engine programme: five read-only audits turn the Moira 030/040 and JIT backlog into nine ordered sections aimed at a NeoST re-implementation](CHANGELOG.md#2026-11-06-todo-engine-programme)
 - **2026-11-06 (fifth)** — [The 68040 cache switch leaves the environment: Moira's constructor no longer calls getenv, and the cache-on lockstep now fails if the wire is lost](CHANGELOG.md#2026-11-06-core-no-getenv)
+- **2026-11-06 (sixth)** — [The x64 generator took an interrupt one instruction late when the read itself raised it: an asset-free oracle shows it, and A64's rule closes it](CHANGELOG.md#2026-11-06-x64-late-ipl)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 
@@ -188,8 +189,23 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-10-13 (sixth)** — [The Mac II under MAME's guest oracle: its board is maciihmu, and its RTC needs POM68K's PRAM](CHANGELOG.md#2026-10-13-macii-oracle)
 - **2026-10-19** — [The Duo 270c reaches a color Finder, and the bare LC II stops detecting RAM as its FPU](CHANGELOG.md#2026-10-19-duo270c-lcii-cir)
 - **2026-10-19 (fourteenth)** — [Portable and PowerBook 100 reach Finder through their 68000 board and real PMU](CHANGELOG.md#2026-10-19-portable-board)
+- **2026-11-06 (eighth)** — [A bus error on the Portable's 68000 would have left execute() as a C++ exception; three NeoST host hooks come back with the fix](CHANGELOG.md#2026-11-06-68000-host-hooks)
+- **2026-11-06 (eleventh)** — [Ruling D23a rests on an oracle that contradicts itself: WinUAE stacks a format $3 frame on a 68030 and its own RTE refuses it](CHANGELOG.md#2026-11-06-d23-oracle-inconsistent)
+- **2026-11-06 (fourteenth)** — [The 68030 passes a complete WinUAE-solo corpus on fresh seeds: 5 592 / 5 592 over fourteen cells, pinned with its recipe](CHANGELOG.md#2026-11-06-sst68030-solo)
 - **2026-11-06 (fourth)** — ["The oracle wins" gives way to the evidence grades for new rulings; three rulings taken against a manual are kept as known exceptions](CHANGELOG.md#2026-11-06-oracle-vs-manual)
+- **2026-11-06 (seventh)** — [sst68000 was green on a million vectors while a quarter of them had the wrong bus sequence: the harness now compares every bus cycle, and the 68000 core matches all of them](CHANGELOG.md#2026-11-06-68000-bus-cycles)
+- **2026-11-06 (tenth)** — [The three CPU vector corpora are pinned: a manifest of 147 hashes, a gate, and a fetch script that no longer follows `main`](CHANGELOG.md#2026-11-06-sst-corpora-lock)
 - **2026-11-06 (third)** — [DIVS of $80000000: the undefined abs() NeoST removed is back-ported, and a bare-Moira gate reaches it under UBSan](CHANGELOG.md#2026-11-06-divs-int-min)
+- **2026-11-06 (thirteenth)** — [13 100 fresh oracle vectors: the 8 KB page path is right, DIVU.L/DIVS.L swallowed access faults, and CHK2/CMP2 clobbered two flags on the 68040](CHANGELOG.md#2026-11-06-fuzz-fresh-seeds)
+- **2026-11-06 (twelfth)** — [The 68040 interpreter spends 63 % of its time translating addresses and 12 % executing instructions](CHANGELOG.md#2026-11-06-interp-profile)
+- **2026-11-07** — [The 68040's FPU and its F-line window get an oracle: 12 000 pinned vectors, four rule groups corrected, four rulings opened, and two faults found in the oracle itself](CHANGELOG.md#2026-11-07-fpu040-differential)
+- **2026-11-07 (eighth)** — [66 000 fresh vectors on the night's final core: every class corrected today stays closed, five vectors are new](CHANGELOG.md#2026-11-07-fresh-sweep-final)
+- **2026-11-07 (fifth)** — [The oracle had a strict setting it was never run in: two 68030 FPU classes and ruling D23b were its permissive mode, not the hardware](CHANGELOG.md#2026-11-07-oracle-strict-6888x)
+- **2026-11-07 (fourth)** — [Ruling D24 is settled by the manual, against the fork: an enabled 68040 FPU exception waits for the next FPU instruction](CHANGELOG.md#2026-11-07-d24-manual)
+- **2026-11-07 (later)** — [The 68040 interpreter runs 1.46 times faster on an unchanged machine: the common translation inlined, the TTR test from a table](CHANGELOG.md#2026-11-07-interp040-hot-path)
+- **2026-11-07 (seventh)** — [The 68882's posted exceptions hold across an instruction boundary: 5 979 of 6 000 two-instruction vectors, the rest being D23b](CHANGELOG.md#2026-11-07-fpu2-68030)
+- **2026-11-07 (sixth)** — [Ruling D24 applied: an enabled 68040 FPU exception is posted and taken by the next FPU instruction — held by 6 000 two-instruction oracle vectors](CHANGELOG.md#2026-11-07-d24-applied)
+- **2026-11-07 (third)** — [The Moira core reads no environment variable: NeoST's exception trace is switched by its host](CHANGELOG.md#2026-11-07-core-env-free)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E
 
@@ -759,4 +775,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-10-13 (third)** — [Two of the three MSVC asset-free reds, read on Linux](CHANGELOG.md#2026-10-13-msvc-gui-reds)
 - **2026-10-19 (thirteenth)** — [Portable/PB100 Power Manager calibrates against the board clock and replays its real firmware](CHANGELOG.md#2026-10-19-portable-pmu)
 - **2026-10-25 (later)** — [The Mac II family takes a Display Card 8•24, and its cursor moves under System 7 at last](CHANGELOG.md#2026-10-25-display-card-824)
+- **2026-11-06 (ninth)** — [The fork gets its host-side contract: POM68K_SURFACE.md says what the core exposes and what a host owes it](CHANGELOG.md#2026-11-06-moira-surface)
 

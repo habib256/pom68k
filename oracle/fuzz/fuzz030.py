@@ -31,9 +31,15 @@ from oracle_driver import Oracle, State
 import sst030
 
 
-def run_one(o: Oracle, st: State):
+def run_one(o: Oracle, st: State, steps: int = 1):
     o.load(st)
-    cycles = o.step()
+    cycles = 0
+    for _ in range(steps):
+        c = o.step()
+        if c < 0:                   # halt: the vector is skipped
+            cycles = c
+            break
+        cycles += c
     fin = o.read_back()
     ram = o.ram_diff(dict(st.ram))
     return fin, ram, cycles
@@ -45,8 +51,17 @@ def main() -> int:
                     help="oracle .so (WinUAE; solo = its word is law)")
     ap.add_argument("--b", help="optional second oracle .so (differential mode)")
     ap.add_argument("--family", default="core",
-                    choices=["core", "mmu", "random", "fault", "fpu"])
+                    choices=["core", "mmu", "random", "fault", "fpu",
+                             "fpuraw", "fpu2", "rmw"])
     ap.add_argument("--mmu", default="off", choices=["off", "identity", "tt"])
+    ap.add_argument("--strict-fpu", action="store_true",
+                    help="6888x as the manual has it: opmodes $40-$7F take a "
+                         "Line-F, FRESTORE refuses a 68040 frame (default: "
+                         "WinUAE's permissive setting, as the pinned corpora)")
+    ap.add_argument("--steps", type=int, default=1,
+                    help="oracle steps per vector (an instruction, or the "
+                         "exception it takes, is one step); the fpu2 family "
+                         "is meant for 2")
     ap.add_argument("--n", type=int, default=100)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--out", required=True)
@@ -54,22 +69,30 @@ def main() -> int:
                     help="dir for disagreement dumps (default: <out-dir>/disputes)")
     args = ap.parse_args()
 
-    oa = Oracle(args.a)
-    ob = Oracle(args.b) if args.b else None
+    oa = Oracle(args.a, strict_fpu=args.strict_fpu)
+    ob = Oracle(args.b, strict_fpu=args.strict_fpu) if args.b else None
     print(f"oracle A: {oa.name}" + (f" | oracle B: {ob.name}" if ob else " (solo)"))
 
     rng = random.Random(args.seed)
     disputes_dir = args.disputes or os.path.join(
         os.path.dirname(os.path.abspath(args.out)), "disputes")
 
-    vectors, n_dispute = [], 0
+    vectors, n_dispute, n_halt = [], 0, 0
     for i in range(args.n):
         st = gen_state(rng, family=args.family, mmu=args.mmu)
         name = f"{args.family}/{args.mmu} seed={args.seed} #{i}"
 
-        fa, rama, ca = run_one(oa, st)
+        fa, rama, ca = run_one(oa, st, args.steps)
+        # A negative step is the oracle halting on a double fault (a PMOVE
+        # that loads an invalid root pointer, then cannot stack its own MMU
+        # configuration exception). The post-halt state is not architectural:
+        # skip the vector, as fuzz040.py does. Until 2026-11-06 such vectors
+        # were kept with "length": -1 and read as Moira failures.
+        if ca < 0:
+            n_halt += 1
+            continue
         if ob:
-            fb, ramb, _cb = run_one(ob, st)
+            fb, ramb, _cb = run_one(ob, st, args.steps)
             diffs = fa.core_diff(fb)
             if rama != ramb:
                 diffs.append(f"ram: {len(rama)} vs {len(ramb)} touched cells differ")
@@ -86,12 +109,13 @@ def main() -> int:
                                      "final": sst030.state_to_dict(fb, ramb)},
                                "diffs": diffs}, f, indent=1)
                 continue
-        vectors.append(sst030.vector(name, st, fa, rama, ca))
+        vectors.append(sst030.vector(name, st, fa, rama, ca, args.steps))
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     sst030.save(args.out, vectors)
     total = args.n
     print(f"{len(vectors)}/{total} kept → {args.out}"
+          + (f", {n_halt} halts skipped" if n_halt else "")
           + (f", {n_dispute} disputes → {disputes_dir}" if n_dispute else ""))
     return 0 if len(vectors) else 1
 

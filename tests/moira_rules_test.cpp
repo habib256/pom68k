@@ -18,30 +18,97 @@
 //                                                 [D] WinUAE setdivsflags
 //      68040        V=1, C=0, N and Z preserved   [D] WinUAE setdivsflags
 //    and 18 cycles on the 68000 (negative dividend, early overflow exit).
+//
+// 2. External /BERR on a 68000 (row 42). extBusError() stacks a 68020/68030
+//    frame and throws an MmuBusError that processException<C68000> cannot
+//    handle: called from a 68000 board it left execute() as a C++ exception.
+//    extBusError000(addr, write) is the 68000 entry point. No corpus has a
+//    bus-error vector. The frame is NeoST's recipe: status word = IR bits
+//    15-5 | R/W | function code, then the access address, IR, SR and PC.
+//
+// 4. An access fault on the memory operand of DIVU.L/DIVS.L (row 43).
+//    Upstream wrapped that read in `catch(...) { return false; }`: on a
+//    68020/68030/68040 a page fault or an external /BERR there took no
+//    exception at all and left the instruction half executed. Found by a
+//    fresh fuzz seed against the WinUAE oracle; no pinned vector has it.
+//
+// 5. CHK2/CMP2 on the 68040 leave N and V untouched (row 43). They are
+//    undefined; the 68020/68030 follow WinUAE's table, the 68040 follows
+//    WinUAE's early return. Four fresh-seed vectors, none pinned.
+//
+// 6. On the 68040 an unimplemented FPU instruction takes vector 11 even
+//    when its source is of an unsupported datatype (row 44). The datatype
+//    trap, vector 55, belongs to the instructions the chip executes itself.
+//    Found by the first differential run of the integrated FPU against the
+//    oracle (51 of the first 74 divergences).
+//
+// 3. The three host hooks back-ported from NeoST (row 42): a handled
+//    illegal opcode is consumed like a NOP, an unhandled one still takes
+//    vector 4; TAS brackets its read and its write with setBusLock;
+//    willProcessFault sees the frame of an address error. All three are
+//    no-ops by default, which the corpora prove; this proves the hooks fire.
 
 #include "Moira.h"
 
 #include <cstdint>
 #include <cstdio>
+#include <string>
 #include <vector>
 
 namespace {
 
+constexpr uint32_t kHole = 0x080000;   // a byte the test board answers with /BERR
+
 class TestCpu : public moira::Moira {
 public:
-    explicit TestCpu(moira::Model model) : mem(1 << 20, 0) { setModel(model); }
+    explicit TestCpu(moira::Model model) : mem(1 << 20, 0), model_(model) {
+        setModel(model);
+    }
     std::vector<uint8_t> mem;
 
+    // Cell 2: the board asserts /BERR on kHole.
+    bool holeArmed = false;
+    // Cell 3: what the hooks saw. 'L'/'U' lock and unlock, 'r'/'w' bus cycles.
+    bool handleIllegal = false;
+    mutable std::string events;
+    mutable int faults = 0;
+    mutable moira::u32 faultAddr = 0;
+
 private:
-    moira::u8 read8(moira::u32 a) const override { return mem[a & 0xfffff]; }
+    moira::Model model_;
+
+    // The board's /BERR, through the entry point of the model's core.
+    void berr(moira::u32 a, bool write) const {
+        auto& self = *const_cast<TestCpu*>(this);
+        if (model_ >= moira::Model::M68EC040) self.extBusError040();
+        else if (model_ >= moira::Model::M68EC020) self.extBusError();
+        else self.extBusError000(a, write);
+    }
+    bool hole(moira::u32 a) const { return holeArmed && (a & 0xffffff) == kHole; }
+
+    moira::u8 read8(moira::u32 a) const override {
+        if (hole(a)) berr(a, false);
+        events += 'r';
+        return mem[a & 0xfffff];
+    }
     moira::u16 read16(moira::u32 a) const override {
+        if (hole(a)) berr(a, false);
         return moira::u16((mem[a & 0xfffff] << 8) | mem[(a + 1) & 0xfffff]);
     }
     void write8(moira::u32 a, moira::u8 v) const override {
+        if (hole(a)) berr(a, true);
+        events += 'w';
         const_cast<TestCpu*>(this)->mem[a & 0xfffff] = v;
     }
     void write16(moira::u32 a, moira::u16 v) const override {
-        write8(a, moira::u8(v >> 8)); write8(a + 1, moira::u8(v));
+        if (hole(a)) berr(a, true);
+        auto& m = const_cast<TestCpu*>(this)->mem;
+        m[a & 0xfffff] = moira::u8(v >> 8); m[(a + 1) & 0xfffff] = moira::u8(v);
+    }
+    bool illegalOpcodeHook(moira::u16) override { return handleIllegal; }
+    void setBusLock(bool locked) override { events += locked ? 'L' : 'U'; }
+    void willProcessFault(const moira::StackFrame& frame) override {
+        faults++; faultAddr = frame.addr;
     }
 };
 
@@ -50,8 +117,20 @@ int failures = 0;
     std::printf("  FAIL %s:%d: ", __FILE__, __LINE__); \
     std::printf(__VA_ARGS__); std::printf("\n"); failures++; } } while (0)
 
+uint16_t g16(const TestCpu& c, uint32_t a) {
+    return uint16_t(c.mem[a & 0xfffff] << 8 | c.mem[(a + 1) & 0xfffff]);
+}
+uint32_t g32(const TestCpu& c, uint32_t a) {
+    return uint32_t(g16(c, a)) << 16 | g16(c, a + 2);
+}
+void p32(TestCpu& c, uint32_t a, uint32_t v);
+
 void p16(TestCpu& c, uint32_t a, uint16_t v) {
     c.mem[a & 0xfffff] = uint8_t(v >> 8); c.mem[(a + 1) & 0xfffff] = uint8_t(v);
+}
+
+void p32(TestCpu& c, uint32_t a, uint32_t v) {
+    p16(c, a, uint16_t(v >> 16)); p16(c, a + 2, uint16_t(v));
 }
 
 constexpr uint32_t kCode = 0x1000;
@@ -123,16 +202,372 @@ void divsOfIntMin()
     }
 }
 
+constexpr uint32_t kHandler = 0x2000;
+
+// Run the staged instruction; an exception leaving execute() is the defect.
+bool executeContained(TestCpu& c)
+{
+    try { c.execute(); } catch (...) { return false; }
+    return true;
+}
+
+void externalBusError000()
+{
+    // SR is the register as it stands at the fault: TST has set nothing
+    // before its read; MOVE has already set Z from D0 = 0 before its write.
+    struct Case { uint16_t opcode; bool write; uint16_t code; uint16_t sr; const char* what; };
+    static const Case cases[] = {
+        { 0x4a10, false, 0x4a15, 0x2700, "TST.B (A0), read" },      // IR&$FFE0 | R | FC5
+        { 0x1080, true,  0x1085, 0x2704, "MOVE.B D0,(A0), write" }, // IR&$FFE0 | W | FC5
+    };
+    for (const Case& k : cases) {
+        TestCpu c(moira::Model::M68000);
+        p32(c, 2 * 4, kHandler);                    // vector 2: bus error
+        p16(c, kHandler, kNop);
+        stage(c, k.opcode, 0);
+        c.setA(0, kHole);
+        c.holeArmed = true;
+
+        const bool contained = executeContained(c);
+        CHECK(contained, "%s: the bus error left execute() as a C++ exception",
+              k.what);
+        if (!contained) continue;
+        const uint32_t sp = c.getSP();
+        CHECK(c.getPC0() == kHandler, "%s: PC0=%08X, want the vector-2 handler",
+              k.what, c.getPC0());
+        CHECK(sp == 0x8000 - 14, "%s: SP=%08X, want a 14-byte group-0 frame",
+              k.what, sp);
+        CHECK(g16(c, sp) == k.code, "%s: status word %04X want %04X",
+              k.what, g16(c, sp), k.code);
+        CHECK(g32(c, sp + 2) == kHole, "%s: access address %08X",
+              k.what, g32(c, sp + 2));
+        CHECK(g16(c, sp + 6) == k.opcode, "%s: IR %04X", k.what, g16(c, sp + 6));
+        CHECK(g16(c, sp + 8) == k.sr, "%s: SR %04X want %04X",
+              k.what, g16(c, sp + 8), k.sr);
+        CHECK(g32(c, sp + 10) == kCode + 2, "%s: PC %08X want %08X",
+              k.what, g32(c, sp + 10), kCode + 2);
+        CHECK(c.faults == 1 && c.faultAddr == kHole,
+              "%s: willProcessFault saw %d fault(s) at %08X",
+              k.what, c.faults, c.faultAddr);
+    }
+}
+
+void hostHooks()
+{
+    constexpr uint16_t kIllegal = 0x4afc;
+    {   // unhandled: vector 4, as upstream
+        TestCpu c(moira::Model::M68000);
+        p32(c, 4 * 4, kHandler);
+        p16(c, kHandler, kNop);
+        stage(c, kIllegal, 0);
+        c.execute();
+        CHECK(c.getPC0() == kHandler, "unhandled ILLEGAL: PC0=%08X", c.getPC0());
+    }
+    {   // handled: consumed like a NOP
+        TestCpu c(moira::Model::M68000);
+        p32(c, 4 * 4, kHandler);
+        stage(c, kIllegal, 0);
+        c.handleIllegal = true;
+        const moira::i64 c0 = c.getClock();
+        c.execute();
+        CHECK(c.getPC0() == kCode + 2 && c.getSP() == 0x8000,
+              "handled ILLEGAL: PC0=%08X SP=%08X", c.getPC0(), c.getSP());
+        CHECK(c.getClock() - c0 == 4, "handled ILLEGAL: %lld cycles, want 4",
+              (long long)(c.getClock() - c0));
+    }
+    {   // TAS (A0): lock, read, write, unlock
+        TestCpu c(moira::Model::M68000);
+        stage(c, 0x4ad0, 0);
+        c.setA(0, 0x3000);
+        c.events.clear();
+        c.execute();
+        CHECK(c.events == "LrwU", "TAS (A0) bus-lock bracket: \"%s\", want LrwU",
+              c.events.c_str());
+        CHECK(c.mem[0x3000] == 0x80, "TAS (A0) wrote %02X", c.mem[0x3000]);
+    }
+    {   // TAS on the faulting byte still releases the lock
+        TestCpu c(moira::Model::M68000);
+        p32(c, 2 * 4, kHandler);
+        p16(c, kHandler, kNop);
+        stage(c, 0x4ad0, 0);
+        c.setA(0, kHole);
+        c.holeArmed = true;
+        c.events.clear();
+        const bool contained = executeContained(c);
+        CHECK(contained && c.events == "LU",
+              "TAS on a /BERR byte: contained=%d events \"%s\", want LU",
+              int(contained), c.events.c_str());
+    }
+    {   // an address error reaches willProcessFault with its frame
+        TestCpu c(moira::Model::M68000);
+        p32(c, 3 * 4, kHandler);
+        p16(c, kHandler, kNop);
+        stage(c, 0x4a50, 0);                        // TST.W (A0)
+        c.setA(0, 0x3001);
+        c.execute();
+        CHECK(c.faults == 1 && c.faultAddr == 0x3001 && c.getPC0() == kHandler,
+              "address error: %d fault(s) at %08X, PC0=%08X",
+              c.faults, c.faultAddr, c.getPC0());
+    }
+}
+
+void divlOperandFault()
+{
+    static const struct { moira::Model model; const char* name; } models[] = {
+        { moira::Model::M68020,   "68020" },
+        { moira::Model::M68030,   "68030" },
+        { moira::Model::M68LC040, "68LC040" },
+    };
+    for (const auto& m : models) {
+        for (uint16_t ext : { uint16_t(0x0000), uint16_t(0x0800) }) {   // DIVU.L, DIVS.L
+            TestCpu c(m.model);
+            p32(c, 2 * 4, kHandler);                // vector 2: bus error
+            p16(c, kHandler, kNop);
+            p16(c, kHandler + 2, kNop);
+            stage(c, 0x4c50, 0);                    // DIVx.L (A0),D0
+            p16(c, kCode + 2, ext);
+            c.setIRC(ext);
+            c.setA(0, kHole);
+            c.setD(0, 0x12345678);
+            c.holeArmed = true;
+
+            const bool contained = executeContained(c);
+            CHECK(contained, "%s DIV%c.L (A0): the fault left execute()",
+                  m.name, ext ? 'S' : 'U');
+            if (!contained) continue;
+            CHECK(c.getPC0() == kHandler,
+                  "%s DIV%c.L (A0) on a /BERR operand: PC0=%08X, want the "
+                  "vector-2 handler (the fault was swallowed)",
+                  m.name, ext ? 'S' : 'U', c.getPC0());
+            CHECK(c.getSP() < 0x8000 && c.getD(0) == 0x12345678,
+                  "%s DIV%c.L (A0): SP=%08X D0=%08X, want a stacked frame and "
+                  "an untouched quotient register",
+                  m.name, ext ? 'S' : 'U', c.getSP(), c.getD(0));
+        }
+    }
+}
+
+void chk2FlagsOn040()
+{
+    // CMP2.B (A0),D0 with bounds [1, 5], entered with every flag set ($1F).
+    // In range: Z = 0, C = 0. On a bound: Z = 1. N and V: cleared by the
+    // 68020/68030 table for these operands, left as they were by the 68040.
+    struct Row { moira::Model model; const char* name; uint8_t inRange, onBound; };
+    static const Row rows[] = {
+        { moira::Model::M68020,   "68020",   0x10, 0x14 },
+        { moira::Model::M68030,   "68030",   0x10, 0x14 },
+        { moira::Model::M68LC040, "68LC040", 0x1a, 0x1e },
+        { moira::Model::M68040,   "68040",   0x1a, 0x1e },
+    };
+    for (const Row& row : rows) {
+        for (int onBound = 0; onBound < 2; onBound++) {
+            TestCpu c(row.model);
+            stage(c, 0x00d0, 0x1f);                 // CMP2.B (A0),Rn
+            p16(c, kCode + 2, 0x0000);              // Rn = D0, CMP2
+            c.setIRC(0x0000);
+            c.mem[0x3000] = 1; c.mem[0x3001] = 5;   // lower, upper
+            c.setA(0, 0x3000);
+            c.setD(0, onBound ? 1 : 3);
+            c.execute();
+            const uint8_t want = onBound ? row.onBound : row.inRange;
+            CHECK(c.getCCR() == want && c.getPC0() == kCode + 4,
+                  "%s CMP2.B value %s: CCR=%02X want %02X, PC0=%08X",
+                  row.name, onBound ? "on the lower bound" : "in range",
+                  c.getCCR(), want, c.getPC0());
+        }
+    }
+}
+
+void fpuUnimplementedBeforeDatatype040()
+{
+    // Packed-decimal immediate source (format 3: unsupported on the 68040).
+    // FMOD ($25) is unimplemented there -> vector 11. FADD ($22) is
+    // implemented -> the datatype trap, vector 55.
+    struct Case { uint16_t opmode; int vector; const char* what; };
+    static const Case cases[] = {
+        { 0x25, 11, "FMOD.P #imm,FP0 (unimplemented)" },
+        { 0x22, 55, "FADD.P #imm,FP0 (implemented)" },
+    };
+    for (const Case& k : cases) {
+        TestCpu c(moira::Model::M68040);
+        c.setFPUModel(moira::FPUModel::M68040);
+        p32(c, 11 * 4, kHandler);
+        p32(c, 55 * 4, kHandler + 0x40);
+        p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
+        p16(c, kHandler + 0x40, kNop); p16(c, kHandler + 0x42, kNop);
+        const uint16_t ext = uint16_t(0x4000 | (3 << 10) | k.opmode);
+        stage(c, 0xf23c, 0);                        // F<op>.P #imm,FP0
+        p16(c, kCode + 2, ext);
+        c.setIRC(ext);
+        p32(c, kCode + 4, 0x00010000);              // +1.0E+0001, packed
+        p32(c, kCode + 8, 0x10000000);
+        p32(c, kCode + 12, 0x00000000);
+        p16(c, kCode + 16, kNop);
+        c.execute();
+        const uint32_t want = kHandler + (k.vector == 55 ? 0x40 : 0);
+        CHECK(c.getPC0() == want,
+              "68040 %s: PC0=%08X, want vector %d at %08X",
+              k.what, c.getPC0(), k.vector, want);
+    }
+}
+
+void flineShapesOn68LC040()
+{
+    // What is no instruction at all is refused before the "no FPU" frame:
+    // format $0 through vector 11, or vector 4 with the PC past the
+    // extension word for opmodes $78-$7F. A real instruction gets format $4.
+    struct Case { uint16_t ext; int vector; uint16_t frameWord; int frameBytes;
+                  uint32_t pcOffset; const char* what; };
+    static const Case cases[] = {
+        { 0x0000, 11, 0x402c, 16, 4, "FMOVE FP0,FP0 (an instruction)" },
+        { 0x0005, 11, 0x002c,  8, 0, "opmode $05 (no instruction)" },
+        { 0x2000, 11, 0x002c,  8, 0, "opclass 001 (no instruction)" },
+        { 0x0078,  4, 0x0010,  8, 4, "opmode $78 (illegal vector)" },
+    };
+    for (const Case& k : cases) {
+        TestCpu c(moira::Model::M68LC040);
+        p32(c, 4 * 4, kHandler + 0x40);
+        p32(c, 11 * 4, kHandler);
+        p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
+        p16(c, kHandler + 0x40, kNop); p16(c, kHandler + 0x42, kNop);
+        stage(c, 0xf200, 0);
+        p16(c, kCode + 2, k.ext);
+        c.setIRC(k.ext);
+        p16(c, kCode + 4, kNop);
+        const uint32_t sp = c.getSP();
+        c.execute();
+        const uint32_t want = kHandler + (k.vector == 4 ? 0x40 : 0);
+        CHECK(c.getPC0() == want && sp - c.getSP() == uint32_t(k.frameBytes) &&
+              g16(c, c.getSP() + 6) == k.frameWord &&
+              g32(c, c.getSP() + 2) == kCode + k.pcOffset,
+              "68LC040 $F200 %s: PC0=%08X (want %08X), %u frame bytes (want %d), "
+              "format word %04X (want %04X), stacked PC %08X (want %08X)",
+              k.what, c.getPC0(), want, unsigned(sp - c.getSP()), k.frameBytes,
+              g16(c, c.getSP() + 6), k.frameWord,
+              g32(c, c.getSP() + 2), kCode + k.pcOffset);
+    }
+}
+
+void fbccPredicateIsFiveBits()
+{
+    // FBcc.W with predicate $21: bit 5 is ignored, so it is FBEQ.
+    static const struct { moira::Model cpu; moira::FPUModel fpu; const char* name; } rigs[] = {
+        { moira::Model::M68030, moira::FPUModel::M68882, "68030+68882" },
+        { moira::Model::M68040, moira::FPUModel::M68040, "68040" },
+    };
+    for (const auto& rig : rigs) {
+        for (int z = 0; z < 2; z++) {
+            TestCpu c(rig.cpu);
+            c.setFPUModel(rig.fpu);
+            p32(c, 11 * 4, kHandler);
+            p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
+            stage(c, 0xf2a1, 0);                    // FBcc.W, predicate $21
+            p16(c, kCode + 2, 0x0020);              // to kCode + $22
+            c.setIRC(0x0020);
+            p16(c, kCode + 4, kNop); p16(c, kCode + 6, kNop);
+            p16(c, kCode + 0x22, kNop); p16(c, kCode + 0x24, kNop);
+            c.setFPSR(z ? 0x04000000 : 0);          // FPSR.Z
+            const uint32_t sp = c.getSP();
+            c.execute();
+            const uint32_t want = z ? kCode + 0x22 : kCode + 4;
+            CHECK(c.getSP() == sp && c.getPC0() == want,
+                  "%s FBcc predicate $21 with Z=%d: next instruction at %08X "
+                  "(want %08X), SP moved by %d",
+                  rig.name, z, c.getPC0(), want, int(sp - c.getSP()));
+        }
+    }
+}
+
+void fpuStoreFaultRestarts040()
+{
+    // FMOVE.L FP0,(A0)+ onto a /BERR byte: the instruction restarts — the
+    // frame holds its own address and A0 is back where it was. No FPU
+    // instruction ends on a "last write".
+    TestCpu c(moira::Model::M68040);
+    c.setFPUModel(moira::FPUModel::M68040);
+    p32(c, 2 * 4, kHandler);
+    p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
+    stage(c, 0xf218, 0);                            // FMOVE.L FP0,(A0)+
+    p16(c, kCode + 2, 0x6000);
+    c.setIRC(0x6000);
+    p16(c, kCode + 4, kNop);
+    c.setA(0, kHole);
+    c.holeArmed = true;
+    const bool contained = executeContained(c);
+    CHECK(contained, "68040 FMOVE.L FP0,(A0)+: the fault left execute()");
+    if (!contained) return;
+    CHECK(c.getPC0() == kHandler && c.getA(0) == kHole &&
+          g32(c, c.getSP() + 2) == kCode,
+          "68040 FMOVE.L FP0,(A0)+ on a /BERR byte: PC0=%08X (want %08X), "
+          "A0=%08X (want %08X), stacked PC %08X (want %08X)",
+          c.getPC0(), kHandler, c.getA(0), kHole, g32(c, c.getSP() + 2), kCode);
+}
+
+void ttrTableFollowsRegisters()
+{
+    // mmu040MatchTTR answers from a table derived from the TTRs, and the
+    // table has no hook on the registers: it must notice a change by
+    // itself, in either register of a pair. Seen from outside through the
+    // one thing a data TTR decides with the MMU off — a write-protected
+    // match faults the write. One CPU object, so each step meets the table
+    // the previous one left.
+    struct Step { uint32_t dtt0, dtt1; bool faults; const char* what; };
+    static const Step steps[] = {
+        { 0x4000c004, 0,          true,  "DTT0 = $40, both privileges, W" },
+        { 0x4000c000, 0,          false, "DTT0 = the same without W" },
+        { 0,          0x4000a004, true,  "DTT1 = $40, supervisor only, W" },
+        { 0,          0x40008004, false, "DTT1 = $40, user only, W" },
+        { 0x5000c004, 0x4000a004, true,  "DTT0 misses, DTT1 matches with W" },
+        { 0x4000c000, 0x4000a004, false, "DTT0 matches first, without W" },
+    };
+    // The operand sits at $40003000 (the test board mirrors its megabyte);
+    // the stack stays in $00, outside every register above, so the frame
+    // of the fault can be written.
+    TestCpu c(moira::Model::M68040);
+    for (const Step& k : steps) {
+        p32(c, 2 * 4, kHandler);
+        p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
+        stage(c, 0x3080, 0);                        // MOVE.W D0,(A0)
+        p16(c, 0x3000, 0x1111);
+        c.setA(0, 0x40003000);
+        c.setD(0, 0x2222);
+        c.setDTT0(k.dtt0);
+        c.setDTT1(k.dtt1);
+        const bool contained = executeContained(c);
+        CHECK(contained, "68040 TTR %s: the fault left execute()", k.what);
+        if (!contained) continue;
+        const bool faulted = c.getPC0() == kHandler;
+        const uint16_t want = k.faults ? 0x1111 : 0x2222;
+        CHECK(faulted == k.faults && g16(c, 0x3000) == want,
+              "68040 TTR %s: %s, memory %04X (want %s, %04X)",
+              k.what, faulted ? "faulted" : "wrote", g16(c, 0x3000),
+              k.faults ? "a fault" : "a write", want);
+    }
+}
+
 } // namespace
 
 int main()
 {
     divsOfIntMin();
+    externalBusError000();
+    hostHooks();
+    divlOperandFault();
+    chk2FlagsOn040();
+    fpuUnimplementedBeforeDatatype040();
+    flineShapesOn68LC040();
+    fbccPredicateIsFiveBits();
+    fpuStoreFaultRestarts040();
+    ttrTableFollowsRegisters();
 
     if (failures) {
         std::printf("[moira_rules_test] FAIL: %d check(s)\n", failures);
         return 1;
     }
-    std::printf("[moira_rules_test] OK: DIVS.W of $80000000 on six models\n");
+    std::printf("[moira_rules_test] OK: DIVS.W of $80000000 on six models, "
+                "68000 external /BERR, host hooks, DIVx.L operand fault, "
+                "68040 CHK2/CMP2 flags, 68040 FPU trap priority, 68LC040 F-line "
+                "shapes, five-bit FBcc predicate, 68040 FPU store fault, 68040 TTR "
+                "table\n");
     return 0;
 }

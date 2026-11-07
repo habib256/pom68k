@@ -585,12 +585,26 @@ Moira::read(u32 addr)
             mmuAccAddr = addr; mmuAccSsw = 0x00;
             mmuAccFc = readFC(); mmuAccWrite = false;
         }
-        result = read16(addr & addrMask<C>()) << 16;
-        SYNC(4);
-        if (F & POLL) POLL_IPL;
-        if constexpr (kPlain020) { mmuAccAddr = addr + 2; mmuAccSsw = 0x20; }
-        result |= read16((addr + 2) & addrMask<C>());
-        SYNC(2);
+        if (F & REVERSE) {
+
+            // POM68K: low word first — the read twin of write<>'s REVERSE.
+            if constexpr (kPlain020) mmuAccAddr = addr + 2;
+            result = read16((addr + 2) & addrMask<C>());
+            SYNC(4);
+            if (F & POLL) POLL_IPL;
+            if constexpr (kPlain020) { mmuAccAddr = addr; mmuAccSsw = 0x20; }
+            result |= read16(addr & addrMask<C>()) << 16;
+            SYNC(2);
+
+        } else {
+
+            result = read16(addr & addrMask<C>()) << 16;
+            SYNC(4);
+            if (F & POLL) POLL_IPL;
+            if constexpr (kPlain020) { mmuAccAddr = addr + 2; mmuAccSsw = 0x20; }
+            result |= read16((addr + 2) & addrMask<C>());
+            SYNC(2);
+        }
     }
 
     return result;
@@ -934,7 +948,7 @@ Moira::readExt()
                 pomJitStampAccess(reg.pc);
                 return;
             }
-            queue.irc = u16(mmu040Read<C, Word>(reg.pc, false));
+            queue.irc = mmu040FetchWord<C>(reg.pc);
             return;
         }
     }
@@ -1038,10 +1052,9 @@ Moira::jumpToVector(int nr)
     SYNC(2);
     prefetch<C, POLL>();
 
-    // NEOST : diag cycle-exact (NEOST_EXC_DIAG=1) — horloge en FIN de jumpToVector,
+    // NEOST : diag cycle-exact (setPomExceptionDiag) — horloge en FIN de jumpToVector,
     // à corréler avec [EXC] (execInterrupt) et le timestamp Tracer du handler.
-    static const bool neostExcDiag = std::getenv("NEOST_EXC_DIAG") != nullptr;
-    if (neostExcDiag)
+    if (pomExceptionDiag) [[unlikely]]
         fprintf(stderr, "[JTV] nr=%d clk=%lld\n", nr, (long long)getClock());
 
     // Stop emulation if the exception should be catched

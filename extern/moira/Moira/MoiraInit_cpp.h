@@ -2035,20 +2035,16 @@ Moira::createJumpTable(Model model, bool regDasm)
         opcode = parse("1111 0010 110- ----");
         ___________XXXXX(opcode, Instr::FBcc, Mode::IP, Long, FBcc, CIMS)
 
-        // POM68K Q4: the 040 family decodes the pseudo-condition FBcc
-        // window too ($20-$3F — WinUAE cpudefs registers the full 6-bit
-        // field): with no FPU they take the format $4 exception like any
-        // FBcc; with an FPU the handler falls to Line-F (fpp_cond -> -1
-        // -> fpu_op_illg). 020/030 keep the historic 5-bit registration.
-        if (model == Model::M68040 || model == Model::M68LC040 ||
-            model == Model::M68EC040) {
+        // POM68K: the predicate field is six bits wide and FBcc is
+        // registered over all of it ($20-$3F included — WinUAE cpudefs
+        // does the same). With no FPU on a 68040 they take the format $4
+        // exception like any FBcc; with an FPU the handler evaluates the
+        // low five bits (see execFBcc).
+        opcode = parse("1111 0010 101- ----");
+        ___________XXXXX(opcode, Instr::FBcc, Mode::IP, Word, FBcc, CIMS)
 
-            opcode = parse("1111 0010 101- ----");
-            ___________XXXXX(opcode, Instr::FBcc, Mode::IP, Word, FBcc, CIMS)
-
-            opcode = parse("1111 0010 111- ----");
-            ___________XXXXX(opcode, Instr::FBcc, Mode::IP, Long, FBcc, CIMS)
-        }
+        opcode = parse("1111 0010 111- ----");
+        ___________XXXXX(opcode, Instr::FBcc, Mode::IP, Long, FBcc, CIMS)
 
         opcode = parse("1111 0010 00-- ----");
         __________XXXXXX(opcode, Instr::cpGEN, Mode::IP, Unsized, FGen, CIMS)

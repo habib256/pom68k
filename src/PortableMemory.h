@@ -116,7 +116,7 @@ private:
     void ca2(bool high);
     void refreshVia();
     void scsiLines();
-    void busError();
+    void busError(uint32_t addr, bool write);
     uint8_t ioRead(uint32_t a);
     void ioWrite(uint32_t a,uint8_t v,bool sync=true);
     void ioSync(uint32_t a);

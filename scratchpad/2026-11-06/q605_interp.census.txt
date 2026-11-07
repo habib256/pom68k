@@ -1,0 +1,62 @@
+92995 samples x 1000 us = 93.0 s CPU attribués
+
+== buckets ==
+ 63.24%  MMU/cache
+ 11.90%  interpréteur (fallback)
+  9.47%  carte mémoire/thunks
+  8.72%  moteur — runtime/fenêtres
+  5.98%  LLE/périphériques
+  0.49%  autre
+  0.20%  hôte/harnais
+
+== top 6 par bucket ==
+
+-- MMU/cache
+   16.63%  unsigned int moira::Moira::mmu040Translate<(moira::Core)2>(unsigned int, unsigned int, bool, bool, bool, int)
+   12.55%  unsigned int moira::Moira::mmu040Read<(moira::Core)2, 2>(unsigned int, bool)
+    9.86%  moira::Moira::mmu040MatchTTR(unsigned int, bool, bool, unsigned int*) const
+    9.12%  moira::Moira::mmu040AtcLookup(bool, unsigned int, bool)
+    6.42%  moira::Moira::pomCache040ReadValue(unsigned int, bool, int)
+    3.53%  bool moira::Moira::mmu040InstrStart<(moira::Core)2>()
+
+-- interpréteur (fallback)
+    2.33%  void moira::Moira::execBitImEa<(moira::Core)2, (moira::Instr)31, (moira::Mode)5, 1>(unsigned short)
+    2.18%  void moira::Moira::execBcc<(moira::Core)2, (moira::Instr)22, (moira::Mode)12, 1>(unsigned short)
+    1.92%  void moira::Moira::readExt<(moira::Core)2>()
+    1.23%  moira::Moira::execute()
+    0.45%  moira::Moira::pollIpl()
+    0.44%  moira::Moira::executeUntil(long long)
+
+-- carte mémoire/thunks
+    6.31%  Q605Memory::read16(unsigned int)
+    0.81%  Q605Memory::tick(int)
+    0.80%  Q605Memory::read8(unsigned int)
+    0.77%  Q605Memory::write16(unsigned int, unsigned short)
+    0.68%  Q605Memory::cyclesToNextEvent() const
+    0.09%  Q605Memory::ioRead8(unsigned int)
+
+-- moteur — runtime/fenêtres
+    4.19%  moira::Moira::pomJitExecOne()
+    2.25%  pom68k::MoiraCpu<Cpu040, Q605Memory>::sync(int)
+    0.93%  Cpu040::flushTicks()
+    0.72%  pom68k::MoiraCpu<Cpu040, Q605Memory>::read16(unsigned int) const
+    0.34%  moira::Moira::pomJitDataSlow(unsigned int, unsigned int, bool)
+    0.22%  pom68k::MoiraCpu<Cpu040, Q605Memory>::read8(unsigned int) const
+
+-- LLE/périphériques
+    1.20%  Dafb::tick(int)
+    0.80%  Q605Memory::syncSwimFromCpu()
+    0.75%  Dafb::cyclesToNextEvent() const
+    0.71%  CudaLle::tick(int)
+    0.68%  Scc8530::cyclesToNextEvent() const
+    0.43%  M68hc05::execOne()
+
+-- autre
+    0.49%  DiskTimeline::blockHash(unsigned int, unsigned char const*, unsigned int)
+    0.00%  bench::Result bench::runWith<Cpu040, bench::run<Cpu040>(Cpu040&, int, long)::{lambda()#1}>(Cpu040&, int, long, bench::run<Cpu040>(
+
+-- hôte/harnais
+    0.20%  [libc.so.6]
+    0.00%  DiskTimeline::attach(unsigned char const*, unsigned long, unsigned int, std::__cxx11::basic_string<char, std::char_traits<char>, s
+    0.00%  std::optional<int> pom68k::startup_value::integer<pom68k::StartupOption<(pom68k::StartupDomain)8, pom68k::StartupValuePolicy{(pom6
+    0.00%  main

@@ -24,6 +24,10 @@
 #   fuzz040.py --a liboracle_uae.so \
 #              --family core|mmu|random|fault --mmu off|identity|tt \
 #              --n 1000 --seed 1 --out corpus/core_off.json
+#   add --page 8k for trees with 8 KB pages (TC.P = 1).
+#   --family fpu (assembler-shaped) and fpuraw (any extension word) step a
+#   full 68040 with its integrated FPU; replay them with `sst68040 <dir>
+#   --fpu`. --family fline is fpuraw's opcode stream on the FPU-less 68LC040.
 
 from __future__ import annotations
 
@@ -33,14 +37,21 @@ import os
 import random
 import sys
 
+import gen040
 from gen040 import gen_state
 from oracle_driver import Oracle, State
 import sst040
 
 
-def run_one(o: Oracle, st: State):
+def run_one(o: Oracle, st: State, steps: int = 1):
     o.load(st)
-    cycles = o.step()
+    cycles = 0
+    for _ in range(steps):
+        c = o.step()
+        if c < 0:                   # halt: the vector is skipped
+            cycles = c
+            break
+        cycles += c
     fin = o.read_back()
     ram = o.ram_diff(dict(st.ram))
     return fin, ram, cycles
@@ -52,8 +63,15 @@ def main() -> int:
                     help="oracle .so (WinUAE; solo = its word is law)")
     ap.add_argument("--b", help="optional second oracle .so (differential mode)")
     ap.add_argument("--family", default="core",
-                    choices=["core", "mmu", "random", "fault"])
+                    choices=["core", "mmu", "random", "fault", "fpu",
+                             "fline", "fpuraw", "fpu2", "sysraw", "rmw"])
     ap.add_argument("--mmu", default="off", choices=["off", "identity", "tt"])
+    ap.add_argument("--page", default="4k", choices=["4k", "8k"],
+                    help="page size of the generated trees (TC.P)")
+    ap.add_argument("--steps", type=int, default=1,
+                    help="oracle steps per vector (an instruction, or the "
+                         "exception it takes, is one step); the fpu2 family "
+                         "is meant for 2")
     ap.add_argument("--n", type=int, default=100)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--out", required=True)
@@ -61,10 +79,16 @@ def main() -> int:
                     help="dir for disagreement dumps (default: <out-dir>/disputes)")
     args = ap.parse_args()
 
-    oa = Oracle(args.a, model=68040)
-    ob = Oracle(args.b, model=68040) if args.b else None
+    # The fpu and fpuraw families run the oracle as a full 68040 (integrated
+    # FPU); every other family keeps the 68LC040 the pinned corpus was
+    # generated with.
+    fpu = 68040 if args.family in gen040.FPU_FAMILIES else 0
+    oa = Oracle(args.a, model=68040, fpu=fpu)
+    ob = Oracle(args.b, model=68040, fpu=fpu) if args.b else None
     print(f"oracle A: {oa.name}" + (f" | oracle B: {ob.name}" if ob else " (solo)"))
 
+    gen040.set_page_shift(13 if args.page == "8k" else 12)
+    tag = "/8k" if args.page == "8k" else ""
     rng = random.Random(args.seed)
     disputes_dir = args.disputes or os.path.join(
         os.path.dirname(os.path.abspath(args.out)), "disputes")
@@ -72,14 +96,14 @@ def main() -> int:
     vectors, n_dispute, n_halt = [], 0, 0
     for i in range(args.n):
         st = gen_state(rng, family=args.family, mmu=args.mmu)
-        name = f"040 {args.family}/{args.mmu} seed={args.seed} #{i}"
+        name = f"040 {args.family}/{args.mmu}{tag} seed={args.seed} #{i}"
 
-        fa, rama, ca = run_one(oa, st)
+        fa, rama, ca = run_one(oa, st, args.steps)
         if ca < 0:
             n_halt += 1
             continue
         if ob:
-            fb, ramb, _cb = run_one(ob, st)
+            fb, ramb, _cb = run_one(ob, st, args.steps)
             diffs = fa.core_diff(fb)
             if rama != ramb:
                 diffs.append(f"ram: {len(rama)} vs {len(ramb)} touched cells differ")
@@ -96,7 +120,7 @@ def main() -> int:
                                      "final": sst040.state_to_dict(fb, ramb)},
                                "diffs": diffs}, f, indent=1)
                 continue
-        vectors.append(sst040.vector(name, st, fa, rama, ca))
+        vectors.append(sst040.vector(name, st, fa, rama, ca, args.steps))
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     sst040.save(args.out, vectors)

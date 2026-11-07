@@ -49,6 +49,9 @@ static int pom_inited = 0;
 // LC II pairing; 68040 + fpu 0 = the 68LC040 of the LC 475/Quadra 605).
 static int pom_cpu_model = 68030;
 static int pom_fpu_model = 68882;
+// 6888x strictness (oracle_set_fpu_strict). Off by default: the pinned
+// 68030 corpora were generated with WinUAE's permissive setting.
+static int pom_fpu_strict = 0;
 
 ORACLE_EXPORT void oracle_set_model(int cpu_model, int fpu_model)
 {
@@ -59,6 +62,21 @@ ORACLE_EXPORT void oracle_set_model(int cpu_model, int fpu_model)
 	if (fpu_model == 0 || fpu_model == 68881 || fpu_model == 68882 ||
 	    fpu_model == 68040)
 		pom_fpu_model = fpu_model;
+}
+
+// WinUAE's `fpu_no_unimplemented` for a 6888x, selectable before oracle_init.
+// Permissive (0, the default and what every corpus pinned before 2026-11-07
+// was generated with), a 68881/68882 executes the 68040's FSxxx/FDxxx
+// opmodes, sends $78-$7F to the illegal vector and lets FRESTORE accept a
+// 68040 frame ("horrible hack to support on the fly 6888x <> 68040 FPU
+// switching", fpp.c). Strict (1), opmodes $40-$7F take a Line-F and a
+// foreign frame a format error — what the MC68881/MC68882 manual says.
+// The full 68040 is always strict (pom_default_prefs).
+ORACLE_EXPORT void oracle_set_fpu_strict(int strict)
+{
+	if (pom_inited)
+		return;
+	pom_fpu_strict = strict != 0;
 }
 
 // Called from the M68000_AddCycles() shim: cycles are only consumed while an
@@ -102,7 +120,16 @@ static void pom_default_prefs(struct uae_prefs *p)
 	p->cpu_frequency = 0;
 	p->cpu_clock_multiplier = 0;
 	p->int_no_unimplemented = false;
-	p->fpu_no_unimplemented = false;
+	// The integrated 68040 FPU does not implement the transcendentals, FSCALE,
+	// FREM/FMOD, FGETEXP/FGETMAN, FINTRZ, FMOVECR or the packed format: real
+	// silicon traps them to the FPSP through vector 11. WinUAE only does so
+	// with this option set; left false it executes them like a 6888x, which
+	// is not a 68040. The 68030+6888x and 68LC040 configurations — the ones
+	// the pinned corpora were generated with — keep it false (fpp.c also
+	// gates its 6888x FRESTORE version hack on it).
+	p->fpu_no_unimplemented =
+	    (pom_cpu_model == 68040 && pom_fpu_model == 68040) ||
+	    (pom_fpu_strict && (pom_fpu_model == 68881 || pom_fpu_model == 68882));
 }
 
 ORACLE_EXPORT int oracle_init(uint8_t *mem, uint32_t size)
@@ -282,6 +309,18 @@ ORACLE_EXPORT void oracle_set_state(const OracleState *st)
 	regs.prefetch020_valid[0] = regs.prefetch020_valid[1] = regs.prefetch020_valid[2] = 0;
 	regs.pipeline_pos = regs.pipeline_stop = 0;
 	regs.pipeline_r8[0] = regs.pipeline_r8[1] = 0;
+
+	// Same rule for the (An)+/-(An) fixup latch. A 68040 access fault calls
+	// cpu_restore_fixup() on whatever mmufixup[] holds, and upstream's 68040
+	// loop never disarms it at instruction start: several fpp.c paths (FScc
+	// -(An), an FPU operand whose instruction leaves through a non-bus
+	// exception) arm mmufixup[0] and return without clearing it. The next
+	// faulting instruction — here, the next VECTOR — then had an address
+	// register overwritten with a value from fuzz-run history (first seen
+	// 2026-11-07: "040 fpuraw/identity seed=962 #1007", FRESTORE through
+	// A5 leaving A4 changed).
+	mmufixup[0].reg = -1;
+	mmufixup[1].reg = -1;
 }
 
 ORACLE_EXPORT int32_t oracle_step(void)
