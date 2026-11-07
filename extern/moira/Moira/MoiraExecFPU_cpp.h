@@ -2451,23 +2451,25 @@ Moira::execFRestore(u16 opcode)
 
         fpuResetState();
 
-    } else if (frameVersion == 0x41) {
+    } else if (frameVersion == 0x41 && fpuModel == FPUModel::M68040) {
 
-        // WinUAE's "horrible hack" (fpp.c:2799-2802): with
-        // fpu_no_unimplemented == false — the oracle's config,
-        // oracle/uae/glue.c:84 — a 68040-version frame retries down the
-        // 68040 branch (fpp.c:2663-2753). Only $41 matches there:
-        // get_fpu_version(68040) == $41 since fpu_revision == 0
-        // (fpp.c:1442-1446); a $40 frame mismatches and falls through to
-        // the format error below. Oracle-verified 2026-07-15 (solo).
+        // The 68040's own frame (get_fpu_version(68040) == $41, fpp.c).
         //
-        // D23bis (2026-08-18): the hack is MODEL-INDEPENDENT. It compares
-        // the frame against the 68040's version, not the current FPU's, so
-        // it fires on a 68882 too — an `&& fpuModel == M68040` guard added
-        // on 2026-08-17 format-errored $41 frames on the 030 and put four
-        // pinned vectors red ($41/$30, $41/$28 skipped; $41/$00 = IDLE;
-        // fpu_tt #166, fpu_off #28/#83, fpu_identity #75 — the oracle
-        // takes no exception on any of them).
+        // POM68K, ruling D23b (settled 2026-11-07): a 68882 given this frame
+        // takes the format error below. Until then it accepted it, after
+        // WinUAE's "horrible hack to support on the fly 6888x <> 68040 FPU
+        // switching" (fpp.c:2799-2802) — which exists only in the oracle's
+        // PERMISSIVE setting (fpu_no_unimplemented == false), the one the
+        // four pinned sst68030 vectors holding the acceptance were generated
+        // in (fpu_tt #166, fpu_off #28/#83, fpu_identity #75, now listed in
+        // tests/sst68030.known). The strict oracle takes the format error.
+        // [B] MC68881/MC68882 UM § 6: no such frame version exists for the
+        //     coprocessor — a format error.
+        // [D] WinUAE fpp.c fpuop_restore @ Hatari e77819f7, strict setting.
+        // Gate: sst68030_fpuraw and sst68030_fpu2 (their D23b blocks are
+        // gone), sst68030_solo (regenerated strict), the LC 475/575/580 and
+        // Quadra 605 etalons (68LC040 + software 68882: a system that
+        // believes it has a 68040 FPU restores only frames it saved).
         u32 frameSize = (d >> 16) & 0xff;
 
         if (frameSize == 0x00) {                        // 68040 IDLE

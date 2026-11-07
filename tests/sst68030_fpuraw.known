@@ -3,14 +3,6 @@
 # (oracle/fuzz/disputes/NOTES.md). See tests/SstKnown.h for the rules: a
 # listed vector that passes, or is missing, fails the gate.
 
-# D23b - FRESTORE of a 68040 frame on a 68882. The fork accepts it, as the
-# permissive oracle of the pinned sst68030 does (WinUAE's "horrible hack"); the
-# STRICT oracle this corpus was generated with takes the format error the
-# manual asks for.
-fpuraw/identity seed=722 #46
-fpuraw/identity seed=722 #311
-fpuraw/off seed=721 #1717
-
 # D26 - FMOVE.P FPn,(An)+{Dn} and -(An){Dn}. The fork steps An by the twelve
 # bytes of a packed operand; the oracle's size table holds 0 for the dynamic
 # k-factor format.

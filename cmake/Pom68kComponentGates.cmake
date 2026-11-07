@@ -559,7 +559,10 @@ add_executable(sst68030 tests/sst68030.cpp)
 target_link_libraries(sst68030 PRIVATE moira)
 set(POM68K_SST030_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/sst68030"
     CACHE PATH "Directory of oracle-generated SST030 .json vectors")
-add_test(NAME sst68030 COMMAND sst68030 "${POM68K_SST030_DIR}")
+# The July corpus was generated in the oracle's permissive 6888x setting; the
+# four vectors of ruling D23b it holds are listed by name (tests/SstKnown.h).
+add_test(NAME sst68030 COMMAND sst68030 "${POM68K_SST030_DIR}"
+         --known "${CMAKE_CURRENT_SOURCE_DIR}/tests/sst68030.known")
 
 # Phase-3 gate (Q2): WinUAE-solo SST040 vectors against Moira M68LC040.
 # Corpus is generated locally: oracle/fuzz/fuzz040.py. Soft-skips when

@@ -508,6 +508,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-07 (eleventh)** — [Ruling D23b applied: a 68882 refuses a 68040 FSAVE frame — four permissive vectors listed, the solo corpus regenerated strict](#2026-11-07-d23b-applied)
 - **2026-11-07 (tenth)** — [On a 68030 the write fault of an ADD to memory restarted the instruction, and CLR read before it cleared: a family for read-modify-write faults, 5 052 to 5 989 of 6 000](#2026-11-07-rmw-last-write)
 - **2026-11-07 (ninth)** — [The 68040 state frame now carries the intermediate result the FPSP finishes the operation from: a family with FSAVE in the handlers, 5 750 to 5 988 of 6 000](#2026-11-07-state-frame-internals)
 - **2026-11-07 (eighth)** — [66 000 fresh vectors on the night's final core: every class corrected today stays closed, five vectors are new](#2026-11-07-fresh-sweep-final)
@@ -1219,6 +1220,33 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-07-d23b-applied"></a>
+## 2026-11-07 (eleventh) — Ruling D23b applied: a 68882 refuses a 68040 FSAVE frame — four permissive vectors listed, the solo corpus regenerated strict
+
+The fifth entry showed D23b to be the oracle's permissive mode rather than
+the hardware. Applied this morning (`POM68K_VENDOR.md` row 53): the
+FRESTORE `$41` branch is the 68040's only; a 68882 given that frame takes
+the format error the MC68881/MC68882 manual asks for and the strict oracle
+takes.
+
+Exactly the vectors predicted move, and no other: the four of the July
+corpus (`fpu/identity seed=29 #75`, `fpu/off seed=29 #28`, `#83`,
+`fpu/tt seed=41 #166`), now listed in `tests/sst68030.known` — that corpus
+has no recipe to regenerate — the six of `sst68030_solo`, which is
+regenerated against the strict oracle instead (its recipe gains
+`--strict-fpu`; 5 592 / 5 592), and the 3 + 21 of `sst68030_fpuraw` and
+`sst68030_fpu2`, whose D23b blocks leave their lists (5 805 / 6 000 and
+6 000 / 6 000). `fpu_sanity` and every 68040 corpus are unchanged.
+
+The product risk named in `TODO.md` was the 68LC040 + software-68882 hybrid
+of the LC 475/575/580 and Quadra 605: a system that believes it runs on a
+68040 might restore a hand-built `$41` IDLE frame through this branch. The
+parallel tier, which boots them, decides below.
+
+Two rulings remain in `oracle/README.md § Rulings taken against a manual`:
+D12 and D23a, both held by pinned vectors the oracle itself produced; and
+D30, noted this morning.
 
 <a id="2026-11-07-rmw-last-write"></a>
 ## 2026-11-07 (tenth) — On a 68030 the write fault of an ADD to memory restarted the instruction, and CLR read before it cleared: a family for read-modify-write faults, 5 052 to 5 989 of 6 000

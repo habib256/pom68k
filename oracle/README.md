@@ -49,7 +49,6 @@ existing ruling only when doing so turns no gate red (maintainer's decision,
 | **D12** | Zero divide, CHK/CHK2, TRAPcc/TRAPV: the format $2 "instruction address" is the **next** instruction's | MC68030UM reads "the instruction that caused the exception" | `sst68030` | a frame stacked by a real 68020/68030 |
 | **D23a** | 68030 FPU post-instruction exception stacks **format $3** with the operand EA | MC68030UM: format $2, instruction address | `sst68030` fpu cells (10 vectors went red on the 2026-08-17 attempt), `fpu_sanity` check 14 | a frame stacked by a real 68030 + 6888x. The oracle is not self-consistent here: its own RTE accepts format $3 only from the 68040 up (`uae/upstream/gencpu.c`, `i_RTE`: `if (cpu_level >= 4)` @ Hatari e77819f7), so on WinUAE too a 68030 handler that returns from this frame takes a format error. The fork mirrors both halves (`TODO.md § Moteur › Justesse 68030`) |
 | **D30** | 68040, unsupported data type on an opclass 000/010 instruction: taken at once, format $3 | M68040UM § 9.7 (unsupported data types): "instructions cause a pre-instruction exception" — format $0, taken by the next FPU instruction, as the arithmetic exceptions of D24 | `sst68040_fpu` (hundreds of format-$3, vector-55 frames), `fpu040_test` | the oracle itself calls it a simplification (`fpp.c`: "simplification: always mid/post-instruction exception"); a real frame, or the D24 machinery extended to vector 55 with two-instruction vectors to hold it. Noted 2026-11-07 while reading § 9.7 for D24 |
-| **D23b** | FRESTORE accepts a version-$41 (68040) frame on a 68882 — WinUAE's own "horrible hack" | MC68882UM § 6 knows no such frame version: format error | `sst68030` fpu cells (4 vectors) | **settled 2026-11-07, not yet applied**: the hack belongs to WinUAE's permissive `fpu_no_unimplemented = false`, the setting those vectors were generated with. In its strict setting the same oracle takes the format error (three vectors of `sst68030_fpuraw`). Manual and strict oracle agree; the flip lists the four vectors as known |
 
 ### Rulings where the fork does not follow the oracle
 
@@ -67,6 +66,10 @@ passing or disappears (`tests/SstKnown.h`).
 | **D28** | FBcc / FDBcc taken to an odd address: address error inside the branch, as for Bcc | Sets the PC and raises nothing, then or later | the manual: a fetch from an odd address is an address error. The oracle's FPU branches simply lack the test its integer branches have | — (the oracle has no frame to compare) |
 | **D29** | EA fields $3D-$3F on a 68030: the coprocessor decides — register-to-register runs, a memory form clears the status byte then takes a Line-F | Plain Line-F from the opcode table | on a 68030 the main processor validates an EA only when the coprocessor asks for it; nothing at hand states it for these fields. 63 vectors | `$F23D $0000` (FMOVE FP0,FP0 with EA field $3D) on a real 68030 + 68882 |
 
+D23b — FRESTORE of a 68040 frame accepted by a 68882 — left this table on
+2026-11-07: the acceptance was WinUAE's permissive setting, not the
+hardware, and the strict oracle sides with the manual (`POM68K_VENDOR.md`
+row 53; the four permissive vectors are listed in `tests/sst68030.known`).
 D24 — an enabled 68040 FPU exception delivered at once instead of by the
 next FPU instruction — stood in this table for a few hours on 2026-11-07:
 the manual (M68040UM § 9.7) sided with the oracle and the fork now follows
