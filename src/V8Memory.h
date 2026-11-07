@@ -108,11 +108,10 @@ public:
     bool loadRom(const std::vector<uint8_t>& data);  // 512 KB (1 MB Spice) flat image
     uint32_t romSize() const { return romSize_; }
     void reset();                                    // overlay on, V8 regs cleared
-    int cyclesToNextEvent() const {
-        // Firmware LLE is the tightest clock on these boards. Preserve the
-        // historical batching only for the explicit HLE fallback.
-        return egretLleOn_ ? egretLle_.cyclesToNextEvent() : 128;
-    }
+    // Machine cycles until a device can next change observable state on
+    // its own (V8Memory.cpp). Until 2026-11-07 only the Egret answered
+    // here and every other device's event waited for the next flush.
+    int cyclesToNextEvent() const;
 
     uint8_t  read8(uint32_t addr);
     uint16_t read16(uint32_t addr);
@@ -177,13 +176,13 @@ public:
     // (φ2 = CPU/20 = 783.36 kHz) + the free-running 60.15 Hz CA1 tick.
     void tick(int cpuCycles);
 
-    Via6522& via1() { return via_; }
+    Via6522& via1() { nextVia_ = -1; return via_; }   // the caller may arm a timer
     PseudoVia& pseudoVia() { return pvia_; }
     Ariel& ariel() { return ariel_; }
     Egret& egret() { return egret_; }
     AdbBus& adb() { return adb_; }
-    AscV8& asc() { return asc_; }
-    AscSonora& ascSonora() { return ascSonora_; }
+    AscV8& asc() { nextAsc_ = -1; return asc_; }
+    AscSonora& ascSonora() { nextAsc_ = -1; return ascSonora_; }
     Dfac& dfac() { return dfac_; }
     // Audio host facade — dispatches to the model's ASC block (Spice =
     // Sonora EASC, others = V8 ASC) so LcMachine::drain stays model-blind.
@@ -404,7 +403,7 @@ public:
     void scsiDrq(bool s) { pvia_.scsiDrq(s); updateIrq(); }
     void vblIrq(bool s)  { pvia_.slotIrq(PseudoVia::VBL, s); updateIrq(); }
     void sccIrqLine(bool s) { sccIrq_ = s; updateIrq(); }
-    Scc8530& scc() { return scc_; }
+    Scc8530& scc() { nextScc_ = -1; return scc_; }   // the caller may arm a countdown
 
     // A Mac ROM's first longword IS its checksum, so this is the cheapest
     // honest identity for a snapshot to pin: restoring against a different
@@ -471,6 +470,8 @@ public:
         ar(simmMapped_, simmOff_, simmPhys_, mbLoc_, mbSize_, mbMapped_);
         ar(viaPhase_, tickAcc_, framePos_, frameCycles_, vblStart_,
            c15Acc_, vblState_, frameCount_, restartPending_);
+        devClock_ = 0;                       // the bound caches are derived
+        forgetDeviceBounds();
 
         if constexpr (Ar::loading) {
             // RAM and the whole address map just changed wholesale. A write
@@ -613,6 +614,21 @@ private:
     int     frameTotalLines_ = 407;          // blanking included
     uint64_t frameCount_ = 0;                // completed frames (raster seq)
     int64_t c15Acc_ = 0;                     // CPU → C15M device-domain rest
+    // Derived, never serialized: each device's next event as an ABSOLUTE
+    // time on devClock_ (machine cycles delivered to tick()). A pure
+    // countdown's event time does not move until it fires or the device is
+    // accessed, so cyclesToNextEvent() re-asks a device only when its cached
+    // time has passed or its access path cleared it (-1); the Egret, which
+    // moves every MCU instruction, is asked every time. Without this the
+    // eight bounds cost 6.2 % of the LC II JIT bench at 27.7 M flushes per
+    // 50 s of guest time (2026-11-07). A load resets devClock_ and the caches.
+    int64_t devClock_ = 0;
+    // (The SWIM is not cached: its IWM bound is a cadence, V8Memory.cpp.)
+    mutable int64_t nextVia_ = -1, nextCa1_ = -1, nextVbl_ = -1,
+                    nextAsc_ = -1, nextScc_ = -1;
+    void forgetDeviceBounds() {
+        nextVia_ = nextCa1_ = nextVbl_ = nextAsc_ = nextScc_ = -1;
+    }
     bool vblState_ = false;
     uint8_t scsiDma_();                      // DRQ-gated window byte read
     void scsiDmaW_(uint8_t v);

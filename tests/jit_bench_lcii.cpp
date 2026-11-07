@@ -278,6 +278,12 @@ int main() {
     // LcMachine::emulateQuantum passes as its onSlice callback).
     int slices = 0;
     if (const char* s = std::getenv("POM68K_BENCH_SLICES")) slices = std::atoi(s);
+    // POM68K_BENCH_PERIPH_STATS=1 — the peripheral-slice census the Quadra
+    // rig prints from Cpu040: flushes, mem.tick calls, machine cycles per
+    // call, and the door each flush came through (Cpu030::PeriphStats).
+    const bool periphStatsOn = std::getenv("POM68K_BENCH_PERIPH_STATS") &&
+                               std::atoi(std::getenv("POM68K_BENCH_PERIPH_STATS")) != 0;
+    cpu.setPeriphStats(periphStatsOn);
     V8Video video(mem);
     std::vector<uint32_t> fb;
 
@@ -356,6 +362,14 @@ int main() {
                 (unsigned long long)cpu.pomJitData030Refusals,
                 cpu.pomJitDtlbFillFn ? "" : "  [POM68K_DATA_WINDOW off]");
 
+    if (periphStatsOn) {
+        const Cpu030::PeriphStats& st = cpu.periphStats();
+        std::fprintf(stderr, "[periph] flushTicks=%lld mem.tick=%lld machine-cycles=%lld "
+                     "(%.2f cycles per tick call) doors: sync=%lld stall=%lld chunk=%lld board=%lld\n",
+                     st.flushes, st.ticks, st.cycles,
+                     st.ticks ? double(st.cycles) / double(st.ticks) : 0.0,
+                     st.byDoor[0], st.byDoor[1], st.byDoor[2], st.byDoor[3]);
+    }
     if (const char* ppm = std::getenv("POM68K_BENCH_PPM")) dumpPpm(mem, ppm);
     return 0;
 }

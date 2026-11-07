@@ -48,6 +48,13 @@ public:
     void stall(int cycles);                 // E-clock sync / SWIM wait states
                                             // — in REAL machine cycles
     void flushTicks();                      // run peripherals up to `clock`
+    // Re-arm the peripheral deadline after a device access (the Cpu040
+    // contract, 2026-11-07): schedulePeriphDeadline from every bound,
+    // measured from lastPeriphClock_ — the devices' common time, where a
+    // running countdown stands; tightenPeriphDeadline from one countdown
+    // the access itself armed, measured from now, only ever earlier.
+    void schedulePeriphDeadline();
+    void tightenPeriphDeadline(int machineCycles);
 
     struct PeriphTracePoint {
         uint32_t pc = 0;
@@ -79,6 +86,20 @@ public:
         periphTraceOpaque_ = opaque;
         periphTraceFn_ = fn;
     }
+
+    // The peripheral-slice census (Cpu040's POM68K_PERIPH_STATS, here as a
+    // setter the rigs call): flushes, mem.tick calls and machine cycles
+    // delivered, split by the door the flush came through — 0 the deadline
+    // reached at a sync charge, 1 a stall (mid-instruction wait state), 2
+    // the runCycles chunk boundary, 3 the board itself before a device
+    // access. Counters only: the trace hook above hashes the devices at
+    // every point and is not a measurement of anything but order.
+    struct PeriphStats {
+        long long flushes = 0, ticks = 0, cycles = 0;
+        long long byDoor[4] = {};
+    };
+    void setPeriphStats(bool on) { periphStatsOn_ = on; }
+    const PeriphStats& periphStats() const { return periphStats_; }
 
     // The periph trace's sibling: one point per execInterrupt, capturing
     // the pc the handler will RTE back to. Two arms can agree on every
@@ -166,6 +187,7 @@ private:
     void didChangeCACR(moira::u32 value) override;              // cache clear/enable
     void onSyncCharge(int cycles);          // trace tap (MoiraCpu::sync)
     void catchUp();
+    moira::i64 periphDeadlineFor(int machineCycles) const;
     void dumpFpuLog(moira::u16 vector);
 
     // Instruction-throughput model. Moira emulates the 68030 on its
@@ -200,11 +222,12 @@ private:
     PeriphTraceFn periphTraceFn_ = nullptr;
     void* irqTraceOpaque_ = nullptr;
     IrqTraceFn irqTraceFn_ = nullptr;
-    int traceSrc_ = 0;             // trace only: flush door + charge
+    int traceSrc_ = 3;             // the door the next flush comes through (3 = the board)
+    bool periphStatsOn_ = false;
+    PeriphStats periphStats_;
     int traceSyncCycles_ = 0;
     moira::i64 traceOldDeadline_ = 0;
     void emitPeriphTrace(int phase, int delivered, moira::i64 target = 0);
-    void schedulePeriphDeadline();
 
     // ── Floppy boost gate (CHANGELOG 2026-08-05 (eighth)) ───────────────
     // Apple's 6-and-2 denibble inner path is hand-timed to JUST clear the

@@ -137,9 +137,11 @@ void Cpu030::runCycles(moira::i64 n) {
             if (jit_.enabled()) jit_.executeUntil(target);
             else executeUntil(target);
             if (periphTraceFn_) emitPeriphTrace(1, 0, target);
+            traceSrc_ = 2;
             flushTicks();
         }
     }
+    traceSrc_ = 2;
     flushTicks();                  // callers sample ASC/VBL state after a slice
 }
 
@@ -244,14 +246,16 @@ void Cpu030::stall(int cycles) {
     // (the Cpu040 convention; CHANGELOG 2026-07-25).
     if (cycles <= 0) return;
     clock += moira::i64(cycles) * boost_;
-    if (periphTraceFn_) { traceSrc_ = 1; traceSyncCycles_ = cycles; }
+    traceSrc_ = 1;
+    if (periphTraceFn_) traceSyncCycles_ = cycles;
     catchUp();
 }
 
 // The per-charge tap MoiraCpu::sync() dispatches through, fired before
 // catchUp() exactly as the pre-CRTP sync() did.
 void Cpu030::onSyncCharge(int cycles) {
-    if (periphTraceFn_) { traceSrc_ = 0; traceSyncCycles_ = cycles; }
+    traceSrc_ = 0;
+    if (periphTraceFn_) traceSyncCycles_ = cycles;
 }
 
 void Cpu030::catchUp() {
@@ -259,11 +263,21 @@ void Cpu030::catchUp() {
     flushTicks();
 }
 
-void Cpu030::schedulePeriphDeadline() {
-    const moira::i64 machine = std::max(1, mem_.cyclesToNextEvent());
+moira::i64 Cpu030::periphDeadlineFor(int machineCycles) const {
+    const moira::i64 machine = std::max(1, machineCycles);
     moira::i64 d = machine * boost_ - periphAccum_;
     if (d < 1) d = 1;
-    periphDeadline_ = clock + d;
+    return lastPeriphClock_ + d;
+}
+
+void Cpu030::schedulePeriphDeadline() {
+    periphDeadline_ = periphDeadlineFor(mem_.cyclesToNextEvent());
+}
+
+void Cpu030::tightenPeriphDeadline(int machineCycles) {
+    if (machineCycles >= 0x7fffffff) return;
+    const moira::i64 machine = std::max(1, machineCycles);
+    periphDeadline_ = std::min(periphDeadline_, clock + machine * boost_);
 }
 
 // Re-evaluate the floppy boost gate at a settled point (peripherals just
@@ -288,8 +302,19 @@ void Cpu030::flushTicks() {
     // Scale elapsed Moira cycles down to machine cycles so peripherals keep
     // their real cadence while the core runs boost_× more instructions.
     periphAccum_ += d;
-    int m = int(periphAccum_ / boost_);         // scale elapsed Moira cycles back
+    // boost_ is 1 or cacheBoost_ (4 by default): a shift when it is a power
+    // of two — the 64-bit divide by a runtime divisor ran 27 M times per
+    // 50 s of LC II guest time (2026-11-07, POM68K_BENCH_PERIPH_STATS).
+    const int m = (boost_ & (boost_ - 1)) == 0
+                ? int(periphAccum_ >> __builtin_ctz(unsigned(boost_)))
+                : int(periphAccum_ / boost_);   // scale elapsed Moira cycles back
     periphAccum_ -= moira::i64(m) * boost_;     // to real machine cycles
+    if (periphStatsOn_) {
+        periphStats_.flushes++;
+        periphStats_.byDoor[traceSrc_ & 3]++;
+        if (m) { periphStats_.ticks++; periphStats_.cycles += m; }
+    }
+    traceSrc_ = 3;                 // until a sync, a stall or a chunk says otherwise
     if (m) mem_.tick(m);           // VIA1 timers (φ2 = CPU/20) + 60.15 Hz
     pollBoostGate();
     schedulePeriphDeadline();
