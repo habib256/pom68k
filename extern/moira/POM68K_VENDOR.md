@@ -31,13 +31,13 @@ pair):
 
 | | | how to re-measure |
 |---|---|---|
-| distinct `pom*` extension identifiers | **97** (60 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **480** | `grep -rn POM68K Moira/ \| wc -l` |
+| distinct `pom*` extension identifiers | **104** (60 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
+| `POM68K`-marked lines | **486** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **14 of 25** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **54** | this file |
+| patch groups in the inventory below | **55** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h` | — |
 
-Fifty-four patch groups, two of which (the JIT seam, row 22, and the ATC
+Fifty-five patch groups, two of which (the JIT seam, row 22, and the ATC
 performance work, row 16) are not patches over upstream's design but a second
 consumer of it. A re-sync is no longer a merge with conflicts; it is a port.
 
@@ -67,7 +67,7 @@ interpreter's speed being tolerable.
 
 **Reopening condition** — reversed only by upstream landing something the fork
 cannot cheaply reproduce (a full 68040 FPU, a rewritten dispatch core), and only
-against a *measured* estimate of porting the 54 groups onto it. Not by the
+against a *measured* estimate of porting the 55 groups onto it. Not by the
 general discomfort of being forked.
 
 The "Before re-syncing from upstream" note further down is now the exception
@@ -173,9 +173,10 @@ gate in the last column of each row.
 | 52 | **68030: the last write of every read-modify-write instruction is marked; CLR is a pure store from the 68020 up** — `pomLastWrite030` before the direct `writeM` of ADD/SUB to memory, ABCD/SBCD/NBCD, ADDX/SUBX, the memory shifts and BCHG/BCLR/BSET; `execClr` takes its no-read branch for the whole `C68020` core, not only from the 68EC040 | `MoiraExec_cpp.h`, `Moira.h` | `writeOp` marks the 68030's last write (a fault there stacks the short frame $A with the next instruction's PC and the flags already updated); seven handlers call `writeM` themselves and stacked the long $B with the old flags, restarting an instruction the oracle only completes. CLR read its destination first on the 68020 and 68030 as the 68000 does: only "the MC68000 and MC68008" do (M68000PRM), and on a device register that read is a side effect no 68020 Macintosh produces. The `fault` family has its own opcode list and emitted none of these forms; a `rmw` family written for them started at 5 052 / 6 000 | `sst68030_rmw`, `moira_rules_test` (CLR bus cycles), `sst68000` (bus cycles unchanged) |
 | 53 | **A 68882 refuses a 68040 FSAVE frame** — the FRESTORE `$41` branch is taken by `FPUModel::M68040` only; a 6888x given that frame takes the format error | `MoiraExecFPU_cpp.h` | ruling D23b, settled 2026-11-07: the acceptance mirrored WinUAE's "horrible hack to support on the fly 6888x <> 68040 FPU switching", which exists only in the oracle's permissive `fpu_no_unimplemented` setting — the one every 68030 corpus before that day was generated in. The strict oracle and MC68881/MC68882 UM § 6 agree on the format error. The four permissive vectors of the July corpus are listed in `tests/sst68030.known`; `sst68030_solo` was regenerated strict (six vectors changed, all of them this). The 68LC040 + software 68882 hybrid of the LC 475/575/580 and Quadra 605 was the risk: a system that believes it has a 68040 FPU restores only frames it saved itself | `sst68030` (listed), `sst68030_solo`, `sst68030_fpuraw`, `sst68030_fpu2`, the LC 475 and Quadra 605 etalons |
 | 54 | **68030 PTEST reports an invalid descriptor fetched at its level limit** — `mmuWalkTables` sets MMUSR.I when the loop leaves on the limit with the last descriptor invalid | `MoiraExecMMU_cpp.h` | the descriptor read in one pass was examined at the top of the next, which a level limit equal to the depth reached prevents: PTESTR level 1 into a DT=0 descriptor answered N=1 and no I. MC68030UM § 9.7.6: I is set if the search ended with an invalid descriptor; WinUAE examines each descriptor as fetched. One fuzz vector in 21 000 ("mmu/tt seed=1006 #1188") | `moira_rules_test` |
+| 55 | **The interpreter arms the fetch window itself** — `pomSetInterpWindow(on, codeSpanFn, ctx)` and `pomInterpArm`, called on a window miss by the 68030 and 68040 loop heads and by `execute()` for the 68000/68010/68020; `jit::Engine` hands the window over when it is disabled and takes it back when it runs. Also drops a stale `assert(S == Word)` in `divlsMoira`: DIVS.L of `$80000000:00000000` by −1 overflows legitimately | `Moira.h`, `MoiraExecMMU_cpp.h`, `MoiraALU_cpp.h` | the window, its fetch path and its eviction hooks were the core's; only the decision to arm lived in the engine, so `POM68K_CPU_ENGINE=interp` — and any bare host — paid a translated bus read per opcode word. The arm is `Engine::armWindow` decision for decision, minus the block guards it has no use for. Fixed-cycle benches, interpreter: Quadra 605 19.75 s → 12.71 s (−36 %), LC II 13.26 s → 11.06 s (−17 %), Mac II 5.83 s → 5.06 s (−13 %), Plus within noise, fingerprints unchanged; JIT mode flat (it never ran this path) | `jit_bench` / `jit_bench_lcii` fingerprints, the lockstep gates (interpreter arm under the window now), `jit_asset_free_lockstep_test` |
 
 Rows 2-21, 25-34, 36, 38, 40, 41, 43-47 and 50-54 are the accuracy work; rows 22-24, 35, 39, 42 and 49 are seams (inert
-when nothing arms them); row 48 is performance alone, with no architectural effect. The eleven files carrying no `POM68K` marker at all —
+when nothing arms them); rows 48 and 55 are performance alone, with no architectural effect. The eleven files carrying no `POM68K` marker at all —
 `MoiraDasm*` (4), `StrWriter*` (2), `MoiraDebugger.h`, `MoiraMacros.h`,
 `MoiraALU.h`, `MoiraExceptions.h`, `MoiraInit.h` — are where an upstream fix can
 still be taken as-is; everything else is ported by hand, per the fork decision
@@ -1628,7 +1629,7 @@ accounting at all.
     tracer, split three ways: `baseCycles` (handler, data bus included),
     `icacheCycles` (the `PomIcache` overlay's contribution, excluded from
     the base) and `postExceptionCycles` (exception/trace work after the
-    handler stopped). Read by `JitEngine.cpp:918-941` when it decides what a
+    handler stopped). Read by `JitEngine.cpp:924-947` when it decides what a
     compiled block owes `pomJitSync`. The struct has since grown the traced
     instruction's `fetchWords` (the `PomIcache` fetch delta) and, for the
     68040, where its IPL polls sat relative to its data accesses

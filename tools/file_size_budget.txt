@@ -44,7 +44,7 @@ src/GuiTobyStatus.h                      41
 src/jit/backends/JitBackendA64.cpp       5111
 src/jit/backends/JitBackendX64.cpp       5598
 src/jit/JitConfig.h                      573
-src/jit/JitEngine.cpp                    1601
+src/jit/JitEngine.cpp                    1607
 src/jit/JitIr.h                          2180
 src/main.cpp                             41
 src/PlatformCompact.cpp                  162

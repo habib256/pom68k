@@ -470,6 +470,16 @@ Moira::execute()
     // Check the integrity of the program counter
     assert(reg.pc0 == reg.pc);
 
+    // POM68K: the interpreter-owned fetch window on the cores without an
+    // MMU loop head (68000/68010/68020 — the 68030 and 68040 arm theirs in
+    // mmuExecuteStart / mmu040InstrStart). Their opcode words come from the
+    // prefetch queue, filled by prefetch<>() through pomJitFetch000/020 on
+    // a hit, so the window must cover the pc before this instruction runs
+    // for the NEXT one's words to come from it.
+    if (pomInterpWindowOn && cpuModel != Model::M68030 &&
+        cpuModel < Model::M68EC040 && !pomJitCovers(reg.pc)) [[unlikely]]
+        pomInterpArm(reg.pc);
+
     // Take the fast path or the slow path
     if (!flags) {
 

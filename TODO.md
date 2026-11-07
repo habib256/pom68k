@@ -448,15 +448,13 @@ interprété passe désormais 31 % de son temps en traduction d'adresse
 (63 % avant) et 30 % dans ses handlers ; le 68030, un tiers dans le fetch
 d'instruction.
 
-- [ ] **Donner à l'interpréteur son fetch fusionné et sa fenêtre sans
-  `jit::Engine`.** C'est la marche suivante sur les deux familles. Sur
-  68040, la traduction inlinée (rang 48), ce qui reste d'un fetch est
-  l'appel bus virtuel : `mmu040InstrStart` 18,1 %, `readExt` 9,3 %,
-  `Q605Memory::read16` 8,1 %. Sur 68030 `mmuFetchWord` pèse 22,1 % et la
-  lecture bus qu'il atteint 11,5 %. Le fetch fusionné `ird`/`irc`
-  (rang 33), la fenêtre de fetch et la fenêtre de données (rang 34) ne
-  s'arment que par le moteur : `POM68K_CPU_ENGINE=interp` et tout hôte qui
-  exécute `Moira::execute()` nu les perdent (`POM68K_SURFACE.md` § 9.2).
+- [ ] **Donner à l'interpréteur la fenêtre de données et reprofiler.**
+  Depuis le 2026-11-07 (rang 55) l'interpréteur arme la fenêtre de fetch
+  lui-même sur les cinq cœurs quand le moteur est éteint (Quadra 605
+  −36 %, LC II −17 %, Mac II −13 %, Plus dans le bruit, empreintes
+  inchangées). Reste la fenêtre de données du 68030 (rang 34), dont la
+  fonction de remplissage est encore celle du moteur (`POM68K_SURFACE.md`
+  § 9.2), et un nouveau profil des deux bancs pour ordonner la suite.
 - [ ] **Alléger la remise à zéro par instruction du mode 5.**
   `mmuExecuteStart` (5,8 %) efface le journal d'accès et les fixups et
   sauve le CCR à chaque instruction 030, sous un `try`, avec `sync()` et

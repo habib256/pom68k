@@ -27,14 +27,14 @@ Facts this plan builds on. Each was read out of the tree, not remembered.
 | x64 and a64 both declare `guestFamilies = kGuest68040 | kGuest68030` **since 2026-08-18** — correctness scope. Speed scope is the separate `caps().autoFamilies` mask, and the two **agree again since 2026-09-06**: a64 carries 68040+68030 since its independent 2026-08-20 promotion, and x64 carries both again — its 030 promotion was **withdrawn on 2026-08-29** and **restored on 2026-09-06** on the tier evidence that entry demanded (§ C.5 box); `threaded` carries `kGuestAny` as the floor | `JitBackendX64.cpp`, `JitBackendA64.cpp`, `JitBackendThreaded.cpp`, `JitBackend.cpp` (selection) |
 | `threaded` declares `kGuestAny`; `auto` uses it for 000/020, while an 030 reaches the native generator on both ISAs | `JitBackendThreaded.cpp`, `JitBackendA64.cpp` |
 | Selection tests guest validity *before* host ranking | `JitBackend.cpp:63-66`, `:137-140` |
-| `pomJitProbeCode` has an 030 branch (TT regs, TC.E-off identity, read-only 22-entry ATC scan, last-hit memo) | `MoiraExecMMU_cpp.h:2096-2182` |
-| **`pomJitProbeData` now has one too** (data-space `fc = 5/1`, write-protect and owed-M-bit refusals) — C.2 is landed | `MoiraExecMMU_cpp.h:2246-2296` |
-| **`pomJitReadData`/`pomJitWriteData` now branch on the model**, reaching `mmuRead`/`mmuWrite` on an 030 and `mmu040Read`/`mmu040Write` otherwise — C.3 is landed | `MoiraExecMMU_cpp.h:2466` and `:2474` |
+| `pomJitProbeCode` has an 030 branch (TT regs, TC.E-off identity, read-only 22-entry ATC scan, last-hit memo) | `MoiraExecMMU_cpp.h:2100-2223` |
+| **`pomJitProbeData` now has one too** (data-space `fc = 5/1`, write-protect and owed-M-bit refusals) — C.2 is landed | `MoiraExecMMU_cpp.h:2287-2337` |
+| **`pomJitReadData`/`pomJitWriteData` now branch on the model**, reaching `mmuRead`/`mmuWrite` on an 030 and `mmu040Read`/`mmu040Write` otherwise — C.3 is landed | `MoiraExecMMU_cpp.h:2507` and `:2474` |
 | The 030 i-cache overlay is charged **inside `mmuFetchWord`, before the JIT window hook** — so the fetch window and the `threaded` backend are conformant on it by construction | `MoiraExecMMU_cpp.h:408-461` |
-| `PomIcache` = MC68030UM §6: 256 B, 16 lines × 4 longwords, logical, direct-mapped, tag = A[31:8] + supervisor, per-longword valid bits, gated on `CACR` bit 0, `missPenalty` cycles per miss | `Moira.h:1219-1234`, rationale in `Cpu030.h:164-189` |
+| `PomIcache` = MC68030UM §6: 256 B, 16 lines × 4 longwords, logical, direct-mapped, tag = A[31:8] + supervisor, per-longword valid bits, gated on `CACR` bit 0, `missPenalty` cycles per miss | `Moira.h:1245-1260`, rationale in `Cpu030.h:164-189` |
 | The cold fallback stub re-enters Moira through `pomJitExecOne()`, whose **030 branch runs `mmuExecuteStart<C68020>()`** — i.e. it fetches through `mmuFetchWord` and charges the i-cache itself | `Moira.cpp:317-347` |
 | Moira runs the 68030 on `Core::C68020` cycle counts — **the same 68020 column the x64/a64 cost tables are transcribed from** | `JitCost.h:88-139`, `Cpu030.h:164-189` |
-| `Instr` carries the traced cost **split** into total / base / i-cache / post-exception, with `total = base + cache + post` checked (`timingExact`) before the split is exposed | `JitIr.h:1290-1298`, `JitEngine.cpp:933-937` |
+| `Instr` carries the traced cost **split** into total / base / i-cache / post-exception, with `total = base + cache + post` checked (`timingExact`) before the split is exposed | `JitIr.h:1290-1298`, `JitEngine.cpp:939-943` |
 | `jit_lockstep_030_test` exists: two LC IIs, register + clock + low-RAM + **three i-cache counters** per checkpoint | `tests/jit_lockstep_030_test.cpp` |
 | The 030 emitters are reachable by explicit `POM68K_JIT_BACKEND=x64|a64` since 2026-08-18 (no unsafe override). `auto` reaches a64 on an AArch64 030 since 2026-08-20; it reached x64 on an x86-64 one from 2026-08-21 until the withdrawal of 2026-08-29, and reaches it again since the 2026-09-06 restoration (§ C.5 box). A shipping default reaches only a generator that earned the (family, backend) pair on D.1 evidence | `JitBackend.cpp` (selection), `jit_backend_test` pins the per-host cases |
 
@@ -247,7 +247,7 @@ declaration. This is not scaffolding for the rest of the phase — it *is*
 the phase's value. An 030 code generator without differential coverage is
 exactly the 2026-07-30 one-hour timeout again.
 
-**C.2 / C.3 — the 030 probe and thunks — DONE**, `MoiraExecMMU_cpp.h:2143`
+**C.2 / C.3 — the 030 probe and thunks — DONE**, `MoiraExecMMU_cpp.h:2184`
 and `:2449`. Three things about them that cost a round to learn:
 
 * The probe uses **data** space (`fc = super ? 5 : 1`), not the program
@@ -1162,7 +1162,7 @@ the class closed.
 
 `defaultEngine(bool jitByDefault)` (`JitConfig.h:323`) is no longer a
 constant; `Engine::Engine` passes
-`(guestFamily & (kGuest68040 | kGuest68030)) != 0` (`JitEngine.cpp:214-216`).
+`(guestFamily & (kGuest68040 | kGuest68030)) != 0` (`JitEngine.cpp:216-218`).
 So `jit/auto` is the shipped default on the 68040 machines **and the
 68030 ones** — where `auto` reaches the native generator on both native
 ISAs (a64 since 2026-08-20, x64 since 2026-08-21, restored 2026-09-06) —

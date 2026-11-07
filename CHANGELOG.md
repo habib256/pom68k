@@ -508,6 +508,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-07 (thirteenth)** — [The interpreter arms its own fetch window: Quadra 605 interpreted −36 %, LC II −17 %, fingerprints unchanged — ×2.5 on the 68040 interpreter since yesterday's profile](#2026-11-07-interp-window)
 - **2026-11-07 (twelfth)** — [PTEST at its level limit did not report an invalid descriptor: the one 68030 MMU vector of the sweep](#2026-11-07-ptest-limit)
 - **2026-11-07 (eleventh)** — [Ruling D23b applied: a 68882 refuses a 68040 FSAVE frame — four permissive vectors listed, the solo corpus regenerated strict](#2026-11-07-d23b-applied)
 - **2026-11-07 (tenth)** — [On a 68030 the write fault of an ADD to memory restarted the instruction, and CLR read before it cleared: a family for read-modify-write faults, 5 052 to 5 989 of 6 000](#2026-11-07-rmw-last-write)
@@ -1221,6 +1222,58 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-07-interp-window"></a>
+## 2026-11-07 (thirteenth) — The interpreter arms its own fetch window: Quadra 605 interpreted −36 %, LC II −17 %, fingerprints unchanged — ×2.5 on the 68040 interpreter since yesterday's profile
+
+After the hot translation path (second entry of the day) the 68040
+interpreter's profile had moved: `mmu040InstrStart` 18 %, `readExt` 9 %,
+`Q605Memory::read16` 8 % — the virtual bus read behind every opcode word.
+The fetch window that removes it existed in the core since July, with its
+fetch path, its coverage test and its eviction hooks; only the decision to
+arm it lived in `jit::Engine`, so `POM68K_CPU_ENGINE=interp`, and any host
+running `Moira::execute()` bare, never had it.
+
+**The change** (`POM68K_VENDOR.md` row 55). `pomSetInterpWindow(on,
+codeSpanFn, ctx)` gives the core a host-pointer provider for physical pages
+— the engine's own `codeSpan` hook — and the loop heads call `pomInterpArm`
+when the window does not cover the pc: `mmuExecuteStart` and
+`mmu040InstrStart` for the MMU cores, `execute()` itself for the
+68000/68010/68020, whose opcode words come from the prefetch queue that
+`prefetch<>()` fills through the window on a hit. `pomInterpArm` is
+`Engine::armWindow` decision for decision: no arm while the post-PMOVE
+fetch pipe lives, the probe must confirm the translation without touching
+anything, the span must be plain memory, page and span bound the window,
+an architectural 040 I-cache may need one interpreted fetch first, a failed
+arm backs off 32 instructions. The block guards stay with the engine, which
+has blocks. `jit::Engine::setEnabled` hands the window over when it goes
+off and takes it back when it runs: exactly one of the two arms at any
+time, and `POM68K_JIT_FETCH=0` leaves both bare.
+
+**Measured** (fixed-cycle benches, `POM68K_CPU_ENGINE=interp`, one pinned
+core, interleaved, both binaries built from the same tree minus this
+change):
+
+| | before | after | |
+|---|---|---|---|
+| Quadra 605, 625 000 500 cycles | 19.75 s | **12.71 s** | −35.6 %, `a2036281a5c2ac55` on all four |
+| LC II, 390 720 000 cycles | 13.26 s | **11.06 s** | −16.6 %, `663d67e4bc2d9714` on all four |
+| Mac II, 3 000 frames | 5.83 s | **5.06 s** | −13 %, `8090d72b09262ce8` on all four |
+| Macintosh Plus, 3 000 frames | 3.72 s | 3.82 s | within noise: the 68000 window pays the bus-contention hook the read paid; `6c7e9cb4205803bf` on all four |
+| Quadra 605, JIT mode, 3 000 frames | 8.57 s | 8.67 s | the engine never ran this path; `b9e4eacc7fc3933c` |
+
+With the second entry, the 68040 interpreter runs 2.5 times faster than
+yesterday's profile on the same machine state. The LC II's gain is the 030
+fused `ird`/`irc` fetch (row 33), which is a window hit and was therefore
+never taken interpreted.
+
+Also in the row: `divlsMoira` asserted `S == Word` on the overflow branch
+upstream, which a Debug build of `jit_asset_free_lockstep_test` tripped —
+DIVS.L of `$80000000:00000000` by −1 is a legitimate overflow.
+
+**Held by** the two fingerprints, `jit_asset_free_lockstep_test`, and the
+lockstep gates, whose interpreter arm now fetches through the window like
+its JIT arm.
 
 <a id="2026-11-07-ptest-limit"></a>
 ## 2026-11-07 (twelfth) — PTEST at its level limit did not report an invalid descriptor: the one 68030 MMU vector of the sweep

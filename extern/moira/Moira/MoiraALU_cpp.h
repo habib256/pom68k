@@ -870,7 +870,10 @@ Moira::divlsMoira(i64 a, u32 src)
 
     if ((u64)a == 0x8000000000000000UL && (i32)src == -1) {
 
-        assert(S == Word);
+        // POM68K: reachable for the 64-bit dividend too — DIVS.L
+        // $80000000:00000000 / -1 overflows, V is the answer (M68000PRM,
+        // DIVS). Upstream asserted S == Word here, which a Debug build of
+        // jit_asset_free_lockstep_test tripped on 2026-11-07.
         reg.sr.v = 1;
         return { u32(0), u32(0) };
 
