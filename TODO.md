@@ -20,7 +20,53 @@ programme moteur se cite `§ Moteur › Socle`, `› Convergence`,
 `› JIT justesse`, `› JIT performance`, `› Surface`. Les numéros bougent à
 chaque réorganisation.
 
-## Vitesse — l'ordre de rendement attendu (profils du 2026-11-07)
+## Objectif principal — Moira CPU/PMMU/JIT prêt à migrer vers NeoST
+
+Préparer le cœur Moira de POM68K — CPU 68000 à 68040, PMMU, FPU, et son
+JIT — pour qu'il migre vers NeoST **dans un état propre**, et pour pouvoir
+en présenter une version à Dirk Hoffmann, l'auteur de Moira. Tout le reste
+de ce fichier passe après, la section « Vitesse » ci-dessous comprise :
+une optimisation côté hôte POM68K ne rapproche pas de NeoST.
+
+**Où on en est (2026-11-08).**
+
+- **Le 68000 est prêt à reprendre** : 1 000 058 vecteurs SingleStepTests
+  tenus cycle de bus par cycle de bus, frames /BERR externes, les trois
+  hooks que NeoST attend (`illegalOpcodeHook`, `willProcessFault`,
+  `setBusLock`) ; le contrat de surface (`extern/moira/POM68K_SURFACE.md`)
+  écrit ce que l'hôte doit au cœur, et le cœur ne lit plus
+  l'environnement du processus.
+- **Les additions 68030/68040 et le JIT sont prouvés dans POM68K, pas
+  prêts à exporter.** Corpus différentiels verts contre WinUAE strict,
+  premier oracle FPU 68040, D23b/D24 tranchées par le manuel — mais :
+  1. les restes nommés ne sont pas corrigés (D25–D29, champs de bits
+     mémoire qui lisent toujours un long — cœur et JIT, avec l'hôte
+     AArch64 —, six octets de frame IDLE 68882, DOB SUB/SUBI) ;
+  2. le JIT n'a jamais tourné hors d'un Macintosh : fenêtres de fetch et
+     de données, garde d'écriture dans le code traduit reposent sur
+     `codeSpan`/`jitGuard_` fournis par nos cartes ; le contrat de
+     surface le décrit, un premier portage le prouvera ;
+  3. pas de jambe AArch64 récente (tier 030 ARM dû depuis septembre, delta
+     a64 de +6 % jamais attribué) ;
+  4. les pièges d'intégration d'une horloge machine (stall-puis-flush,
+     ré-armement d'échéance, deux bases d'horloge, LLE dépendant du
+     découpage — `CHANGELOG` 2026-11-07 quatorzième à seizième) sont à
+     écrire dans le contrat de surface : NeoST les rencontrera.
+
+**Ordre de travail** (le détail vit dans `§ Moteur`) :
+
+1. *Propreté présentable* — code mort et étiquettes périmées du cœur, grades
+   de preuve `[B]`/`[C]`/`[D] @ révision`/`[F]` en tête de chaque patch
+   `POM68K` du cœur, documents du cœur à jour (`§ Moteur › Surface`).
+2. *Couture JIT séparable à la compilation* : un interpréteur nu doit se
+   construire sans fenêtre, DTLB ni sonde (`› Surface`).
+3. *Contrat de surface vérifié* : chaque « unverified » devient un gate ou
+   une phrase corrigée ; y ajouter les pièges d'horloge machine.
+4. *Restes nommés* décidables ici (`› Justesse 68030`, `› Justesse 68040`),
+   puis la jambe AArch64 quand l'hôte est disponible.
+5. *Premier portage réel* vers NeoST, qui dira ce que le contrat a oublié.
+
+## Vitesse — côté hôte POM68K, après l'objectif principal (profils du 2026-11-07)
 
 Deux profils à 1 kHz sur les bancs à budget fixe, après l'échéance VIA du
 Quadra 605 (`CHANGELOG` 2026-11-07 (quatorzième)) : Q605 JIT x64 — code
@@ -61,10 +107,11 @@ LLE 5 %, repli interpréteur 5 %. Donc, par ordre de rendement attendu :
 
 ## Statut
 
-- **En tête : le programme § Moteur** (priorité décidée le 2026-11-06).
-  Stabiliser, prouver et accélérer le fork Moira et ses additions
+- **En tête : le programme § Moteur** (priorité décidée le 2026-11-06,
+  objectif restaté le 2026-11-08 — section « Objectif principal »).
+  Stabiliser, prouver et nettoyer le fork Moira et ses additions
   68030/68040, en interpréteur et en JIT, jusqu'à ce que le cœur puisse
-  être réimplémenté dans NeoST sans emporter un Macintosh avec lui.
+  migrer vers NeoST sans emporter un Macintosh avec lui.
 - **En parallèle : jalon 2** (le produit prouvé). Jalon 1 clos le 2026-09-16
   (registre complet sur les deux jambes, version 0.2.0) ; paliers B et C
   clos les 2026-09-07/08. Census et preuves datées : `STATUS.md`,
