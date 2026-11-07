@@ -508,6 +508,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-07 (sixteenth)** — [The Quadra 605 recipe reaches the Quadra 630 and Quadra 700/900/950; the Centris refuses it — its PIC1654S ADB outcome depends on where the slices fall](#2026-11-07-040-siblings-deadline)
 - **2026-11-07 (fifteenth)** — [The LC II's device slice was 9.6 cycles and 60 % of its flushes were the board's own: every V8 device publishes its bound, cached as an absolute time — boot −24 %, JIT −5 %](#2026-11-07-v8-deadline)
 - **2026-11-07 (fourteenth)** — [The Quadra 605 woke its devices 1.27 million times a guest second: timer-aware VIA bound, per-access deadline re-arm — JIT −50 %, interpreter −18 %](#2026-11-07-q605-via-deadline)
 - **2026-11-07 (thirteenth)** — [The interpreter arms its own fetch window: Quadra 605 interpreted −36 %, LC II −17 %, fingerprints unchanged — ×2.5 on the 68040 interpreter since yesterday's profile](#2026-11-07-interp-window)
@@ -1224,6 +1225,62 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-07-040-siblings-deadline"></a>
+## 2026-11-07 (sixteenth) — The Quadra 605 recipe reaches the Quadra 630 and the Quadra 700/900/950; the Centris refuses it — its PIC1654S ADB outcome depends on where the slices fall
+
+The fourteenth left three 040 boards on the "next E tick" bound on
+purpose: a wider slice without the re-arm would have been the lateness it
+had just found. This is that port — landed on two of them — the same four
+edits on each board, in the order the Quadra 605 proved them:
+
+1. the VIA and pseudo-VIA accesses stall to the E edge *then* flush
+   (`viaSync()` before `flushTicks()`), and so do the SCC paths that stall;
+2. the CPU wrapper's `schedulePeriphDeadline` is public and measured from
+   `lastPeriphClock_`, with `tightenPeriphDeadline` from the access for a
+   countdown the access itself armed; the VIA, pseudo-VIA, SCC, SWIM, ASC-
+   write, DAFB-write (Quadra 700) and Valkyrie-write (Quadra 630) paths re-arm, the 53C96
+   paths tighten with the chip's own bound, and a 53C96 *command write* is
+   flushed first so its bus-service latency counts from the write;
+3. the SWIM accesses flush after their wait states, so the drives stand at
+   the access;
+4. only then the bound: `via_eclock::bridge(via1_.cyclesToNextEvent(), …)`
+   in place of `viaEClock_.cyclesToNext()` — the Quadra 700 takes the
+   minimum of its two VIAs.
+
+`flushTicks` shifts by the power-of-two boost on both wrappers. On the
+Eclipse towers the second 53C96 tightens too; the Quadra 700's ADB HLE
+keeps its own bound (the house rule for the HLE fallback).
+
+**The Centris family refused, by bisection, then withdrawn.** With the
+port in, `q800_prober_oracle_etalon` turned red, deterministically, on one
+field: `adb.dev2.service` — MAME has ADB device 2 serviced, POM68K did not.
+Reverting the bound alone kept it red; reverting the board file cleared it;
+three groups, then each path, then the SCC edit split in two named the
+added `flushTicks()` before an SCC access (the re-arm is innocent).
+Removing that flush cleared the Quadra 800 — and turned the **Quadra 610**
+red on the same field. That is not a defect in one edit: on the DjMEMC
+boards the PIC1654S ADB co-step's outcome depends on where the peripheral
+slices fall, so any change to the slice moves which machine the guest's
+ADB poll catches. The board is left exactly as it was (`CentrisMemory`,
+`CentrisCpu` untouched); its gain would have been small, the PIC (~34
+cycles) already binding the slice tighter than one E tick (42.5 at 33 MHz).
+Named residue, now in `TODO.md § Moteur › Temps`: make the PIC LLE
+chunk-independent (its time must be a function of machine time, not of the
+flush pattern) — the kind of trace that looks stable and is not the
+hardware (fourteenth, point 3), and the gate that saw it is the Prober.
+
+**What this does not have**: a fixed-cycle rig. `jit_bench` is the Quadra
+605's and `jit_bench_lcii` the LC II's; no fingerprint equivalence was run
+on these boards — the recipe's exactness argument is the fourteenth's, the
+code is the same, and the proof here is the gates: the Quadra 630, LC 580, Quadra 700/900/950 boot etalons, their agent and
+DaynaPORT boots, the `*_prober_oracle_etalon` series (TimeVIADB/TimeDBRA
+against MAME, the gate most sensitive to a VIA bound), savestate, soak and
+persist. Expected gain, by the Quadra 605's census: the boards share its
+Cuda or PIC LLE floor and its SCSI/ASC poll shape — a measurement is owed
+the day one of them gets a rig (`TODO.md § Moteur › Temps`).
+
+**Held by** the gates named above, the parallel tier (225/228 on the three-board form: `agent_binary_test` known, `docs_test` citation drift and the `Q700Memory.cpp` ceiling fixed) and the serial 040 set, 53/53 on the final two-board form — all five DjMEMC Prober oracles green with the Centris untouched.
 
 <a id="2026-11-07-v8-deadline"></a>
 ## 2026-11-07 (fifteenth) — The LC II's device slice was 9.6 cycles, and 60 % of its flushes were the board's own: every V8 device now publishes its bound, cached as an absolute time; the blanket per-I/O flush goes — boot −24 %, JIT −5 %

@@ -54,7 +54,7 @@ src/PlatformDuo.cpp                      156
 src/PlatformSonora.cpp                   289
 src/PlatformToby.cpp                     332
 src/PlatformV8.cpp                       206
-src/Q700Memory.cpp                       1098
+src/Q700Memory.cpp                       1150
 src/R65c02.cpp                           1420
 src/RuntimeConfig.cpp                    144
 src/RuntimeConfigCore.cpp                191

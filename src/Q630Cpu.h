@@ -32,6 +32,13 @@ public:
 
     void stall(int cycles);
     void flushTicks();
+    // Re-arm the peripheral deadline after a device access (the Cpu040
+    // contract, 2026-11-07): schedulePeriphDeadline from every bound,
+    // measured from lastPeriphClock_ — the devices' common time, where a
+    // running countdown stands; tightenPeriphDeadline from one countdown
+    // the access itself armed, measured from now, only ever earlier.
+    void schedulePeriphDeadline();
+    void tightenPeriphDeadline(int machineCycles);
     int cacheBoost() const { return cacheBoost_; }
     // Bus/wire time (E-clock, wait states, the PIC1654S co-step) must be
     // measured here, not on the boosted core clock — see SonoraCpu.h.
@@ -48,11 +55,12 @@ private:
     friend pom68k::MoiraCpu<Q630Cpu, Q630Memory>;
     void didChangeCACR(moira::u32 value) override;
     void catchUp();
-    void schedulePeriphDeadline();
+    moira::i64 periphDeadlineFor(int machineCycles) const;
 
     // Same ceiling as Cpu040 (see the note there): the old boost-1 pin was
     // a stale Q605 SCSI symptom, lifted 2026-07-25.
     int cacheBoost_ = 4;
+    int boostShift_ = 2;                    // log2(cacheBoost_), −1 if not a power of two
     int icacheMiss_ = 0;
     moira::i64 periphAccum_ = 0;
     moira::i64 periphDeadline_ = 0;

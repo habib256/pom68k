@@ -423,6 +423,7 @@ private:
     void    scsiDmaWrite_(uint8_t v);
     void    scsiHoldDtack_(bool write);
     void    scsiPoll_();
+    void    tightenScsiDeadline();            // its bound into the CPU deadline
     void syncSwimFromCpu();
     uint8_t dafbRead8(uint32_t addr);
     void dafbWrite8(uint32_t addr, uint8_t v);

@@ -254,8 +254,12 @@ void Q630Memory::viaSync() {
 }
 
 uint8_t Q630Memory::viaAccess8(uint32_t addr, bool write, uint8_t v) {
-    if (cpu_) cpu_->flushTicks();
+    // Re-arm at every exit (a T1/T2 load, an ACR or SR write moves the VIA
+    // bound); stall to the E edge first, THEN flush, so the VIA stands at
+    // the edge the access is served on (Q605Memory::viaAccess8).
+    struct Rearm { Q630Memory& m; ~Rearm() { if (m.cpu_) m.cpu_->schedulePeriphDeadline(); } } rearm{*this};
     viaSync();
+    if (cpu_) cpu_->flushTicks();
     int reg = (addr >> 9) & 0x0F;            // $200 stride
     if (write) {
         via1_.write(reg, v);
@@ -277,9 +281,10 @@ uint8_t Q630Memory::viaAccess8(uint32_t addr, bool write, uint8_t v) {
 }
 
 uint8_t Q630Memory::via2Access8(uint32_t addr, bool write, uint8_t v) {
-    if (cpu_) cpu_->flushTicks();
-    flushScsi();
+    struct Rearm { Q630Memory& m; ~Rearm() { if (m.cpu_) m.cpu_->schedulePeriphDeadline(); } } rearm{*this};
     viaSync();
+    if (cpu_) cpu_->flushTicks();                // after the stall (viaAccess8)
+    flushScsi();
     int reg = (addr >> 9) & 0x0F;            // pseudovia.cpp quadra flavor
     if (write) {
         switch (reg) {
@@ -339,10 +344,12 @@ uint8_t Q630Memory::ioRead8(uint32_t addr) {
         // (MAME f108.cpp:196-207, PrimeTime II via_sync);
         // Q605Memory's SCC read has the observable.
         viaSync();
+        if (cpu_) cpu_->flushTicks();            // after the stall (viaAccess8)
         flushScc();
         int ch = (base >> 1) & 1;
         uint8_t d = ((base >> 2) & 1) ? scc_.readData(ch) : scc_.readCtl(ch);
         sccIrqLine(scc_.irqAsserted());          // reading RR0 / data can clear
+        if (cpu_) cpu_->schedulePeriphDeadline();   // a countdown may be armed
         return d;                                // or (re-)assert the level-4 line
     }
     if (base >= 0x10000 && base < 0x10100) {     // TurboSCSI 53C96 regs — Q6
@@ -354,6 +361,7 @@ uint8_t Q630Memory::ioRead8(uint32_t addr) {
         if (cpu_) cpu_->stall(scsiReadCycles_);
         uint8_t d = scsi_.read((base >> 4) & 0xF);
         scsiPoll_();
+        tightenScsiDeadline();
         return d;
     }
     if (base >= 0x10100 && base < 0x10104) {     // TurboSCSI pseudo-DMA — Q6
@@ -428,8 +436,11 @@ uint8_t Q630Memory::ioRead8(uint32_t addr) {
 
     if ((sub & ~0xF00000u) >= 0x1E000 && (sub & ~0xF00000u) < 0x20000) {
         if (cpu_) cpu_->stall(5);                 // iosb.cpp swim_r wait states
+        if (cpu_) cpu_->flushTicks();             // the drives stand at the access
         syncSwimFromCpu();                        // MAME swim2::read → sync()
-        return (addr & 1) ? 0 : swim_.read((sub >> 9) & 0x0F);
+        const uint8_t d = (addr & 1) ? 0 : swim_.read((sub >> 9) & 0x0F);
+        if (cpu_) cpu_->schedulePeriphDeadline();   // a read can advance the engine
+        return d;
     }
 
     // Unmapped PrimeTime/IOSB I/O reads back 0, not /BERR: MAME's iosb_base::map
@@ -458,18 +469,22 @@ void Q630Memory::ioWrite8(uint32_t addr, uint8_t v) {
     }
     if (base >= 0x0C000 && base < 0x0E000) {
         viaSync();
+        if (cpu_) cpu_->flushTicks();            // after the stall (viaAccess8)
         flushScc();
         int ch = (base >> 1) & 1;
         if ((base >> 2) & 1) scc_.writeData(ch, v);
         else scc_.writeCtl(ch, v);
+        if (cpu_) cpu_->schedulePeriphDeadline();   // a countdown may be armed
         sccIrqLine(scc_.irqAsserted());          // WR1/WR9/WR15 + Reset Ext/Status
         return;                                  // change the pending interrupt
     }
     if (base >= 0x10000 && base < 0x10100) {     // TurboSCSI 53C96 regs — Q6
-        flushScsi();
         if (cpu_) cpu_->stall(scsiWriteCycles_); // iosb.cpp:494 turboscsi_w
+        if (cpu_) cpu_->flushTicks();            // the latency counts from the write
+        flushScsi();
         scsi_.write((base >> 4) & 0xF, v);
         scsiPoll_();
+        tightenScsiDeadline();
         return;
     }
     if (base >= 0x10100 && base < 0x10104) {     // TurboSCSI pseudo-DMA — Q6
@@ -480,6 +495,7 @@ void Q630Memory::ioWrite8(uint32_t addr, uint8_t v) {
     }
     if ((sub & ~0xF00000u) >= 0x14000 && (sub & ~0xF00000u) < 0x15000) {
         asc_.write(addr & 0xFFF, v);                 // PrimeTime/IOSB ASC
+        if (cpu_) cpu_->schedulePeriphDeadline();   // a reset restarts the drain
         return;
     }
     if ((sub & ~0xF00000u) >= 0x18000 && (sub & ~0xF00000u) < 0x1A000) {
@@ -498,8 +514,10 @@ void Q630Memory::ioWrite8(uint32_t addr, uint8_t v) {
     }
     if ((sub & ~0xF00000u) >= 0x1E000 && (sub & ~0xF00000u) < 0x20000) {
         if (cpu_) cpu_->stall(5);                 // iosb.cpp swim_w wait states
+        if (cpu_) cpu_->flushTicks();             // the drives stand at the access
         syncSwimFromCpu();                        // MAME swim2::write → sync()
         swim_.write((sub >> 9) & 0x0F, v);
+        if (cpu_) cpu_->schedulePeriphDeadline();   // ACTION / a write pulse
         return;
     }
     if ((sub & ~0xF00000u) >= 0x1A000 && (sub & ~0xF00000u) < 0x1A100) {
@@ -528,6 +546,7 @@ void Q630Memory::ioWrite8(uint32_t addr, uint8_t v) {
     }
     if ((sub & ~0xF00000u) >= 0x2A000 && (sub & ~0xF00000u) < 0x2C000) {
         video_.writeReg8(sub & 0x1FFF, v);
+        if (cpu_) cpu_->schedulePeriphDeadline();   // VBL enable / geometry
         return;
     }
 
@@ -552,6 +571,7 @@ uint8_t Q630Memory::scsiDmaRead_() {
     if (!scsi_.drq()) busError(0x50010100, false);
     uint8_t d = scsi_.dmaRead();
     scsiPoll_();
+    tightenScsiDeadline();
     return d;
 }
 
@@ -560,6 +580,14 @@ void Q630Memory::scsiDmaWrite_(uint8_t v) {
     if (!scsi_.drq()) busError(0x50010100, true);
     scsi_.dmaWrite(v);
     scsiPoll_();
+    tightenScsiDeadline();
+}
+
+// After a 53C96 access: the command, or the last PIO/DMA byte, may have
+// armed the bus-service latency — one bound into the CPU deadline, counted
+// from the access (Q605Memory::tightenScsiDeadline has the census).
+void Q630Memory::tightenScsiDeadline() {
+    if (cpu_) cpu_->tightenPeriphDeadline(scsi_.cyclesToNextEvent());
 }
 
 // Level-sensitive IRQ/DRQ from the 53C96 into the Quadra pseudo-VIA2:
@@ -829,7 +857,12 @@ void Q630Memory::tick(int cpuCycles) {
 
 int Q630Memory::cyclesToNextEvent() const {
     int best = cudaLleOn_ ? cudaLle_.cyclesToNextEvent() : 1;
-    best = std::min(best, viaEClock_.cyclesToNext(kCpuHz));
+    // The VIA's own bound (T1/T2 underflow, shift completion), in E ticks,
+    // bridged through the accumulator tick() advances it with — not the
+    // next E tick, the bound that is always safe and says nothing
+    // (CHANGELOG 2026-11-07 (fourteenth): Q605Memory has the measurement).
+    best = std::min(best, via_eclock::bridge(via1_.cyclesToNextEvent(),
+                                             viaEClock_.acc, kCpuHz));
     auto debtBound = [](int next, int64_t debt) {
         if (next == 0x7fffffff) return next;
         return int(std::max<int64_t>(1, int64_t(next) - debt));
