@@ -820,27 +820,74 @@ Moira::fpuCheckArithException(
         fpu.e1 = true; fpu.e3 = false; fpu.t = opclass == 3;
         for (int i = 0; i < 3; i++) fpu.fpt[i] = fpu.et[i] = fpu.wbt[i] = 0;
 
-        fpu.et[0] = u32(src.high) << 16;
-        fpu.et[1] = u32(src.low >> 32);
-        fpu.et[2] = u32(src.low);
-        fpu.stag = fpuTag040(src, opclass == 0 ? -1 : int((ext >> 10) & 7));
-
+        // POM68K: what the handler's FSAVE will show. The FPSP finishes the
+        // operation from these fields — WBTEMP is the intermediate result it
+        // rounds or denormalizes — so they are the instruction's real
+        // output on a trapped overflow or underflow, not bookkeeping.
+        // [D] WinUAE fpp.c fpsr_check_arithmetic_exception, "fsave data for
+        //     68040" @ Hatari e77819f7, field for field; softfloat keeps
+        //     the intermediate values (getFloatInternal*).
+        // Until 2026-11-07 WBTEMP, the guard bits and the rounded
+        // FPTEMP/ETEMP of a move were left at zero.
+        // Gate: sst68040 (fpuh cells: FSAVE as the handler's first word).
+        const auto put = [](u32 *dst, const FpuExtended &v) {
+            dst[0] = u32(v.high) << 16;
+            dst[1] = u32(v.low >> 32);
+            dst[2] = u32(v.low);
+        };
+        const int size = int((ext >> 10) & 7);
         const int dreg = (ext >> 7) & 7;
-        if (fpuIsDyadic(ext)) {
-            const FpuExtended &d = fpu.fp[dreg];
-            fpu.fpt[0] = u32(d.high) << 16;
-            fpu.fpt[1] = u32(d.low >> 32);
-            fpu.fpt[2] = u32(d.low);
-            fpu.dtag = fpuTag040(d, -1);
-        }
+        const bool trapped =                    // INEX, UNFL, OVFL
+            fpu.expPend == 49 || fpu.expPend == 51 || fpu.expPend == 53;
 
-        if ((fpu.expPend == 49 || fpu.expPend == 51 || fpu.expPend == 53) &&
-            (((ext & 0x30) == 0x20) || ((ext & 0x3f) == 0x04))) {
+        if (opclass == 3) {
+
+            // Move out: E1 and T; the source with its signaling bit quieted.
+            fpu.wbte15 = (fpu.expPend == 51 || fpu.expPend == 54) ? 1 : 0;
+            FpuExtended quiet = src;
+            if ((quiet.high & 0x7fff) == 0x7fff && (quiet.low << 1) != 0)
+                quiet.low |= 0x4000000000000000ULL;
+            put(fpu.et, quiet);
+            fpu.stag = fpuTag040(src, -1);
+
+        } else if (trapped && (((ext & 0x30) == 0x20) || ((ext & 0x3f) == 0x04))) {
+
+            // FADD/FSUB/FMUL/FDIV/FSQRT: a BUSY frame, E3, with the
+            // intermediate result in WBTEMP.
             fpu.expState = 2;
             fpu.e1 = false; fpu.e3 = true;
             fpu.cmdreg3b = u16((ext & 0x03c3) | ((ext & 0x0038) >> 1) |
                                ((ext & 0x0004) << 3));
+            put(fpu.wbt, fpuFromFx80(fpu.expPend == 51
+                                     ? getFloatInternalUnrounded()
+                                     : getFloatInternalRoundedSome()));
+            fpu.grs = u8(getFloatInternalGRS());
             fpu.wbte15 = fpu.expPend == 51 ? 1 : 0;
+            put(fpu.et, src);
+            fpu.stag = fpuTag040(src, opclass == 0 ? -1 : size);
+            if (fpuIsDyadic(ext)) {
+                put(fpu.fpt, fpu.fp[dreg]);
+                fpu.dtag = fpuTag040(fpu.fp[dreg], -1);
+            }
+
+        } else if (trapped) {
+
+            // FMOVE to a register, FABS, FNEG: the rounded value in FPTEMP
+            // and, undocumented, the fully rounded one in ETEMP.
+            put(fpu.fpt, fpuFromFx80(getFloatInternalFloatx80()));
+            fpu.grs = u8(getFloatInternalGRS());
+            put(fpu.et, fpuFromFx80(getFloatInternalRoundedAll()));
+            fpu.stag = fpuTag040(src, opclass == 0 ? -1 : size);
+
+        } else {
+
+            // SNAN, OPERR, DZ: the operands as they were.
+            put(fpu.et, src);
+            fpu.stag = fpuTag040(src, opclass == 0 ? -1 : size);
+            if (fpuIsDyadic(ext)) {
+                put(fpu.fpt, fpu.fp[dreg]);
+                fpu.dtag = fpuTag040(fpu.fp[dreg], -1);
+            }
         }
 
         // POM68K (ruling D24): an exception the user ENABLED is posted — the
@@ -1121,10 +1168,14 @@ Moira::execFpuDatatype040(
     fpu.fpiar = reg.pc0;
     fpu.fpiarCu = reg.pc0;
     fpu.ea = ea;
-    fpu.cmdreg1b = ext;
+    // CMDREG1B shows FSQRT as opmode $05, not $04 ([D] WinUAE fpp.c
+    // fp_unimp_datatype "FSQRT 4->5" @ Hatari e77819f7).
+    fpu.cmdreg1b = (ext & 0x7f) == 0x04 ? u16(ext | 1) : ext;
     fpu.cmdreg3b = u16((ext & 0x03c3) | ((ext & 0x0038) >> 1) |
                        ((ext & 0x0004) << 3));
-    fpu.stag = fpuTag040(src, size);
+    // A move out tags its source as what it is, an extended register,
+    // whatever the destination format (same function: get_ftag(src, -1)).
+    fpu.stag = fpuTag040(src, ((ext >> 13) & 7) == 3 ? -1 : size);
     fpu.dtag = 0;
     fpu.wbtm66 = fpu.grs = fpu.wbte15 = 0;
     fpu.e1 = packed != nullptr;

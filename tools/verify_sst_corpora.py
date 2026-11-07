@@ -3,9 +3,10 @@
 
 The corpora behind `sst68000`, `sst68030`, `sst68030_solo`,
 `sst68030_fpuraw`, `sst68030_fpu2`, `sst68040`, `sst68040_8k`,
-`sst68040_fline`, `sst68040_fpu` and `sst68040_fpu2` are too large for the
-repository (1.1 GB, 116 MB, 211 MB, 238 MB, 237 MB, 315 MB, 176 MB, 190 MB,
-316 MB, 276 MB) and live in git-ignored `tests/data/`. Until 2026-11-06 nothing pinned them: a gate
+`sst68040_fline`, `sst68040_fpu`, `sst68040_fpu2` and `sst68040_fpuh` are
+too large for the repository (1.1 GB, 116 MB, 211 MB, 238 MB, 237 MB,
+315 MB, 176 MB, 190 MB, 316 MB, 276 MB, 281 MB) and live in git-ignored
+`tests/data/`. Until 2026-11-06 nothing pinned them: a gate
 could be green on one host and on another against different files, and nobody
 could tell.
 `tests/sst_corpora.lock` records, per file, the size and SHA-256 of what the
@@ -27,9 +28,9 @@ import sys
 from pathlib import Path
 
 CORPORA = ("sst68000", "sst68030", "sst68030_solo", "sst68030_fpuraw",
-           "sst68030_fpu2",
+           "sst68030_fpu2", "sst68030_rmw",
            "sst68040", "sst68040_8k", "sst68040_fline", "sst68040_fpu",
-           "sst68040_fpu2")
+           "sst68040_fpu2", "sst68040_fpuh")
 
 HEADER = """\
 # Identity of the CPU vector corpora (tools/verify_sst_corpora.py).
@@ -73,6 +74,15 @@ HEADER = """\
 #         --strict-fpu --steps 2 --n 2000 --seed S --out fpu2_M.json
 #   Replayed with `sst68030 --known tests/sst68030_fpu2.known` (21 vectors,
 #   all ruling D23b).
+# sst68030_rmw — integer instructions whose LAST access is a write to memory
+#   through an address register aimed at a bad page (ALU to memory, ADDQ,
+#   immediates, NEG/NOT/CLR, bit operations, memory shifts, Scc, TAS, NBCD,
+#   ABCD/SBCD/ADDX/SUBX -(Ay),-(Ax), MOVE Dn). Generated 2026-11-07, 6 000
+#   vectors: identity seed 1201, tt seed 1202:
+#         oracle/fuzz/fuzz030.py --a liboracle_uae.so --family rmw --mmu M
+#         --strict-fpu --n 3000 --seed S --out rmw_M.json
+#   Replayed with `sst68030 --known tests/sst68030_rmw.known` (11 vectors:
+#   the data output buffer of a faulting SUB/SUBI).
 # sst68040 — generated here by oracle/fuzz (gen040.py, fuzz040.py) against the
 #   same oracle in 68040 mode, 68LC040 (no FPU). 7 200 vectors.
 # sst68040_8k — the same, with 8 KB pages (TC.P = 1), generated 2026-11-06.
@@ -101,8 +111,17 @@ HEADER = """\
 #   to 933:
 #         oracle/fuzz/fuzz040.py --a liboracle_uae.so --family fpu2 --mmu M
 #         --steps 2 --n 2000 --seed S --out fpu2_M.json
-#   Replayed with `sst68040 --fpu --known tests/sst68040_fpu2.known` (three
-#   vectors: state-frame internals after a posted exception).
+#   Replayed with `sst68040 --fpu --known tests/sst68040_fpu2.known` (no
+#   vector listed at present).
+# sst68040_fpuh — THREE steps per vector on the full 68040: an FPU
+#   instruction, an FNOP, and `FSAVE -(A7)` planted as the first word of the
+#   handlers of vectors 48 to 55, so that the state frame a handler reads is
+#   in the vector. Generated 2026-11-07, 6 000 vectors: for each mmu in off,
+#   identity, tt, seeds 1301 to 1303:
+#         oracle/fuzz/fuzz040.py --a liboracle_uae.so --family fpuh --mmu M
+#         --steps 3 --n 2000 --seed S --out fpuh_M.json
+#   Replayed with `sst68040 --fpu --known tests/sst68040_fpuh.known` (12
+#   vectors: the source tag of a dyadic instruction with a packed operand).
 #
 # corpus | file | size | sha256
 """

@@ -1,0 +1,19 @@
+# Vectors of tests/data/sst68030_rmw on which the fork does not match the
+# oracle. See tests/SstKnown.h for the rules: a listed vector that passes, or
+# is missing, fails the gate.
+
+# Open defect, not a ruling (TODO.md § Moteur › Justesse 68030): the data
+# output buffer of the short frame $A after a faulting SUB or SUBI to memory
+# holds the result masked to the operand size here, the unmasked 32-bit
+# difference in the oracle.
+rmw/identity seed=1201 #704
+rmw/identity seed=1201 #918
+rmw/identity seed=1201 #1079
+rmw/identity seed=1201 #1087
+rmw/identity seed=1201 #1795
+rmw/identity seed=1201 #2500
+rmw/identity seed=1201 #2607
+rmw/identity seed=1201 #2614
+rmw/tt seed=1202 #88
+rmw/tt seed=1202 #1413
+rmw/tt seed=1202 #1700

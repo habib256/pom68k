@@ -56,6 +56,14 @@ add_test(NAME sst68030_fpu2
          COMMAND sst68030 "${POM68K_SST030_FPU2_DIR}"
                  --known "${CMAKE_CURRENT_SOURCE_DIR}/tests/sst68030_fpu2.known")
 
+# Write faults on the last access of read-modify-write instructions, 68030:
+# the short frame $A, the next instruction's PC, the flags already final.
+set(POM68K_SST030_RMW_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/sst68030_rmw"
+    CACHE PATH "Directory of SST030 vectors, write faults on memory destinations")
+add_test(NAME sst68030_rmw
+         COMMAND sst68030 "${POM68K_SST030_RMW_DIR}"
+                 --known "${CMAKE_CURRENT_SOURCE_DIR}/tests/sst68030_rmw.known")
+
 # The 68040 with 8 KB pages (TC.P = 1): the cell the pinned corpus never had.
 # Same harness as sst68040, its own directory so that a host without these
 # files soft-skips instead of failing the corpus manifest.
@@ -86,6 +94,14 @@ add_test(NAME sst68040_fpu2
          COMMAND sst68040 "${POM68K_SST040_FPU2_DIR}" --fpu
                  --known "${CMAKE_CURRENT_SOURCE_DIR}/tests/sst68040_fpu2.known")
 
+# Three steps per vector on the full 68040, FSAVE as the first word of the
+# FPU exception handlers: the BUSY and UNIMP state frames the FPSP reads.
+set(POM68K_SST040_FPUH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/sst68040_fpuh"
+    CACHE PATH "Directory of three-step SST040 vectors, FSAVE in the FPU handlers")
+add_test(NAME sst68040_fpuh
+         COMMAND sst68040 "${POM68K_SST040_FPUH_DIR}" --fpu
+                 --known "${CMAKE_CURRENT_SOURCE_DIR}/tests/sst68040_fpuh.known")
+
 # The identity of the vector corpora (tests/sst_corpora.lock): a corpus
 # that is present must match the pinned files byte for byte; an absent one
 # soft-skips, like the harnesses that read it.
@@ -96,9 +112,11 @@ add_test(NAME sst_corpora_lock_test
                  --dir sst68030_solo=${POM68K_SST030_SOLO_DIR}
                  --dir sst68030_fpuraw=${POM68K_SST030_FPURAW_DIR}
                  --dir sst68030_fpu2=${POM68K_SST030_FPU2_DIR}
+                 --dir sst68030_rmw=${POM68K_SST030_RMW_DIR}
                  --dir sst68040=${POM68K_SST040_DIR}
                  --dir sst68040_8k=${POM68K_SST040_8K_DIR}
                  --dir sst68040_fline=${POM68K_SST040_FLINE_DIR}
                  --dir sst68040_fpu=${POM68K_SST040_FPU_DIR}
                  --dir sst68040_fpu2=${POM68K_SST040_FPU2_DIR}
+                 --dir sst68040_fpuh=${POM68K_SST040_FPUH_DIR}
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})

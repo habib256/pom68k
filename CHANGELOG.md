@@ -508,6 +508,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-07 (tenth)** — [On a 68030 the write fault of an ADD to memory restarted the instruction, and CLR read before it cleared: a family for read-modify-write faults, 5 052 to 5 989 of 6 000](#2026-11-07-rmw-last-write)
+- **2026-11-07 (ninth)** — [The 68040 state frame now carries the intermediate result the FPSP finishes the operation from: a family with FSAVE in the handlers, 5 750 to 5 988 of 6 000](#2026-11-07-state-frame-internals)
 - **2026-11-07 (eighth)** — [66 000 fresh vectors on the night's final core: every class corrected today stays closed, five vectors are new](#2026-11-07-fresh-sweep-final)
 - **2026-11-07 (seventh)** — [The 68882's posted exceptions hold across an instruction boundary: 5 979 of 6 000 two-instruction vectors, the rest being D23b](#2026-11-07-fpu2-68030)
 - **2026-11-07 (sixth)** — [Ruling D24 applied: an enabled 68040 FPU exception is posted and taken by the next FPU instruction — held by 6 000 two-instruction oracle vectors](#2026-11-07-d24-applied)
@@ -1217,6 +1219,92 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-07-rmw-last-write"></a>
+## 2026-11-07 (tenth) — On a 68030 the write fault of an ADD to memory restarted the instruction, and CLR read before it cleared: a family for read-modify-write faults, 5 052 to 5 989 of 6 000
+
+The sweep of the eighth entry left four vectors nobody had a name for: a
+read-modify-write instruction in user mode whose write faults, the oracle
+stacking the short bus-fault frame $A and the fork the long $B. Four
+vectors in 4 500 `random` ones, and none in 9 000 `fault` ones — because
+the `fault` family has its own opcode list, and no ALU instruction with a
+memory destination is on it.
+
+**The family first.** `rmw` (`gen030.py`): thirteen forms whose last access
+is a write through A0 — ADD/SUB/AND/OR/EOR Dn,<ea>, ADDQ/SUBQ, the
+immediates, NEG/NEGX/NOT/CLR, the bit operations, the memory shifts, Scc,
+TAS, NBCD, ABCD/SBCD and ADDX/SUBX -(A1),-(A0), MOVE Dn,<ea> — with A0
+aimed at a bad page as for `fault`. First replay: **5 052 / 6 000**. The
+class was not four vectors.
+
+**Two causes** (`POM68K_VENDOR.md` row 52):
+
+- *The last write was not marked.* `writeOp` marks it for the handlers
+  that go through it (AND, OR, EOR, NEG, NOT, ADDQ, Scc, TAS, MOVE — all
+  at 100 %). Seven handlers call `writeM` themselves: ADD/SUB to memory,
+  ABCD/SBCD, NBCD, ADDX/SUBX, the memory shifts, BCHG/BCLR/BSET. Their
+  fault stacked $B, restored the flags and restarted an instruction the
+  68030 only has to complete. `pomLastWrite030` now precedes those seven
+  stores.
+- *CLR read its destination.* On the 68020 and 68030 the handler took the
+  68000's path — read, then write, flags after — and only the 68040 had
+  the pure store. The M68000 Programmer's Reference Manual limits the read
+  to "the MC68000 and MC68008"; WinUAE generates it for `cpu_level 0`
+  only. A faulting CLR therefore faulted on a read the processor never
+  makes, with the old flags. Outside faults this was a **bus cycle no
+  68020 or 68030 Macintosh performs** on every CLR to memory — on a device
+  register, a read side effect that never happened.
+
+After both: **5 989 / 6 000**, every pinned corpus unchanged, `sst68000`
+still 1 000 058 / 1 000 058 on bus-cycle order and timing (the seven
+handlers are shared with the 68000; the marker is a no-op there). The
+eleven left are one detail of the frame — the data output buffer of a
+faulting SUB or SUBI holds the unmasked 32-bit difference in the oracle —
+listed by name and in `TODO.md`.
+
+**Pinned** as `sst68030_rmw`; `moira_rules_test` gains a cell that counts
+the byte cycles of CLR.B (A0) on four models: read and write on the 68000,
+a write alone from the 68020 up.
+
+**Why this one waited for the machine tiers.** The CLR change removes a
+read from the bus of every 68020 and 68030 profile. It is what the
+hardware does, and every boot in the tree was recorded with the read
+there. The tiers decided, the same morning: the parallel tier
+(asset-none, m040, jit, etalon-core — every 68020/68030 boot in the tree)
+228 / 228 and the Quadra 700/900/950 serial gates 18 / 18 on a separate
+`-Werror` build of this branch, before it was merged at 06:20.
+<a id="2026-11-07-state-frame-internals"></a>
+## 2026-11-07 (ninth) — The 68040 state frame now carries the intermediate result the FPSP finishes the operation from: a family with FSAVE in the handlers, 5 750 to 5 988 of 6 000
+
+The three vectors the sixth entry left in `tests/sst68040_fpu2.known` were
+an FSAVE reading zeros where the oracle writes the intermediate result of a
+trapped operation. That is not a frame detail: on a real 68040 the FPSP
+takes WBTEMP from the BUSY frame and denormalizes it after an underflow, or
+rounds it after an overflow — the result the program receives is computed
+from that field. An emulated Quadra with zeros there flushed to zero what
+the chip returns as a denormal.
+
+**The family first.** `fpuh`: an FPU instruction, an FNOP, and `FSAVE
+-(A7)` planted as the first word of the handlers of vectors 48 to 55, three
+oracle steps, so that the frame a handler reads is in the vector whether
+the exception was taken at once or posted. 6 000 vectors: 5 750 pass before
+the change, 250 differ in the frame.
+
+**The change** (`POM68K_VENDOR.md` row 51): `fpuCheckArithException`
+fills, as WinUAE does from the same softfloat, WBTEMP and the guard bits of
+an E3 frame (FADD/FSUB/FMUL/FDIV/FSQRT), the rounded FPTEMP and ETEMP of a
+trapped FMOVE/FABS/FNEG, and for a move out quiets the signaling bit and
+tags the source as an extended register. `execFpuDatatype040` shows FSQRT
+as opmode $05 in CMDREG1B, as the chip does, and tags a move-out's source
+as extended whatever the destination format.
+
+After: **5 988 / 6 000**, the three `fpu2` vectors pass (their block leaves
+the list), every other 68040 corpus unchanged. The twelve left are one
+class — a dyadic instruction with a packed source whose destination also
+needs the datatype trap, where the oracle's capture runs twice — and wait
+for a reading of that order (`TODO.md`).
+
+**Pinned** as `sst68040_fpuh`. Validated the same morning with the tenth entry: parallel tier 228 / 228, Quadra 700/900/950 serial gates 18 / 18.
 
 <a id="2026-11-07-fresh-sweep-final"></a>
 ## 2026-11-07 (eighth) — 66 000 fresh vectors on the night's final core: every class corrected today stays closed, five vectors are new

@@ -149,8 +149,9 @@ boot.
   famille aléatoire ne remplace pas une famille par fenêtre de décodage.
   Faire du balayage de graines neuves une étape de la boucle
   (`oracle/fuzz/loop.sh` n'a pas d'équivalent 040), et écrire les familles
-  brutes qui manquent : extensions complètes d'EA réservées, et une
-  famille `fault` bâtie sur les opcodes de `core`. La fenêtre
+  brutes qui manquent : extensions complètes d'EA réservées, et le
+  pendant 68040 de la famille `rmw` (écritures fautives des instructions
+  RMW, `sst68030_rmw`). La fenêtre
   `$F400-$F7FF` (CINV/CPUSH/PFLUSH/PTEST/MOVE16) a la sienne (`sysraw`,
   6 000 / 6 000 au premier rejeu, non épinglée). La fenêtre cpID 1 du
   68030 a la sienne depuis le 2026-11-07 (`sst68030_fpuraw`, 6 000
@@ -291,22 +292,13 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   une cible impaire, quatrième reste du balayage, est devenu la décision
   D28 : le fork garde l'erreur d'adresse, comme pour Bcc et comme le
   manuel ; l'oracle n'en lève jamais.)
-- [ ] **Fusionner le marquage « dernière écriture » des RMW du 68030 et
-  le CLR sans lecture — après les paliers machine.** La famille `rmw`
-  (`gen030.py`, 2026-11-07 : treize formes dont le dernier accès est une
-  écriture mémoire, A0 visant une mauvaise page) rejoue à **5 052 / 6 000**
-  sur cet arbre : sept handlers (ADD/SUB vers la mémoire, ABCD/SBCD/NBCD,
-  ADDX/SUBX, décalages mémoire, BCHG/BCLR/BSET) appellent `writeM` sans
-  marquer la dernière écriture — frame $B et redémarrage là où le 68030
-  empile $A et termine — et CLR lit sa destination sur 68020/68030 alors
-  que seuls « the MC68000 and MC68008 » le font (M68000PRM). Le correctif
-  est écrit et tenu par ses vecteurs sur la branche
-  `fix/m68030-rmw-last-write` (5 989 / 6 000, corpus `sst68030_rmw`,
-  rang 51, cellule `moira_rules_test`) ; il n'est **pas fusionné** parce
-  que le CLR sans lecture retire un cycle de bus à tous les profils
-  68020/68030 et qu'aucun etalon n'a tourné avec. Le 68040 n'a pas la
-  classe (`fuzz040.py --family rmw` : 6 000 / 6 000). Même balayage, un
-  vecteur : PTEST laisse MMUSR.I à zéro (`mmu/tt seed=1006 #1188`,
+- [ ] **Stocker le résultat non masqué dans le tampon de sortie d'une
+  frame $A de SUB/SUBI.** Onze vecteurs de `sst68030_rmw`
+  (`tests/sst68030_rmw.known`) : après un SUB ou SUBI vers la mémoire dont
+  l'écriture faute, le fork range dans le « data output buffer » le
+  résultat masqué à la taille de l'opérande, l'oracle la différence sur
+  32 bits. Même balayage du 2026-11-07, un vecteur : PTEST laisse MMUSR.I
+  à zéro (`mmu/tt seed=1006 #1188`,
   `scratchpad/2026-11-07/FUZZ_SWEEP2.md`).
 - [ ] **Repasser les corpus 68030 à l'oracle strict en appliquant D23b.**
   Tous les corpus 68030 antérieurs au 2026-11-07 ont été produits avec
@@ -335,15 +327,13 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
 
 ### Justesse 68040
 
-- [ ] **Remplir les champs internes des frames d'état BUSY et UNIMP du
-  68040.** Depuis l'application de D24 (rang 50) une exception armée est
-  postée et le handler la lit par FSAVE ; `fpuCheckArithException` y
-  laisse à zéro le résultat intermédiaire (WBT), ses bits de garde (GRS)
-  et, pour FMOVE/FABS/FNEG, FPTEMP/ETEMP arrondis, que l'oracle tire de
-  l'état interne de softfloat (`fpp_get_internal*`). Le FPSP s'en sert
-  pour finir l'opération. Trois vecteurs nommés dans
-  `tests/sst68040_fpu2.known` ; la famille `fpu2` avec FSAVE en seconde
-  instruction en produira d'autres.
+- [ ] **Tagger la source d'une instruction dyadique à opérande packed
+  comme l'oracle.** Douze vecteurs de `sst68040_fpuh`
+  (`tests/sst68040_fpuh.known`) : FDIV/FMUL/FSUB/FCMP/FSGLx .P avec une
+  destination qui demande elle-même la trappe de type ; la capture de
+  l'oracle repasse pour la destination et laisse STAG = 4 là où le fork
+  garde le marqueur packed 7. Artefact probable de l'ordre des deux
+  appels dans WinUAE ; à lire avant de suivre.
 - [ ] **Donner des vecteurs à plusieurs instructions aux autres états en
   vol.** `fuzz030.py`/`fuzz040.py --steps` et le champ `steps` des
   vecteurs existent (2026-11-07) ; ils tiennent D24 (`sst68040_fpu2`) et

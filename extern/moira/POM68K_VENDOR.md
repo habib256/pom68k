@@ -31,13 +31,13 @@ pair):
 
 | | | how to re-measure |
 |---|---|---|
-| distinct `pom*` extension identifiers | **96** (60 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **468** | `grep -rn POM68K Moira/ \| wc -l` |
+| distinct `pom*` extension identifiers | **97** (60 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
+| `POM68K`-marked lines | **478** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **14 of 25** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **50** | this file |
+| patch groups in the inventory below | **52** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h` | — |
 
-Fifty patch groups, two of which (the JIT seam, row 22, and the ATC
+Fifty-two patch groups, two of which (the JIT seam, row 22, and the ATC
 performance work, row 16) are not patches over upstream's design but a second
 consumer of it. A re-sync is no longer a merge with conflicts; it is a port.
 
@@ -67,7 +67,7 @@ interpreter's speed being tolerable.
 
 **Reopening condition** — reversed only by upstream landing something the fork
 cannot cheaply reproduce (a full 68040 FPU, a rewritten dispatch core), and only
-against a *measured* estimate of porting the 50 groups onto it. Not by the
+against a *measured* estimate of porting the 52 groups onto it. Not by the
 general discomfort of being forked.
 
 The "Before re-syncing from upstream" note further down is now the exception
@@ -169,8 +169,10 @@ gate in the last column of each row.
 | 48 | **68040 bus accessors: the common translation inlined, the TTR test from a table** — `mmu040TranslateHot` (TTR, MMU off, or the last-hit ATC line, with `mmu040Translate` behind it for everything else), `mmu040FetchWord` for instruction words, `mmu040BusRead`/`mmu040BusWrite` for the cache-model-off bus call, and `mmu040MatchTTR` answered from a 512-entry table rebuilt from the reference test when a register pair has changed | `MoiraExecMMU_cpp.h`, `MoiraDataflow_cpp.h`, `Moira.h` | the 2026-11-06 profile put 63 % of the 68040 interpreter in address translation, behind three out-of-line calls per access. No new cache: the last-hit probe already existed, this stops paying the calls to reach it. Same decisions in the same order; the ATC's pseudo-LRU is touched only once the access is known to succeed in the hot path. Interpreter −31.7 % wall on the fixed-cycle bench (32.17 s → 21.97 s), fingerprint `a2036281a5c2ac55` unchanged; JIT mode flat. The table is derived state: no hook on the registers, never serialized | `moira_rules_test` (TTR table), the four `sst68040*` corpora, `jit_bench` fingerprint |
 | 49 | **The core reads no environment variable** — the three `getenv("NEOST_EXC_DIAG")` of NeoST's exception trace (`setIPL` `[PIN]`, `execInterrupt<C68000>` `[EXC]`, `jumpToVector` `[JTV]`) test a member set through `setPomExceptionDiag(bool)` | `Moira.h`, `Moira.cpp`, `MoiraExceptions_cpp.h`, `MoiraDataflow_cpp.h` | the last process-global input of `extern/moira/Moira/` after row 39. A core that reads its host's environment cannot be embedded twice with two answers, and three function-local `static const bool` froze the first one for the life of the process. The name stays `NEOST_EXC_DIAG`: POM68K declares it in `StartupOptions.h` and carries it in `jit::ResolvedConfig`, the one configuration all fourteen CPU wrappers receive; NeoST's wrapper calls the same setter from wherever it reads its own settings | `docs_test` (no `getenv` under `extern/moira/Moira/`) |
 | 50 | **68040: an FPU exception the user enabled is posted, not taken** — `fpuCheckArithException` reports an exception as immediate only when it is pending without being enabled (the nonmaskable OVFL/UNFL, SNAN/OPERR on a move to an integer); an enabled one leaves `expPend` set and the next FPU instruction takes it as a pre-instruction exception, format $0. `fpuMakeStatus` keeps the destination untouched on any 68040 overflow or underflow; the BUSY resume of FRESTORE leaves what it raises posted | `MoiraExecFPU_cpp.h` | ruling D24. The fork delivered every exception at once with a format $3 frame, on the word of `fpu040_test`, which cited nothing. M68040UM § 9.7.2.1, 9.7.3.1 and 9.7.6 say the exception is posted and "the next floating-point instruction that is encountered takes a pre-instruction exception"; the oracle does exactly that. A handler written for a 68040 — the FPSP's — reads the pre-instruction frame and the E1/E3 state frame; given a format $3 frame for an FADD it finds an effective-address field that means nothing. The pending machinery was already there, inherited from the 68882 | `sst68040_fpu2` (6 000 two-instruction vectors), `sst68040_fpu`, `fpu040_test` |
+| 51 | **68040 state frames carry the intermediate result** — `fpuCheckArithException` fills WBTEMP and the guard bits of a BUSY (E3) frame from softfloat's internal result, the rounded FPTEMP/ETEMP of a trapped FMOVE/FABS/FNEG, quiets the signaling bit of a move-out's ETEMP and tags it as extended; `execFpuDatatype040` shows FSQRT as opmode $05 in CMDREG1B and tags a move-out's source as extended | `MoiraExecFPU_cpp.h` | the FPSP finishes a trapped operation from these fields — it denormalizes WBTEMP after an underflow, rounds it after an overflow — so zeros there made an emulated Quadra flush to zero what a 68040 returns as a denormal. Invisible until row 50 posted exceptions and a family put FSAVE in the handlers: `fpuh`, three steps, 5 750 / 6 000 before, 5 988 after. [D] WinUAE fpp.c "fsave data for 68040" @ Hatari e77819f7, the getters being softfloat's own | `sst68040_fpuh`, `sst68040_fpu2` (its three listed vectors now pass) |
+| 52 | **68030: the last write of every read-modify-write instruction is marked; CLR is a pure store from the 68020 up** — `pomLastWrite030` before the direct `writeM` of ADD/SUB to memory, ABCD/SBCD/NBCD, ADDX/SUBX, the memory shifts and BCHG/BCLR/BSET; `execClr` takes its no-read branch for the whole `C68020` core, not only from the 68EC040 | `MoiraExec_cpp.h`, `Moira.h` | `writeOp` marks the 68030's last write (a fault there stacks the short frame $A with the next instruction's PC and the flags already updated); seven handlers call `writeM` themselves and stacked the long $B with the old flags, restarting an instruction the oracle only completes. CLR read its destination first on the 68020 and 68030 as the 68000 does: only "the MC68000 and MC68008" do (M68000PRM), and on a device register that read is a side effect no 68020 Macintosh produces. The `fault` family has its own opcode list and emitted none of these forms; a `rmw` family written for them started at 5 052 / 6 000 | `sst68030_rmw`, `moira_rules_test` (CLR bus cycles), `sst68000` (bus cycles unchanged) |
 
-Rows 2-21, 25-34, 36, 38, 40, 41, 43-47 and 50 are the accuracy work; rows 22-24, 35, 39, 42 and 49 are seams (inert
+Rows 2-21, 25-34, 36, 38, 40, 41, 43-47 and 50-52 are the accuracy work; rows 22-24, 35, 39, 42 and 49 are seams (inert
 when nothing arms them); row 48 is performance alone, with no architectural effect. The eleven files carrying no `POM68K` marker at all —
 `MoiraDasm*` (4), `StrWriter*` (2), `MoiraDebugger.h`, `MoiraMacros.h`,
 `MoiraALU.h`, `MoiraExceptions.h`, `MoiraInit.h` — are where an upstream fix can
