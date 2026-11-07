@@ -1072,25 +1072,9 @@ Moira::execFpuDisabled040(u32 ea)
     // 68040 && fpu_model==0 -> frame 0x4 {SR, currpc, $402C, fp_ea,
     // instruction_pc}). The caller consumed the shape's extension words
     // (reg.pc mirrors WinUAE's m68k_getpc()) and passes fp_ea.
-    //
-    // Mac OS PACK 4 F-line glue only accepts format $0 ($002C). Real LC 475
-    // loads FPSP for format $4; when set, fpuDisabledSaneFline rewinds to the
-    // opcode and stacks classic Line-F so SANE can emulate.
-    //
-    // NOTHING SETS IT. The comment used to name "Cpu040 under
-    // POM68K_Q605_NOFPU" as the caller; src/Cpu040.cpp has never called
-    // setFpuDisabledSaneFline, so the flag is permanently false and every 040
-    // profile stacks the architectural format $4 — including the two bare-FPU
-    // ones, which reach the Finder anyway because the problem was solved from
-    // the other end (the XPRAM $AE ROM-resource combo selects an integer
-    // PACK 4). The seam is kept, unbound, as the escape hatch if a guest ever
-    // needs format $0; sst68040 requires it clear. (2026-08-12)
-    if (fpuDisabledSaneFline) {
-        (void)ea;
-        reg.pc = reg.pc0;
-        execException<C>(M68kException::LINEF);
-        return;
-    }
+    // (A Mac-only escape hatch to stack format $0 instead, for the PACK 4
+    // glue, was removed on 2026-11-08: no caller had ever set it —
+    // POM68K_VENDOR.md § Q8.)
 
     u16 status = getSR();
 

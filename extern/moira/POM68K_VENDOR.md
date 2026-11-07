@@ -1057,20 +1057,17 @@ fresh-seed re-verify). Every change is runtime-gated on
   FGen/FMOVEM memory forms; FMOVEM with Dn/An/#imm stays Line-F
   (get_fp_ad failure). FBcc pseudo-conditions $20-$3F are registered on
   the 040 family only (format $4 without FPU, Line-F with).
-- **Q8 — Mac PACK 4 vs format $4:** `fpuDisabledSaneFline`
-  (`setFpuDisabledSaneFline`) rewinds to the opcode and stacks classic
-  format $0 Line-F so guest PACK 4 glue accepts the frame. Architectural
-  default remains format $4 (`sst68040`).
-  **Dormant since 2026-07-21:** nothing in `src/` or `tests/` calls the
-  setter any more, so every 040 profile takes the architectural format $4.
-  The bare-FPU boot it was written for was solved elsewhere — the XPRAM
-  `$AE` ROM-resource combo makes `InitResources` fall back to
-  `UniversalInfo` `defaultRSRCs` 4 and bind the **integer** PACK 4, so
-  `POM68K_Q605_NOFPU=2` (true `FPUModel::NONE`) reaches the Finder with no
-  F-line rewriting at all (`q605_barefpu_boot_etalon`, CHANGELOG
-  2026-07-21 "Bare no-FPU solved"). Kept because it is one branch on a cold
-  path and it is the only lever if an FPSP-less guest ever needs it again;
-  delete it if a second release passes with no caller.
+- **Q8 — Mac PACK 4 vs format $4: REMOVED 2026-11-08.** The
+  `fpuDisabledSaneFline` escape hatch (stack format $0 Line-F so the guest
+  PACK 4 glue accepts it) had been dormant since 2026-07-21: nothing in
+  `src/` or `tests/` ever called its setter, and the bare-FPU boot it was
+  written for was solved from the other end — the XPRAM `$AE`
+  ROM-resource combo binds the **integer** PACK 4, so `FPUModel::NONE`
+  reaches the Finder with no F-line rewriting (`q605_barefpu_boot_etalon`,
+  CHANGELOG 2026-07-21 "Bare no-FPU solved"). An unbound branch in a core
+  meant to be read by another host is a claim nobody holds; it went in the
+  clean-up before the NeoST port (`TODO.md` § Objectif principal). Every
+  040 model without an FPU takes vector 11 with format $4.
 - **Q8 — 040 I/D ATC:** 32-entry separate I/D ATC overlay on
   `mmu040Translate` (`Moira.h` `MMU040_ATC_ENTRIES`, pseudo-LRU, flush
   PFLUSH*/TC/URP/SRP; `POM68K_MMU040_WALK` — set to anything, the

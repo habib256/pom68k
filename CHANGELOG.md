@@ -508,6 +508,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-08** — [The core says what each model executes; the unbound PACK 4 escape hatch is gone](#2026-11-08-core-dead-code)
 - **2026-11-07 (sixteenth)** — [The Quadra 605 recipe reaches the Quadra 630 and Quadra 700/900/950; the Centris refuses it — its PIC1654S ADB outcome depends on where the slices fall](#2026-11-07-040-siblings-deadline)
 - **2026-11-07 (fifteenth)** — [The LC II's device slice was 9.6 cycles and 60 % of its flushes were the board's own: every V8 device publishes its bound, cached as an absolute time — boot −24 %, JIT −5 %](#2026-11-07-v8-deadline)
 - **2026-11-07 (fourteenth)** — [The Quadra 605 woke its devices 1.27 million times a guest second: timer-aware VIA bound, per-access deadline re-arm — JIT −50 %, interpreter −18 %](#2026-11-07-q605-via-deadline)
@@ -1225,6 +1226,46 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-08-core-dead-code"></a>
+## 2026-11-08 — The core says what each model executes; the unbound PACK 4 escape hatch is gone
+
+First step of the clean-up the main objective asks for (`TODO.md`
+§ Objectif principal: Moira ready to migrate to NeoST, presentable to its
+author). Two things in the core told a reader something false.
+
+**`MoiraTypes.h` still labelled the 68030 and the three 68040 models
+"Disassembler only"** — upstream's words, true of upstream, false here
+since July. Each `Model` now says what it executes in this fork and what
+holds it: cycle-exact 68000/68010 (`sst68000`), table-timed 020s without
+an MMU, the 68030 with PMMU and 6888x (`sst68030` corpora), the 68LC040
+and 68040 (`sst68040`, the FPU corpora) — and the two without a corpus
+say so. The **68EC040** is the uncomfortable one: it executes the full
+68040 path, paging included, which the silicon does not have, while
+`hasMMU()` answers false. Labelled as exactly that ("do not rely on it");
+the decision — refuse it in `setModel`, or stop translation at the TTRs
+and hold it with a corpus — is a `TODO.md` line, because either is a
+behaviour change and neither has a witness yet.
+
+**`fpuDisabledSaneFline` is removed** (`Moira.h` member and accessors, the
+branch in `execFpuDisabled040`, three rows of `POM68K_SURFACE.md`,
+`POM68K_VENDOR.md` § Q8 rewritten as removed). It stacked a format $0
+Line-F instead of the architectural format $4 so the Mac PACK 4 glue would
+accept it; nothing had set it since 2026-07-21, when the bare-FPU boot was
+solved from the other end (the integer PACK 4). An unbound branch in a
+core meant to be read by another host is a claim nobody holds.
+Behaviour-neutral by construction — the flag was always false.
+
+**Held by** the whole-tree `-Werror` build and the `asset-none` + `m040`
+tiers, 227/228 (`agent_binary_test`, known on this host).
+
+**Found on the way, for the next step (evidence grades in the core):**
+the core cites WinUAE about 430 times, by file:line, with no revision. A
+check against the pinned oracle tree (`oracle/uae/upstream`, Hatari
+`e77819f7`) lands 82 of the 90 machine-judgeable cites; at least two are
+9 lines off (`fpp.c:1678`/`1884` for `*adp = ad;`, now at 1687/1893) —
+written against another revision. The grading pass will therefore come
+with a checker, not a blind `@ e77819f7` stamp.
 
 <a id="2026-11-07-040-siblings-deadline"></a>
 ## 2026-11-07 (sixteenth) — The Quadra 605 recipe reaches the Quadra 630 and the Quadra 700/900/950; the Centris refuses it — its PIC1654S ADB outcome depends on where the slices fall
