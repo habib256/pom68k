@@ -28,6 +28,9 @@ Q630Cpu::Q630Cpu(Q630Memory& mem, const jit::ResolvedConfig& jitConfig,
     if (cpuConfig.mmu040Walk) setMmu040AtcArmed(false);
     if (cpuConfig.q630CacheBoost)
         cacheBoost_ = *cpuConfig.q630CacheBoost;
+    if (cacheBoost_ < 1) cacheBoost_ = 1;
+    boostShift_ = (cacheBoost_ & (cacheBoost_ - 1)) == 0
+                ? __builtin_ctz(unsigned(cacheBoost_)) : -1;
     armIcacheOverlay(icacheMiss_);
 }
 
@@ -76,19 +79,32 @@ void Q630Cpu::flushTicks() {
     if (d > 0) {
         lastPeriphClock_ = clock;
         periphAccum_ += d;
-        int m = int(periphAccum_ / cacheBoost_);
+        // A shift at the power-of-two boosts (Cpu040::flushTicks).
+        const int m = boostShift_ >= 0 ? int(periphAccum_ >> boostShift_)
+                                       : int(periphAccum_ / cacheBoost_);
         periphAccum_ -= moira::i64(m) * cacheBoost_;
         if (m) mem_.tick(m);
         schedulePeriphDeadline();
     }
 }
 
-void Q630Cpu::schedulePeriphDeadline() {
-    moira::i64 machine = mem_.cyclesToNextEvent();
-    if (machine < 1) machine = 1;
+moira::i64 Q630Cpu::periphDeadlineFor(int machineCycles) const {
+    const moira::i64 machine = std::max(1, machineCycles);
     moira::i64 d = machine * cacheBoost_ - periphAccum_;
     if (d < 1) d = 1;
-    periphDeadline_ = clock + d;
+    return lastPeriphClock_ + d;
+}
+
+void Q630Cpu::schedulePeriphDeadline() {
+    periphDeadline_ = periphDeadlineFor(mem_.cyclesToNextEvent());
+}
+
+void Q630Cpu::tightenPeriphDeadline(int machineCycles) {
+    // From `clock`: the countdown was armed by the access just served
+    // (Cpu040::tightenPeriphDeadline has the measurement).
+    if (machineCycles >= 0x7fffffff) return;
+    const moira::i64 machine = std::max(1, machineCycles);
+    periphDeadline_ = std::min(periphDeadline_, clock + machine * cacheBoost_);
 }
 
 void Q630Cpu::setEngine(int e) {

@@ -40,8 +40,9 @@ LLE 5 %, repli interpréteur 5 %. Donc, par ordre de rendement attendu :
    53C80 et l'ASC en scrutation), l'Egret borne le reste à ~27 cycles ;
    bornes de tous les appareils publiées et mises en cache en temps
    absolu, flush seulement là où le temps de l'appareil compte : −24 % au
-   boot, −5 % en JIT à 3 000 trames, −1 % en interpréteur. Les trois
-   cartes 040 restantes : `§ Moteur › Temps`.
+   boot, −5 % en JIT à 3 000 trames, −1 % en interpréteur. Q630 et
+   Q700/900/950 faits (seizième) ; les Centris refusent tant que leur
+   PIC1654S dépend du découpage : `§ Moteur › Temps`.
 2. **Le runtime du moteur sur le 030 (21 %)** : chaque bloc rend la main au
    dispatcheur (1 sortie toutes les 300 instructions sur le Q605 ; 830
    instr/bloc sur le LC II). Du chaînage direct de blocs (saut compilé →
@@ -441,24 +442,20 @@ par `cacheBoost` ; le reste est correction locale.
   IIfx n'ont ni boost ni overlay. Réglage global (épingles, perfs, JIT) :
   *Bloqué : un chiffre matériel (TimeDBRA/TimeVIADB d'un vrai LC II,
   Centris ou Quadra).*
-- [ ] **Porter l'échéance VIA chronométrée aux Centris, Quadra 630 et
-  Quadra 700/900/950.** Les trois cartes publient encore « le prochain
-  tick E » (`viaEClock_.cyclesToNext`), la borne qui ne dit rien
-  (`CHANGELOG` 2026-11-07 (quatorzième) : tranche 19,7 → 45,8 cycles,
-  JIT −50 % sur le Q605). Recette, dans l'ordre, chacune prouvée par une
-  empreinte à budget fixe avant la suivante : (1) `viaSync()` PUIS
-  `flushTicks()` dans les chemins VIA, pseudo-VIA et SCC ; (2)
-  `schedulePeriphDeadline` public, mesuré depuis `lastPeriphClock_`,
-  appelé après chaque accès qui peut armer un compte à rebours, et
-  `tightenPeriphDeadline` (depuis l'accès) sur les chemins 53C96 ; (3)
-  seulement alors `via_eclock::bridge(via1_.cyclesToNextEvent(), …)`. Le
-  Q700 a deux VIA (min des deux) ; le Q700 non-Eclipse a l'ADB HLE à 1.
-  Reste nommé sur le Q605 : les lectures 53C96/ASC/DAFB et les octets
-  pseudo-DMA voient l'appareil là où le dernier flush l'a laissé (retard
-  ≤ une tranche, ≤ un tick E avant) — un modèle « temps de l'appareil
-  = horloge CPU à l'accès », celui de `syncSwimFromCpu`, l'effacerait pour
-  le 53C96 et l'ASC au prix du débit sérialisé (`scsiDebt_`,
-  `q605_event_scheduler_test`).
+- [ ] **Rendre le PIC1654S des cartes DjMEMC indépendant du découpage en
+  tranches, puis leur porter l'échéance VIA.** Le Q630 et les Q700/900/950
+  l'ont depuis le 2026-11-07 (seizième) ; sur les Centris 610/650 et
+  Quadra 610/650/800 elle a été retirée : tout changement de la tranche
+  déplace la réponse de l'ADB (`adb.dev2.service` des Prober q800 puis
+  q610 contre MAME, bissecté). Le temps du PIC doit être fonction du temps
+  machine, pas du motif des flushs ; un gate qui découpe la même fenêtre
+  en deux tailles de tranche et compare le flux ADB le prouvera. Ensuite
+  seulement la recette (`CHANGELOG` quatorzième). Reste nommé sur le
+  Q605 : les lectures 53C96/ASC/DAFB et les octets pseudo-DMA voient
+  l'appareil là où le dernier flush l'a laissé (retard ≤ une tranche) —
+  un modèle « temps de l'appareil = horloge CPU à l'accès », celui de
+  `syncSwimFromCpu`, l'effacerait pour le 53C96 et l'ASC au prix du débit
+  sérialisé (`scsiDebt_`, `q605_event_scheduler_test`).
 - [ ] **Sortir le coprocesseur externe et le temps de bus de données du
   boost.** *À reproduire.* Les cycles du 6888x passent par `sync` puis sont
   divisés par le boost dans `flushTicks` : le 68882, puce distincte,

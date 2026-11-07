@@ -440,8 +440,12 @@ void Q700Memory::refreshVia1PortB() {
 }
 
 uint8_t Q700Memory::viaAccess8(uint32_t addr, bool write, uint8_t v) {
-    if (cpu_) cpu_->flushTicks();
+    // Re-arm at every exit (a T1/T2 load, an ACR or SR write moves the VIA
+    // bound); stall to the E edge first, THEN flush, so the VIA stands at
+    // the edge the access is served on (Q605Memory::viaAccess8).
+    struct Rearm { Q700Memory& m; ~Rearm() { if (m.cpu_) m.cpu_->schedulePeriphDeadline(); } } rearm{*this};
     viaSync();
+    if (cpu_) cpu_->flushTicks();
     if (!eclipse() && cpu_) adbVia_.syncTo(cpu_->machineClock());
     int reg = (addr >> 9) & 0x0F;
     if (write) {
@@ -486,8 +490,9 @@ uint8_t Q700Memory::viaAccess8(uint32_t addr, bool write, uint8_t v) {
 }
 
 uint8_t Q700Memory::via2Access8(uint32_t addr, bool write, uint8_t v) {
-    if (cpu_) cpu_->flushTicks();
+    struct Rearm { Q700Memory& m; ~Rearm() { if (m.cpu_) m.cpu_->schedulePeriphDeadline(); } } rearm{*this};
     viaSync();
+    if (cpu_) cpu_->flushTicks();                // after the stall (viaAccess8)
     int reg = (addr >> 9) & 0x0F;
     if (write) {
         via2_.write(reg, v);
@@ -522,6 +527,7 @@ uint8_t Q700Memory::dafbRead8(uint32_t addr) {
 }
 
 void Q700Memory::dafbWrite8(uint32_t addr, uint8_t v) {
+    struct Rearm { Q700Memory& m; ~Rearm() { if (m.cpu_) m.cpu_->schedulePeriphDeadline(); } } rearm{*this};
     if (onIoAccess) onIoAccess(0xF9800000 + (addr & 0x3FF), true, v);
     if ((addr & 0x300) == 0x300) {
         dafbCell_.clockgenWrite8(addr & 0x3FF, v);
@@ -585,9 +591,11 @@ uint8_t Q700Memory::ioRead8(uint32_t addr) {
             return d;
         }
         int ch = (base >> 1) & 1;
+        if (cpu_) cpu_->flushTicks();            // its countdowns stand at the access
         flushScc();
         uint8_t d = ((base >> 2) & 1) ? scc_.readData(ch) : scc_.readCtl(ch);
         sccIrqLine(scc_.irqAsserted());
+        if (cpu_) cpu_->schedulePeriphDeadline();   // a countdown may be armed
         return d;
     }
     // Eclipse only: the tower's SECOND 53C96 bus (registers + pseudo-DMA),
@@ -596,18 +604,23 @@ uint8_t Q700Memory::ioRead8(uint32_t addr) {
     if (eclipse() && base >= 0x0F400 && base < 0x0F500) {
         flushScsi2();
         if (cpu_) cpu_->stall(scsi2ReadCycles_);
-        return scsi2_.read((base >> 4) & 0xF);
+        const uint8_t d = scsi2_.read((base >> 4) & 0xF);
+        if (cpu_) cpu_->tightenPeriphDeadline(scsi2_.cyclesToNextEvent());
+        return d;
     }
     if (eclipse() && base >= 0x0F500 && base < 0x0F504) {
         flushScsi2();
         if (cpu_ && ((sub >> 18) & 1)) cpu_->stall(scsi2DmaReadCycles_);
-        return scsi2_.drq() ? scsi2_.dmaRead() : 0xFF;
+        const uint8_t d = scsi2_.drq() ? scsi2_.dmaRead() : 0xFF;
+        if (cpu_) cpu_->tightenPeriphDeadline(scsi2_.cyclesToNextEvent());
+        return d;
     }
     if (base >= 0x0F000 && base < 0x0F100) {      // TurboSCSI 53C96 registers
         flushScsi();
         if (cpu_) cpu_->stall(scsiReadCycles_);
         uint8_t d = scsi_.read((base >> 4) & 0xF);
         scsiPoll_();
+        tightenScsiDeadline();
         return d;
     }
     if (base >= 0x0F100 && base < 0x0F104) {      // TurboSCSI pseudo-DMA
@@ -623,8 +636,11 @@ uint8_t Q700Memory::ioRead8(uint32_t addr) {
             return d;
         }
         if (cpu_) cpu_->stall(5);
+        if (cpu_) cpu_->flushTicks();             // the drives stand at the access
         syncSwimFromCpu();
-        return (addr & 1) ? 0 : swim_.read((base >> 9) & 0x0F);
+        const uint8_t d = (addr & 1) ? 0 : swim_.read((base >> 9) & 0x0F);
+        if (cpu_) cpu_->schedulePeriphDeadline();   // a read can advance the engine
+        return d;
     }
     return 0x00;                                  // SONIC / Orwell / unmapped
 }
@@ -643,29 +659,36 @@ void Q700Memory::ioWrite8(uint32_t addr, uint8_t v) {
             return;
         }
         int ch = (base >> 1) & 1;
+        if (cpu_) cpu_->flushTicks();            // its countdowns stand at the access
         flushScc();
         if ((base >> 2) & 1) scc_.writeData(ch, v);
         else scc_.writeCtl(ch, v);
         sccIrqLine(scc_.irqAsserted());
+        if (cpu_) cpu_->schedulePeriphDeadline();   // a countdown may be armed
         return;
     }
     if (eclipse() && base >= 0x0F400 && base < 0x0F500) {
-        flushScsi2();
         if (cpu_) cpu_->stall(scsi2WriteCycles_);
+        if (cpu_) cpu_->flushTicks();            // the latency counts from the write
+        flushScsi2();
         scsi2_.write((base >> 4) & 0xF, v);
+        if (cpu_) cpu_->tightenPeriphDeadline(scsi2_.cyclesToNextEvent());
         return;
     }
     if (eclipse() && base >= 0x0F500 && base < 0x0F504) {
         flushScsi2();
         if (cpu_ && ((sub >> 18) & 1)) cpu_->stall(scsi2DmaWriteCycles_);
         if (scsi2_.drq()) scsi2_.dmaWrite(v);
+        if (cpu_) cpu_->tightenPeriphDeadline(scsi2_.cyclesToNextEvent());
         return;
     }
     if (base >= 0x0F000 && base < 0x0F100) {
-        flushScsi();
         if (cpu_) cpu_->stall(scsiWriteCycles_);
+        if (cpu_) cpu_->flushTicks();            // the latency counts from the write
+        flushScsi();
         scsi_.write((base >> 4) & 0xF, v);
         scsiPoll_();
+        tightenScsiDeadline();
         return;
     }
     if (base >= 0x0F100 && base < 0x0F104) {
@@ -673,7 +696,11 @@ void Q700Memory::ioWrite8(uint32_t addr, uint8_t v) {
         scsiDmaWrite_(v);
         return;
     }
-    if (base >= 0x14000 && base < 0x16000) { asc_.write(addr & 0xFFF, v); return; }
+    if (base >= 0x14000 && base < 0x16000) {
+        asc_.write(addr & 0xFFF, v);
+        if (cpu_) cpu_->schedulePeriphDeadline();   // a reset restarts the drain
+        return;
+    }
     if (base >= 0x1E000 && base < 0x20000) {
         if (eclipse()) {
             iopTrace(true, 'w', base, v);
@@ -681,8 +708,10 @@ void Q700Memory::ioWrite8(uint32_t addr, uint8_t v) {
             return;
         }
         if (cpu_) cpu_->stall(5);
+        if (cpu_) cpu_->flushTicks();             // the drives stand at the access
         syncSwimFromCpu();
         swim_.write((base >> 9) & 0x0F, v);
+        if (cpu_) cpu_->schedulePeriphDeadline();   // ACTION / a write pulse
         return;
     }
 }
@@ -716,6 +745,7 @@ uint8_t Q700Memory::scsiDmaRead_() {
     // 53c9x" (dafb.cpp:1060) — the read mirror pops whatever the chip has.
     uint8_t d = scsi_.dmaRead();
     scsiPoll_();
+    tightenScsiDeadline();
     return d;
 }
 
@@ -724,10 +754,18 @@ void Q700Memory::scsiDmaWrite_(uint8_t v) {
     if (!scsi_.drq() && (scsiCtrl_ & 0x100)) scsiHoldDtack_(true);
     scsi_.dmaWrite(v);
     scsiPoll_();
+    tightenScsiDeadline();
 }
 
 void Q700Memory::scsiPoll_() {
     scsiIrq(scsi_.irq());
+}
+
+// After a 53C96 access: the command, or the last PIO/DMA byte, may have
+// armed the bus-service latency — one bound into the CPU deadline, counted
+// from the access (Q605Memory::tightenScsiDeadline has the census).
+void Q700Memory::tightenScsiDeadline() {
+    if (cpu_) cpu_->tightenPeriphDeadline(scsi_.cyclesToNextEvent());
 }
 
 // POM68K JIT: the address map itself moved (overlay flip, ROM reload).
@@ -1033,7 +1071,13 @@ int Q700Memory::cyclesToNextEvent() const {
     // instruction boundary either way — the CPU→C15M bridge carries phase.
     int best = eclipse() ? (egretLleOn_ ? egretLle_.cyclesToNextEvent() : 256)
                          : adbVia_.cyclesToNextEvent();
-    best = std::min(best, viaEClock_.cyclesToNext(cpuHz_));
+    // The two VIAs' own bound (T1/T2 underflow, shift completion), in E
+    // ticks, bridged through the accumulator tick() advances them with —
+    // not the next E tick, the bound that is always safe and says nothing
+    // (CHANGELOG 2026-11-07 (fourteenth): Q605Memory has the measurement).
+    best = std::min(best, via_eclock::bridge(
+        std::min(via1_.cyclesToNextEvent(), via2_.cyclesToNextEvent()),
+        viaEClock_.acc, cpuHz_));
     auto debtBound = [](int next, int64_t debt) {
         if (next == 0x7fffffff) return next;
         return int(std::max<int64_t>(1, int64_t(next) - debt));
