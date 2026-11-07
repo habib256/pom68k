@@ -5,6 +5,7 @@
 #include "FirmwareChoice.h"
 #include "Cpu030.h"
 #include <array>
+#include <limits>
 #include <bit>
 #include <cstdio>
 #include <cstdlib>
@@ -256,6 +257,8 @@ bool V8Memory::loadRom(const std::vector<uint8_t>& data) {
 }
 
 void V8Memory::reset() {
+    devClock_ = 0;
+    forgetDeviceBounds();
     overlay_ = true;
     restartPending_ = false;         // a cold reset supersedes a warm one
     config_ = 0;
@@ -398,8 +401,16 @@ void V8Memory::viaSync() {
 }
 
 uint8_t V8Memory::viaAccess8(uint32_t addr, bool write, uint8_t v) {
-    if (cpu_) cpu_->flushTicks();            // word path skips read8's flush
+    // Re-arm at every exit: a T1/T2 load, an ACR or SR write moves the VIA
+    // bound (Cpu030::schedulePeriphDeadline).
+    struct Rearm { V8Memory& m; ~Rearm() { m.nextVia_ = -1; if (m.cpu_) m.cpu_->schedulePeriphDeadline(); } } rearm{*this};
+    // Stall to the E edge first, THEN flush: the access is served at the
+    // edge the stall lands on, so the VIA must have been ticked up to it.
+    // With the flush before the stall the VIA stood one E tick behind
+    // whenever the stall did not happen to cross a deadline (the Q605
+    // trace, CHANGELOG 2026-11-07 (fourteenth)).
     viaSync();
+    if (cpu_) cpu_->flushTicks();
     int reg = (addr >> 9) & 0x0F;            // $200 stride (v8.cpp:434-460)
     if (write) {
         via_.write(reg, v);
@@ -477,17 +488,26 @@ uint8_t V8Memory::read8(uint32_t addr) {
 
     // ── I/O space $F00000-$FFFFFF (docs/LCII_HARDWARE.md § Address map) ──
     if (addr >= 0xF40000 && addr < 0xFC0000) return vram_[addr - 0xF40000];
-    if (cpu_) cpu_->flushTicks();            // registers see current time
+    // No blanket flush here any more (2026-11-07): a device whose state
+    // moves with time is flushed in its own branch — the VIA after its E-edge
+    // stall, the SCC, the SWIM after its wait states, the ASC — and the
+    // 53C80 (no timed state) and the pseudo-VIA (the VBL and the SCSI lines
+    // reach it on their own exact deadlines) are read as they stand. The
+    // 53C80 status poll alone was 6.4 M flushes per 10 s of guest time, each
+    // a full device walk (POM68K_BENCH_PERIPH_STATS).
     if (addr < 0xF02000) return viaAccess8(addr, false, 0);
     if (addr >= 0xF04000 && addr < 0xF06000) {
         // Z85C30 (O6.10: real Scc8530, dc_ab decode — maclc.cpp:114:
         // A1 = channel, A2 = data/ctl). Ext/status interrupts drive
         // IPL 4 (the LAP manager's carrier sense, Scc8530.h).
+        if (cpu_) cpu_->flushTicks();        // its countdowns stand at the access
         int ch = (addr >> 1) & 1;
         uint8_t d = ((addr >> 2) & 1) ? scc_.readData(ch)
                                       : scc_.readCtl(ch);
         sccIrqLine(scc_.irqAsserted());
         if (onSccAccess) onSccAccess(addr, false, d);
+        nextScc_ = -1;
+        if (cpu_) cpu_->schedulePeriphDeadline();   // a countdown may be armed
         return d;
     }
     // SCSI pseudo-DMA windows: DRQ-handshaked, a hung DRQ bus-errors
@@ -513,6 +533,8 @@ uint8_t V8Memory::read8(uint32_t addr) {
         // Spice: the integrated SWIM2 instead (v8.cpp:699,874-882 — same
         // reg decode + wait states, HDSEL from the SWIM2 mode register).
         if (cpu_) cpu_->stall(5);
+        if (cpu_) cpu_->flushTicks();             // the cell and the drives stand at the access
+        struct Rearm { V8Memory& m; ~Rearm() { if (m.cpu_) m.cpu_->schedulePeriphDeadline(); } } rearm{*this};
         if (spiceClass())
             return swim2_.read((addr >> 9) & 0xF);
         swim_.setSel((via_.portA() & 0x20) != 0);
@@ -715,14 +737,16 @@ void V8Memory::write8(uint32_t addr, uint8_t v) {
     if (addr < 0xF00000) return;             // ROM + open bus: ignore
 
     if (addr >= 0xF40000 && addr < 0xFC0000) { vram_[addr - 0xF40000] = v; return; }
-    if (cpu_) cpu_->flushTicks();            // registers see current time
-    if (addr < 0xF02000) { viaAccess8(addr, true, v); return; }
+    if (addr < 0xF02000) { viaAccess8(addr, true, v); return; }   // flushes (read8)
     if (addr >= 0xF04000 && addr < 0xF06000) {              // SCC (O6.10)
+        if (cpu_) cpu_->flushTicks();
         int ch = (addr >> 1) & 1;
         if (onSccAccess) onSccAccess(addr, true, v);
         if ((addr >> 2) & 1) scc_.writeData(ch, v);
         else scc_.writeCtl(ch, v);
         sccIrqLine(scc_.irqAsserted());
+        nextScc_ = -1;
+        if (cpu_) cpu_->schedulePeriphDeadline();   // a countdown may be armed
         return;
     }
     if ((addr >= 0xF06000 && addr < 0xF08000) ||
@@ -736,12 +760,17 @@ void V8Memory::write8(uint32_t addr, uint8_t v) {
         return;
     }
     if (addr >= 0xF14000 && addr < 0xF16000) {
+        if (cpu_) cpu_->flushTicks();        // the byte lands after the drains due
         if (spiceClass()) ascSonora_.write(addr - 0xF14000, v);
         else              asc_.write(addr - 0xF14000, v);
+        nextAsc_ = -1;
+        if (cpu_) cpu_->schedulePeriphDeadline();   // a reset restarts the drain
         return;
     }
     if (addr >= 0xF16000 && addr < 0xF18000) {               // SWIM1 (O6.7)
         if (cpu_) cpu_->stall(5);
+        if (cpu_) cpu_->flushTicks();             // as the read side
+        struct Rearm { V8Memory& m; ~Rearm() { if (m.cpu_) m.cpu_->schedulePeriphDeadline(); } } rearm{*this};
         if (spiceClass()) {                                  // Spice SWIM2
             swim2_.write((addr >> 9) & 0xF, v);
             return;
@@ -826,6 +855,8 @@ uint16_t V8Memory::read16(uint32_t addr) {
                                       : scc_.readCtl(ch);
         sccIrqLine(scc_.irqAsserted());
         if (onSccAccess) onSccAccess(addr, false, d);
+        nextScc_ = -1;
+        if (cpu_) cpu_->schedulePeriphDeadline();   // a countdown may be armed
         return uint16_t(d | (d << 8));
     }
     // Two sequenced statements: the operands of `|` are unsequenced in
@@ -888,6 +919,8 @@ void V8Memory::write16(uint32_t addr, uint16_t v) {
         else                 scc_.writeCtl(ch, b);
         sccIrqLine(scc_.irqAsserted());
         if (onSccAccess) onSccAccess(addr, true, b);
+        nextScc_ = -1;
+        if (cpu_) cpu_->schedulePeriphDeadline();   // a countdown may be armed
         return;
     }
     write8(addr, uint8_t(v >> 8));
@@ -927,20 +960,93 @@ void V8Memory::scsiDmaW_(uint8_t v) {
 // into CA1 (v8.cpp:198-199,243-247 — NOT the video VBL; that one lands
 // on pseudo-VIA slot bit $40 in O6.4). 60.15 Hz = 1203/20 Hz exactly,
 // Bresenham on 20 × kCpuHz / 1203.
+int V8Memory::cyclesToNextEvent() const {
+    // Every device's own bound, in the same arithmetic tick() advances it
+    // with, so a deadline placed here flushes on the cycle the event lands.
+    // Waking early only costs time; waking late changes emulated time.
+    // Until 2026-11-07 only the Egret answered here: the VIA timers, the
+    // 60.15 Hz tick, the VBL, the ASC drain and the SCC countdowns were
+    // served at whichever flush came next — the Egret's (~27 cycles) or an
+    // I/O access's. The firmware LLE stays the tightest clock; the HLE
+    // fallback keeps its historical batch (the house rule).
+    int best = egretLleOn_ ? egretLle_.cyclesToNextEvent() : 128;
+    constexpr int64_t kNever = std::numeric_limits<int64_t>::max();
+    // Each device's bound is a pure countdown: asked once, kept as an
+    // absolute time on devClock_ until it passes or the device's access
+    // path forgets it (V8Memory.h, the cache members).
+    auto cached = [&](int64_t& at, auto&& ask) {
+        if (at <= devClock_) {
+            const int64_t rel = ask();
+            at = rel == kNever ? kNever : devClock_ + std::max<int64_t>(rel, 1);
+        }
+        if (at != kNever) {
+            int64_t cycles = at - devClock_;
+            if (cycles < 1) cycles = 1;
+            if (cycles < best) best = int(cycles);
+        }
+    };
+    // VIA φ2 = cpuHz_ / viaDiv_ exactly (20 or 40): N ticks land at
+    // N * viaDiv_ - viaPhase_ (tick(): viaPhase_ += cycles, / viaDiv_).
+    cached(nextVia_, [&]() -> int64_t {
+        const int viaTicks = via_.cyclesToNextEvent();
+        return viaTicks == 0x7fffffff ? kNever
+                                      : int64_t(viaTicks) * viaDiv_ - viaPhase_;
+    });
+    // 60.15 Hz CA1: tickAcc_ += cycles * 1203, fires at >= cpuHz_ * 20.
+    cached(nextCa1_, [&]() -> int64_t {
+        return (cpuHz_ * 20 - tickAcc_ + 1202) / 1203;
+    });
+    // VBL: asserted when framePos_ reaches vblStart_, released at the wrap.
+    cached(nextVbl_, [&]() -> int64_t {
+        return vblState_ ? frameCycles_ - framePos_ : vblStart_ - framePos_;
+    });
+    // C15M domain (ASC drain, SWIM cell): N C15M cycles land when
+    // c15Acc_ + m * kCpuHz >= N * cpuHz_ (tick()).
+    auto c15 = [&](int n) -> int64_t {
+        if (n == 0x7fffffff) return kNever;
+        const int64_t need = int64_t(n) * cpuHz_ - c15Acc_;
+        return need <= 0 ? 1 : (need + kCpuHz - 1) / kCpuHz;
+    };
+    cached(nextAsc_, [&]() -> int64_t {
+        return c15(spiceClass() ? ascSonora_.cyclesToNextEvent()
+                                : asc_.cyclesToNextEvent());
+    });
+    // The SWIM is asked live, not cached: the IWM personality answers a
+    // constant 256 — a cadence, not a countdown (Swim1::cyclesToNextEvent,
+    // Iwm.h) — and an absolute copy of it became a real wake-up every 256
+    // cycles, +9 % flushes for nothing (measured 2026-11-07).
+    {
+        const int64_t rel = c15(spiceClass() ? swim2_.cyclesToNextEvent()
+                                             : swim_.cyclesToNextEvent());
+        if (rel != kNever && rel < best) best = int(std::max<int64_t>(rel, 1));
+    }
+    // The SCC is ticked in machine cycles every slice.
+    cached(nextScc_, [&]() -> int64_t {
+        const int n = scc_.cyclesToNextEvent();
+        return n == 0x7fffffff ? kNever : n;
+    });
+    // Not bounded, deliberately: the pseudo-VIA (no timer), the drives'
+    // spindle (pure state, flushed before a SWIM access), the 5380 (no
+    // timed event), the CD transport (75 Hz, read through a command).
+    return std::max(best, 1);
+}
+
 void V8Memory::tick(int cpuCycles) {
     // CD-DA transport: a play started with PLAY AUDIO moves on MACHINE time,
     // 75 sectors a second, and every sector the head passes goes out on the
     // drive's own audio lead (ScsiDisk::advanceAudioCycles, CdAudioSink.h).
     cdPump_.advance(scsiDisks_, cpuCycles, cpuHz());
 
+    devClock_ += cpuCycles;
     viaPhase_ += cpuCycles;
     int viaCycles = viaPhase_ / viaDiv_;
     viaPhase_ %= viaDiv_;
-    if (viaCycles && via_.tick(viaCycles)) updateIrq();
+    if (viaCycles && via_.tick(viaCycles)) { nextVia_ = -1; updateIrq(); }
 
     tickAcc_ += int64_t(cpuCycles) * 1203;
     if (tickAcc_ >= cpuHz_ * 20) {
         tickAcc_ -= cpuHz_ * 20;
+        nextCa1_ = -1;
         via_.raiseCa1();
     }
 
@@ -958,6 +1064,7 @@ void V8Memory::tick(int cpuCycles) {
     bool vbl = framePos_ >= vblStart_;
     if (vbl != vblState_) {
         vblState_ = vbl;
+        nextVbl_ = -1;
         pvia_.slotIrq(PseudoVia::VBL, vbl);
     }
 
@@ -965,9 +1072,17 @@ void V8Memory::tick(int cpuCycles) {
     else             egret_.tick(cpuCycles);      // may load the SR (SHIFT IRQ)
     // ASC drain, SWIM cells and the floppy spindle live in the C15M domain
     // (1:1 on every V8 machine but the Mac TV's C32M — the VASP pattern).
-    c15Acc_ += int64_t(cpuCycles) * kCpuHz;
-    int c15 = int(c15Acc_ / cpuHz_);
-    c15Acc_ -= int64_t(c15) * cpuHz_;
+    // 1:1 on every V8 board but the Mac TV (C32M): the bridge then delivers
+    // exactly cpuCycles with a zero remainder, which is what the general
+    // arithmetic computes — minus its 64-bit divide per slice.
+    int c15;
+    if (cpuHz_ == kCpuHz) {
+        c15 = cpuCycles;
+    } else {
+        c15Acc_ += int64_t(cpuCycles) * kCpuHz;
+        c15 = int(c15Acc_ / cpuHz_);
+        c15Acc_ -= int64_t(c15) * cpuHz_;
+    }
     if (c15) {
         if (spiceClass()) {
             ascSonora_.tick(c15);            // Sonora EASC drain (Spice)

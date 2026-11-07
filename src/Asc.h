@@ -213,6 +213,13 @@ public:
     uint8_t read(uint32_t offset);
     void write(uint32_t offset, uint8_t v);
     void tick(int cpuCycles);
+    // Cycles until the next drained sample — the only thing that moves the
+    // FIFO status or the IRQ line without a bus access (the classic cell's
+    // contract, above; tick() drains while drainAcc_ >= cpuHz_).
+    int cyclesToNextEvent() const {
+        const int64_t need = cpuHz_ - drainAcc_;
+        return int(std::max<int64_t>(1, (need + kSampleRate - 1) / kSampleRate));
+    }
 
     bool irqAsserted() const { return irq_; }
     std::function<void(bool)> onIrq;

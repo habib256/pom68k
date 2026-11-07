@@ -141,7 +141,7 @@ BERR there lands on a zero vector → DS 1. The `$FF` is a **knob, not a fact**:
 MAME answers 0 there but that is its `address_space` default, not a modelled
 decision, so `POM68K_V8_HOLEVAL=<hex>` picks the byte until an observable
 separates them, and `POM68K_V8_IOHOLE=<n>` logs the accesses with their PC
-(`V8Memory.cpp:542-563` read, `:783-789` write).
+(`V8Memory.cpp:579-600` read, `:783-789` write).
 
 ### 24/32-bit story
 

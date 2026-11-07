@@ -31,12 +31,17 @@ code généré 22 %, runtime du moteur (`executeUntil`, `record`, dispatch)
 21 %, `V8Memory::tick` + `Cpu030::flushTicks` 12,5 %, MMU 030 9 %, Egret
 LLE 5 %, repli interpréteur 5 %. Donc, par ordre de rendement attendu :
 
-1. **La même audit d'échéance sur le LC II (V8) puis Q630/Centris/Q700.**
-   Recette prouvée le 2026-11-07 : recenser qui borne la tranche, remplacer
-   la borne « prochain tick E », stall-puis-flush, ré-armement par accès.
-   Sur le Q605 ça a valu −50 % en JIT, −19 % en interpréteur. Le LC II
-   affiche 12,5 % dans la marche des périphériques — à mesurer, pas à
-   supposer. (Le détail de la recette : `§ Moteur › Temps`.)
+1. **La même audit d'échéance sur le LC II (V8) — FAIT le 2026-11-07
+   (quinzième) — puis Q630/Centris/Q700.** Recette prouvée : recenser qui
+   borne la tranche, remplacer la borne « prochain tick E », stall-puis-flush,
+   ré-armement par accès. Q605 : −50 % en JIT, −19 % en interpréteur. LC II :
+   la mesure a dit autre chose que la supposition — 60 % des flushs
+   venaient du flush systématique de la carte avant chaque accès E/S (le
+   53C80 et l'ASC en scrutation), l'Egret borne le reste à ~27 cycles ;
+   bornes de tous les appareils publiées et mises en cache en temps
+   absolu, flush seulement là où le temps de l'appareil compte : −24 % au
+   boot, −5 % en JIT à 3 000 trames, −1 % en interpréteur. Les trois
+   cartes 040 restantes : `§ Moteur › Temps`.
 2. **Le runtime du moteur sur le 030 (21 %)** : chaque bloc rend la main au
    dispatcheur (1 sortie toutes les 300 instructions sur le Q605 ; 830
    instr/bloc sur le LC II). Du chaînage direct de blocs (saut compilé →

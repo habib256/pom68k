@@ -508,6 +508,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-07 (fifteenth)** — [The LC II's device slice was 9.6 cycles and 60 % of its flushes were the board's own: every V8 device publishes its bound, cached as an absolute time — boot −24 %, JIT −5 %](#2026-11-07-v8-deadline)
 - **2026-11-07 (fourteenth)** — [The Quadra 605 woke its devices 1.27 million times a guest second: timer-aware VIA bound, per-access deadline re-arm — JIT −50 %, interpreter −18 %](#2026-11-07-q605-via-deadline)
 - **2026-11-07 (thirteenth)** — [The interpreter arms its own fetch window: Quadra 605 interpreted −36 %, LC II −17 %, fingerprints unchanged — ×2.5 on the 68040 interpreter since yesterday's profile](#2026-11-07-interp-window)
 - **2026-11-07 (twelfth)** — [PTEST at its level limit did not report an invalid descriptor: the one 68030 MMU vector of the sweep](#2026-11-07-ptest-limit)
@@ -1223,6 +1224,95 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-07-v8-deadline"></a>
+## 2026-11-07 (fifteenth) — The LC II's device slice was 9.6 cycles, and 60 % of its flushes were the board's own: every V8 device now publishes its bound, cached as an absolute time; the blanket per-I/O flush goes — boot −24 %, JIT −5 %
+
+The speed list at the head of `TODO.md` says *measure, do not suppose*.
+Supposition, from the Quadra 605 (fourteenth): the LC II's `V8Memory::tick`
++ `Cpu030::flushTicks` at 12.5 % of its JIT bench would be the same
+"next E tick" story. Measurement, with the same census ported to `Cpu030`
+(`setPeriphStats`, split by the door each flush comes through —
+`POM68K_BENCH_PERIPH_STATS=1` on `jit_bench_lcii`): **one `mem.tick` every
+9.6 machine cycles**, 16.3 M per 10 s of guest time, and in JIT mode 9.8 M
+of them through door 3, *the board itself*: `V8Memory::read8/write8` called
+`flushTicks()` before every access in `$F00000-$FFFFFF` ("registers see
+current time"). The I/O census over the same 10 s: 6.4 M 53C80 register
+reads, 3.2 M ASC reads, 1.9 M pseudo-DMA bytes, 1.0 M VIA1, 0.12 M
+pseudo-VIA — the SCSI status poll and the FIFO poll, each paying a full
+device walk. The remaining 5.7 M flushes were the Egret's deadline at ~27
+cycles, the MCU instruction length: that one is the floor on this board,
+and `V8Memory::cyclesToNextEvent` published *only* the Egret. Every other
+device — the VIA timers, the 60.15 Hz tick, the VBL, the ASC drain, the
+SCC countdowns — was served at whichever flush came next.
+
+**Done, in four measured steps, every one holding the previous one's
+fingerprint where it should:**
+
+- **A — every device publishes its bound**, in the arithmetic `tick()`
+  advances it with: the VIA through `viaPhase_`/`viaDiv_` (an exact
+  integer ratio on this family), the CA1 tick through its Bresenham
+  accumulator, the VBL as the distance to `vblStart_` or to the wrap, the
+  ASC drain and the SWIM cell through the C15M bridge (`AscSonora` gained
+  the `cyclesToNextEvent` its two siblings had), the SCC directly. The VIA
+  access stalls to the E edge *then* flushes (the fourteenth's lesson), and
+  the VIA, SCC, ASC-write and SWIM paths re-arm the deadline
+  (`Cpu030::schedulePeriphDeadline`, public, measured from
+  `lastPeriphClock_`; `tightenPeriphDeadline` for a countdown armed by the
+  access). Fingerprint moves once — `b2fecd1e4062d6c4` → `53904f286bdc7e6d`
+  at 600 frames, `bda84c93195643a8` → `619ac389e7c6b6f1` at 3 000 — because
+  the events are now on time; and the bench got *slower* (2.00 → 2.48 s at
+  600 frames): eight bounds asked at every one of 16.9 M flushes.
+- **B — the blanket flush goes.** A device whose state moves with time is
+  flushed in its own branch — VIA after its stall, SCC, SWIM after its
+  wait states, ASC *writes* (the byte must land after the drains due). The
+  53C80 has no timed state and the pseudo-VIA's lines (VBL, SCSI) arrive on
+  their own exact deadlines: read as they stand. First with the ASC reads
+  still flushed, then without — **both reproduce A's fingerprint**, at 600
+  and 3 000 frames. 16.9 M → 6.0 M flushes per 10 s; 1.87 s then 1.65 s.
+- **C — the bounds are cached as absolute times.** At 3 000 frames B was
+  still 2 % *slower* than the baseline: in the Finder the flushes are the
+  Egret's (27.7 M per 50 s) and `V8Memory::cyclesToNextEvent` had become
+  6.2 % of the run by itself. A pure countdown's event time does not move
+  until it fires or its device is accessed, so each is asked once and kept
+  on `devClock_` (derived, never serialized; a load resets it) until it
+  passes or the device's access path forgets it; the Egret, which moves
+  every MCU instruction, is asked every time. Same fingerprints. **One
+  trap, found by a cached-vs-live count per device at every flush**: the
+  SWIM's IWM personality answers a constant 256 — a *cadence*, not a
+  countdown (`Swim1::cyclesToNextEvent`, the `Iwm.h` precedent) — and its
+  absolute copy became a real wake-up every 256 cycles, +9 % flushes for
+  nothing. The SWIM is asked live; the other five cached (0 disagreements
+  in 7.6 M flushes).
+- **D — two exact savings on the per-flush path**: `Cpu030::flushTicks`
+  shifts instead of dividing by `boost_` (1 or 4, always a power of two),
+  and the C15M bridge delivers `cpuCycles` directly where the ratio is 1:1
+  (every V8 board but the Mac TV) — the general arithmetic's exact result
+  minus its 64-bit divide per slice.
+
+**Measured** (fixed-cycle bench, pinned core, same tree minus this change):
+
+| | before | after | |
+|---|---|---|---|
+| `mem.tick` calls per 10 s (600 frames) | 16.3 M (9.6 cycles each) | **6.0 M** (26.1) | |
+| 600 frames, JIT | 2.00 s | **1.51 s** | −24 %, the boot |
+| 3 000 frames, JIT | 8.90 s | **8.43 s** | −5 %, ABBA ×2 on the quiet host (step D); step E re-run under foreground load: 9.63 → 9.12 s, −5.3 %, same ordering in all four pairs |
+| 3 000 frames, interpreter | 22.34 s | **22.12 s** | −1 % (D, quiet); −2 % (E, loaded host) |
+
+The Egret floor is what it is: on an LLE board the MCU's instruction
+boundary is the slice, ~27 machine cycles here against ~46 on the Quadra
+605 whose MCU is clocked at the same 2.1 MHz under a 25 MHz CPU. What the
+step removed is the part of the fan-out that was not the MCU's.
+
+The residue is the fourteenth's: an unflushed read sees its device where
+the last flush left it — here the 53C80 (no timed state: exact) and the
+ASC FIFO poll (lag ≤ one Egret slice, was zero). The 3 000-frame
+fingerprint of B-without-ASC-flush equal to B-with it says the boot did
+not notice.
+
+**Held by** the two fingerprints (600/3 000 frames, A = B = C = D), the
+`lcii_*`, `classic2`, `cc`, `mactv`, `lc` etalons, `lcii_prober_oracle_etalon`
+(TimeVIADB against MAME), `savestate_030_test`, and the parallel tier.
 
 <a id="2026-11-07-q605-via-deadline"></a>
 ## 2026-11-07 (fourteenth) — The Quadra 605 woke its devices 1.27 million times a guest second for a VIA that had nothing to say: timer-aware VIA bound, per-access deadline re-arm — JIT mode −50 %, interpreter −18 %

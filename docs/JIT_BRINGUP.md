@@ -1254,7 +1254,7 @@ exist (`ctest -N` lists them; `jit_lockstep_030*`, `jit_restart_write_030_test`,
 
 `PomIcache` today is a **timing overlay** paired with `cacheBoost_ = 4`:
 the core runs at 4× machine rate and pays `icacheMiss_` per miss. It is
-honest about being a fudge (`Cpu030.h:164-189`) and it is *not* an
+honest about being a fudge (`Cpu030.h:160-185`) and it is *not* an
 architectural cache model.
 
 Two readings of "the i-cache for the 68030" follow, and they are different
