@@ -191,4 +191,20 @@ private:
     int     totalLines_ = 0;         // blanking included (tick())
     uint64_t frameCount_ = 0;        // completed frames (raster beam seq)
     int     prevLine_ = 0;
+
+    // Derived, never serialized: pure functions of the state above,
+    // re-derived when their inputs move (a key compare per call instead of
+    // the 64-bit multiply/divide tick() and cyclesToNextEvent() ran on every
+    // peripheral slice — 14 % of the Quadra 605 JIT bench, 2026-11-07). A
+    // snapshot load leaves them stale and the key compare catches it.
+    struct GeomKey { uint32_t htotal, vtotal, hres, vres, pixelClock; };
+    GeomKey  geomKey_ { 0xFFFFFFFFu, 0, 0, 0, 0 };
+    int      lineKey_ = -1;          // prevLine_ nextLineAt_ was derived for
+    int64_t  lineKeyLen_ = -1;       // frameLen_ / totalLines_ it used
+    int      lineKeyTot_ = -1;
+    int64_t  nextLineAt_ = 0;        // first framePos_ past prevLine_
+    mutable int64_t  atKeyLen_ = -1; // cyclesToNextEvent's two positions
+    mutable int      atKeyTot_ = -1;
+    mutable uint32_t atKeyCursor_ = 0xFFFFFFFFu;
+    mutable int64_t  at480_ = 0, atCursor_ = 0;
 };

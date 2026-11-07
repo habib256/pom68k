@@ -54,6 +54,9 @@ Cpu040::Cpu040(Q605Memory& mem, const jit::ResolvedConfig& jitConfig,
 
     if (cpuConfig.q605CacheBoost)
         cacheBoost_ = *cpuConfig.q605CacheBoost;
+    if (cacheBoost_ < 1) cacheBoost_ = 1;
+    boostShift_ = (cacheBoost_ & (cacheBoost_ - 1)) == 0
+                ? __builtin_ctz(unsigned(cacheBoost_)) : -1;
     if (cpuConfig.q605IcacheMiss)
         icacheMiss_ = *cpuConfig.q605IcacheMiss;
     // This remains only the legacy throughput scaler. Moira's distinct
@@ -148,11 +151,27 @@ void Cpu040::catchUp() {
     flushTicks();
 }
 
-void Cpu040::schedulePeriphDeadline() {
-    const moira::i64 machine = std::max(1, mem_.cyclesToNextEvent());
+moira::i64 Cpu040::periphDeadlineFor(int machineCycles) const {
+    const moira::i64 machine = std::max(1, machineCycles);
     moira::i64 d = machine * cacheBoost_ - periphAccum_;
     if (d < 1) d = 1;
-    periphDeadline_ = clock + d;
+    return lastPeriphClock_ + d;
+}
+
+void Cpu040::schedulePeriphDeadline() {
+    periphDeadline_ = periphDeadlineFor(mem_.cyclesToNextEvent());
+}
+
+void Cpu040::tightenPeriphDeadline(int machineCycles) {
+    // Measured from `clock`, not from the last flush: the countdown was
+    // armed by the access just served, so it starts now. A countdown that
+    // was already running is already in the deadline (the min keeps it), and
+    // measuring a fresh one from the last flush would fire it early by the
+    // unflushed span and buy an extra flush each time — +16 % flushes on the
+    // Quadra 605 bench when tried (2026-11-07).
+    if (machineCycles >= 0x7fffffff) return;
+    const moira::i64 machine = std::max(1, machineCycles);
+    periphDeadline_ = std::min(periphDeadline_, clock + machine * cacheBoost_);
 }
 
 void Cpu040::flushTicks() {
@@ -160,8 +179,12 @@ void Cpu040::flushTicks() {
     if (d > 0) {
         lastPeriphClock_ = clock;
         // Scale Moira cycles down to machine cycles (Cpu030::flushTicks).
+        // A shift at the power-of-two boosts (the default 4): the 64-bit
+        // divide by a runtime divisor was 5.8 % of the Quadra 605 JIT bench
+        // at 23 M flushes per 50 s of guest time (2026-11-07).
         periphAccum_ += d;
-        int m = int(periphAccum_ / cacheBoost_);
+        const int m = boostShift_ >= 0 ? int(periphAccum_ >> boostShift_)
+                                       : int(periphAccum_ / cacheBoost_);
         periphAccum_ -= moira::i64(m) * cacheBoost_;
         if (periphStatsOn_) {
             periphFlushes_++;

@@ -126,7 +126,7 @@ public:
     AdbBus& adb() { return adb_; }
     // External wire injection is an access at the current machine time, so
     // it observes the SCC only after its serialized event debt is applied.
-    Scc8530& scc() { flushScc(); return scc_; }
+    Scc8530& scc() { flushScc(); sccNextCache_ = -1; return scc_; }
     int64_t deferredSccCycles() const { return sccDebt_; } // scheduler gate
     AscIosb& asc() { return asc_; }
     Swim2& swim() { return swim_; }
@@ -358,6 +358,7 @@ public:
         add(out, "Video", "DAFB", dafbCell_);
     }
     template <class Ar> void visit(Ar& ar) {
+        sccNextCache_ = -1;                  // a load replaces scc_
         ar.blob(ram_);
         ar.blob(vram_);
         ar(via1_, cuda_, cudaLle_, adb_, scc_, asc_, swim_,
@@ -388,6 +389,7 @@ private:
     uint8_t scsiDmaRead_();                  // DRQ-gated pseudo-DMA byte in
     void    scsiDmaWrite_(uint8_t v);        // DRQ-gated pseudo-DMA byte out
     void    scsiPoll_();                      // feed 53C96 irq()/drq() to VIA2
+    void    tightenScsiDeadline();            // its bound into the CPU deadline
     void    scsiDrq(bool s);                  // IFR bit 0 + IRQ recalc
     uint8_t dafbRead8(uint32_t addr);
     void dafbWrite8(uint32_t addr, uint8_t v);
@@ -404,6 +406,14 @@ private:
     // Event scheduler debt, in 25 MHz machine cycles. Unlike a derived host
     // cache this is observable device time: save/load must preserve it.
     int64_t sccDebt_ = 0;
+    // scc_.cyclesToNextEvent() is constant between two advances of the
+    // SCC (flushScc, an MMIO access, the scc() accessor's caller) — cached
+    // across the slices in between, −1 = re-ask. Never serialized.
+    mutable int sccNextCache_ = -1;
+    int sccNext() const {
+        if (sccNextCache_ < 0) sccNextCache_ = scc_.cyclesToNextEvent();
+        return sccNextCache_;
+    }
     bool sccEventDriven_ = true; // host tuning, fixed at construction
     void flushScc();
     // PrimeTime's IOSB audio cell at $50014000: $BB version, stereo FIFO A/B,

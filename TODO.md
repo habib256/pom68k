@@ -20,6 +20,39 @@ programme moteur se cite `§ Moteur › Socle`, `› Convergence`,
 `› JIT justesse`, `› JIT performance`, `› Surface`. Les numéros bougent à
 chaque réorganisation.
 
+## Vitesse — l'ordre de rendement attendu (profils du 2026-11-07)
+
+Deux profils à 1 kHz sur les bancs à budget fixe, après l'échéance VIA du
+Quadra 605 (`CHANGELOG` 2026-11-07 (quatorzième)) : Q605 JIT x64 — code
+généré 33 %, LLE Cuda 68HC05 ~17 %, marche des périphériques
+(`Q605Memory::tick`/`cyclesToNextEvent`/`Cpu040::flushTicks`) ~14 %,
+`Dafb::tick` 3,5 %, MMU 4 %, repli interpréteur 1,7 % ; LC II JIT x64 —
+code généré 22 %, runtime du moteur (`executeUntil`, `record`, dispatch)
+21 %, `V8Memory::tick` + `Cpu030::flushTicks` 12,5 %, MMU 030 9 %, Egret
+LLE 5 %, repli interpréteur 5 %. Donc, par ordre de rendement attendu :
+
+1. **La même audit d'échéance sur le LC II (V8) puis Q630/Centris/Q700.**
+   Recette prouvée le 2026-11-07 : recenser qui borne la tranche, remplacer
+   la borne « prochain tick E », stall-puis-flush, ré-armement par accès.
+   Sur le Q605 ça a valu −50 % en JIT, −19 % en interpréteur. Le LC II
+   affiche 12,5 % dans la marche des périphériques — à mesurer, pas à
+   supposer. (Le détail de la recette : `§ Moteur › Temps`.)
+2. **Le runtime du moteur sur le 030 (21 %)** : chaque bloc rend la main au
+   dispatcheur (1 sortie toutes les 300 instructions sur le Q605 ; 830
+   instr/bloc sur le LC II). Du chaînage direct de blocs (saut compilé →
+   bloc suivant sans repasser par `executeUntil`) est le gain classique
+   ici ; les sorties « cpu flags » et « not compilable » (1 par 1 700 et
+   1 000 instr) sont les deux autres fuites — ce sont les lignes de
+   `§ Moteur › JIT performance`, qui exigent exactement ce profil.
+3. **L'interpréteur 68HC05 (Cuda/Egret, 5–17 %)** : code hôte pur, sans
+   effet sur la trace — table de dispatch, `read8` inliné. Gain modeste
+   mais sûr.
+4. **La MMU 030 (9 %)** : ce qui reste hors fenêtre de données — à voir
+   quels accès ratent la fenêtre.
+5. **Le code généré lui-même (22–33 %)** : la qualité d'émission, mais
+   c'est le poste le plus coûteux à améliorer et il faut un profil par
+   bloc.
+
 ## Statut
 
 - **En tête : le programme § Moteur** (priorité décidée le 2026-11-06).
@@ -403,6 +436,24 @@ par `cacheBoost` ; le reste est correction locale.
   IIfx n'ont ni boost ni overlay. Réglage global (épingles, perfs, JIT) :
   *Bloqué : un chiffre matériel (TimeDBRA/TimeVIADB d'un vrai LC II,
   Centris ou Quadra).*
+- [ ] **Porter l'échéance VIA chronométrée aux Centris, Quadra 630 et
+  Quadra 700/900/950.** Les trois cartes publient encore « le prochain
+  tick E » (`viaEClock_.cyclesToNext`), la borne qui ne dit rien
+  (`CHANGELOG` 2026-11-07 (quatorzième) : tranche 19,7 → 45,8 cycles,
+  JIT −50 % sur le Q605). Recette, dans l'ordre, chacune prouvée par une
+  empreinte à budget fixe avant la suivante : (1) `viaSync()` PUIS
+  `flushTicks()` dans les chemins VIA, pseudo-VIA et SCC ; (2)
+  `schedulePeriphDeadline` public, mesuré depuis `lastPeriphClock_`,
+  appelé après chaque accès qui peut armer un compte à rebours, et
+  `tightenPeriphDeadline` (depuis l'accès) sur les chemins 53C96 ; (3)
+  seulement alors `via_eclock::bridge(via1_.cyclesToNextEvent(), …)`. Le
+  Q700 a deux VIA (min des deux) ; le Q700 non-Eclipse a l'ADB HLE à 1.
+  Reste nommé sur le Q605 : les lectures 53C96/ASC/DAFB et les octets
+  pseudo-DMA voient l'appareil là où le dernier flush l'a laissé (retard
+  ≤ une tranche, ≤ un tick E avant) — un modèle « temps de l'appareil
+  = horloge CPU à l'accès », celui de `syncSwimFromCpu`, l'effacerait pour
+  le 53C96 et l'ASC au prix du débit sérialisé (`scsiDebt_`,
+  `q605_event_scheduler_test`).
 - [ ] **Sortir le coprocesseur externe et le temps de bus de données du
   boost.** *À reproduire.* Les cycles du 6888x passent par `sync` puis sont
   divisés par le boost dans `flushTicks` : le 68882, puce distincte,
@@ -443,7 +494,9 @@ Chaque ligne n'ouvre qu'avec un profil temporel reproductible. Les profils
 de référence sont `scratchpad/2026-11-06/INTERP_PROFILE.md` et, pour le
 68040 après le chemin chaud du 2026-11-07,
 `scratchpad/2026-11-07/INTERP_HOT040.md` (bancs à budget fixe, 1 500
-trames, empreintes `a2036281a5c2ac55` et `663d67e4bc2d9714`) : le 68040
+trames, empreintes `a2036281a5c2ac55` et `663d67e4bc2d9714` — la première
+tient encore après l'échéance VIA du 2026-11-07 (quatorzième) ; à 3 000
+trames l'empreinte Q605 est désormais `3835bb7a075cd81c`) : le 68040
 interprété passe désormais 31 % de son temps en traduction d'adresse
 (63 % avant) et 30 % dans ses handlers ; le 68030, un tiers dans le fetch
 d'instruction.

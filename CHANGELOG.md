@@ -508,6 +508,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-07 (fourteenth)** — [The Quadra 605 woke its devices 1.27 million times a guest second: timer-aware VIA bound, per-access deadline re-arm — JIT −50 %, interpreter −18 %](#2026-11-07-q605-via-deadline)
 - **2026-11-07 (thirteenth)** — [The interpreter arms its own fetch window: Quadra 605 interpreted −36 %, LC II −17 %, fingerprints unchanged — ×2.5 on the 68040 interpreter since yesterday's profile](#2026-11-07-interp-window)
 - **2026-11-07 (twelfth)** — [PTEST at its level limit did not report an invalid descriptor: the one 68030 MMU vector of the sweep](#2026-11-07-ptest-limit)
 - **2026-11-07 (eleventh)** — [Ruling D23b applied: a 68882 refuses a 68040 FSAVE frame — four permissive vectors listed, the solo corpus regenerated strict](#2026-11-07-d23b-applied)
@@ -1222,6 +1223,112 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-07-q605-via-deadline"></a>
+## 2026-11-07 (fourteenth) — The Quadra 605 woke its devices 1.27 million times a guest second for a VIA that had nothing to say: timer-aware VIA bound, per-access deadline re-arm — JIT mode −50 %, interpreter −18 %
+
+With the interpreter window in (thirteenth), the Quadra 605 **JIT** profile
+no longer had Moira in it: 52 % of the samples were the peripheral slice
+(`Dafb::tick` 11.5 %, `Q605Memory::syncSwimFromCpu` 8.6 %,
+`Dafb::cyclesToNextEvent` 8.3 %, `CudaLle::tick` 6.9 %,
+`Scc8530::cyclesToNextEvent` 4.7 %), plus `Cpu040::flushTicks` 9.8 % and
+`Q605Memory::tick`/`cyclesToNextEvent` 9.2 %; the generated code was
+13.6 %. `jit_bench` gained `POM68K_BENCH_PERIPH_STATS=1` (the product
+`POM68K_PERIPH_STATS` does not reach a rig built from the catalogue
+profile) and answered: **one `mem.tick` every 19.66 machine cycles** —
+12.7 M device walks per 10 s of guest time, in both engines. A one-off
+census of which bound wins the deadline: the VIA E clock 59.7 % (mean 24.6
+cycles), the Cuda MCU 38.8 % (36.4), the ASC 1.5 %, everything else noise.
+
+**The VIA bound said nothing.** `Q605Memory::cyclesToNextEvent` published
+`viaEClock_.cyclesToNext()` — the *next E tick* — exactly the bound the
+2026-08-13 entry named as the trap on the Mac II ("always safe and says
+nothing: it would wake the fan-out 783 360 times a second whatever the VIA
+is doing"). The timer-aware `Via6522::cyclesToNextEvent` (T1/T2 underflow,
+shift completion, in φ2 ticks) existed since that day; the four 040 boards
+never used it. Now bridged through the same accumulator `tick()` advances
+the VIA with (`via_eclock::bridge`, the exact inverse of `Ticker::advance`),
+the slice is **45.8 machine cycles** and the Cuda MCU is the binding source,
+as it should be on an LLE board.
+
+**What the wider slice exposed — three things, each found by trace, each
+of them a lateness the one-E-tick slice had been hiding:**
+
+1. *A flush before the E-edge stall is a flush to the wrong edge.*
+   `viaAccess8` flushed, then `viaSync()` stalled the CPU to the E edge the
+   access is served on; under the old deadline the stall itself always
+   crossed a deadline and re-flushed, so the VIA stood at the edge. Without
+   that accident the VIA was one E tick behind at the access: the IPL trace
+   showed T2 firing one E tick early. Order is now stall, then flush, in
+   the VIA, pseudo-VIA and SCC paths — the first 600 frames of the bench
+   came back fingerprint-identical the moment it was.
+2. *An access that arms a countdown must re-arm the deadline.* A SCSI
+   command, the last PIO/DMA byte, a T2 load, a Swatch enable: the bound
+   changes, the deadline computed before the access does not know, and the
+   event is served at the next scheduled flush — late by up to one slice.
+   The trace: the 53C96 interrupt mirrored into the pseudo-VIA IFR one slice
+   apart between the two bounds. `Cpu040::schedulePeriphDeadline` is public
+   and measured from `lastPeriphClock_` (the devices' common time — a
+   running countdown is in device cycles), and the VIA/pseudo-VIA/SCC/SWIM
+   paths and the ASC/DAFB writes call it. The 53C96 paths call
+   `tightenPeriphDeadline(scsi bound)` instead: one bound, measured from the
+   access (the countdown was armed now), only ever bringing the deadline
+   forward — the full re-arm there cost 10 % of the bench, because the SCSI
+   status poll is **16 M reads per 50 s** (census: 31 M MMIO accesses in
+   the run — 16.05 M 53C96 register reads, 8.2 M ASC reads, 5.2 M DAFB
+   reads, 0.97 M pseudo-DMA bytes, 0.47 M VIA1; everything else under
+   70 k). ASC and DAFB *reads* arm nothing and re-arm nothing.
+3. *The generic re-arm had a bug of its own.* Measured from `clock`, it
+   pushed every other device's running countdown later by the unflushed
+   span — the Cuda MCU ticked late, 14 % fewer flushes, a fingerprint that
+   looked stable and was not the hardware. Hence the two bases above.
+
+**Proof of slice independence, as far as it goes.** With the re-arm in
+place, the old bound and the new bound produced the same 3 000-frame
+fingerprint (`455d266133932815`) at 22.5 and 53.2 cycles per slice — the
+width of the slice had no effect on the machine trace once MMIO-armed
+events were honoured. With the final bases they differ again
+(`69d434ef3f9361ec` vs `3835bb7a075cd81c`), and the residue is named: a
+device read *without* a flush sees the device where the last flush left it,
+and the lag is now one slice (≤ ~50 cycles) where it was one E tick. That
+is the SCSI status poll, the ASC FIFO poll, the pseudo-DMA bytes and the CD
+transport — flushing before each would double the device walks (tried: 13.7 M
+vs 5.4 M flushes per 10 s). The SWIM accesses and the SCSI *command writes*
+(36 k) are flushed first and exact; the drives behind the SWIM were not even
+that before.
+
+**Host-side savings on the same slice path, each fingerprint-identical to
+its predecessor:** the DAFB derives its geometry once per register change
+and skips the 64-bit divide while `framePos_` is below the next line
+boundary (a pure function of `prevLine_` and the geometry, re-derived on a
+key miss so a snapshot load cannot leave it stale), and caches its two
+interrupt positions; the SCC bound is cached between two advances of the
+SCC (`sccNext()`, invalidated by `flushScc`, the MMIO paths, the `scc()`
+accessor and `visit`); `syncSwimFromCpu` runs only while ACTION is on
+(`Swim2::tick` is a no-op otherwise, and the sync arithmetic is
+chunk-independent at every power-of-two boost); `Cpu040::flushTicks`
+shifts instead of dividing by the boost when it is a power of two.
+
+**Measured** (fixed-cycle bench, 3 000 frames = 50 s of guest time, pinned
+core, same tree minus this change):
+
+| | before | after | |
+|---|---|---|---|
+| `mem.tick` calls | 64.0 M (19.5 cycles each) | **27.3 M** (45.8) | |
+| JIT (x86-64) | 8.65 s (×4) | **4.28 s** (×4) | −50.5 %, ABBA ×2 |
+| interpreter | 26.02 s (×4) | **21.1 s** (20.95–21.43) | −19 %, ABBA ×2 |
+| fingerprint, 600 and 1 500 frames | `a4ec20eb6a4789d3`, `a2036281a5c2ac55` | unchanged | first 25 s of guest time identical |
+| fingerprint, 3 000 frames | `b9e4eacc7fc3933c` | `3835bb7a075cd81c` | the Finder phase; the residue above |
+
+The Centris, Quadra 630 and Quadra 700/900/950 boards publish the same
+"next E tick" bound and keep it in this entry: a wider slice without the
+re-arm would be the lateness of point 2 — their port is a `TODO.md` line
+with the recipe. `Dafb` serves the Centris and Q700 too; its change is the
+host-side one.
+
+**Held by** the fixed-cycle fingerprints at 600 and 1 500 frames, the
+`q605_*` etalons, `q605_event_scheduler_test`, `q605_prober_oracle_etalon`
+(TimeVIADB/TimeDBRA against MAME) and the parallel tier.
 
 <a id="2026-11-07-interp-window"></a>
 ## 2026-11-07 (thirteenth) — The interpreter arms its own fetch window: Quadra 605 interpreted −36 %, LC II −17 %, fingerprints unchanged — ×2.5 on the 68040 interpreter since yesterday's profile

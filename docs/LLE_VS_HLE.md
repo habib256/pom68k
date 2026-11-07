@@ -146,7 +146,7 @@ caught it.
   sub-case if that day comes is **RBV** (IIsi/IIci), where the display
   fetches from *main* RAM — the same physics as the Plus, on machinery
   POM68K already has.
-- DAFB's VBL line is hard-coded at 480 (`Dafb::tick`, `Dafb.cpp:425-442`
+- DAFB's VBL line is hard-coded at 480 (`Dafb::tick`, `Dafb.cpp:397-414`
   — as in MAME, whose `vbl_tick` re-arms `time_until_pos(480)`). The wrap
   is modelled: `crossed(480 % totalLines)`, because
   `screen_device::time_until_pos` takes vpos modulo the frame height, so a
@@ -342,7 +342,7 @@ Twelve wrappers, one per platform: `Cpu68k` (the compacts, cycle-exact
   Verified: all four 040 boards boot (`q605_`, `centris650_`,
   `quadra800_`, `q700_`, `q630_boot_etalon`) and the `unit` tier was green.
 - **the legacy i-cache boost is a throughput overlay**:
-  `cacheBoost_` scales Moira cycles in `flushTicks` (`Cpu040.h:95`, default
+  `cacheBoost_` scales Moira cycles in `flushTicks` (`Cpu040.h:90`, default
   **4**; `POM68K_Q605_CACHE_BOOST` overrides 1–64). Separately, the 040 has
   an opt-in architectural I/D cache behind `POM68K_040_DCACHE=1`: line data,
   WT/CB/NC policy, dirty writeback, CPUSH/CINV, snooping and transaction
@@ -1363,7 +1363,7 @@ correctness it buys:
 session-wide registry of the HLE modules a machine actually fell back to
 (`src/LleSession.h`: `activateHle` / `qualified()`), locks the native engine
 once the session qualifies (`engineChangeAllowed`, called by the four 040 CPU
-wrappers — `Cpu040.cpp:179`, `CentrisCpu.cpp:90`, `Q630Cpu.cpp:97`,
+wrappers — `Cpu040.cpp:202`, `CentrisCpu.cpp:90`, `Q630Cpu.cpp:97`,
 `Q700Cpu.cpp:98`; the GUI's CPU menu greys itself on the same condition,
 `GuiShellMenu.cpp:88-121`), verifies firmware by size +
 SHA-256 against `assets.lock`, and stamps that provenance into the save

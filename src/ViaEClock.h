@@ -66,4 +66,17 @@ struct Ticker {
     template <class Ar> void visit(Ar& ar) { ar(acc); }
 };
 
+// Machine cycles until the Ticker with remainder `acc` has delivered
+// `eTicks` more E-clock cycles: the exact inverse of Ticker::advance, so a
+// deadline placed here flushes on the very cycle the VIA's own bound
+// (Via6522::cyclesToNextEvent, in E ticks) names. 0x7fffffff passes through
+// as "no event". `cyclesToNext` is this for eTicks == 1 — the bound that is
+// always safe and says nothing (CHANGELOG 2026-08-13).
+inline int bridge(int eTicks, int64_t acc, int64_t cpuHz) {
+    if (eTicks == 0x7fffffff || cpuHz <= 0) return eTicks;
+    const int64_t need = int64_t(eTicks) * cpuHz - acc;
+    if (need <= 0) return 1;
+    return int((need + kHz - 1) / kHz);
+}
+
 } // namespace via_eclock

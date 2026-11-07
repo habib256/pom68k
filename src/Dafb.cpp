@@ -398,30 +398,60 @@ void Dafb::clockgenDp8531(uint32_t off, uint8_t v) {
 // for VBL too).
 void Dafb::tick(int cpuCycles) {
     framePos_ += cpuCycles;
-    int64_t frameLen = cpuHz_ / 60;
-    int totalLines = 525;
-    // dafb.cpp:869-875 — MAME reconfigures the screen whenever recalc_mode
-    // leaves a nonzero active area; there is no 480-line floor. (An old
-    // `vtotal_ > 480` guard here silently pinned sub-480 modes — the
-    // Q700's 512×384, vtotal 407 — to the legacy 60 Hz / 525-line shape.)
-    if (htotal_ && vtotal_ && hres_ && vres_ && pixelClock_ >= 1000000) {
-        int64_t programmed = int64_t(htotal_) * vtotal_ * cpuHz_ / pixelClock_;
-        if (programmed > 0) {
-            frameLen = programmed;
-            totalLines = int(vtotal_);
+    // The geometry is a function of five registers; re-derive it when one
+    // moved (same arithmetic as before, run once per change instead of
+    // once per slice).
+    bool geomMoved = false;
+    if (geomKey_.htotal != htotal_ || geomKey_.vtotal != vtotal_ ||
+        geomKey_.hres != hres_ || geomKey_.vres != vres_ ||
+        geomKey_.pixelClock != pixelClock_) {
+        geomKey_ = GeomKey { htotal_, vtotal_, hres_, vres_, pixelClock_ };
+        geomMoved = true;
+        int64_t frameLen = cpuHz_ / 60;
+        int totalLines = 525;
+        // dafb.cpp:869-875 — MAME reconfigures the screen whenever
+        // recalc_mode leaves a nonzero active area; there is no 480-line
+        // floor. (An old `vtotal_ > 480` guard here silently pinned sub-480
+        // modes — the Q700's 512×384, vtotal 407 — to the legacy 60 Hz /
+        // 525-line shape.)
+        if (htotal_ && vtotal_ && hres_ && vres_ && pixelClock_ >= 1000000) {
+            int64_t programmed =
+                int64_t(htotal_) * vtotal_ * cpuHz_ / pixelClock_;
+            if (programmed > 0) {
+                frameLen = programmed;
+                totalLines = int(vtotal_);
+            }
         }
+        // Published for the raster beam (VideoBeam.h) — one geometry,
+        // derived here, rather than a second copy of the same arithmetic
+        // elsewhere.
+        frameLen_ = frameLen;
+        totalLines_ = totalLines;
     }
-    // Published for the raster beam (VideoBeam.h) — one geometry, derived
-    // here, rather than a second copy of the same arithmetic elsewhere.
-    frameLen_ = frameLen;
-    totalLines_ = totalLines;
+    const int64_t frameLen = frameLen_;
+    const int totalLines = totalLines_;
+    bool wrapped = false;
     if (framePos_ >= frameLen) {
         framePos_ -= frameLen;
         // Completed frames: the position alone is modulo, so a decoder
         // sampling once per frame at a fixed phase could not tell a whole
         // frame from no time at all (VideoBeam::setPos).
         frameCount_++;
+        wrapped = true;
     }
+    // line(framePos) = framePos * totalLines / frameLen reaches prevLine_+1
+    // exactly at ceil((prevLine_+1) * frameLen / totalLines): below that
+    // position, without a wrap or a geometry change, the line is unchanged
+    // and the block below would do nothing — skip the divide. The bound is
+    // a pure function of (prevLine_, frameLen_, totalLines_), so a stale
+    // one (snapshot load) fails its key and is re-derived.
+    if (lineKey_ != prevLine_ || lineKeyLen_ != frameLen ||
+        lineKeyTot_ != totalLines) {
+        lineKey_ = prevLine_; lineKeyLen_ = frameLen; lineKeyTot_ = totalLines;
+        nextLineAt_ = (int64_t(prevLine_ + 1) * frameLen + totalLines - 1) /
+                      totalLines;
+    }
+    if (!wrapped && !geomMoved && framePos_ < nextLineAt_) return;
     int line = int(framePos_ * totalLines / frameLen);
     if (line != prevLine_) {
         bool wrap = line < prevLine_;
@@ -445,15 +475,25 @@ void Dafb::tick(int cpuCycles) {
 int Dafb::cyclesToNextEvent() const {
     if (frameLen_ <= 0 || totalLines_ <= 0 || !(swatchIntEnable_ & 5))
         return 0x7fffffff;
+    // The two positions are functions of the geometry and the cursor line
+    // only; derive them when one of those moved.
+    if (atKeyLen_ != frameLen_ || atKeyTot_ != totalLines_ ||
+        atKeyCursor_ != cursorLine_) {
+        atKeyLen_ = frameLen_; atKeyTot_ = totalLines_; atKeyCursor_ = cursorLine_;
+        auto at = [&](int line) {
+            line %= totalLines_;
+            return (int64_t(line) * frameLen_ + totalLines_ - 1) / totalLines_;
+        };
+        at480_ = at(480);
+        atCursor_ = at(int(cursorLine_));
+    }
     int64_t best = 0x7fffffff;
-    auto consider = [&](int line) {
-        line %= totalLines_;
-        int64_t at = (int64_t(line) * frameLen_ + totalLines_ - 1) / totalLines_;
+    auto consider = [&](int64_t at) {
         int64_t d = at - framePos_;
         if (d <= 0) d += frameLen_;
         if (d < best) best = d;
     };
-    if (swatchIntEnable_ & 1) consider(480);
-    if (swatchIntEnable_ & 4) consider(int(cursorLine_));
+    if (swatchIntEnable_ & 1) consider(at480_);
+    if (swatchIntEnable_ & 4) consider(atCursor_);
     return int(best > 0 ? best : 1);
 }

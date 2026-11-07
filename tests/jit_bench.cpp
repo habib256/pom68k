@@ -151,8 +151,15 @@ int main() {
         return 1;
     }
     const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
-    Cpu040 cpu(mem, jitConfig, q605Core().cpu,
-               q605Core().diagnostics);
+    // POM68K_BENCH_PERIPH_STATS=1 — Cpu040 prints its peripheral-slice
+    // census at destruction (flushes, mem.tick calls, machine cycles per
+    // call): the figure a timing optimisation of the device path is argued
+    // from (TODO § Temps). The product knob is POM68K_PERIPH_STATS; this
+    // rig builds its board from the catalogue profile, not the snapshot.
+    pom68k::CoreDiagnosticConfig diagnostics = q605Core().diagnostics;
+    if (const char* ps = std::getenv("POM68K_BENCH_PERIPH_STATS"))
+        diagnostics.peripheralStats = std::atoi(ps) != 0;
+    Cpu040 cpu(mem, jitConfig, q605Core().cpu, diagnostics);
     mem.setCpu(&cpu);
     cpu.hardReset();
     while (mem.cpuHeld()) mem.tick(1000);
