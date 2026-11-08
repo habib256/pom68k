@@ -232,7 +232,7 @@ Moira::mmuUpdateSR(int type, u32 entry, int fc, bool isLong, u16 &sr) const
 
 // History maintenance (§ 9.5.3.5): the walk sets U in every descriptor it
 // traverses, and U+M in the page descriptor on a write access that is not
-// write-protected. PTEST performs no updates (§ 9.7.6); PLOAD does.
+// write-protected. PTEST performs no updates (§ 9.8: it "does not alter the ATC"); PLOAD does.
 void
 Moira::mmuUpdateDescriptor(u32 tptr, int type, u32 entry, int rw) const
 {
@@ -266,6 +266,12 @@ Moira::mmuWalkTables(u32 addrIn, int type, u32 table, int fc, int limit,
 
     addrIn <<= is;
 
+    // A host /BERR on a descriptor fetch ends the search: B|I, and the
+    // descriptor that faulted is not counted in N (Moira.h
+    // § mmuInTableSearch; [D] WinUAE descr_num-- @ Hatari e77819f7). Every fetch below follows
+    // its level++, so the fault always undoes exactly one count.
+    mmuInTableSearch = true;
+    try {
     do {
 
         const int indexbits = int(bits >> bitpos) & 0xf;
@@ -371,12 +377,25 @@ Moira::mmuWalkTables(u32 addrIn, int type, u32 table, int fc, int limit,
         pageshift += indexbits;
 
     } while (level < limit && !resolved);
+    } catch (MmuTableSearchBusError &) {
+        mmuInTableSearch = false;
+        if (level > 0) level--;
+        sr = u16((sr | 0x8400) & 0xfff0) | u16(level);    // B | I
+        return true;
+    } catch (...) {
+        mmuInTableSearch = false;
+        throw;
+    }
+    mmuInTableSearch = false;
 
     // POM68K: a descriptor fetched AT the level limit is still examined —
     // an invalid one reports I. The loop above examines a descriptor at
     // the top of the next pass, which the limit prevents.
-    // [B] MC68030UM § 9.7.6 PTEST: "the I bit is set if the search ended
-    //     with an invalid descriptor" — whatever ended it.
+    // [B] MC68030UM (Freescale edition) § 9.7.4, Table 9-3, PTEST levels
+    //     1-7: "The I bit is set if the DT field of a table or a page
+    //     descriptor encountered during the search is set to invalid" —
+    //     whatever ended the search. (Cited as "§ 9.7.6" until 2026-11-08:
+    //     no such section in that edition.)
     // [D] WinUAE cpummu030.c mmu030_table_search @ Hatari e77819f7 checks
     //     each descriptor as fetched, before its level test.
     // Found by fuzz vector "mmu/tt seed=1006 #1188" (PTESTR level 1 into a
@@ -632,6 +651,31 @@ Moira::mmuMatchTTAccess(u32 addr, u8 fc, bool write) const
 u16
 Moira::mmuBusWalk(u32 addr, u8 fc, bool write, u32 &pageAddr, bool &ci)
 {
+    // The search, with a host /BERR on a descriptor fetch turned into
+    // MMUSR B|I on top of what the search had accumulated (Moira.h
+    // § mmuInTableSearch). The ATC entry built from it carries B
+    // (mmuAtcFill: busError), and the retried access faults through it on
+    // its own logical address — the exception "on the retry of the cycle".
+    u16 status = 0;
+    ci = false;
+    pageAddr = 0;
+    mmuInTableSearch = true;
+    try {
+        mmuBusWalkBody(addr, fc, write, pageAddr, ci, status);
+    } catch (MmuTableSearchBusError &) {
+        status |= 0x8400;                               // B | I
+    } catch (...) {
+        mmuInTableSearch = false;
+        throw;
+    }
+    mmuInTableSearch = false;
+    return status;
+}
+
+void
+Moira::mmuBusWalkBody(u32 addr, u8 fc, bool write, u32 &pageAddr, bool &ci,
+                      u16 &status)
+{
     const u32 tc = reg.tc;
 
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
@@ -649,10 +693,6 @@ Moira::mmuBusWalk(u32 addr, u8 fc, bool write, u32 &pageAddr, bool &ci)
             lastTable = i;
         }
     }
-
-    u16 status = 0;
-    ci = false;
-    pageAddr = 0;
 
     const bool super = (fc & 4) != 0;
     bool superViolation = false, writeProtected = false;
@@ -800,7 +840,7 @@ pageDescriptor:
 
 stopSearch:
 
-    return status;
+    return;
 }
 
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
@@ -895,7 +935,7 @@ Moira::mmuAtcFill(u32 addr, u8 fc, bool write)
     e.fc = fc;
     e.valid = true;
     e.physical = page & imask;
-    e.busError = (status & 0x2400) != 0;        // INVALID | SUPER_VIOLATION
+    e.busError = (status & 0xA400) != 0;        // B | INVALID | SUPER_VIOLATION
     e.cacheInhibit = ci;
     e.modified = (status & 0x0200) != 0;
     e.writeProtect = (status & 0x0800) != 0;
@@ -1044,6 +1084,9 @@ Moira::extBusError()
     // read<>/write<> paths record the in-flight sub-access (MoiraDataflow)
     // so the $B frame carries the true fault address (the Mac LC ROM's
     // 32-bit probe catcher compares it before resuming).
+    // A descriptor fetch is not the access: the table search reports it
+    // (Moira.h § mmuInTableSearch), before any fault state is touched.
+    if (mmuInTableSearch) throw MmuTableSearchBusError{};
     mmuPageFault(mmuAccAddr, !mmuAccWrite, mmuAccSsw, mmuAccFc);
 }
 
@@ -1840,7 +1883,7 @@ Moira::execPTest(u16 opcode)
     AVAILABILITY(Core::C68020)
 
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // MC68030UM § 9.7.6 PTEST. WinUAE-arbitrated: level 0 searches the
+    // MC68030UM (Freescale edition) § 9.8, PTEST. WinUAE-arbitrated: level 0 searches the
     // TT registers and the (empty) ATC only — a TT match sets T, a miss
     // sets I; level > 0 walks the translation tree directly (no TT
     // match, no fc=7 bypass), regardless of TC.E (D5). Validation:

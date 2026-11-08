@@ -663,8 +663,9 @@ compilation et dans la documentation.
   `setFPUModel` sur 68000/68010 (cellule de `moira_rules_test`), l'audit
   complet de l'état global de softfloat (`nm` de la bibliothèque), et
   l'invalidation du JIT à la restauration (relue dans les quatorze
-  cartes). Restent : ce que rapporte un `extBusError` levé pendant la
-  lecture d'un descripteur de table 030, la valeur à rendre sur une
+  cartes). Le 2026-11-08 aussi, le `extBusError` levé pendant la lecture
+  d'un descripteur de table 030 (un vrai défaut, corrigé : rang 56).
+  Restent : la valeur à rendre sur une
   lecture CIR FC = 7 d'un FPU présent, le chemin 68EC030 sans corpus,
   les séquences qui dépendent de la continuation, la joignabilité des
   champs omis du visiteur, et la DMA son côté Atari (à NeoST). Chacune
@@ -683,6 +684,12 @@ compilation et dans la documentation.
   l'interpréteur.** `mmu040InstrStart`, `mmu040Read` et `mmu040Write`
   portent en ligne fenêtre, DTLB, sonde de timing et publication de
   cache ; un interpréteur seul doit pouvoir se construire sans.
+- [ ] **Vérifier les numéros de section MC68030UM du cœur contre une
+  édition nommée.** L'édition Freescale (sections 7 à 14, NXP
+  `MC68030UM-P2.pdf`) n'a ni § 9.7.2.2, ni § 9.7.2.6, ni § 9.7.5.5 ni
+  § 9.7.6, cités six fois dans `MoiraExecMMU_cpp.h` (les deux § 9.7.6
+  corrigés le 2026-11-08). Vérifier contre la 2e édition de 1989 avant de
+  renuméroter ; obtenir la partie 1 pour les § 6 (cache d'instructions).
 - [ ] **Finir les grades de preuve dans les commentaires du cœur.** La
   moitié WinUAE est faite et tenue par `core_grades_test` (2026-11-08 :
   341 blocs `[D] … @ Hatari e77819f7`, 74 numéros de ligne relus dans la
