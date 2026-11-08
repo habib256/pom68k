@@ -126,8 +126,11 @@ Rules:
   they are meaningful only while the core is inside a callback it issued. The
   stamp is written by `read<>`/`write<>` (plain 020), `mmuTranslateAccess` and
   `mmuFetchWord` (030), `mmu040Read`/`mmu040Write` and `pomJitStampAccess`
-  (040). What an `extBusError` raised during a 030 table-walk descriptor read
-  (`mmuRead32`) reports is unverified.
+  (040). Raised during a 030 table-search descriptor fetch, `extBusError`
+  is not a fault of the access: the search ends with MMUSR B|I, the ATC
+  entry carries B, and the retried access faults on its logical address;
+  a PTEST reports B|I instead of taking an exception (MC68030UM § 9.5.2,
+  Table 9-3; `POM68K_VENDOR.md` row 56; gate `moira_rules_test`).
 - Called outside `execute()` (e.g. from `read16Dasm` or a host-side peek) the
   C++ exception escapes to the caller.
 - On `Core::C68000`/`C68010`, `extBusError` must not be used:

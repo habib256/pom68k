@@ -106,6 +106,14 @@ private:
         m[a & 0xfffff] = moira::u8(v >> 8); m[(a + 1) & 0xfffff] = moira::u8(v);
     }
     bool illegalOpcodeHook(moira::u16) override { return handleIllegal; }
+public:
+    // Cell "bus error during a table search": the 68030 PMMU registers,
+    // set directly (after stage(), whose reset() clears them).
+    void mmu030(moira::u32 tc, moira::u64 crp, moira::u32 tt0, moira::u32 tt1) {
+        reg.tc = tc; reg.crp = crp; reg.tt0 = tt0; reg.tt1 = tt1;
+    }
+    moira::u16 mmusr() const { return moira::u16(reg.mmusr); }
+private:
     void setBusLock(bool locked) override { events += locked ? 'L' : 'U'; }
     void willProcessFault(const moira::StackFrame& frame) override {
         faults++; faultAddr = frame.addr;
@@ -650,6 +658,64 @@ void fpuIgnoredOn68000And68010()
           c.getPC0(), kCode + 4);
 }
 
+// POM68K_SURFACE.md § 2 (extBusError) — a host /BERR on a 68030 table-search
+// descriptor fetch.
+// [B] MC68030UM § 9.5.2 (p. 9-49): a bus error terminates the table search
+//     and the MC68030 takes the exception on the retry of the cycle; the
+//     ATC entry's B bit (p. 9-11) is set by it, and a level-0 PTEST reports
+//     that B (Table 9-3); a PTEST at levels 1-7 reports B (and I) for a bus
+//     error met by its own search, without an exception.
+// TT0/TT1 map program and data space below $01000000 transparently, so the
+// code, the vectors and the stack never walk; $40000000 does, through a
+// two-level 4 KB table whose first descriptor sits on the /BERR hole.
+void tableSearchBusError030()
+{
+    constexpr uint32_t kTc  = 0x80000000u | 0xCu << 20 | 0xAu << 12 | 0xAu << 8;
+    constexpr uint32_t kTt0 = 0x00008124u;          // E, RWM, FC 2/6 (program)
+    constexpr uint32_t kTt1 = 0x00008114u;          // E, RWM, FC 1/5 (data)
+    constexpr uint32_t kVa  = 0x40000000u;          // TIA index $100
+    constexpr uint32_t kTable = kHole - 0x100 * 4;  // descriptor $100 on the hole
+    constexpr uint64_t kCrp = uint64_t(0x7FFF0002u) << 32 | kTable;   // short table
+    const uint16_t ptestR0 = 0x8215, ptestR7 = 0x9e15;   // PTESTR #5,(A0),#n
+
+    {   // 1-2: the access faults on its logical address; the B entry stays
+        TestCpu c(moira::Model::M68030);
+        p32(c, 2 * 4, kHandler);
+        p16(c, kHandler, 0xf010); p16(c, kHandler + 2, ptestR0);
+        p16(c, kHandler + 4, kNop);
+        stage(c, 0x2010, 0);                        // MOVE.L (A0),D0
+        c.setA(0, kVa);
+        c.mmu030(kTc, kCrp, kTt0, kTt1);
+        c.holeArmed = true;
+        c.execute();
+        const uint32_t sp = c.getSP();
+        CHECK(c.getPC0() == kHandler && g32(c, sp + 0x10) == kVa,
+              "68030 /BERR on a descriptor fetch: PC0=%08X (want the bus error "
+              "handler %08X), fault address %08X (want the logical %08X)",
+              c.getPC0(), kHandler, g32(c, sp + 0x10), kVa);
+        c.execute();                                // PTESTR #5,(A0),#0
+        CHECK(c.mmusr() == 0x8400,
+              "68030 PTEST level 0 after the fault: MMUSR %04X (want $8400, the "
+              "ATC entry's B with I)", c.mmusr());
+    }
+    {   // 3: PTEST's own search meets the /BERR — a report, not an exception
+        TestCpu c(moira::Model::M68030);
+        p32(c, 2 * 4, kHandler);
+        stage(c, 0xf010, 0);
+        p16(c, kCode + 2, ptestR7);
+        c.setIRC(ptestR7);
+        p16(c, kCode + 4, kNop);
+        c.setA(0, kVa);
+        c.mmu030(kTc, kCrp, kTt0, kTt1);
+        c.holeArmed = true;
+        c.execute();
+        CHECK(c.getPC0() == kCode + 4 && c.mmusr() == 0x8400,
+              "68030 PTEST level 7 into a /BERR: PC0=%08X (want %08X, no "
+              "exception), MMUSR %04X (want $8400: B, I, N = 0)",
+              c.getPC0(), kCode + 4, c.mmusr());
+    }
+}
+
 int main()
 {
     divsOfIntMin();
@@ -665,6 +731,7 @@ int main()
     clrReadsOnlyOn68000();
     ptestFlagsInvalidAtTheLimit();
     fpuIgnoredOn68000And68010();
+    tableSearchBusError030();
 
     if (failures) {
         std::printf("[moira_rules_test] FAIL: %d check(s)\n", failures);
@@ -675,6 +742,7 @@ int main()
                 "68040 CHK2/CMP2 flags, 68040 FPU trap priority, 68LC040 F-line "
                 "shapes, five-bit FBcc predicate, 68040 FPU store fault, 68040 TTR "
                 "table, CLR without its read from the 68020 up, PTEST at its level "
-                "limit, Line-F on a 68000/68010 with a 6888x attached\n");
+                "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
+                "during a table search\n");
     return 0;
 }

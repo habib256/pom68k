@@ -28,8 +28,8 @@ Facts this plan builds on. Each was read out of the tree, not remembered.
 | `threaded` declares `kGuestAny`; `auto` uses it for 000/020, while an 030 reaches the native generator on both ISAs | `JitBackendThreaded.cpp`, `JitBackendA64.cpp` |
 | Selection tests guest validity *before* host ranking | `JitBackend.cpp:63-66`, `:137-140` |
 | `pomJitProbeCode` has an 030 branch (TT regs, TC.E-off identity, read-only 22-entry ATC scan, last-hit memo) | `MoiraExecMMU_cpp.h:2100-2223` |
-| **`pomJitProbeData` now has one too** (data-space `fc = 5/1`, write-protect and owed-M-bit refusals) — C.2 is landed | `MoiraExecMMU_cpp.h:2287-2337` |
-| **`pomJitReadData`/`pomJitWriteData` now branch on the model**, reaching `mmuRead`/`mmuWrite` on an 030 and `mmu040Read`/`mmu040Write` otherwise — C.3 is landed | `MoiraExecMMU_cpp.h:2565` and `:2474` |
+| **`pomJitProbeData` now has one too** (data-space `fc = 5/1`, write-protect and owed-M-bit refusals) — C.2 is landed | `MoiraExecMMU_cpp.h:2363-2413` |
+| **`pomJitReadData`/`pomJitWriteData` now branch on the model**, reaching `mmuRead`/`mmuWrite` on an 030 and `mmu040Read`/`mmu040Write` otherwise — C.3 is landed | `MoiraExecMMU_cpp.h:2608` and `:2474` |
 | The 030 i-cache overlay is charged **inside `mmuFetchWord`, before the JIT window hook** — so the fetch window and the `threaded` backend are conformant on it by construction | `MoiraExecMMU_cpp.h:408-461` |
 | `PomIcache` = MC68030UM §6: 256 B, 16 lines × 4 longwords, logical, direct-mapped, tag = A[31:8] + supervisor, per-longword valid bits, gated on `CACR` bit 0, `missPenalty` cycles per miss | `Moira.h:1245-1260`, rationale in `Cpu030.h:164-189` |
 | The cold fallback stub re-enters Moira through `pomJitExecOne()`, whose **030 branch runs `mmuExecuteStart<C68020>()`** — i.e. it fetches through `mmuFetchWord` and charges the i-cache itself | `Moira.cpp:317-347` |

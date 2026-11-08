@@ -528,6 +528,11 @@ struct BusError : public std::exception {
 // Moira's mmu* members, captured by mmuPageFault before the throw — see
 // POM68K_VENDOR.md § MMU bus layer.
 struct MmuBusError : public std::exception { };
+// POM68K: /BERR asserted by the host on a 68030 table-search descriptor
+// fetch (extBusError() while mmuInTableSearch). Carries nothing and leaves
+// no fault state behind: the search catches it and reports MMUSR B|I —
+// MC68030UM § 9.5.2, Table 9-3 (Moira.h § mmuInTableSearch).
+struct MmuTableSearchBusError : public std::exception { };
 
 // Internal control transfer: a 68020/030 accepted an interrupt while the
 // coprocessor protocol returned "come again, interrupts allowed". It is

@@ -2143,6 +2143,26 @@ private:
     // Bus-level table search (WinUAE mmu030_table_search, level 0):
     // U/M maintenance, limit checks; returns MMUSR-style status bits
     u16 mmuBusWalk(u32 addr, u8 fc, bool write, u32 &pageAddr, bool &ci);
+    void mmuBusWalkBody(u32 addr, u8 fc, bool write, u32 &pageAddr, bool &ci,
+                        u16 &status);
+
+    // POM68K: true while a 68030 table search fetches descriptors (the bus
+    // walk and the PTEST walk). A host /BERR on such a fetch is not a fault
+    // of the instruction's access: it ends the search with MMUSR B|I.
+    // [B] MC68030UM § 9.5.2 (p. 9-49): "a bus error also terminates a table
+    //     search, and the MC68030 takes an exception on the retry of the
+    //     cycle"; the ATC entry's B bit (p. 9-11) "is set for an entry if a
+    //     bus error ... is encountered during the table search"; Table 9-3
+    //     (§ 9.7.4): for PTEST levels 1-7, B "is set if a bus error is
+    //     encountered during the table search for the PTEST instruction",
+    //     and I with it. No exception from PTEST itself.
+    // [D] WinUAE cpummu030.c mmu030_table_search @ Hatari e77819f7: CATCH
+    //     → status |= MMUSR_BUS_ERROR|MMUSR_INVALID, descr_num-- on a read.
+    // Before 2026-11-08 extBusError() threw the access's own fault from
+    // inside the walk: the same frame for a normal access, but no B entry
+    // left in the ATC, and a PTEST/PLOAD took an exception instead of
+    // reporting. Gate: moira_rules_test § bus error during a table search.
+    mutable bool mmuInTableSearch = false;
 
     // ATC operations (§ 9.5.2)
     // POM68K perf (callgrind 2026-07-17): lookup/touch/translate run on

@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 725 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 726 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -9,7 +9,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | Subsystem | Entries |
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 96 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 89 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 90 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 37 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 31 |
@@ -214,6 +214,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-07 (third)** — [The Moira core reads no environment variable: NeoST's exception trace is switched by its host](CHANGELOG.md#2026-11-07-core-env-free)
 - **2026-11-07 (thirteenth)** — [The interpreter arms its own fetch window: Quadra 605 interpreted −36 %, LC II −17 %, fingerprints unchanged — ×2.5 on the 68040 interpreter since yesterday's profile](CHANGELOG.md#2026-11-07-interp-window)
 - **2026-11-07 (twelfth)** — [PTEST at its level limit did not report an invalid descriptor: the one 68030 MMU vector of the sweep](CHANGELOG.md#2026-11-07-ptest-limit)
+- **2026-11-08 (fourth)** — [A /BERR during a 68030 table search is reported, not thrown: the "unverified" line was a defect](CHANGELOG.md#2026-11-08-030-tablesearch-berr)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E
 

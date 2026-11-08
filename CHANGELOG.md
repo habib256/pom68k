@@ -508,6 +508,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-08 (fourth)** — [A /BERR during a 68030 table search is reported, not thrown: the "unverified" line was a defect](#2026-11-08-030-tablesearch-berr)
 - **2026-11-08 (third)** — [Three "unverified" lines of the surface contract settled: FPU on a 68000, softfloat's globals, JIT invalidation on restore](#2026-11-08-surface-three)
 - **2026-11-08 (second)** — [Every WinUAE citation in the core says `[D] … @ Hatari e77819f7`; it had been citing two revisions](#2026-11-08-core-grades)
 - **2026-11-08** — [The core says what each model executes; the unbound PACK 4 escape hatch is gone](#2026-11-08-core-dead-code)
@@ -1228,6 +1229,53 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-08-030-tablesearch-berr"></a>
+## 2026-11-08 (fourth) — A /BERR during a 68030 table search is reported, not thrown: the "unverified" line was a defect
+
+One of the six remaining *unverified* lines of `POM68K_SURFACE.md` asked
+what a host's `extBusError()` reports when raised on a 68030 table-search
+descriptor fetch. Reading the code answered it: the walk had no catch, so
+the fault of the instruction's access was thrown from inside the search.
+The MC68030 User's Manual (Freescale edition, fetched from NXP for this —
+grade B, the first time this tree quotes it from the text rather than
+from memory) says otherwise in three places: a bus error *terminates* the
+table search and the exception is taken "on the retry of the cycle"
+(§ 9.5.2, p. 9-49); the ATC entry's B bit is set by it and stays until
+PFLUSH, PLOAD or replacement (p. 9-11); and a PTEST at levels 1-7 reports
+B — with I — for a bus error met by its own search (§ 9.7.4, Table 9-3).
+WinUAE's `mmu030_table_search` does exactly that (grade D, same answer).
+
+**The difference was observable in two of three cases.** A normal access
+stacked the same frame either way — the logical address, as the retry
+would. But no B entry was left behind (a level-0 PTEST answered `$0400`,
+not `$8400`), and a PTEST or a PLOAD whose search met the /BERR took a bus
+error exception instead of reporting.
+
+**The fix** (`POM68K_VENDOR.md` row 56): while a search fetches
+descriptors (`mmuInTableSearch`), `extBusError()` throws a side-effect-free
+`MmuTableSearchBusError` *before* `mmuPageFault` touches the SSW, the
+write-back slots or the RMW flag; the bus walk (split into `mmuBusWalk` +
+`mmuBusWalkBody` so the accumulated status survives) adds B|I, which lands
+as `busError` in the ATC entry and faults the retry; the PTEST walk reports
+B|I with the faulted descriptor not counted in N (WinUAE `descr_num--`).
+**Gate**: a `moira_rules_test` cell — TT0/TT1 keep code, vectors and stack
+transparent, one descriptor sits on the board's /BERR hole — which **fails
+on the old core** on exactly the two predicted checks and passes now.
+
+**And a citation of mine was false.** The PTEST level-limit fix of
+yesterday (twelfth) quoted "MC68030UM § 9.7.6 PTEST: the I bit is set if
+the search ended with an invalid descriptor". That edition has no § 9.7.6,
+and the words were a paraphrase in quotation marks. Now § 9.7.4, Table
+9-3, with the manual's own words; the two other "§ 9.7.6 PTEST" sites
+point at § 9.8, which says what they claim. Checking every MC68030UM
+section number in the core the same way left four more that this edition
+does not have (§ 9.7.2.2, 9.7.2.6, 9.7.5.5) — possibly another edition's
+numbering; listed in `TODO.md` rather than renumbered on a guess.
+
+**Held by** `moira_rules_test`, the whole-tree `-Werror` build, the
+parallel tier (functional gates all green), and the serial 68030 machine
+and corpus set.
 
 <a id="2026-11-08-surface-three"></a>
 ## 2026-11-08 (third) — Three "unverified" lines of the surface contract settled: FPU on a 68000, softfloat's globals, JIT invalidation on restore
