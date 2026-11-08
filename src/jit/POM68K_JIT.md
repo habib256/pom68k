@@ -489,7 +489,7 @@ us. Wired 2026-08-10; it named both cells within one run:
   **every** `MOVE <ea>,(xxx).W`: 47.4 % of all block fallbacks.
 * `CMPA` charges `kEaRead + 2`, not `kEaRead` — `execCmpa` holds a `SYNC(2)`
   that the `ADDA`/`SUBA` path takes only for a word or register source
-  (`MoiraExec_cpp.h:2248` vs `:421-423`). This refused **every** `CMPA`: a
+  (`MoiraExec_cpp.h:2258` vs `:421-423`). This refused **every** `CMPA`: a
   further 12 %.
 
 Fixing the two took the native share 96.2 → 97.6 % and block fallbacks from

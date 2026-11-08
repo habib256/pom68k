@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 723 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 724 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 21 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 42 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 149 |
+| [Cross-cutting](#cross-cutting) | 150 |
 
 ---
 
@@ -785,4 +785,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-10-25 (later)** — [The Mac II family takes a Display Card 8•24, and its cursor moves under System 7 at last](CHANGELOG.md#2026-10-25-display-card-824)
 - **2026-11-06 (ninth)** — [The fork gets its host-side contract: POM68K_SURFACE.md says what the core exposes and what a host owes it](CHANGELOG.md#2026-11-06-moira-surface)
 - **2026-11-08** — [The core says what each model executes; the unbound PACK 4 escape hatch is gone](CHANGELOG.md#2026-11-08-core-dead-code)
+- **2026-11-08 (second)** — [Every WinUAE citation in the core now says `[D] … @ Hatari e77819f7`; it had been citing two revisions without knowing it](CHANGELOG.md#2026-11-08-core-grades)
 

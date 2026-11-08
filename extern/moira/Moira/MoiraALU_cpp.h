@@ -154,6 +154,7 @@ Moira::shift(int cnt, u64 data) {
                 data = shifted;
             }
 
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // POM68K: shifting past the operand width clears C and X even
             // for negative values (SingleStepTests/680x0 rule; flagged in
             // POM68K_VENDOR.md for re-verification against oracle #2).
@@ -310,6 +311,7 @@ Moira::bcd(u32 op1, u32 op2)
                 reg.sr.x = 0;
             }
 
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // Set V flag
             // POM68K Q2: the 68040 leaves V (and N, see below) untouched
             // (WinUAE cpuemu_31 op_c100: no SET_VFLG/SET_NFLG)
@@ -722,12 +724,14 @@ Moira::divsMoira(u32 op1, u32 op2)
 
             if (cpuModel >= Model::M68EC040) {
 
+                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                 // POM68K Q2: 68040 overflow — V=1, C=0, N/Z untouched
                 // (WinUAE setdivsflags, 68040 row)
                 reg.sr.c = 0;
 
             } else {
 
+                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                 // POM68K O4 slice 4: WinUAE-arbitrated 020/030 overflow CCR
                 // (setdivsflags: clears NZC, then N/Z from the low byte of
                 // the absolute quotient unless the overflow is absolute)
@@ -736,6 +740,7 @@ Moira::divsMoira(u32 op1, u32 op2)
 
         } else {
 
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // POM68K: V=1, C=0, N/Z PRESERVED on the 68000/68010
             // (SingleStepTests/680x0 — differs from WinUAE's N=1,Z=0; see
             // extern/moira/POM68K_VENDOR.md)
@@ -771,12 +776,14 @@ Moira::divuMoira(u32 op1, u32 op2)
 
             if (cpuModel >= Model::M68EC040) {
 
+                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                 // POM68K Q2: 68040 overflow — V=1, C=0, N/Z untouched
                 // (WinUAE setdivuflags, 68040 row)
                 reg.sr.c = 0;
 
             } else {
 
+                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                 // POM68K O4 slice 4: WinUAE-arbitrated 020/030 overflow CCR
                 // (setdivuflags: N set for a negative dividend; Z/C untouched)
                 setUndefinedDIVU<C, Word>(op1, (u16)op2);
@@ -1202,6 +1209,7 @@ Moira::setUndefinedCHK(i32 src, i32 dst)
             reg.sr.c = reg.sr.z = reg.sr.n = reg.sr.v = 0;
 
             if (dst == 0) reg.sr.z = 1;
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // POM68K O4 slice 4: upstream dropped WinUAE's
             // SET_NFLG(dst < 0) when porting setchkundefinedflags
             reg.sr.n = dst < 0;

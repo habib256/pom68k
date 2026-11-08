@@ -2020,6 +2020,7 @@ Moira::createJumpTable(Model model, bool regDasm)
     bool fpuAttachable = model == Model::M68EC020 || model == Model::M68020 ||
                          model == Model::M68EC030 || model == Model::M68030;
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K Q4: the FPU-less 040 variants (68LC040/68EC040) register the
     // window too — their F2xx opcodes take the format $4 "FP disabled"
     // exception (vector 11) with per-shape word consumption and EA, which
@@ -2035,6 +2036,7 @@ Moira::createJumpTable(Model model, bool regDasm)
         opcode = parse("1111 0010 110- ----");
         ___________XXXXX(opcode, Instr::FBcc, Mode::IP, Long, FBcc, CIMS)
 
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K: the predicate field is six bits wide and FBcc is
         // registered over all of it ($20-$3F included — WinUAE cpudefs
         // does the same). With no FPU on a 68040 they take the format $4

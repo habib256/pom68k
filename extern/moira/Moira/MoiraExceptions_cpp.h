@@ -282,6 +282,7 @@ Moira::writeStackFrame1011(u16 sr, u32 pc, u32 ia, u16 nr)
     push<C, Word>(sr);
 }
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 //
 // POM68K O4 slice 3 — 68030 MMU bus-fault frames (MC68030UM § 8.1.4),
 // byte-for-byte replicas of WinUAE Exception_build_stack_frame cases
@@ -310,6 +311,7 @@ Moira::writeStackFrameShortBusFault(u16 sr, u32 pc)
 template <Core C> void
 Moira::writeStackFrameLongBusFault(u16 sr, u32 pc, int nr)
 {
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // A faulting write parks the pending value in the access log so RTE
     // can retry it (WinUAE: mmu030_ad[idx_done].val = wb3_data)
     if (!(mmuSsw & 0x0040) && mmuIdxDone < 10) mmuAd[mmuIdxDone] = mmuWb3Data;
@@ -320,6 +322,7 @@ Moira::writeStackFrameLongBusFault(u16 sr, u32 pc, int nr)
     int i;
     for (i = 0; i < done + 1; i++) push<C, Long>(mmuAd[i]);     // access log
     for (; i < 9; i++) {
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K O5: during an FMOVEM (state[1] FMOVEM flag) the padding
         // slots MAX-2/MAX-1 carry the first two longs of the register in
         // flight (WinUAE Exception_build_stack_frame case 0xB,
@@ -353,6 +356,7 @@ Moira::writeStackFrameLongBusFault(u16 sr, u32 pc, int nr)
     push<C, Word>(sr);
 }
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // POM68K O4 slice 4 — 68030 address error on an odd instruction-flow
 // target (WinUAE Exception_mmu030 nr == 3, reached from the exception3_*
 // hooks in the mmu030 gencpu handlers): vector 3, format $B frame with
@@ -375,6 +379,7 @@ Moira::execAddressError030(u32 target, u32 stackedPc)
     flags &= ~State::TRACE_EXC;
     SYNC(8);
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // WinUAE zeroes the restart state; the wb*/stage-B capture is left
     // to the deterministic reset values (oracle_set_state zeroes them)
     mmuState[0] = mmuState[1] = 0;
@@ -386,6 +391,7 @@ Moira::execAddressError030(u32 target, u32 stackedPc)
     mmuWb3Data = 0;
     mmuSsw = 0x0066;                            // RW | SIZE_W | FC = 6
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // The vector is fetched before the frame is stacked (WinUAE order)
     u32 vectorAddr = (reg.vbr & ~u32(0x1)) + 4 * 3;
     u32 newpc = read<C, AddrSpace::DATA, Long>(vectorAddr);
@@ -416,6 +422,7 @@ Moira::mmuCheckOddPc(u32 target, u32 stackedPc)
     return false;
 }
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // POM68K Q2 — 68040 address error on an odd instruction-flow target
 // (WinUAE Exception_mmu nr == 3, reached from the exception3_* hooks in
 // the mmu040 gencpu handlers): vector 3, format $2 frame, address field
@@ -454,6 +461,7 @@ Moira::execAddressError040(u32 target, u32 stackedPc)
     didExecute(M68kException::ADDRESS_ERROR, 3);
 }
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Bus-error exception processing for MMU translation faults, mirroring
 // the CATCH block of WinUAE m68k_run_mmu030 + Exception_mmu030: frame $A
 // for a fault on the instruction's last write (PC = next instruction,
@@ -501,6 +509,7 @@ Moira::execMmuBusError()
     flags &= ~State::TRACE_EXC;
     SYNC(8);
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // The vector is fetched before the frame is stacked (WinUAE order);
     // both go through address translation
     u32 vectorAddr = (reg.vbr & ~u32(0x1)) + 4 * 2;
@@ -630,6 +639,7 @@ Moira::execException(M68kException exc, int nr)
 template <Core C> void
 Moira::execException(M68kException exc, int nr)
 {
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K O4 slice 3: exception stacking is not part of the 68030
     // instruction-restart access log (WinUAE uses non-state accessors)
     mmuLogging = false;
@@ -649,6 +659,7 @@ Moira::execException(M68kException exc, int nr)
     setSupervisorMode(true);
     clearTraceFlags();
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K Q2: on the 68040 any exception cancels a pending trace
     // (WinUAE exception_check_trace: SPCFLAG_DOTRACE is unset, and the
     // <68040 internal-exception retention branch does not apply)
@@ -706,6 +717,7 @@ Moira::execException(M68kException exc, int nr)
         case M68kException::CHK:
         case M68kException::TRAPV:
 
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // Write stack frame
             // POM68K: divide-by-zero stacks the DIV instruction's own
             // address; CHK/TRAPV stack the next instruction
@@ -747,6 +759,7 @@ Moira::execException(M68kException exc, int nr)
 
             SYNC(4);
 
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // Write stack frame
             // POM68K Q2: the 68040 stacks a format $2 frame whose address
             // field is WinUAE's regs.trace_pc (Exception_build_stack_
@@ -841,6 +854,7 @@ Moira::execInterrupt(u8 level)
 
         case Core::C68000:
         {
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // NEOST : diag cycle-exact de la séquence d'exception (setPomExceptionDiag) —
             // horloge à chaque étape, pour le diff pas-à-pas avec WinUAE Exception_ce000.
             const bool excDiag = pomExceptionDiag;

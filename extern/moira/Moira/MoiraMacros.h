@@ -61,6 +61,7 @@
 #define CYCLES_IM(b0,b1,b2,w0,w1,w2,l0,l1,l2)     CYCLES_MBWL(Mode::IM,   b0,b1,b2,w0,w1,w2,l0,l1,l2)
 #define CYCLES_IP(b0,b1,b2,w0,w1,w2,l0,l1,l2)     CYCLES_MBWL(Mode::IP,   b0,b1,b2,w0,w1,w2,l0,l1,l2)
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // NEOST_IPLFETCH : reconnaissance IPL différée (port fidèle WinUAE ipl_fetch_next).
 // pollIpl() ≡ reg.ipl = ipl quand la feature est OFF (iplDelay4 == 0, défaut).
 // Edit dans le sous-module → cf. docs/MOIRA_WINUAE_CONVERGENCE.md (clobbérable).

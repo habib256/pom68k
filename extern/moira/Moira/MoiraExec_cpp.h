@@ -62,6 +62,7 @@ Moira::execLineF(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K O4 slice 4 (WinUAE-arbitrated, D6-remainder): on a
     // coprocessor-less 020/030 the USER-mode cpSAVE/cpRESTORE windows of
     // every coprocessor id take a privilege violation BEFORE the Line-F
@@ -932,6 +933,7 @@ Moira::execBra(u16 opcode)
         throw AddressError(makeFrame<AE_PROG|AE_SET_CB3>(newpc, U32_SUB(newpc, 4)));
     }
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K O4 slice 4: 68030 odd instruction-flow target — WinUAE's
     // mmu030 handlers raise vector 3 with a format $B frame
     // (exception3_read_prefetch*); see execAddressError030.
@@ -945,6 +947,7 @@ Moira::execBra(u16 opcode)
             FINALIZE
             return;
         }
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K Q2: 68040 — vector 3, format $2, stacked PC = the branch
         // instruction (WinUAE op_60xx_31: exception3_read_prefetch with
         // the pc untouched)
@@ -974,6 +977,7 @@ Moira::execBcc(u16 opcode)
 
     SYNC(2);
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K Q2: the 68040 raises the odd-displacement address error
     // BEFORE evaluating the condition (WinUAE op_6xxx_31: the `src & 1`
     // check precedes cctrue, even on the not-taken path). The second
@@ -1012,6 +1016,7 @@ Moira::execBcc(u16 opcode)
             throw AddressError(makeFrame<AE_PROG|AE_SET_CB3>(newpc, U32_SUB(newpc, 4)));
         }
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K O4 slice 4: 68030 odd instruction-flow target — WinUAE's
     // mmu030 handlers raise vector 3 with a format $B frame
     // (exception3_read_prefetch*); see execAddressError030.
@@ -1532,6 +1537,7 @@ Moira::execBsr(u16 opcode)
             throw AddressError(makeFrame(newpc));
         }
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K O4 slice 4: 68030 odd instruction-flow target — WinUAE's
     // mmu030 handlers raise vector 3 with a format $B frame
     // (exception3_read_prefetch*); see execAddressError030.
@@ -1547,6 +1553,7 @@ Moira::execBsr(u16 opcode)
                 FINALIZE
                 return;
             }
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // POM68K Q2: 68040 BSR checks BEFORE pushing (WinUAE
             // op_6100_31: exception3_read_prefetch precedes
             // m68k_do_bsr) — A7 is untouched, stacked PC = the BSR.
@@ -1681,6 +1688,7 @@ Moira::execCas(u16 opcode)
     // the 68030 (SSW RM bit, RWM-only TT matching, write-probed ATC)
     if constexpr (C == Core::C68020) {
         if (cpuModel == Model::M68030) [[unlikely]] mmuRmw = true;
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K Q3: 68040 locked RMW — reads translate as writes and
         // faults carry SSW.LK (WinUAE uae_mmu_get_lrmw)
         if (cpuModel >= Model::M68EC040) [[unlikely]] mmu040Lrmw = true;
@@ -1865,6 +1873,7 @@ Moira::execChk(u16 opcode)
 
         if (cpuModel >= Model::M68EC040) {
 
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // POM68K Q2: 68040 CHK — C computed from the out-of-range
             // shape, N = value<0, Z/V/X untouched (WinUAE
             // setchkundefinedflags, 68040 row; applied trap or no trap)
@@ -1879,6 +1888,7 @@ Moira::execChk(u16 opcode)
 
         } else {
 
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // POM68K O4 slice 4: WinUAE-arbitrated 020/030 undefined CCR —
             // N/Z always refreshed; V/C from the bound-value subtraction when
             // the value is out of range (setchkundefinedflags, hardware-
@@ -2472,6 +2482,7 @@ Moira::execDbcc(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K Q2: 68040 — the odd-displacement check precedes both the
     // condition test and the Dn decrement (WinUAE op_51c8_31: the fault
     // path returns before either); stacked PC = the DBcc instruction.
@@ -2506,6 +2517,7 @@ Moira::execDbcc(u16 opcode)
                 throw AddressError(makeFrame<AE_PROG|AE_SET_CB3>(newpc, U32_SUB(newpc, 4)));
             }
 
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K O4 slice 4: 68030 odd instruction-flow target — WinUAE's
     // mmu030 handlers raise vector 3 with a format $B frame
     // (exception3_read_prefetch*); see execAddressError030.
@@ -2803,6 +2815,7 @@ Moira::execJmp(u16 opcode)
         throw AddressError(makeFrame<AE_PROG|AE_SET_CB3>(ea, U32_SUB(ea, 4)));
     }
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K O4 slice 4: 68030 odd instruction-flow target — WinUAE's
     // mmu030 handlers raise vector 3 with a format $B frame; see
     // execAddressError030.
@@ -2814,6 +2827,7 @@ Moira::execJmp(u16 opcode)
             FINALIZE
             return;
         }
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K Q2: 68040 JMP — stacked PC = instruction + 2 for the
         // plain EA modes (WinUAE op_4edx_31: m68k_incpci(2) before the
         // fault, the d16/abs words are read without advancing the pc);
@@ -3083,6 +3097,7 @@ Moira::execMove2(u16 opcode)
             reg.sr.v = 0;
             reg.sr.c = 0;
 
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
             // destination write (gencpu order) — a last-write fault stacks
             // the updated CCR
@@ -3117,6 +3132,7 @@ Moira::execMove2(u16 opcode)
             reg.sr.v = 0;
             reg.sr.c = 0;
 
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
             // destination write (gencpu order) — a last-write fault stacks
             // the updated CCR
@@ -3140,6 +3156,7 @@ Moira::execMove2(u16 opcode)
 
             POLL_IPL;
 
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
             // destination write (gencpu order) — a last-write fault stacks
             // the updated CCR
@@ -3174,6 +3191,7 @@ Moira::execMove2(u16 opcode)
             reg.sr.v = 0;
             reg.sr.c = 0;
 
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
             // destination write (gencpu order) — a last-write fault stacks
             // the updated CCR
@@ -3237,6 +3255,7 @@ Moira::execMove3(u16 opcode)
         reg.sr.v = 0;
         reg.sr.c = 0;
 
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
         // destination write (gencpu order) — a last-write fault stacks
         // the updated CCR
@@ -3261,6 +3280,7 @@ Moira::execMove3(u16 opcode)
 
             POLL_IPL;
 
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
             // destination write (gencpu order) — a last-write fault stacks
             // the updated CCR
@@ -3295,6 +3315,7 @@ Moira::execMove3(u16 opcode)
             reg.sr.v = 0;
             reg.sr.c = 0;
 
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
             // destination write (gencpu order) — a last-write fault stacks
             // the updated CCR
@@ -3383,6 +3404,7 @@ Moira::execMove4(u16 opcode)
         if (format == 2) { SYNC(2); throw AddressError(makeFrame<flags2>(ea, reg.pc + 2, getSR(), ird)); }
     }
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K O4 slice 3: 68030 — An is decremented before the write
     // (gencpu Apdi order), the write is the instruction's last (format $A
     // fault frame, updated CCR), and longs go out high word first
@@ -3457,6 +3479,7 @@ Moira::execMove5(u16 opcode)
         reg.sr.v = 0;
         reg.sr.c = 0;
 
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
         // destination write (gencpu order) — a last-write fault stacks
         // the updated CCR
@@ -3482,6 +3505,7 @@ Moira::execMove5(u16 opcode)
         reg.sr.v = 0;
         reg.sr.c = 0;
 
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
         // destination write (gencpu order) — a last-write fault stacks
         // the updated CCR
@@ -3532,6 +3556,7 @@ Moira::execMove6(u16 opcode)
         reg.sr.v = 0;
         reg.sr.c = 0;
 
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
         // destination write (gencpu order) — a last-write fault stacks
         // the updated CCR
@@ -3557,6 +3582,7 @@ Moira::execMove6(u16 opcode)
         reg.sr.v = 0;
         reg.sr.c = 0;
 
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
         // destination write (gencpu order) — a last-write fault stacks
         // the updated CCR
@@ -3605,6 +3631,7 @@ Moira::execMove7(u16 opcode)
     reg.sr.v = 0;
     reg.sr.c = 0;
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
     // destination write (gencpu order) — a last-write fault stacks
     // the updated CCR
@@ -3710,6 +3737,7 @@ Moira::execMove8(u16 opcode)
         reg.sr.v = 0;
         reg.sr.c = 0;
 
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
         // destination write (gencpu order) — a last-write fault stacks
         // the updated CCR
@@ -3805,6 +3833,7 @@ Moira::execMovecRcRx(u16 opcode)
 
         auto rc = arg & 0xFFF;
 
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K Q2: legality is model-dependent (WinUAE newcpu_common.c
         // movec_illg): the 040 gains $003-$007/$805-$807 and loses CAAR
         // ($802); 020/030 keep the historic set.
@@ -3834,6 +3863,7 @@ Moira::execMovecRcRx(u16 opcode)
         case 0x803: reg.r[dst] = reg.sr.m ? getSP() : getMSP(); break;
         case 0x804: reg.r[dst] = reg.sr.m ? getISP() : getSP(); break;
 
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K Q2: 68040 MMU registers (M68040UM § 3.1.1; WinUAE
         // m68k_movec2 68040 rows). Only reachable on 040 models — the
         // legality gate above rejects them on 010/020/030.
@@ -3909,6 +3939,7 @@ Moira::execMovecRxRc(u16 opcode)
         case 0x803: reg.sr.m ? setSP(val) : setMSP(val); break;
         case 0x804: reg.sr.m ? setISP(val) : setSP(val); break;
 
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K Q2: 68040 MMU registers — setter masks in Moira.h mirror
         // WinUAE m68k_move2c (TC & $C000, ITT/DTT & $FFFFE364, URP/SRP/
         // MMUSR full 32 bits)
@@ -3942,6 +3973,7 @@ Moira::execMovemEaRg(u16 opcode)
 
     int cnt = 0;
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K O4 slice 3: WinUAE MOVEM restart bookkeeping — the MOVEM1
     // flag and the transfer counter (mmuState[0]) land in $B fault
     // frames; the EA is logged (state_store_mmu030) but the transfers
@@ -3956,6 +3988,7 @@ Moira::execMovemEaRg(u16 opcode)
             logSave = mmuLogging;
             mmuLogging = false;
         }
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K Q3: 68040 MOVEM restart latch (WinUAE mmu040_movem) —
         // a faulted MOVEM resumes from the saved EA after the handler's
         // RTE re-arms the latch (SSW.CM); a fault stacks EA = saved EA
@@ -4045,6 +4078,7 @@ Moira::execMovemRgEa(u16 opcode)
 
     int cnt = 0;
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K O4 slice 3: WinUAE MOVEM store bookkeeping — transfers are
     // unlogged with the value in the data buffer, the MOVEM1 flag and the
     // transfer counter land in $B fault frames, and the FINAL transfer is
@@ -4068,6 +4102,7 @@ Moira::execMovemRgEa(u16 opcode)
         u32 ea = readA(dst);
         const u32 initial = ea;
 
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K Q3: 68040 restart latch — the saved EA is the BASE
         // (WinUAE op_48e0_31: decrements happen per transfer); An is
         // only written at the end, and the base-in-list value is
@@ -4095,6 +4130,7 @@ Moira::execMovemRgEa(u16 opcode)
 
             // Write register contents into memory
             ea -= S;
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // POM68K (two-oracle arbitrated 2026-07-15): on 020+, when
             // the base register is part of the list, the value stored is
             // the INITIAL value decremented by one operation size
@@ -4105,7 +4141,7 @@ Moira::execMovemRgEa(u16 opcode)
 
                 u32 value = (i == dst + 8) ? U32_SUB(initial, S) : reg.r[i];
                 mmuDataBuffer = value;
-                if (cnt == total - 1) {         // last write (gencpu)
+                if (cnt == total - 1) {         // [D] @ Hatari e77819f7: last write (gencpu)
                     writeA(dst, ea);
                     mmuState[1] |= 0x0100;      // LASTWRITE
                     mmuState[1] &= u16(~0x4000);
@@ -4115,6 +4151,7 @@ Moira::execMovemRgEa(u16 opcode)
 
             } else if (m040) {
 
+                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                 // POM68K Q3: no mid-loop An update; base-in-list stores
                 // initial - S (WinUAE `areg - predec`, An untouched)
                 u32 value = (i == dst + 8) ? U32_SUB(initial, S) : reg.r[i];
@@ -4166,7 +4203,7 @@ Moira::execMovemRgEa(u16 opcode)
             if (mmu030) {
 
                 mmuDataBuffer = reg.r[i];
-                if (cnt == total - 1) {         // last write (gencpu)
+                if (cnt == total - 1) {         // [D] @ Hatari e77819f7: last write (gencpu)
                     mmuState[1] |= 0x0100;      // LASTWRITE
                     mmuState[1] &= u16(~0x4000);
                     mmuLastWritePc = reg.pc;
@@ -4335,6 +4372,7 @@ Moira::execMoves(u16 opcode)
         // Make the DFC register visible on the FC pins
         fcSource = 2;
 
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K Q3: 68040 MOVES — DFC drives the translation (super =
         // dfc&4, data space), the store is the last write, and a fault
         // mangles the SSW fc (WinUAE ismoves)
@@ -4346,6 +4384,7 @@ Moira::execMoves(u16 opcode)
             }
         }
 
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K O4 slice 3: MOVES Rg,Ea is the instruction's last write
         // on the 68030 (gencpu genastore_fc → gen_set_fault_pc), and the
         // pending-write buffer holds the FULL source register (gencpu
@@ -4423,6 +4462,7 @@ Moira::execMoves(u16 opcode)
         // Make the SFC register visible on the FC pins
         fcSource = 1;
 
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K Q3: 68040 MOVES — SFC drives the translation and the
         // SSW fc mangling on a fault (WinUAE ismoves / sfc_get_*)
         if constexpr (C == Core::C68020) {
@@ -5097,12 +5137,14 @@ Moira::execDivsMoira(u16 opcode, bool *divByZero)
 
             if (cpuModel >= Model::M68EC040) {
 
+                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                 // POM68K Q2: 68040 div-zero — C=0 only, N/Z/V untouched
                 // (WinUAE divbyzero_special, 68040 row)
                 reg.sr.c = 0;
 
             } else {
 
+                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                 // POM68K O4 slice 4: WinUAE-arbitrated 020/030 div-zero CCR
                 // (divbyzero_special: signed clears CZNV then sets Z)
                 reg.sr.v = 0;
@@ -5272,12 +5314,14 @@ Moira::execDivuMoira(u16 opcode, bool *divByZero)
 
             if (cpuModel >= Model::M68EC040) {
 
+                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                 // POM68K Q2: 68040 div-zero — C=0 only, N/Z/V untouched
                 // (WinUAE divbyzero_special, 68040 row)
                 reg.sr.c = 0;
 
             } else {
 
+                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                 // POM68K O4 slice 4: WinUAE-arbitrated 020/030 div-zero CCR
                 // (divbyzero_special: unsigned takes N/Z from the dividend's
                 // HIGH word and sets V)
@@ -5422,6 +5466,7 @@ Moira::execDivlMoira(u16 opcode, bool *divByZero)
 
         if (cpuModel >= Model::M68EC040) {
 
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // POM68K Q2: 68040 DIVL div-zero — C=0 only, N/Z/V untouched
             // (WinUAE divsl_divbyzero / divul_divbyzero, 68040 rows)
             reg.sr.c = 0;
@@ -5466,6 +5511,7 @@ Moira::execDivlMoira(u16 opcode, bool *divByZero)
 
             } else if (cpuModel >= Model::M68EC040) {
 
+                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                 // POM68K Q2: 68040 — V=1, C=0, N/Z untouched
                 // (WinUAE divul_overflow, 68040 row)
                 reg.sr.c = 0;
@@ -5480,6 +5526,7 @@ Moira::execDivlMoira(u16 opcode, bool *divByZero)
         {
             auto result = divlsMoira<Word>(dividend, divisor);
 
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // POM68K O4 slice 4: $80000000 / -1 overflows — registers stay
             // unchanged, undefined N/Z per WinUAE divsl_overflow
             if(!reg.sr.v) {
@@ -5489,6 +5536,7 @@ Moira::execDivlMoira(u16 opcode, bool *divByZero)
 
             } else if (cpuModel >= Model::M68EC040) {
 
+                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                 // POM68K Q2: 68040 — V=1, C=0, N/Z untouched
                 // (WinUAE divsl_overflow, 68040 row)
                 reg.sr.c = 0;
@@ -5510,6 +5558,7 @@ Moira::execDivlMoira(u16 opcode, bool *divByZero)
 
             } else if (cpuModel >= Model::M68EC040) {
 
+                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                 // POM68K Q2: 68040 — V=1, C=0, N/Z untouched
                 // (WinUAE divsl_overflow, 68040 row)
                 reg.sr.c = 0;
@@ -5916,6 +5965,7 @@ Moira::execRtd(u16 opcode)
         throw AddressError(makeFrame<AE_PROG>(newpc));
     }
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K O4 slice 4: 68030 odd instruction-flow target — WinUAE's
     // mmu030 handlers raise vector 3 with a format $B frame; see
     // execAddressError030.
@@ -5930,6 +5980,7 @@ Moira::execRtd(u16 opcode)
             FINALIZE
             return;
         }
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K Q2: 68040 RTD restores A7 completely before faulting
         // (WinUAE op_4e74_31: a7 -= 4 + offs); stacked PC = the RTD.
         if (cpuModel >= Model::M68EC040 && (newpc & 1)) {
@@ -6106,6 +6157,7 @@ Moira::execRte(u16 opcode)
 
                 } else if (format == 0b011 && cpuModel >= Model::M68EC040) {
 
+                    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                     // POM68K Q2: FP post-instruction frame (12 bytes) —
                     // WinUAE op_4e73_31 frame 0x3: offset + 4
                     newsr = (u16)pop<C, Word>();
@@ -6116,6 +6168,7 @@ Moira::execRte(u16 opcode)
 
                 } else if (format == 0b100 && cpuModel >= Model::M68EC040) {
 
+                    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                     // POM68K Q2: 68040 FP-disabled / unimplemented frame
                     // (16 bytes) — WinUAE frame 0x4: offset + 8
                     newsr = (u16)pop<C, Word>();
@@ -6127,6 +6180,7 @@ Moira::execRte(u16 opcode)
 
                 } else if (format == 0b111 && cpuModel >= Model::M68EC040) {
 
+                    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                     // POM68K Q2: 68040 access-error frame (60 bytes) —
                     // WinUAE op_4e73_31 frame 0x7 + m68k_do_rte_mmu040
                     // (cpummu.c:1621-1642): SSW.CT copies the frame's raw
@@ -6146,6 +6200,7 @@ Moira::execRte(u16 opcode)
                         u32 dst = base + 60;
                         writeM<C, M, Word>(dst + 0, readM<C, M, Word>(base + 0));
                         writeM<C, M, Long>(dst + 2, readM<C, M, Long>(base + 2));
+                        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                         // the frame word at +6 is skipped (WinUAE comment)
                         writeM<C, M, Long>(dst + 8, readM<C, M, Long>(base + 8));
                     }
@@ -6260,6 +6315,7 @@ Moira::execRte(u16 opcode)
                     u32 packedState = pop<C, Long>();
                     rte030Fixup[1] = u8(packedState >> 8);
 
+                    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                     // POM68K O6.9: the handler cleared the SSW DF bit
                     // (bit 9 marker still set) — the faulted data cycle
                     // is done as far as software is concerned. Arm the
@@ -6310,6 +6366,7 @@ Moira::execRte(u16 opcode)
 
     if (rteFpuMid) fpuCompleteBusy(true);
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Undo the live (An)+/-(An) adjustment encoded in a format-$B frame
     // before the faulted instruction is freshly decoded. WinUAE performs
     // the same inverse mmu030fixupmod while restoring WB2/WB3 state; without
@@ -6326,6 +6383,7 @@ Moira::execRte(u16 opcode)
         }
     }
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // A 68030 format-$A frame represents a fault on the instruction's last
     // write. RTE does not rerun the architectural instruction; it completes
     // the pending bus cycle from the frame's data-output buffer, unless the
@@ -6361,6 +6419,7 @@ Moira::execRte(u16 opcode)
         throw AddressError(makeFrame<AE_PROG|AE_SET_CB3>(newpc, U32_SUB(newpc, 4)));
     }
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K O4 slice 4: 68030 odd instruction-flow target — WinUAE's
     // mmu030 handlers raise vector 3 with a format $B frame; see
     // execAddressError030.
@@ -6377,6 +6436,7 @@ Moira::execRte(u16 opcode)
             FINALIZE
             return;
         }
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K Q2: 68040 RTE — the new SR is fully applied (setSR
         // above) and A7 stays popped (WinUAE op_4e73_31); the frame's
         // SR field carries the NEW SR (the Exception_normal RTR/RTE
@@ -6490,6 +6550,7 @@ Moira::execRtr(u16 opcode)
         throw AddressError(makeFrame<AE_PROG|AE_SET_CB3>(newpc, U32_SUB(newpc, 4)));
     }
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K O4 slice 4: 68030 odd instruction-flow target — WinUAE's
     // mmu030 handlers raise vector 3 with a format $B frame; see
     // execAddressError030.
@@ -6501,6 +6562,7 @@ Moira::execRtr(u16 opcode)
             FINALIZE
             return;
         }
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K Q2: 68040 RTR restores A7 (WinUAE op_4e77_31: a7 -= 6)
         // with the popped CCR applied; stacked PC = the RTR. The frame
         // carries the CCR-updated SR (Exception_mmu path — the
@@ -6544,6 +6606,7 @@ Moira::execRts(u16 opcode)
         throw AddressError(makeFrame<AE_PROG|AE_SET_CB3>(newpc, U32_SUB(newpc, 4)));
     }
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K O4 slice 4: 68030 odd instruction-flow target — WinUAE's
     // mmu030 handlers raise vector 3 with a format $B frame; see
     // execAddressError030.
@@ -6555,6 +6618,7 @@ Moira::execRts(u16 opcode)
             FINALIZE
             return;
         }
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K Q2: 68040 RTS re-pushes — A7 is restored to its
         // pre-RTS value (WinUAE op_4e75_31: a7 -= 4 after the pop);
         // stacked PC = the RTS instruction.
@@ -6981,6 +7045,7 @@ Moira::execUnpkPd(u16 opcode)
     FINALIZE
 }
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // POM68K Q2: CINV/CPUSH execute on the 040 models (M68040UM § 4.5/4.6).
 // Since M2 (docs/CACHE_040.md) they act on data-bearing architectural
 // caches when armed (POM68K_040_DCACHE); CPUSH writes dirty longwords
@@ -7033,6 +7098,7 @@ Moira::execCpush(u16 opcode)
     FINALIZE
 }
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // POM68K Q2: MOVE16 (M68040UM § MOVE16), modelled on the WinUAE mmu040
 // handlers (generated/cpuemu_31.c op_f6xx + cpummu.c mmu_get/put_move16):
 // both line addresses are masked & ~15, the absolute-long operand is

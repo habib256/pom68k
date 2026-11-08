@@ -681,12 +681,14 @@ compilation et dans la documentation.
   l'interpréteur.** `mmu040InstrStart`, `mmu040Read` et `mmu040Write`
   portent en ligne fenêtre, DTLB, sonde de timing et publication de
   cache ; un interpréteur seul doit pouvoir se construire sans.
-- [ ] **Porter les grades de preuve dans les commentaires du cœur.** Les
-  patches de `extern/moira/Moira/` citent leur tranche (`POM68K O4…`) et
-  leur oracle, pas un grade ni une révision : les règles tranchées en
-  › Socle doivent se lire `[B]`, `[D] … @ révision` ou `[F]` à la tête du
-  commentaire, pour qu'un portage ne « réaligne » pas une divergence
-  voulue.
+- [ ] **Finir les grades de preuve dans les commentaires du cœur.** La
+  moitié WinUAE est faite et tenue par `core_grades_test` (2026-11-08 :
+  341 blocs `[D] … @ Hatari e77819f7`, 74 numéros de ligne relus dans la
+  copie de NeoST `f0736b24` reciblés). Restent : les citations de manuel
+  à porter en `[B]` en tête (≈ 80 blocs : MC68030UM, M68040UM, MC6888x),
+  les autres sources de grade D sans révision (SingleStepTests ≈ 60,
+  Clock Signal, Musashi), et les règles sans source à étiqueter `[F]` avec
+  ce qui les trancherait. Étendre alors le gate à ces sources.
 - [ ] **Choisir un seul softfloat 80 bits et le rendre réentrant.**
   `extern/softfloat` ici, un second portage de la même lignée dans
   `src/io/SoftFloat*.hpp` chez NeoST ; `moiraFpuFs` est un état statique
