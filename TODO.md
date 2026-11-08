@@ -659,14 +659,16 @@ compilation et dans la documentation.
 
 - [ ] **Lever les points « unverified » du contrat de surface.**
   `extern/moira/POM68K_SURFACE.md` décrit ce que le cœur expose et ce que
-  l'hôte lui doit ; neuf affirmations y sont lues dans le code sans gate :
-  ce que rapporte un `extBusError` levé pendant la lecture d'un
-  descripteur de table 030, `setFPUModel` sur 68000/68010, la valeur à
-  rendre sur une lecture CIR FC = 7 d'un FPU présent, l'audit complet de
-  l'état global de softfloat, les chemins 68EC030/68EC040, l'identité
-  d'horloge d'un restore sous i-cache 030 armé, et l'appel de
-  `Engine::flushAll()` à la restauration. Chacune devient un gate ou une
-  phrase corrigée.
+  l'hôte lui doit. Trois affirmations réglées le 2026-11-08 :
+  `setFPUModel` sur 68000/68010 (cellule de `moira_rules_test`), l'audit
+  complet de l'état global de softfloat (`nm` de la bibliothèque), et
+  l'invalidation du JIT à la restauration (relue dans les quatorze
+  cartes). Restent : ce que rapporte un `extBusError` levé pendant la
+  lecture d'un descripteur de table 030, la valeur à rendre sur une
+  lecture CIR FC = 7 d'un FPU présent, le chemin 68EC030 sans corpus,
+  les séquences qui dépendent de la continuation, la joignabilité des
+  champs omis du visiteur, et la DMA son côté Atari (à NeoST). Chacune
+  devient un gate ou une phrase corrigée.
 - [ ] **Déplacer la sérialisation du CPU dans un visiteur côté Moira,
   avec un aller-retour sur Moira nu.** Le visiteur vit dans
   `src/MoiraSnapshot.h` et n'est prouvé que par des bancs Macintosh ;

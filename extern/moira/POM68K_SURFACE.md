@@ -220,7 +220,7 @@ error. `CALLM`/`RTM` are available on `AV::M68020` only.
 | Setter | Default | Effect |
 |---|---|---|
 | `setModel(Model)` / `setModel(cpu, dasm)` | `M68000` | rebuilds the 65 536-entry jump tables (`createJumpTable`), masks `reg.cacr`, clears `LOOPING`. Call before `reset()`. |
-| `setFPUModel(FPUModel)` | `NONE` | rebuilds jump tables, `fpuResetState()`. FPU handlers are `AVAILABILITY(Core::C68020)`; attaching one to a 68000/68010 model is unverified. |
+| `setFPUModel(FPUModel)` | `NONE` | rebuilds jump tables, `fpuResetState()`. FPU handlers are `AVAILABILITY(Core::C68020)`: attached to a 68000/68010 model a 6888x is never reached — every $Fxxx stays the Line 1111 trap, vector 11, with the 68000's 6-byte or the 68010's format $0 frame (`moira_rules_test` § Line-F on a 68000/68010, with a 68020 control row that does execute the FMOVE). |
 | `setIplDelay(i64 d4, i64 d2)` | 0, 0 (off) | NeoST deferred IPL recognition (WinUAE `ipl_fetch_next` port, § 4). Never set by POM68K. A JIT backend must refuse when on (`pomJitSimpleIpl`). |
 | `irqMode` (protected member, no setter) | `IrqMode::AUTO` | `USER` routes through `readIrqUserVector`; `SPURIOUS` → 24; `UNINITIALIZED` → 15. |
 | `setMmu040AtcArmed(bool)` | true | false = walk per access (differential mode); also makes `pomJitProbeCode` refuse. |
@@ -466,8 +466,13 @@ moiraFpuFs` shared by every `Moira` instance; every instruction re-arms it
 from FPCR (`fpuSetMode`), which makes sharing safe on one thread only.
 `softfloat.c` additionally has mutable globals (`floatx80_internal_sign`,
 `_exp`, `_sig`, `_exp0`, `_sig0`, `_sig1`, `_precision`, `_mode`). Two CPU
-instances executing FPU code on different threads race; a full audit of
-softfloat's global state is unverified.
+instances executing FPU code on different threads race. That list is the
+complete one: the writable data and BSS symbols of the built
+`libsoftfloat68k.a` are exactly those eight (`nm`, 2026-11-08 — the
+rounding/exception state travels by pointer in `float_status`). The core
+library adds two: `moiraFpuFs` (above) and the function-local histogram in
+`mmu040AtcFill`, shared by every instance but touched only while
+`setPomCmStats040(true)` arms the diagnostic.
 
 ### 6.2 6888x vs integrated 040
 
@@ -591,9 +596,14 @@ debugger requests are host state and are neither saved nor overwritten); sets
 `pomFlushAtcs()` (protected, `Moira.h`) runs `mmuAtcFlushAll()` and
 `mmu040AtcFlushAll()` — both reach `pomJitMapMoved()`, which also empties the
 JIT data TLBs — and invalidates both 040 caches. The generation bump makes
-the engine re-prove its blocks; whether a POM68K restore also calls
-`jit::Engine::flushAll()` (RAM is replaced under translated blocks) was not
-traced here — unverified. A port with a block cache must drop it on load.
+the engine re-prove its blocks. RAM, replaced under translated blocks, is
+covered on the host side: no POM68K restore calls `jit::Engine::flushAll()`
+directly, but every board's `visit()` load branch raises the code guard's
+`JitGuard::invalidate()` (all fourteen `*Memory` classes, directly or through
+their `mapChanged()`), which the engine treats as `mustFlush` — every block
+dropped at its next service — and `visit()` in `src/MoiraSnapshot.h` disarms
+the window and flushes both ATCs. A port with a block cache must do the
+equivalent on load.
 
 `readBuffer`/`writeBuffer` are 68010 format-$8 state; every store goes
 through `pomSetRB<C>`/`pomSetWB<C>`, which compile to nothing off

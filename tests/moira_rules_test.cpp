@@ -599,6 +599,57 @@ void ptestFlagsInvalidAtTheLimit()
 
 } // namespace
 
+// POM68K_SURFACE.md § 3, setFPUModel: attaching a 6888x to a 68000 or a
+// 68010 must not reach the FPU handlers (they are AVAILABILITY(C68020)).
+// [B] M68000 Family Programmer's Reference Manual, exception vectors: on
+// these processors every $Fxxx word is the Line 1111 emulator, vector 11, with
+// the instruction's own address stacked — a 6-byte frame on the 68000, the
+// 8-byte format $0 frame (vector offset $02C) on the 68010.
+void fpuIgnoredOn68000And68010()
+{
+    struct Row { moira::Model model; const char* name; int frameBytes; };
+    static const Row rows[] = {
+        { moira::Model::M68000, "68000", 6 },
+        { moira::Model::M68010, "68010", 8 },
+    };
+    for (const Row& r : rows) {
+        for (moira::FPUModel fpu : { moira::FPUModel::NONE, moira::FPUModel::M68881,
+                                     moira::FPUModel::M68882 }) {
+            TestCpu c(r.model);
+            c.setFPUModel(fpu);
+            p32(c, 11 * 4, kHandler);
+            p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
+            stage(c, 0xf200, 0);                // FMOVE FP0,FP0 on a 6888x
+            p16(c, kCode + 2, 0x0000);
+            c.setIRC(0x0000);
+            const uint32_t sp = c.getSP();
+            c.execute();
+            const bool fmtOk = r.model == moira::Model::M68000 ||
+                               g16(c, c.getSP() + 6) == 0x002c;
+            CHECK(c.getPC0() == kHandler && sp - c.getSP() == uint32_t(r.frameBytes) &&
+                  g32(c, c.getSP() + 2) == kCode && fmtOk,
+                  "%s + FPU model %d: $F200 took PC0=%08X (want %08X, Line-F), "
+                  "%u frame bytes (want %d), stacked PC %08X (want %08X)%s",
+                  r.name, int(fpu), c.getPC0(), kHandler,
+                  unsigned(sp - c.getSP()), r.frameBytes,
+                  g32(c, c.getSP() + 2), kCode, fmtOk ? "" : ", format word not $002C");
+        }
+    }
+    // Control: the same staging on a 68020 with a 68881 does reach the FPU —
+    // FMOVE FP0,FP0 retires and the next instruction is the NOP after it —
+    // so the rows above are not a harness that can never execute F-line.
+    TestCpu c(moira::Model::M68020);
+    c.setFPUModel(moira::FPUModel::M68881);
+    p32(c, 11 * 4, kHandler);
+    stage(c, 0xf200, 0);
+    p16(c, kCode + 2, 0x0000);
+    c.setIRC(0x0000);
+    c.execute();
+    CHECK(c.getPC0() == kCode + 4,
+          "control: 68020 + 68881 $F200 0000 left PC0=%08X (want %08X, retired)",
+          c.getPC0(), kCode + 4);
+}
+
 int main()
 {
     divsOfIntMin();
@@ -613,6 +664,7 @@ int main()
     ttrTableFollowsRegisters();
     clrReadsOnlyOn68000();
     ptestFlagsInvalidAtTheLimit();
+    fpuIgnoredOn68000And68010();
 
     if (failures) {
         std::printf("[moira_rules_test] FAIL: %d check(s)\n", failures);
@@ -623,6 +675,6 @@ int main()
                 "68040 CHK2/CMP2 flags, 68040 FPU trap priority, 68LC040 F-line "
                 "shapes, five-bit FBcc predicate, 68040 FPU store fault, 68040 TTR "
                 "table, CLR without its read from the 68020 up, PTEST at its level "
-                "limit\n");
+                "limit, Line-F on a 68000/68010 with a 6888x attached\n");
     return 0;
 }

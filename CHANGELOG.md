@@ -508,6 +508,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-08 (third)** — [Three "unverified" lines of the surface contract settled: FPU on a 68000, softfloat's globals, JIT invalidation on restore](#2026-11-08-surface-three)
 - **2026-11-08 (second)** — [Every WinUAE citation in the core says `[D] … @ Hatari e77819f7`; it had been citing two revisions](#2026-11-08-core-grades)
 - **2026-11-08** — [The core says what each model executes; the unbound PACK 4 escape hatch is gone](#2026-11-08-core-dead-code)
 - **2026-11-07 (sixteenth)** — [The Quadra 605 recipe reaches the Quadra 630 and Quadra 700/900/950; the Centris refuses it — its PIC1654S ADB outcome depends on where the slices fall](#2026-11-07-040-siblings-deadline)
@@ -1227,6 +1228,40 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-08-surface-three"></a>
+## 2026-11-08 (third) — Three "unverified" lines of the surface contract settled: FPU on a 68000, softfloat's globals, JIT invalidation on restore
+
+`POM68K_SURFACE.md` is what a host porting the core reads first; nine of
+its statements were marked *unverified* — read in the code, held by
+nothing. Three are settled, each by the cheapest proof that is still a
+proof:
+
+- **`setFPUModel` on a 68000/68010** — a `moira_rules_test` cell: with no
+  FPU, a 68881 or a 68882 attached, `$F200 0000` on a 68000 or a 68010
+  takes the Line 1111 trap (vector 11) with the 68000's 6-byte frame or the
+  68010's format $0 (`$002C`) and the instruction's own address stacked.
+  The control row matters as much: the same staging on a 68020 with a
+  68881 retires the FMOVE, so the cell is not a harness that can never
+  reach the FPU.
+- **softfloat's global state** — not audited by reading but by the
+  linker's view: the writable data/BSS symbols of the built
+  `libsoftfloat68k.a` are exactly the eight `floatx80_internal_*` the
+  contract already listed (rounding and exceptions travel in
+  `float_status`). The same `nm` on the core library found one it did not
+  list: the function-local CM histogram in `mmu040AtcFill`, shared by every
+  instance but only while `setPomCmStats040(true)` arms the diagnostic.
+- **JIT invalidation on restore** — no POM68K restore calls
+  `jit::Engine::flushAll()`; every one of the fourteen board `visit()`
+  load branches raises `JitGuard::invalidate()` (directly or through its
+  `mapChanged()`), which the engine treats as `mustFlush`, and the CPU
+  visitor disarms the window and flushes both ATCs. The sentence now says
+  so, with the obligation it implies for a port with a block cache.
+
+Six remain, listed in `TODO.md` § Moteur › Surface; one of them (DMA sound
+on the ST) belongs to NeoST.
+
+**Held by** `moira_rules_test`, `docs_test`.
 
 <a id="2026-11-08-core-grades"></a>
 ## 2026-11-08 (second) — Every WinUAE citation in the core now says `[D] … @ Hatari e77819f7`; it had been citing two revisions without knowing it
