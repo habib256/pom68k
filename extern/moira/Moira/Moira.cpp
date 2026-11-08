@@ -900,11 +900,11 @@ Moira::setSR(u16 val)
     if (cpuModel >= Model::M68EC040 && (reg.sr.t1 || reg.sr.t0))
         trace040Pending = true;
 
-    // POM68K: arm a one-instruction IRQ-recognition delay when an SR-write
-    // lowers the mask (RTE / MOVE-to-SR / etc.) — the 68k does not sample
-    // interrupts until after the instruction following a mask change
-    // (M68000 PRM). Guarantees forward progress and breaks the SimCity-2000
-    // redraw interrupt livelock (POM68K_VENDOR.md § IRQ delay). 68020+ only.
+    // [F] POM68K: empirical IRQ-recognition delay after an SR write lowers
+    // the mask, applied to 68020+ (POM68K_VENDOR.md § IRQ delay). The
+    // original SimCity-2000 symptom was later traced to Egret; no manual
+    // establishes this depth. Settled by: a hardware IPL-recognition trace
+    // after a mask change, with the CPU/machine clock ratio calibrated.
     if (cpuModel >= Model::M68020 && ipl < reg.sr.ipl) irqDelay = 2;
 
     reg.sr.ipl = ipl;
@@ -1268,6 +1268,7 @@ Moira::setFC()
 {
     if constexpr (MOIRA_EMULATE_FC) {
         
+        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
         // POM68K: operand accesses always drive FC=data — SingleStepTests
         // address-error frames want FC=101 even for PC-relative reads
         fcl = FC::USER_DATA;

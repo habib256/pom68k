@@ -259,6 +259,14 @@ JIT translations directly, via `jitMapChanged()` ([§4](#4-jit--the-second-execu
   version, machine profile, ROM checksum and RAM size *before* touching a
   byte of state: a half-applied snapshot is worse than none. Unknown
   chunks are skipped and counted as a warning, not a failure.
+- **CPU state** is owned by `Moira::pomVisitState` (`MoiraState.h`);
+  `MoiraSnapshot` delegates to it. The host archive and file format stay
+  outside Moira. `moira_state_test` loads fresh bare CPUs at executed
+  PMMU/FPU continuation boundaries and checks resumed execution.
+- **Format v29** adds the 030 pre-switch pipe and DF-cleared retry, the
+  suspended 6888x result, 040 UNIMP/BUSY micro-state and an armed MOVEM
+  latch. Loading preserves the live debugger requests and CPU/FPU model;
+  the host must construct the matching configuration. Older versions are refused.
 - **Format v28** replaces the SCSI and ATA modified-block payloads with
   `DiskTimeline`'s: block size and count, the blocks written since open,
   and the content digest (above). Older versions are refused.
@@ -2449,9 +2457,12 @@ bare 68030 without the 68882, and `POM68K_LCII_CLRFPU` holds HwCfgFlags bit
 12 (`hwCbFPU`) clear once the ROM has stored it — a guest-memory poke, not
 modelled hardware, which proves that bit is the only thing stopping a bare
 LC II from reaching the Finder in that experiment (CHANGELOG 2026-09-17
-(tenth)). It does not establish hardware fidelity: the cold-start divergence
-from MAME's FPU-less configuration was reopened on 2026-10-02 and remains
-in `TODO.md` § Fidélité. The product still defaults to a populated 68882;
+(tenth)). The cold-start divergence was fixed on 2026-10-19: CPU-space
+FC=7 accesses to an absent FPU now bus-error instead of reading RAM, so the
+ROM clears the socket flag itself and elects `$CC00`. `v8_ramsize` holds
+the CIR probe and MOVES fault cleanup; `lcii_nofpu_boot_etalon` holds the
+unpatched Finder boot and the ROM's socket flag. The product still defaults
+to a populated 68882;
 these two knobs belong to the boot-gate investigation. The GUI's display knobs,
 ported from NeoST on 2026-09-16 (`GuiDisplay.h`): `POM68K_KIOSK` (`1` =
 start in cabinet mode — exclusive full screen on the primary monitor, no

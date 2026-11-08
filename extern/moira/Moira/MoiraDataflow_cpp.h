@@ -324,6 +324,7 @@ Moira::readOp(int n, u32 *ea, u32 *result)
             // Emulate -(An) register modification
             updateAnPD<M, S>(n);
 
+            // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
             // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // Emulate (An)+ register modification
             // POM68K: applied BEFORE the access — real 68000 updates An even
@@ -388,6 +389,7 @@ Moira::writeOp(int n, u32 val)
                 }
             }
 
+            // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
             // Write to effective address
             // POM68K: WRITE faults leave (An)+ unmodified - only reads
             // pre-update An (SingleStepTests/680x0, MOVE.w x,(An)+ vectors)
@@ -511,6 +513,7 @@ Moira::undoAnPD(int n)
 template <Core C, Mode M, Size S, Flags F> u32
 Moira::readM(u32 addr)
 {
+    // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
     // POM68K: operand reads always use the DATA space — SingleStepTests
     // address-error frames carry FC=101 even for PC-relative operands
     return read<C, AddrSpace::DATA, S, F>(addr);
@@ -820,6 +823,7 @@ Moira::makeFrame(u32 addr, u32 pc, u16 sr, u16 ird)
     // Adjust
     if constexpr (F & AE_INC_PC) frame.pc += 2;
     if constexpr (F & AE_DEC_PC) frame.pc -= 2;
+    // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
     // POM68K: SingleStepTests/680x0 — on the 68000, every data-fault frame
     // stacks a PC two bytes lower than upstream Moira computes, uniformly
     // across addressing modes (see extern/moira/POM68K_VENDOR.md)

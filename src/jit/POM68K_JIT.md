@@ -9,6 +9,16 @@ x86-64 generator on both families), and remains opt-in on the 68000/68020 guests
 remains what every accuracy claim in this project rests on and has its own
 explicit etalon registrations.
 
+**Reading the measurements (2026-11-08).** Dated tables below describe the
+tree and workload of their date. The August Q605 fingerprints are no longer
+reproducible after SCC synchronization, removal of the nonexistent drive B
+and correction of the board identity. Re-establishing both hosts' performance
+references is open work (`TODO.md` § Moteur › JIT performance); no recent
+AArch64 tier or new cross-host speed claim is implied by the historical
+numbers. The current extension/clock contract lives in
+`extern/moira/POM68K_SURFACE.md`, and the journal below links the subsequent
+interpreter and native corrections.
+
 Read `extern/moira/POM68K_VENDOR.md` § *JIT seam* (row 22 of the patch
 table, twelve numbered points plus 3b) for the extension this subsystem
 needs inside the vendored core.
@@ -50,7 +60,7 @@ selects it on AArch64. Release/native/LTO measures
 (3.73x, identical fingerprint); LLVM PGO measures 1.01 s against 3.41 s.
 The complete Finder gate is 9.19 s native against 21.14 s threaded (2.30x),
 or 7.86 s against 15.28 s under PGO (1.94x).
-The current non-LTO Apple-M4 reference (2026-08-23) runs the fixed
+The historical non-LTO Apple-M4 reference (2026-08-23) runs the fixed
 3,000-frame Q605 budget in **3.24 s median**, or **15.43x real time**, after
 the Rogue-driven opcode pass described in § 3.5ter. Three-pair ABBA runs
 measure 29.24 s for its paired interpreter and 15.13 s for threaded (whose
@@ -60,15 +70,16 @@ All are bit-exact against the interpreter — registers,
 supervisor stacks, cycle clock and the low 2 KB of guest RAM, compared at
 every instruction boundary.
 
-**Where the engine is wired.** **Every** CPU wrapper in the tree — twelve
+**Where the engine is wired.** **Every** CPU wrapper in the tree — fourteen
 of them: `Cpu040`, `CentrisCpu`, `Q630Cpu`, `Q700Cpu` (68040), `Cpu030`,
-`RbvCpu`, `SonoraCpu`, `VaspCpu`, `MscCpu`, `IIfxCpu` (68030, plus the
-Macintosh LC's 68020 flavour of `Cpu030`), `Cpu020` (the Mac II family,
-68020 or 68030 depending on `is030`) and `Cpu68k` (the compacts). Each
+`RbvCpu`, `SonoraCpu`, `VaspCpu`, `MscCpu`, `IIfxCpu`, `Pb030Cpu` (68030, plus
+the Macintosh LC's 68020 flavour of `Cpu030`), `Cpu020` (the Mac II family,
+68020 or 68030 depending on `is030`), `Cpu68k` (the compacts) and
+`PortableCpu` (68000 Portable/PowerBook 100). Each
 passes its `GuestFamily` bit to the `jit::Engine` constructor — grep
-`jit::kGuest` in `src/*.cpp` for the roster. The last four wrappers landed
-on 2026-08-06. Both code generators declare 040+030 correctness through
-`guestFamilies`. Their `autoFamilies` speed policy is a separate, per-backend
+`jit::kGuest` in `src/*.cpp` for the roster. Both code generators declare
+040+030 correctness through `guestFamilies`. Their `autoFamilies` speed
+policy is a separate, per-backend
 statement: AArch64 carries 040+030 since 2026-08-20 with the
 measured 68030 profitability score of 64; x86-64 carried 030 from
 2026-08-21 at score 0 until the promotion was **withdrawn on 2026-08-29**
@@ -153,7 +164,8 @@ the x64 emitters carry their own switch and never call it). The coverage
 floor is a separate thing and is not built on it: `compile()` counts what
 the emitter actually produced and refuses a block below
 `POM68K_JIT_MIN_NATIVE` percent native — 50 by default
-(`JitBackendX64.cpp:5534-5536`). Anything an otherwise-compilable block contains
+(`JitBackendX64.cpp`, `X64Backend::compile`, `minNativePercent()` check).
+Anything an otherwise-compilable block contains
 that the backend cannot emit becomes a per-instruction cold stub inside the
 generated code, not a shorter block. Block termination is the classifier's
 job alone (§ 4).
@@ -489,7 +501,7 @@ us. Wired 2026-08-10; it named both cells within one run:
   **every** `MOVE <ea>,(xxx).W`: 47.4 % of all block fallbacks.
 * `CMPA` charges `kEaRead + 2`, not `kEaRead` — `execCmpa` holds a `SYNC(2)`
   that the `ADDA`/`SUBA` path takes only for a word or register source
-  (`MoiraExec_cpp.h:2258` vs `:421-423`). This refused **every** `CMPA`: a
+  (`MoiraExec_cpp.h`, `execCmpa` versus `execAdda`). This refused **every** `CMPA`: a
   further 12 %.
 
 Fixing the two took the native share 96.2 → 97.6 % and block fallbacks from
@@ -1129,9 +1141,11 @@ the supervisor bit, so it is a block MEMBER that Moira replays exactly
 through the same cold per-instruction fallback every unsupported opcode
 uses; neither generator emits it. `FlagMayTrap` keeps its vectors a
 boundary: the Line-F / format-$4 trap of a 68LC040, an FPSP unimplemented
-trap and an enabled arithmetic exception are all raised inside the handler
-and redirect PC, and the replay continuation compares PC before running
-entry i+1. Before this, every one of Speedometer's 438,964 direct-FPU
+trap redirect PC, and the replay continuation compares PC before running
+entry i+1. Enabled 040 arithmetic exceptions are posted and taken before
+the next FPU instruction (D24, `fpuCheckPending`); member replay still goes
+through Moira's FPU handler and its pending-exception check. Before this,
+every one of Speedometer's 438,964 direct-FPU
 instructions ended its block and paid a dispatch — a failed cache lookup,
 a one-instruction trace that retired nothing, then `execute()` — 15.2 % of
 that phase (§ 3.5bis). `POM68K_JIT_FPU_MEMBER=0` restores the boundary and
@@ -1311,7 +1325,7 @@ Everything in `JitConfig.h` unless noted. Product startup captures the whole
 surface once in `RuntimeConfig::jit()` and injects that immutable snapshot
 through every CPU wrapper into its `Engine`. Standalone gates capture the same
 keys at their test boundary (`tests/JitTestConfig.h`) and inject the snapshot;
-all twelve wrappers and `Engine` require it by const reference. Unit fixtures
+all fourteen wrappers and `Engine` require it by const reference. Unit fixtures
 which deliberately want deterministic policy must name
 `defaultResolvedConfig()`; there is no nullable constructor parameter or
 implicit fallback. The selected backend then resolves its dependent defaults
@@ -1350,7 +1364,7 @@ do not affect an injected session.
 | `POM68K_JIT_PARANOID` | profile | re-validate the translation at every arm; off in `production`, on in `conservative`/`instrumented` |
 | `POM68K_JIT_VERBOSE` | `0` | backend selection, block dumps and flush chatter on stderr — **plus a retired / window-covered / arms / failed line and a dtlb-refusals-by-reason line at teardown**, which is how you tell "the engine is on" from "the engine is doing something" (§ 3.1) |
 | `POM68K_JIT_VERBOSE_BLOCKS` | `40` | how many compiled blocks the dump prints under `POM68K_JIT_VERBOSE`. The dump is the only place a block's MEASURED per-instruction cycles are visible, and 40 only ever reaches ROM reset code — raise it to diagnose a refusal deep in a boot |
-| `POM68K_JIT_ACCESS_THUNK` | profile | 0 = whole-instruction fallback, 1 = loads, 2 = loads and stores; `production`/`instrumented` use 2, `conservative` uses 0. Unset on a 68030, the value is capped by the backend's `caps().maxAccessThunk030` (1 on x64: exact writes are withdrawn as an 030 default there) |
+| `POM68K_JIT_ACCESS_THUNK` | profile | 0 = whole-instruction fallback, 1 = loads, 2 = loads and stores; `production`/`instrumented` use 2, `conservative` uses 0. Unset on a 68030, the value is capped by the backend's `caps().maxAccessThunk030` (1 on x64: the paired mode-2 measurement did not resolve a gain) |
 | `POM68K_JIT_040_LINE_READ` / `_WRITE` / `_PAIR` | profile | native 040 D-cache line proofs; on in `production`/`instrumented`, off in `conservative`. `_PAIR` admits only the two IR contracts with a dedicated atomic-pair gate |
 | `POM68K_JIT_040_LINE_STATS` | profile | native read/write proof counters; on in `instrumented`, off otherwise |
 | `POM68K_JIT_HISTO` | profile | dynamic opcode/fallback census; on in `instrumented`, off otherwise (`JitEngine.cpp dumpHisto()`) |
@@ -1362,7 +1376,7 @@ do not affect an injected session.
 | `POM68K_JIT_BSRW` | per-backend | admission for BSR.W (`$6100`) into the armed-charge exemption. Charge proved correct (`fetchWords=2`); its step-16 097 divergence was the same peripheral-phase class, closed by the same fix. Same per-backend default and same gates as `POM68K_JIT_RESTART_BASE` (−2.3 % alone at 6000 frames) |
 | `POM68K_JIT_030_MEMBF` | `1` | admission (030): memory bitfields through `(An)`/`d16(An)` on both native generators; explicit `0` is the attribution/veto arm. Sole reads use the exact-thunk timing contract; possible fifth-byte reads preflight both mappings before either load and branch around the tail at run time. Mutating forms consume read4/write4 when tailless or the shared read4/write4/read1/write1 maximum-path contract when crossing; both writable mappings are proved before access zero. MMIO/fault tails replay in Moira, preserving the partial longword and format-$B frame. A mispriced form refuses. Promoted for reads on 2026-08-31 and for crossing writes on 2026-09-01 after native A64+x64 tail/no-tail, MMIO and fault oracles; the explicit alignment gates remain. Earlier stakes: SimCity `E9D0`/`EFD1`; promotion witness: Speedometer `E9D4` |
 | `POM68K_JIT_FPU_MEMBER` | `1` | the FPU general window `$F200-$F23F` is a block member replayed exactly by Moira (§ 4, `Kind::Fpu`); explicit `0` is the attribution/veto arm in which every F-line form ends the block before it, as before 2026-09-06. Conformance: `jit_asset_free_lockstep_test` (both arms; straight, enabled FDIV/0 vector 50, detached-FPU 68LC040 format $4), the 030/040 machine locksteps and Speedometer's four families at identical fingerprints on A64, `threaded` and the interpreter. Measured on the isolated Speedometer direct-FPU phase, § 3.5bis |
-| `POM68K_JIT_030_CACR_FLUSH` | per board | Three-valued since 2026-08-19 (68030 wrappers). **Unset = the board's own answer**: retired on the V8, on VASP, RBV and MSC (2026-09-03) and on Sonora (2026-09-04) — every 68030 board now proves its store inventory complete on its own audit (`kJitStoreInventoryComplete` in the board's memory header: every store into RAM passes `CodeGuard::note()`, pseudo-DMA included) and `store_inventory_test` pins the claim at the source level, refusing any header that declares the constant without a row of its own. `1` forces the hint back ON (prices it: −21.8 % of generator wall clock, `docs/JIT_BRINGUP.md` § C.4bis); `0` forces it OFF. A board that grows a bus master flips its constant back and returns to the flush — the knob is not the place to un-flush an unproved inventory. Compare fingerprints on both sides or the number means nothing |
+| `POM68K_JIT_030_CACR_FLUSH` | per board | Three-valued since 2026-08-19 (68030 wrappers). **Unset = the board's own answer**: retired on V8, VASP, RBV, MSC and Sonora, whose `kJitStoreInventoryComplete` claims are held by `store_inventory_test`. Pb030, IIfx and `Cpu020` have no such claim and retain the CACR flush (`TODO.md` § Moteur › JIT justesse). `1` forces the hint ON (historically −21.8 % of generator wall clock, `docs/JIT_BRINGUP.md` § C.4bis); `0` forces it OFF. A board that grows a bus master withdraws its inventory claim and returns to the flush. Compare fingerprints on both sides before pricing an override |
 | `POM68K_JIT_DISPATCH_RING` | `0` | diagnosis: record the engine's last 8192 dispatch decisions (path, pc, clock, target, exit, instructions) in a ring the 030 lockstep dumps on divergence. The 2026-08-19 uncharge hole was invisible in every end state and named by this ring in one run |
 | `POM68K_JIT_WATCH_OPCODE` | unset | diagnosis (a64): `<hex>[,<hex>…]`, up to four opcodes — when the compile loop hands one to the fallback stub, print its admission inputs (trace/base/i-cache cycles, fetch count, terminal queue, semantics, memory proof plan) once per pc, tagged with the stage or the emitter check that refused it (`jsr:queue`, `movem:cost`, …). Turns a fallback-census row into WHICH check, without guessing from the source (2026-08-23) |
 | `POM68K_JIT_DENY_FROM` / `_TO` | unset | bisection instrument (hex pc range): refuse to COMPILE any block whose entry pc falls in [from, to). Halving the pc space is how a divergence that heals under every pacing perturbation gets pinned to one block |
@@ -1490,10 +1504,13 @@ suppression, base and outer displacement sizes/values, and direct,
 preindexed or postindexed memory indirection. `ControlFlowPlan` separately
 owns branch/call/jump target, fallthrough and pushed return address. Both
 backends consume these plans; neither calls `branchDisplacement()` nor parses
-an extension. Cycle tables, register choice and host instruction selection
-remain backend work. Full-index lowering is not thereby declared native:
-both generators accept only the proved direct `LEA` subset. Memory-indirect
-plans and every other full-format instruction replay untouched.
+an extension. The plans alone do not establish timing or admission: these
+must satisfy shared 68k policy, with host instruction selection in the
+backends. Both generators lower proved direct
+and memory-indirect plans for `LEA`, `JMP`/`JSR`, register-destination `MOVE`
+and read-only ALU sources. x64 admits the memory-indirect forms on the 68030
+only; full-indexed `MOVEM`, memory-indirect writes and three-access MOVE
+forms still replay. § 8 lists the admitted transactions and their refusals.
 
 ---
 
@@ -2141,6 +2158,22 @@ from 149,265,073 to 72,507,478. Two fixed-budget runs improved from
 
 ## 10. Journal
 
+* **2026-11-07 — the interpreter owns its fetch-window admission.** A bare
+  host can bind `pomSetInterpWindow` without constructing `jit::Engine`;
+  the five core paths use the existing window and eviction rules. The 030
+  data-window fill still belongs to the engine. See `POM68K_VENDOR.md` row
+  55 and `POM68K_SURFACE.md` § 9.2. The same day's device-deadline work is
+  host-side: its stall/flush order and two deadline bases are recorded in
+  that contract's § 2.3, with the remaining device-timing limits.
+* **2026-11-06 — x64 resamples IPL after an exact read can raise it.** The
+  positioned-poll rule already used by A64 now holds on x64 too;
+  `jit_asset_free_lockstep_test` compares the MMIO-raised IRQ boundary.
+  See `CHANGELOG.md` (sixth). The two emitters' other admission differences
+  remain explicit in `TODO.md` § Moteur › JIT justesse.
+* **2026-10-02 — A64's late-IPL rule includes cacheless exact MMIO.** Such
+  an access can advance a device and raise its pin between the two polls,
+  even without a cache charge. `q605_afp_live_etalon` exposed the one-late
+  interrupt; see `CHANGELOG.md` (later).
 * **2026-09-07 — the FPU general window becomes a block member.**
   `$F200-$F23F` is `Kind::Fpu`: an exact Moira replay inside the block
   through the existing cold fallback, `FlagMayTrap` guarding its Line-F /

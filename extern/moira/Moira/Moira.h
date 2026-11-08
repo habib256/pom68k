@@ -54,6 +54,11 @@ protected:
     
 public:
     
+    // POM68K: visit only between instructions, with the same CPU/FPU and
+    // timing configuration on load. Host owns RAM, models and code guards.
+    // See MoiraState.h and POM68K_SURFACE.md, save-state contract.
+    template<class Ar> void pomVisitState(Ar& ar);
+
     // Debugger handling breakpoints, watchpoints, catchpoints, and instruction tracing
     Debugger debugger = Debugger(*this);
     
@@ -945,10 +950,9 @@ public:
         u32 cache040R, cache040W, cache040Gen, cache040AtcLastD, cache040Hits;
         u32 cache040NativeReadHits, cache040NativeWriteHits;
         bool cache040Live;
-        // POM68K JIT: the 68040 MOVEM restart latch. Armed between a
-        // faulted MOVEM and its RTE-restarted completion; a compiled MOVEM
-        // must bail to the interpreter while it is set, because the
-        // restart must resume from the SAVED ea, not a recomputed one.
+        // POM68K JIT: the public 68040 MOVEM latch. A compiled MOVEM must
+        // bail while it is set, so a host-armed restart uses the saved EA.
+        // The current RTE does not re-arm it (TODO: Justesse 68040).
         u32 movemArmed;
 
         // ── the 68030 instruction cache (PomIcache above) ────────────────
@@ -2202,7 +2206,7 @@ protected:
     // the page tables) underneath a CPU whose ATCs still cache the OLD
     // translations, so both have to be dropped. The flushes are private and
     // no public setter reaches the 030 one (setURP040 covers only the 040),
-    // hence this one-line seam for src/MoiraSnapshot.h. Flushing the set the
+    // hence this helper for MoiraState.h. Flushing the set the
     // current model does not use is free — it is already empty. The M1
     // cache-tag model follows the same save-state convention (CLAUDE.md
     // § save states: caches are FLUSHED, never serialized).
@@ -2537,3 +2541,5 @@ private:
 };
 
 }
+
+#include "MoiraState.h"

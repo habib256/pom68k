@@ -154,10 +154,11 @@ Moira::shift(int cnt, u64 data) {
                 data = shifted;
             }
 
+            // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
             // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // POM68K: shifting past the operand width clears C and X even
-            // for negative values (SingleStepTests/680x0 rule; flagged in
-            // POM68K_VENDOR.md for re-verification against oracle #2).
+            // for negative values (SingleStepTests/680x0 rule; a known
+            // manual exception in oracle/README.md).
             // O4 slice 3 re-verification: BOTH 68030 oracles (WinUAE,
             // Musashi) keep C/X = the last bit shifted out (the sign) on
             // 020+, so the clear is a 68000/68010-only behaviour.
@@ -740,6 +741,7 @@ Moira::divsMoira(u32 op1, u32 op2)
 
         } else {
 
+            // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
             // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // POM68K: V=1, C=0, N/Z PRESERVED on the 68000/68010
             // (SingleStepTests/680x0 — differs from WinUAE's N=1,Z=0; see
@@ -791,6 +793,7 @@ Moira::divuMoira(u32 op1, u32 op2)
 
         } else {
 
+            // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
             // POM68K: V=1, C=0, N/Z preserved on the 68000/68010
             // (SingleStepTests/680x0)
             reg.sr.c = 0;

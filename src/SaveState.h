@@ -309,7 +309,10 @@ inline constexpr char     kMagic[8]  = {'P','O','M','6','8','K','S','S'};
 // v26: live IWM bit shifter, chip-clock deadlines and pending magnetic arc.
 // v27: the SE board's PA4 internal-connector line and its second internal
 // mechanism, serialized on every compact.
-inline constexpr u32      kVersion   = 28;
+// v29: Moira's pending 6888x result, integrated-040 frame micro-state,
+// 68030 pre-switch pipe and DF-cleared retry, and an armed MOVEM latch.
+// These are live across instruction boundaries; v28 cannot restore them.
+inline constexpr u32      kVersion   = 29;
 
 struct Header {
     u32 version     = kVersion;

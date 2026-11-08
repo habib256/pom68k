@@ -17,7 +17,7 @@ carry `tools/gate_execution_census.py`'s executed/soft-skipped pair: quote the
 pair, never the green total alone — a soft-skipped gate exited 0 and proved
 nothing about the behaviour it names.
 
-## Union across hosts — 549 gates
+## Union across hosts — 550 gates
 
 | `ctest -L` | selects |
 |---|---|
@@ -29,7 +29,7 @@ nothing about the behaviour it names.
 | `m030` | 141 |
 | `m040` | 102 |
 | `smoke` | 9 |
-| `unit` | 176 |
+| `unit` | 177 |
 | `wasm` | 46 |
 
 `-L` is a regex over each label: `jit` also selects `jit-fast`, `etalon`
@@ -38,27 +38,27 @@ scheduling slots are per-host manifest facts and live in the sections below.
 
 ## Registered on aarch64
 
-544 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
+545 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
 
 | dimension | value | gates |
 |---|---|---|
-| assets | none | 137 |
+| assets | none | 138 |
 | assets | optional | 26 |
 | assets | required | 381 |
 | host | a64 | 4 |
-| host | any | 534 |
+| host | any | 535 |
 | host | native | 6 |
-| scope | component | 149 |
+| scope | component | 150 |
 | scope | engine | 21 |
 | scope | profile | 370 |
 | scope | repository | 4 |
-| tier | daily | 137 |
+| tier | daily | 138 |
 | tier | full | 391 |
 | tier | platform | 16 |
-| slots_src | assumed | 424 |
+| slots_src | assumed | 425 |
 | slots_src | measured | 120 |
 
-Scheduling cost if every gate ran at once: 779 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 780 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## Registered on x86_64
 
@@ -228,3 +228,6 @@ overwrites it, including a one-gate `ctest -R`.
 | Oct 20 10:56 +04 | x86_64 | default | 11 | 11 | 0 | 0 | Portable/PB100 sleep: interpreter/threaded, idle CPU registers and SCSI bus, exact asleep/wake snapshots; PMU/board/product and repository contracts; 11 executed, zero soft-skips |
 | Oct 20 11:46 +04 | x86_64 | default | 14 | 14 | 0 | 0 | PowerBook slot-E RGB: all five Niagra/Pangola profiles under default native and interpreter; exact cold-restore replay and pointer on RGB; four LCD-only regressions; 14 executed, zero soft-skips |
 | Oct 20 11:54 +04 | x86_64 | default | 10 | 10 | 0 | 0 | PowerBook external RGB: headless monitor queue/session capture, controller and legacy snapshots, Jaws/Niagra/Pangola regressions and repository contracts; 10 executed, zero soft-skips |
+| Nov 08 21:29 +04 | aarch64 | default | 6 | 6 | 0 | 0 | Moira v29: bare continuation gate and five existing save-state gates |
+| Nov 08 21:26 +04 | aarch64 | default | 12 | 3 | 9 | 0 | Moira v29 ARM64: 000/030/040 corpora present; nine extended corpora absent |
+| Nov 08 21:35 +04 | aarch64 | default | 140 | 140 | 0 | 0 | Moira v29: asset-none plus the two remaining prior ARM64 jit-fast\|m030 gates (LC II boot, IIfx persistence) |
