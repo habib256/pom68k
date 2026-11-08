@@ -214,6 +214,7 @@ one pass, four decoders × every depth — and its harness **refuses a uniform
 frame as a pass**, after three false greens; see `CHANGELOG.md`
 § 2026-08-02 (later) for what each one hid).
 
+<a id="peripheral-event-deadline-default"></a>
 ## 1.2 CPUs — cycle-exact only on the Plus
 
 Twelve wrappers, one per platform: `Cpu68k` (the compacts, cycle-exact

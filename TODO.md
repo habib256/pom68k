@@ -47,11 +47,7 @@ une optimisation côté hôte POM68K ne rapproche pas de NeoST.
      `codeSpan`/`jitGuard_` fournis par nos cartes ; le contrat de
      surface le décrit, un premier portage le prouvera ;
   3. pas de jambe AArch64 récente (tier 030 ARM dû depuis septembre, delta
-     a64 de +6 % jamais attribué) ;
-  4. les pièges d'intégration d'une horloge machine (stall-puis-flush,
-     ré-armement d'échéance, deux bases d'horloge, LLE dépendant du
-     découpage — `CHANGELOG` 2026-11-07 quatorzième à seizième) sont à
-     écrire dans le contrat de surface : NeoST les rencontrera.
+     a64 de +6 % jamais attribué).
 
 **Ordre de travail** (le détail vit dans `§ Moteur`) :
 
@@ -61,7 +57,7 @@ une optimisation côté hôte POM68K ne rapproche pas de NeoST.
 2. *Couture JIT séparable à la compilation* : un interpréteur nu doit se
    construire sans fenêtre, DTLB ni sonde (`› Surface`).
 3. *Contrat de surface vérifié* : chaque « unverified » devient un gate ou
-   une phrase corrigée ; y ajouter les pièges d'horloge machine.
+   une phrase corrigée.
 4. *Restes nommés* décidables ici (`› Justesse 68030`, `› Justesse 68040`),
    puis la jambe AArch64 quand l'hôte est disponible.
 5. *Premier portage réel* vers NeoST, qui dira ce que le contrat a oublié.
@@ -284,7 +280,7 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   (une IRQ en attente serait prise à +4, pas +8, contrairement à sa
   note) ; le réveil arrondi toucherait aussi nos STOP 020/030/040 s'il
   n'est pas gardé ; il partage le bloc `CHECK_IRQ` d'`execute()` avec
-  `irqDelay` et demande un champ de save-state. Le corpus n'a aucun
+  `irqDelay` et demande un champ dans `Moira::pomVisitState`. Le corpus n'a aucun
   vecteur STOP. *Bloqué : un témoin — le microcode, ou une mesure.*
 - [ ] **Proposer à NeoST les règles 68000 que le corpus a tranchées.**
   Sa copie garde l'ordre amont que le rang 41 corrige (frame de groupe 0,
@@ -437,6 +433,13 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   contrôle vers une destination relative au PC (D27).** Un vecteur : un
   EA indirect mémoire marque une page « utilisée » dans l'oracle. Même
   famille que l'ordre de lecture de FMOVEM (› Justesse 68030).
+- [ ] **Reproduire une reprise MOVEM 68040 après RTE format $7.**
+  *À reproduire :* `mmu040Fault` consomme `mmu040MovemArmed` dans SSW.CM
+  et la frame EA, mais `execRte` ne le réarme pas, contrairement aux
+  commentaires de Q3. Faire modifier An dans le handler puis reprendre un
+  transfert partiel, avec témoin oracle ou manuel. Le nouveau visiteur
+  tient un verrou armé par l'hôte ; cela ne prouve pas sa production par
+  RTE (`CHANGELOG` 2026-11-08, septième).
 - [ ] **Corriger le PC empilé d'un MOVEP qui faute en cours de route.**
   *À reproduire :* `fuzz040.py --family random --mmu identity --page 8k
   --seed 845 --n 2000`, #1967 (`0789 54F5`, MOVEP.W D3,(d16,A1)) : la
@@ -666,16 +669,11 @@ compilation et dans la documentation.
   cartes). Le 2026-11-08 aussi, le `extBusError` levé pendant la lecture
   d'un descripteur de table 030 (un vrai défaut, corrigé : rang 56).
   Restent : la valeur à rendre sur une
-  lecture CIR FC = 7 d'un FPU présent, le chemin 68EC030 sans corpus,
-  les séquences qui dépendent de la continuation, la joignabilité des
-  champs omis du visiteur, et la DMA son côté Atari (à NeoST). Chacune
+  lecture CIR FC = 7 d'un FPU présent,
+  les séquences qui dépendent de la continuation, et la DMA son côté Atari
+  (à NeoST). Les champs omis du visiteur : corrigés et tenus par
+  `moira_state_test` (`CHANGELOG` 2026-11-08, septième). Chacune
   devient un gate ou une phrase corrigée.
-- [ ] **Déplacer la sérialisation du CPU dans un visiteur côté Moira,
-  avec un aller-retour sur Moira nu.** Le visiteur vit dans
-  `src/MoiraSnapshot.h` et n'est prouvé que par des bancs Macintosh ;
-  NeoST copie `reg` et `queue` en bloc et avalerait sans le voir un
-  `Registers` élargi. Y faire entrer l'état de › Justesse 68030 et
-  `stopGraceUntil` une fois STOP+8 porté.
 - [ ] **Détacher `src/jit` du démarrage de POM68K.** Le seul include
   extérieur est `JitConfig.h` → `StartupSnapshot.h` : le remplacer par un
   `jit::Config` injecté. `JitMetrics.h` porte un `#ifdef __aarch64__`
@@ -690,14 +688,13 @@ compilation et dans la documentation.
   § 9.7.6, cités six fois dans `MoiraExecMMU_cpp.h` (les deux § 9.7.6
   corrigés le 2026-11-08). Vérifier contre la 2e édition de 1989 avant de
   renuméroter ; obtenir la partie 1 pour les § 6 (cache d'instructions).
-- [ ] **Finir les grades de preuve dans les commentaires du cœur.** La
-  moitié WinUAE est faite et tenue par `core_grades_test` (2026-11-08 :
-  341 blocs `[D] … @ Hatari e77819f7`, 74 numéros de ligne relus dans la
-  copie de NeoST `f0736b24` reciblés). Restent : les citations de manuel
+- [ ] **Finir les grades de preuve dans les commentaires du cœur.** Restent :
+  les citations de manuel
   à porter en `[B]` en tête (≈ 80 blocs : MC68030UM, M68040UM, MC6888x),
-  les autres sources de grade D sans révision (SingleStepTests ≈ 60,
-  Clock Signal, Musashi), et les règles sans source à étiqueter `[F]` avec
-  ce qui les trancherait. Étendre alors le gate à ces sources.
+  les autres sources de grade D sans révision (Clock Signal, Musashi),
+  et les règles sans source à étiqueter `[F]` avec ce qui les trancherait.
+  Étendre alors le gate à ces sources. WinUAE et SingleStepTests :
+  `CHANGELOG` 2026-11-08 (deuxième et cinquième).
 - [ ] **Choisir un seul softfloat 80 bits et le rendre réentrant.**
   `extern/softfloat` ici, un second portage de la même lignée dans
   `src/io/SoftFloat*.hpp` chez NeoST ; `moiraFpuFs` est un état statique
@@ -714,14 +711,6 @@ compilation et dans la documentation.
   `MoiraTypes.h` le 2026-11-08 (avec le reste des étiquettes de modèles et
   la suppression de `fpuDisabledSaneFline`) ; reste à choisir : `setModel`
   le refuse, ou la traduction s'arrête aux TTR et un corpus le tient.
-- [ ] **Remettre à jour les documents du cœur.** `POM68K_JIT.md` : journal
-  arrêté au 2026-09-07, « douze wrappers » (quatorze), § 6.2 sur les EA
-  indirects mémoire, inventaire de stores « sur toutes les cartes 030 »,
-  refus x64 « jusqu'à re-run ». `JitBackendA64.md` : régime Finder oisif
-  dit ouvert. Commentaire de `caps()` x64 sur la tempête du mode 2.
-  `POM68K_VENDOR.md` : frames FPU $2 non annotées face au rang 26.
-  `config_knobs.tsv` : ancres d'échéance inexistantes. `DEV.md` : renvoi
-  pendant sur le LC II sans FPU.
 - [ ] **Écrire ce que le JIT vaut pour NeoST avant de le porter.** Les
   générateurs natifs ne déclarent que 68040 et 68030 ; `threaded` vaut
   ×1,03 à ×1,08 sur un 68000 à cycles exacts. Décider si un émetteur

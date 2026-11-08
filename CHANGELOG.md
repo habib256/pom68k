@@ -263,6 +263,12 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### CPU cores, MMU/FPU, and the WinUAE oracle
 
+- **Can pending PMMU/FPU work survive a snapshot without a Macintosh?** → [The portable CPU visitor and executed continuation round trips](#2026-11-08-moira-state-visitor)
+
+- **Does the 68EC030 really bypass the PMMU, overlay and code window as its contract says?** → [A bare-Moira cell with a faulting 68030 control](#2026-11-08-ec030-surface-gate)
+
+- **Which evidence can travel with Moira, and which machine-clock rules must a new host keep?** → [Pinned SingleStepTests grades, the portable clock contract and refreshed core documents](#2026-11-08-core-sst-grades-surface-docs)
+
 - **what “complete 020/030/040” actually found: CALLM/RTM, the 030 coprocessor frame, and an integrated 040 FPU** → [2026-08-16 (later) — The full 68040 stops masquerading as a 68882…](#2026-08-16-020-030-040-closure)
 - **68000: 1 000 058 SingleStepTests vectors** → [2026-07-14 — M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **the two-oracle arbitration loop starts** → [2026-07-15 — Phase 2 live: two 68030 oracles + arbitration turn 1](#2026-07-15--phase-2-live-two-68030-oracles--arbitration-turn-1)
@@ -508,6 +514,9 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-08 (seventh)** — [The CPU visitor moves into Moira and carries its pending PMMU/FPU state](#2026-11-08-moira-state-visitor)
+- **2026-11-08 (sixth)** — [The 68EC030's declared plain-020 path gets a bare-core gate with a 68030 control](#2026-11-08-ec030-surface-gate)
+- **2026-11-08 (fifth)** — [Moira's SingleStepTests citations carry their own pin; the portable surface records the machine-clock traps, and the core documents catch up](#2026-11-08-core-sst-grades-surface-docs)
 - **2026-11-08 (fourth)** — [A /BERR during a 68030 table search is reported, not thrown: the "unverified" line was a defect](#2026-11-08-030-tablesearch-berr)
 - **2026-11-08 (third)** — [Three "unverified" lines of the surface contract settled: FPU on a 68000, softfloat's globals, JIT invalidation on restore](#2026-11-08-surface-three)
 - **2026-11-08 (second)** — [Every WinUAE citation in the core says `[D] … @ Hatari e77819f7`; it had been citing two revisions](#2026-11-08-core-grades)
@@ -1229,6 +1238,163 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-08-moira-state-visitor"></a>
+## 2026-11-08 (seventh) — The CPU visitor moves into Moira; snapshots stop losing pending PMMU and FPU work
+
+`TODO.md` § Moteur › Surface asked for a visitor owned by the core and a
+round trip without a Macintosh. `Moira::pomVisitState(Ar&)` now owns the
+inventory in `MoiraState.h`; `src/MoiraSnapshot.h` delegates to it. The host
+supplies the archive, RAM, file container and matching CPU/FPU/timing
+configuration. Nothing in the new core header includes a POM68K machine,
+archive implementation or JIT engine. Save and load use the same visitor,
+only at instruction boundaries. Loading still preserves live debugger
+requests, disarms the fetch window and flushes caches/ATCs; the host's
+code guard must still be invalidated when RAM is replaced.
+
+The surface contract's "omitted, reachability unverified" rows hid four
+**executed losses of state**. `moira_state_test`, linked only to `moira`
+and softfloat with a flat RAM, first failed eight checks with the old
+visitor, then passed after the missing fields were carried:
+
+- **68882 suspended result:** save in the IRQ handler before its
+  FSAVE/FRESTORE/RTE, with SQRT(4) suspended and a format-$9 CPU frame.
+  Loading a fresh CPU lost the pending result and failed to produce 2.
+- **68030 cleared-DF retry:** save after a format-$B RTE, before the
+  retried read. The loaded CPU reissued the bus cycle instead of consuming
+  the handler's data input buffer without a read.
+- **68030 pre-switch pipe:** PMOVE leaves captured instruction words live
+  at a boundary. Patch RAM afterwards: the uninterrupted CPU executes
+  the old MOVEQ #1, the loaded one refetched MOVEQ #7.
+- **68040 FSAVE micro-state:** save after an unimplemented FINT or a
+  datatype trap, before the handler's FSAVE. The loaded CPU emitted a
+  different UNIMP/BUSY payload, even though the old visitor carried the
+  top-level FPU state and exception flags.
+
+Each cell compares resumed registers, clock, serialized state and RAM with
+an uninterrupted control. The public MOVEM latch also round-trips when
+explicitly armed by a host; its inactive EA is encoded as zero because
+native MOVEM does not maintain that scratch value. A separate cell holds
+this normalization, preservation of the destination's debugger flags and
+model, and clearing of a previously armed destination. The CPU chunk map
+also drops its stale `cp` slot (removed from the format in v9).
+
+**Format v29** refuses older files: v28 has no continuation payload from
+which these states could be recovered. This does not fix dirty 040
+copyback lines being discarded on load. STOP+8 and its future state remain
+open. Reading the MOVEM row found another overclaim: `mmu040Fault` consumes
+the latch into SSW.CM and the frame EA, but the current RTE never re-arms
+it. Comments and the surface contract now say so; a real partial-transfer
+restart is recorded as "À reproduire" in § Moteur › Justesse 68040. A
+host-armed round trip does not prove that sequence.
+
+**Held by:** the complete ARM64 build; six executed save-state gates
+(`moira_state_test`, `savestate_test`, `savestate_v8_test`,
+`savestate_030_test`, `savestate_040_test`, `savestate_68k_test`); and a
+final run of **140 executed, zero soft-skipped, zero failed** (all 138
+`asset-none` gates plus the two missing gates of the interrupted prior
+`jit-fast|m030` run: `lcii_boot_etalon` and `iifx_persist_etalon`).
+The three present corpora execute: 68000 **1 000 058 / 1 000 058**, 68030
+**3 078 / 3 082 plus four named divergences**, 68040 **7 200 / 7 200**;
+the nine extended corpus gates soft-skip because their directories are
+absent on this host. These are recorded separately in `STATUS.md`.
+The earlier run's 147 completed gates are preserved as a partial log;
+this is not a claim of a fresh 149-gate whole-tier replay. The new visitor
+adds no object fields or hot execution path. `git diff --check` passes.
+
+<a id="2026-11-08-ec030-surface-gate"></a>
+## 2026-11-08 (sixth) — The 68EC030's declared plain-020 path gets a bare-core gate with a 68030 control
+
+Another executable statement in `POM68K_SURFACE.md` § 1.2. The 68EC030
+row said it used the plain-020 path, without the 030 MMU, instruction-cache
+timing overlay or code-window admission, but had no execution behind it.
+
+`moira_rules_test` now runs `MOVE.L (A0),D0` on the 68020, 68EC030 and
+68030 with TC/CRP programmed: code, stack and vectors map identically, the
+operand's page is invalid. The 68020 and 68EC030 read the physical RAM
+value and advance PC; the **68030 control must take the bus error at the
+operand's address**, preserving D0. The same cell arms the i-cache overlay
+with a nonzero miss charge and CACR.EI: its fetch counter stays zero on
+the two plain paths and advances on the 68030. The 68EC030 refuses code
+probes in both privileges with TC clear and programmed.
+
+The cell passes on bare Moira, without a Macintosh or an engine. It holds
+the fork's declared basic path; it does not supply the missing instruction
+corpus or establish full 68EC030 hardware fidelity. The surface row now
+says exactly that and leaves the unverified list; no production code
+changed. **Held by** the rebuilt `moira_rules_test`.
+
+<a id="2026-11-08-core-sst-grades-surface-docs"></a>
+## 2026-11-08 (fifth) — Moira's SingleStepTests citations carry their own pin; the portable surface records the machine-clock traps, and the core documents catch up
+
+The next clean-up for the NeoST migration (`TODO.md` § Moteur › Surface).
+**44 comment blocks** cite SingleStepTests, five alongside WinUAE. Each
+now starts with `[D] SingleStepTests/680x0 68000/v1 @
+e0d5ece9670205cc84a0101081837deb446f86a3`, the revision already pinned in
+`tests/sst_corpora.lock` and the fetcher. This identifies the existing
+evidence; it does not promote it to hardware proof or change a CPU rule.
+
+`core_grades_test` now checks the corpus header, the revision and agreement
+with both pin owners, in addition to the **343 WinUAE-citing blocks** in
+the current tree. A WinUAE revision cannot stand in for the corpus's, nor
+the corpus's for WinUAE's; a grade attached to another source cannot bless
+a WinUAE claim labelled B. Five checker tests include wrong/missing pins,
+mixed sources, fetcher/lock disagreement and an idempotent `--apply` on
+both standalone and inline comments. Quoted URLs are kept as code, an
+existing wrong oracle revision requires a review instead of a second
+stamp, and unchanged files retain their timestamps (no rebuild triggered
+by a zero-change apply). The expanded gate failed on exactly
+the 44 unstamped blocks before the correction and passes afterwards.
+
+**Two misleading comments corrected.** The 68000 address-error comment
+still called a PC-relative operand's FC "program", contrary to the code
+and its corpus: data. `Moira::setSR` attributed `irqDelay = 2` to the
+M68000 PRM. It is an empirical delay for the old SimCity-2000 symptom,
+later attributed to Egret, and is now `[F]` with its missing witness: a
+hardware IPL-recognition trace after a mask change with calibrated clocks.
+The obsolete ASR "oracle #2" recheck points to the known manual exception.
+All production C++ changes in this entry are comments.
+
+**`POM68K_SURFACE.md` § 2.3 now records the integration rules** of the
+November 7 deadline work: distinguish core and machine cycles, carry
+fractions and rebase on a speed change, stall then flush then serve the
+access, re-arm on every event-changing exit, and distinguish a running
+device countdown's delivery-time base from an access-armed countdown's
+access-time base. Device partition independence is an obligation to prove,
+not a property of a green CPU corpus: the DjMEMC PIC1654S still violates
+it, and Q605 unflushed SCSI/ASC/DAFB reads can still lag one slice. The
+contract names those limits and stops calling the model comments stale.
+CPU and FPU selection are also explicit: `setModel` leaves `fpuModel`
+alone, and `hasFPU()` is not an instruction-admission predicate (always
+true on a full 040, also true for an attached-but-unreachable 6888x on
+000/010). The qualified full-040 setup selects `FPUModel::M68040`.
+
+**The named documentation backlog is closed.** `POM68K_JIT.md` names all
+fourteen wrappers, the admitted full-index transactions and the three 030
+wrappers without a store-inventory claim, and its journal links the later
+fetch-window and IPL work. It and `JitBackendA64.md` label the old workload
+measurements as historical; the idle-Finder regression already fixed in
+August is no longer "open". The x64 `caps()` comment gives the measured
+reason for keeping thunk mode 1 (no resolved gain), not the already-fixed
+mode-2 storm. The vendor journal annotates its obsolete FPU format-$2
+claim with D23a/row 26. The two event-knob expiry links now have their
+anchor, and `DEV.md` points to the October 19 CIR fix and the unpatched
+LC II no-FPU boot gate instead of a nonexistent TODO task. Two moved
+in-tree line citations become named function/check references; the FPU
+member contract now distinguishes D24's posted arithmetic exception from
+an immediate trap. The vendor's current model summary stops claiming
+complete architectural cache fidelity or exact-only native writes; it
+points to the current admission contract and the named cache/ATC defects.
+Remaining manual/other-emulator
+grades, compile-time separation, surface uncertainties and new performance
+baselines stay open in their own TODO lines.
+
+**Held by** the complete ARM64 build, `core_grades_test` (including the
+five checker tests), `docs_test`, `config_test`, `moira_rules_test` and
+`sst68000`: **1 000 058 / 1 000 058**, including bus order and timing.
+The present 68000/030/040 corpus files match their locked hashes. A token
+comparison after stripping comments also finds the six changed production C++ source
+files identical to HEAD.
 
 <a id="2026-11-08-030-tablesearch-berr"></a>
 ## 2026-11-08 (fourth) — A /BERR during a 68030 table search is reported, not thrown: the "unverified" line was a defect

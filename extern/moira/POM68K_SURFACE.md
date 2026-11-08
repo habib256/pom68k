@@ -16,12 +16,23 @@ but not proved by execution or by a gate.
 
 `MoiraTypes.h` `enum class Model`: `M68000`, `M68010`, `M68EC020`, `M68020`,
 `M68EC030`, `M68030`, `M68EC040`, `M68LC040`, `M68040`. The per-enumerator
-comments still say "Disassembler only" for the 030/040 rows; they are stale.
-The 030 and 040 execute (see `POM68K_VENDOR.md` § *Model support in this copy*).
+comments describe the execution paths and their proof in this fork,
+including models without a corpus (see `POM68K_VENDOR.md` § *Model support
+in this copy*).
 
-`MoiraTypes.h` `enum class FPUModel`: `NONE` (F-line traps, jump table
-identical to stock Moira), `M68881`, `M68882` (external coprocessor through
-the 020/030 coprocessor interface), `M68040` (integrated 040 FPU).
+`MoiraTypes.h` `enum class FPUModel`: `NONE` (no selected FPU model),
+`M68881`, `M68882` (external coprocessor through the 020/030 interface),
+`M68040` (integrated 040 FPU). CPU and FPU selection are independent:
+`setModel` does not select an FPU model. The qualified full-040 setup calls
+`setFPUModel(FPUModel::M68040)` explicitly (`fpu040_test`).
+
+`NONE` retains stock Line-F dispatch on the 020/030 family. The 040
+variants always install the cpID-1 handlers: a bare 68LC040/68EC040 takes
+the disabled-FPU format-$4 trap, while `hasFPU()` always answers true on
+`M68040`, even with `FPUModel::NONE` (`Moira::hasFPU`, `createJumpTable`).
+Conversely, attaching a 6888x to a 68000/68010 makes `hasFPU()` answer true
+but does not make the handlers reachable (§ 3, `moira_rules_test`). Use
+the CPU/FPU pair's documented dispatch contract when integrating a host.
 
 ### 1.2 Core template parameter
 
@@ -36,7 +47,7 @@ core. Inside `Core::C68020`, the 030 and 040 are distinguished at run time by
 |---|---|---|---|
 | 68000, 68010 | C68000 / C68010 | `read<>`/`write<>` (`MoiraDataflow_cpp.h`), 24-bit `addrMask` | prefetch queue (`prefetch`, `fullPrefetch`) |
 | 68EC020, 68020 | C68020 | `read<>`/`write<>` plain-020 branch (`kPlain020` stamps) | prefetch queue |
-| 68EC030 | C68020 | plain-020 branch (the MMU funnel tests `cpuModel == Model::M68030` exactly) | prefetch queue; no i-cache overlay, no window (`pomJitProbeCode` refuses) — unverified by any corpus |
+| 68EC030 | C68020 | plain-020 branch (the MMU funnel tests `cpuModel == Model::M68030` exactly) | prefetch queue; no i-cache overlay, no window (`pomJitProbeCode` refuses). Basic MMU-bypass/cache/probe contract held by `moira_rules_test`, no instruction corpus |
 | 68030 | C68020 | `mmuRead`/`mmuWrite` (`MoiraExecMMU_cpp.h`), always, even with TC.E clear | "mode 5": `mmuExecuteStart` |
 | 68EC040, 68LC040, 68040 | C68020 | `mmu040Read`/`mmu040Write` (`cpuModel >= Model::M68EC040`) | "mode 5": `mmu040InstrStart` |
 
@@ -157,6 +168,59 @@ targets go through `mmuCheckOddPc`/`execAddressError030` (format $B) and
 | `virtual void sync(int cycles)` | default `clock += cycles`. The host's override MUST add to `clock` (POM68K: `src/MoiraCpu.h` `MoiraCpu::sync` adds, taps `onSyncCharge`, then `catchUp()` peripherals). It is the only door through which mid-instruction time reaches devices; generated code must also come through it (`pomJitSync`). |
 | `getClock`/`setClock` | public; `clock` is `i64` cycles since power-up. |
 
+#### Integrating a machine clock and device deadlines
+
+These are host obligations, not additional CPU timing guarantees. The
+030/040 cycle tables and the host's conversion to machine cycles remain
+approximations (`TODO.md` § Moteur › Temps). A port must distinguish core
+cycles (`clock`) from machine time: a CPU-speed multiplier changes the
+conversion, never a device's clock rate. Carry fractional machine cycles
+between deliveries. If the multiplier changes, rebase both the machine
+clock and the undelivered fraction; POM68K's `Cpu030::pollBoostGate` and
+`machineClock()` do this when floppy streaming changes the multiplier.
+
+The rules below were established by POM68K's deadline changes of
+2026-11-07 (fourteenth through sixteenth, `CHANGELOG.md`):
+
+- **Stall, then advance devices, then serve the access.** An access aligned
+  to a bus edge must observe devices at that edge. A flush before the stall
+  leaves them behind if the stall does not cross the next scheduled device
+  deadline. The old "next E tick" bound happened to hide that dependency.
+  A deadline check alone is not a flush: `catchUp()` may return without
+  advancing anything. See `Q605Memory::viaAccess8` and
+  `q605_event_scheduler_test`.
+- **Re-arm after accesses that change an event.** A timer load, transfer
+  command, final DMA byte, interrupt acknowledgement or display-register
+  write may change a device's next event without advancing `clock`.
+  Recompute the bound after the access, on every exit path. An RAII guard
+  is one way to keep early returns covered (`Q605Memory::viaAccess8`,
+  `Q630Memory`, `Q700Memory`; `quadra_event_scheduler_test`).
+- **Use the countdown's own time base.** A device countdown measured at the
+  last delivery is relative to that delivery, not to the current CPU
+  clock. Adding it to the current clock postpones already-running events
+  by the undelivered span. Conversely, an event armed by the current access
+  starts now; measuring it from the last delivery makes it early. POM68K's
+  `schedulePeriphDeadline` uses `lastPeriphClock_` and subtracts the carried
+  fraction; `tightenPeriphDeadline` uses the access-time `clock` and only
+  brings the existing bound forward. Both convert machine cycles back to
+  core cycles with the current multiplier (`Cpu030`, `Cpu040`).
+- **Prove that device stepping is independent of partitioning.** Advancing
+  a device by the same elapsed machine time in different slice sizes must
+  produce the same pin/IRQ/data trace, with accesses at the same machine
+  times. A changed deadline can expose a device that violates this without
+  any CPU-state difference. POM68K's DjMEMC PIC1654S co-step still does:
+  additional SCC flushes changed the guest's ADB service result, so the
+  deadline port was withdrawn there (`*_prober_oracle_etalon`). A port
+  must check its own devices; this is not a property guaranteed by Moira.
+
+**Limit of the current integration:** Q605 SCSI/ASC/DAFB reads and
+pseudo-DMA accesses may observe device state from the last delivery, up to
+one slice old. The SWIM paths and SCSI command writes flush first. Do not
+infer exact device-at-access timing, or global slice independence, from a
+green CPU corpus or a stable boot fingerprint. A host requiring that
+precision must synchronize the affected device to the access's machine
+time, while preserving the ordering above.
+
 ### 2.4 Interrupt acknowledge (68000 only)
 
 `virtual int iackSyncBefore(u8 level)` / `iackSyncAfter(u8 level)` (default 4/4)
@@ -237,7 +301,10 @@ error. `CALLM`/`RTM` are available on `AV::M68020` only.
 `irqDelay` is internal state, not configuration: `Moira::setSR` sets it to 2
 when `cpuModel >= M68020` and the new mask is lower than the old; the
 `execute()` slow path decrements it instead of calling `checkForIrq()`.
-`reset<C>()` clears it.
+`reset<C>()` clears it. The depth is empirical (grade F), originally set
+for a SimCity-2000 symptom later attributed to Egret. No manual establishes
+it; calibration and a hardware IPL-recognition trace are still owed
+(`TODO.md` § Moteur › Temps).
 
 ### 3.1 `MoiraConfig.h` macros (POM68K values)
 
@@ -418,14 +485,18 @@ expected.
   `mmu040AccFirst`, `mmu040AccSplit`, `mmu040LastWrite`, `mmu040Moves`,
   `mmu040Lrmw`, `mmuFixupReg`, `mmu040CcrSave`; fetches `ird`/`irc`.
 - ATCs: `Mmu040AtcEntry mmu040AtcI[32]`, `mmu040AtcD[32]`, pseudo-LRU, page
-  size from TC.P (4 K / 8 K; the 8 K cell is not fuzzed), global bit honoured
+  size from TC.P (4 K / 8 K; `sst68040_8k` holds the 8 K cell where its
+  corpus is present), global bit honoured
   by `mmu040AtcFlushNonGlobal`. `setMmu040AtcArmed(false)` forces a walk per
   access.
 - Registers: `setURP040`, `setSRP040`, `setTC040` (all flush the ATCs),
   `setITT0/ITT1/DTT0/DTT1` (masked `$FFFFE364`, bump `pomJitMmuGen`),
   `setMMUSR040`.
-- MOVEM restart latch: `mmu040MovemArmed`, `mmu040MovemEa` (public) survive
-  from a faulting MOVEM to its RTE-restarted completion.
+- MOVEM latch: `mmu040MovemArmed`, `mmu040MovemEa` (public) record the
+  EA during the transfer; a fault consumes the latch into SSW.CM and the
+  format-$7 EA. Contrary to older comments, the present RTE does not re-arm
+  it. A full restart sequence still needs reproduction (`TODO.md` § Moteur ›
+  Justesse 68040). A host-armed latch is carried by `pomVisitState`.
 - MOVE16: `mmu040Move16[4]` line buffer, `mmu040GetMove16`/`PutMove16`.
 
 ### 5.3 Function codes
@@ -557,9 +628,17 @@ Host obligations when the model is armed:
 
 ## 8. Save-state contract
 
-The core contains no serializer. POM68K's visitor is
-`src/MoiraSnapshot.h` `MoiraSnapshot::visitCpuCommon(Ar&)`, a thin class
-deriving from `Moira` (through `MoiraDebugSeam`) to reach protected state.
+The core owns the state inventory in `MoiraState.h`:
+`Moira::pomVisitState(Ar&)`. The host supplies an archive with a variadic
+`operator()(fields...)` and `static constexpr bool loading`, handling
+integers, enums and fixed arrays (FPU extended values are visited as high/low
+halves). It supplies RAM and the file container separately, and must restore
+under the same CPU/FPU and timing configuration. Call only between
+instructions; a bus callback or a mid-instruction exception notice is not a
+snapshot boundary. No Macintosh or JIT engine is needed. POM68K's
+`src/MoiraSnapshot.h` adapter delegates `visitCpuCommon` to this method,
+using the archive in `src/SaveState.h`. Format **v29** includes the formerly
+missing continuation state; previous formats are refused.
 
 Serialized, in order: `clock`; `reg.pc`, `reg.pc0`, `reg.r[16]`, `usp`,
 `isp`, `msp`, `reg.ipl`, `vbr`, `sfc`, `dfc`, `cacr`, `caar`; `reg.sr.t1/t0/
@@ -570,7 +649,22 @@ s/m/x/n/z/v/c/ipl`; 030 `crp`, `srp`, `tc`, `tt0`, `tt1`, `mmusr`; 040
 `trace040Pending`, `tracePc040`, `fcl`, `fcSource`, `exception`,
 `loopModeDelay`, `readBuffer`, `writeBuffer`, `flags` minus debugger bits;
 `fpu.fp[8]` (high, low), `fpcr`, `fpsr`, `fpiar`, `state`, `expState`,
-`expPend`, `fsaveCcr`, `fsaveEo[3]`, `ea`.
+`expPend`, `fsaveCcr`, `fsaveEo[3]`, `ea`; `mmuPipeAddr`, `mmuPipe[4]`,
+`mmuPipeCnt`; `mmuRteSubstArmed/Write/Addr/Data/Pc`; `fpu.busy`,
+`busyUntil`, `busyOpcode`, `busyExt`, `busyIa`, `busyFp[8]` (high, low),
+`busyFpsr`; integrated-040 `cmdreg1b`, `cmdreg3b`, `stag`, `dtag`,
+`wbtm66`, `grs`, `wbte15`, `e1`, `e3`, `t`, `fpiarCu`, `fpt[3]`, `et[3]`,
+`wbt[3]`; `mmu040MovemArmed` and its EA (zero encoded when inactive).
+
+`moira_state_test` saves at executed boundaries, loads a fresh bare CPU,
+and compares continuation, clock, serialized state and RAM with an
+uninterrupted control: a 68882 SQRT interrupted with format $9 before
+FSAVE/FRESTORE/RTE, a 68030 cleared-DF RTE before its retried read,
+a PMOVE before old pipe words are consumed (RAM is patched to distinguish
+them from a refetch), and 040 UNIMP/BUSY exceptions before FSAVE. These
+formerly failed because the visitor omitted the corresponding fields.
+The public MOVEM latch has a separate host-armed round-trip check; that
+check does not prove an RTE restart sequence.
 
 Not serialized:
 
@@ -578,19 +672,15 @@ Not serialized:
 |---|---|
 | `cp` | deliberate: zeroed at each `C68020` instruction start (`AVAILABILITY`); set to 0 on load |
 | `pomIcache` tags/valid/counters, `mmuAtcArr`, `mmu040AtcI/D`, `pomCache040I/D` | deliberate: caches are flushed on load (dirty 040 lines lost — § 7) |
-| `fpu.busy`, `busyUntil`, `busyOpcode`, `busyExt`, `busyIa`, `busyFp[8]`, `busyFpsr` | omitted: a snapshot taken between a format-$9 interrupt and the FPU command's completion loses the pending 6888x result |
-| `fpu.cmdreg1b`, `cmdreg3b`, `stag`, `dtag`, `wbtm66`, `grs`, `wbte15`, `e1`, `e3`, `t`, `fpiarCu`, `fpt`, `et`, `wbt` | omitted: integrated-040 UNIMP/BUSY FSAVE micro-state |
-| `mmuPipeAddr`, `mmuPipe[4]`, `mmuPipeCnt` | omitted: a snapshot inside a PMOVE's pipe shadow resumes without it |
-| `mmuRteSubstArmed/Write/Addr/Data/Pc` | omitted: a snapshot between an RTE $B with DF cleared and the retried access re-runs the bus cycle |
-| `mmu040MovemArmed`, `mmu040MovemEa` | omitted: a snapshot between a faulted MOVEM and its RTE restart loses the saved EA |
 | per-instruction 030/040 MMU bookkeeping (`mmuState`, `mmuAd`, `mmuFixup*`, `mmu040Acc*`, fault capture) | not needed at an instruction boundary (reset by the loop heads) |
 | `fpuMidInterruptFrame` | transient inside `processException` |
 | models, `mmu040AtcArmed`, `pomCache040On`, `PomCache040Timing`, `pomIcache.armed/missPenalty`, dasm styles | construction/host configuration |
 | all `pomJit*` state | derived; rebuilt by the engine |
 | `mmu040TtrTab` | derived from ITT0/ITT1 and DTT0/DTT1; self-validating — the first `mmu040MatchTTR` after a load compares the register pair and rebuilds |
 
-Whether each "omitted" row is reachable at a snapshot boundary in practice is
-unverified; the fields survive instruction boundaries by construction.
+The remaining per-instruction bookkeeping is not a continuation inventory:
+its omission is justified by the loop heads resetting it. The executed
+round trips above establish the reachability of the former omissions.
 
 On load the visitor: restores `flags` as `(guestFlags & ~kDebugFlags) |
 liveDebug` (`kDebugFlags` = `CHECK_BP | CHECK_WP | CHECK_CP | LOGGING`, so
@@ -604,7 +694,7 @@ covered on the host side: no POM68K restore calls `jit::Engine::flushAll()`
 directly, but every board's `visit()` load branch raises the code guard's
 `JitGuard::invalidate()` (all fourteen `*Memory` classes, directly or through
 their `mapChanged()`), which the engine treats as `mustFlush` — every block
-dropped at its next service — and `visit()` in `src/MoiraSnapshot.h` disarms
+dropped at its next service — and `pomVisitState()` in `MoiraState.h` disarms
 the window and flushes both ATCs. A port with a block cache must do the
 equivalent on load.
 
@@ -709,7 +799,7 @@ requires replacing that include (open in `TODO.md`).
 | 030/040 MMU, ATCs, $A/$B/$7 frames, last-write dichotomy | generic (WinUAE-arbitrated) | rows 3-5, 18; `sst68030`, `sst68040` |
 | Prefetch-pipe carry (4 words after PMOVE TC/CRP/SRP) | Mac-tuned approximation of the real 030 pipe; motivated by the LC II ROM `pmove tc; nop; bne; jmp (An)` idiom | row 11, § *Prefetch-pipe carry* |
 | `POLL_IPL` at mode-5 instruction start | generic necessity of the mode-5 model; found with the LC II ROM TimeDBRA loop | row 11 |
-| RTE $B DF-cleared one-shot latch | generic 030 protocol, implemented as restart+substitution; pinned only by Mac OS slot-probe recovery (`berr030_test`) | row 10 |
+| RTE $B DF-cleared one-shot latch | generic 030 protocol, implemented as restart+substitution; `berr030_test` holds slot-probe recovery, `moira_state_test` its save/load boundary | rows 10, 57 |
 | `irqDelay = 2` after a mask-lowering SR write (020+) | Mac-tuned: depth 2 is empirical (SimCity 2000 VBL re-entry); PRM reading is 1 | row 13, § *IRQ-recognition delay* |
 | i-cache overlay geometry | generic MC68030UM § 6 | row 14 |
 | `missPenalty` value (4) and wrapper `cacheBoost_` (4) | Mac-tuned throughput calibration on the LC II | row 14, `src/Cpu030.h` comment |
@@ -731,17 +821,17 @@ requires replacing that include (open in `TODO.md`).
 
 Minimal file set:
 
-- `extern/moira/Moira/` — all 25 files (`Moira.cpp` and `MoiraDebugger.cpp`
+- `extern/moira/Moira/` — all 26 source files (`Moira.cpp` and `MoiraDebugger.cpp`
   are the only translation units; the rest are headers, including the
-  `_cpp.h` inclusions, `MoiraCache040.h`, `MoiraConfig.h`) and
+  `_cpp.h` inclusions, `MoiraCache040.h`, `MoiraState.h`, `MoiraConfig.h`) and
   `extern/moira/Moira/LICENSE`.
 - `extern/softfloat/` — `softfloat.c`, `softfloat_decimal.c`,
   `softfloat_fpsp.c`, `softfloat.h`, `softfloat-macros.h`,
   `softfloat-specialize.h`, `softfloat_fpsp_tables.h`, `VENDOR.md`.
 - Optional: `src/jit/` (engine + `threaded` backend + native backends), which
   today also needs `jit::ResolvedConfig`'s POM68K startup dependency replaced.
-- Optional: a CPU state visitor modelled on `src/MoiraSnapshot.h`
-  (GPLv3, POM68K code) — the core has none.
+- For save states: a host archive for `Moira::pomVisitState` and a versioned
+  container. The visitor already lives in the core (`MoiraState.h`).
 
 Build: C++20 (`CMAKE_CXX_STANDARD 20`, designated initializers in
 `Moira.cpp`); C for softfloat; C++ exceptions and RTTI enabled
@@ -754,7 +844,8 @@ built with `-Wno-unused-parameter -Wno-unused-variable` and included as
 Licences: Moira MIT (`extern/moira/Moira/LICENSE`, Dirk W. Hoffmann; notice
 must be kept). softfloat: SoftFloat-2a + BSD (QEMU parts) + GPLv2-or-later
 (`extern/softfloat/VENDOR.md`), linked as a separate library. POM68K code
-(`src/`, including `src/jit/` and `src/MoiraSnapshot.h`) is GPLv3. A binary
+(`src/`, including `src/jit/` and `src/MoiraSnapshot.h`, and the moved
+`MoiraState.h` visitor) is GPLv3. A binary
 linking softfloat is subject to GPL obligations.
 
 Mac-free gates (bare `moira` + softfloat, flat RAM, no ROM):
@@ -769,6 +860,7 @@ Mac-free gates (bare `moira` + softfloat, flat RAM, no ROM):
 | `cache040_test` | same | 040 cache geometry, policy, copyback, CINV/CPUSH, snooping, timing |
 | `callm_rtm_test` | same | CALLM/RTM |
 | `moira_rules_test` | same | hand-pinned rules (DIVS of `$80000000` on six models) |
+| `moira_state_test` | same | bare-core save/load across pending 68882 work, 030 pipe and DF-cleared retry, 040 UNIMP/BUSY frames; host debugger/model ownership |
 | `berr030_test` | `cmake/Pom68kMachineGates.cmake` (links `moira` only) | external /BERR, RTE $A/$B, DF-cleared latch |
 | `jit_asset_free_lockstep_test` | `cmake/Pom68kJitGates.cmake` (links `pom68k_core` for the engine; flat-RAM 68040 program) | JIT vs interpreter boundaries, restart/last-write frames, guard indexing |
 
@@ -783,7 +875,8 @@ POM68K's copy was taken from NeoST at `47d6c39` (lineage `0b96cab` →
 `47d6c39`, `POM68K_VENDOR.md` provenance). Both keep NeoST's earlier patches:
 `NEOST_IPLFETCH` (`setIplDelay`/`pollIpl`), level-sensitive STOP, guarded
 reset, 24-bit-masked watchpoints, `iackSyncBefore/After`, `NEOST_EXC_DIAG`.
-`diff -rq` shows 13 differing files plus POM68K's `MoiraCache040.h`.
+The earlier `diff -rq` recorded 13 differing files plus POM68K's
+`MoiraCache040.h`; `MoiraState.h` is now another added file.
 
 NeoST's nine post-copy patch groups, and where each stands here:
 

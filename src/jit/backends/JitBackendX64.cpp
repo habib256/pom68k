@@ -5359,16 +5359,14 @@ public:
         // declares it too since the same afternoon (its thunks carry the
         // same bias, replacing the guardIcacheHits replay).
         c.accessClockBias = true;
-        // Exact WRITES (thunk mode 2) are withdrawn as a 68030 default,
-        // 2026-08-29: the first x86-64 boot to reach post-MMU-enable 030
-        // code under them never finishes — the guest advances, but the
-        // engine burns its wall in serviceGuard() (SIGABRT core taken at
-        // 90 s into a 2.7 s workload sits in the slice-index hash walk).
-        // Mode 1 boots the LC II to the Finder in 53 s pinned (threaded:
-        // 119 s) and prints fingerprints identical to threaded at every
-        // budget tried. The mechanism of the mode-2 storm is NOT yet run
-        // to ground — this cap is a default, not a fix, and the explicit
-        // env override still selects mode 2 for the hunt.
+        // Exact WRITES (thunk mode 2) remain opt-in on the 68030. The
+        // guard-exit replay loop was fixed on 2026-08-29 (late night):
+        // an exit that made no progress takes one interpreted step.
+        // The 2026-09-05 paired measurement found no resolvable wall-time
+        // gain at 2000 or 6000 frames: fewer replays, but nineteen blocks
+        // lost native admission. This cap is a measured default, not a
+        // workaround for an unresolved storm (CHANGELOG, September 5,
+        // second). The explicit override still selects mode 2.
         c.maxAccessThunk030 = 1;
         return c;
     }

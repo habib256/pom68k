@@ -27,7 +27,7 @@
 // of; everything else falls back through `pomJitExecOne` into the same
 // interpreter both engines share.
 //
-// The layout mirrors `MoiraSnapshot.h`'s visitCpuCommon(), in order. Keep
+// The layout mirrors `MoiraState.h`'s pomVisitState(), in order. Keep
 // the two in step: a field added there and not here shifts every name after
 // it, which is worse than no map at all.
 
@@ -59,16 +59,16 @@ inline constexpr Field kFields[] = {
     {"iplDelay4", 8}, {"iplDelay2", 8},
     {"iplDeferred", 4}, {"irqDelay", 4},
     {"trace040Pending", 1}, {"tracePc040", 4},
-    {"fcl", 1}, {"fcSource", 1}, {"exception", 4}, {"cp", 4},
+    {"fcl", 1}, {"fcSource", 1}, {"exception", 4},
     {"loopModeDelay", 4},
     {"readBuffer", 2}, {"writeBuffer", 2}, {"flags", 4},
-    // Past this point: the 68881/68882 block (fp[8] as {high,low} pairs,
-    // fpcr/fpsr/fpiar, state/expState/expPend, fsaveCcr/fsaveEo/ea).
+    // Past this point: FPU registers, then PMMU/FPU continuation state
+    // (MoiraState.h). fieldAt reports that tail as a combined block.
 };
 
 // Name the field containing `off`, an offset into the CPU chunk PAYLOAD
 // (not into the container). Writes the offset within that field to
-// `fieldOff`. Offsets past the integer block are reported as FPU state.
+// `fieldOff`. Offsets past the integer block are reported as FPU/continuation.
 inline const char* fieldAt(std::size_t off, std::size_t* fieldOff) {
     std::size_t at = 0;
     for (const Field& f : kFields) {
@@ -79,7 +79,7 @@ inline const char* fieldAt(std::size_t off, std::size_t* fieldOff) {
         at += f.size;
     }
     if (fieldOff) *fieldOff = off - at;
-    return "fpu.* block";
+    return "FPU / continuation block";
 }
 
 // Print "byte N of M" together with the chunk and field it lands in, given

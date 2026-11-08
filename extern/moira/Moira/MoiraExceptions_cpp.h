@@ -8,6 +8,7 @@
 template <Core C> void
 Moira::writeStackFrameAEBE(StackFrame &frame)
 {
+    // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
     // POM68K: the 68000 does not stack its group-0 frame top-down. The bus
     // order is PC low, SR, PC high, IR, access address low, status word,
     // access address high — the three-word order of writeStackFrame0000,
@@ -561,10 +562,11 @@ Moira::execAddressError(StackFrame frame, int delay)
     // Disable tracing
     clearTraceFlags();
     flags &= ~State::TRACE_EXC;
+    // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
     // POM68K: SingleStepTests/680x0 — on the 68000, data faults take 8 idle
     // cycles fewer than upstream Moira, instruction-flow faults 6 fewer.
     // The I/N bit (code bit 3, set at the throw sites) is the discriminator:
-    // PC-relative OPERAND reads carry FC=program but still get 0 idle.
+    // PC-relative OPERAND reads are data faults too (FC=data).
     // POM68K: and the two idle cycles upstream spent AFTER the frame sit
     // BEFORE it on the 68000 — same total, same corpus evidence as the
     // stacking order in writeStackFrameAEBE.
@@ -717,6 +719,7 @@ Moira::execException(M68kException exc, int nr)
         case M68kException::CHK:
         case M68kException::TRAPV:
 
+            // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
             // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // Write stack frame
             // POM68K: divide-by-zero stacks the DIV instruction's own

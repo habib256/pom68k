@@ -113,6 +113,12 @@ public:
         reg.tc = tc; reg.crp = crp; reg.tt0 = tt0; reg.tt1 = tt1;
     }
     moira::u16 mmusr() const { return moira::u16(reg.mmusr); }
+    void armIcacheOverlay() {
+        pomIcache.armed = true;
+        pomIcache.missPenalty = 17;
+        setCACR(1);
+    }
+    moira::i64 overlayFetches() const { return pomIcache.fetches; }
 private:
     void setBusLock(bool locked) override { events += locked ? 'L' : 'U'; }
     void willProcessFault(const moira::StackFrame& frame) override {
@@ -605,6 +611,62 @@ void ptestFlagsInvalidAtTheLimit()
           c.getPC0(), c.getMMUSR());
 }
 
+void ec030UsesPlain020Path()
+{
+    // POM68K_SURFACE.md § 1.2: the current 68EC030 implementation uses
+    // the plain-020 bus/prefetch path and refuses the code window. Keep
+    // that contract executable without a Macintosh. A programmed TC/CRP
+    // maps code/stack but makes the operand's page invalid: the 68030
+    // control must fault, whereas the two plain-020 models read RAM.
+    // This pins this fork's declared scope; it is not a silicon corpus.
+    for (moira::Model model : { moira::Model::M68020, moira::Model::M68EC030,
+                                moira::Model::M68030 }) {
+        TestCpu c(model);
+        const auto checkWindowRefused = [&] {
+            if (model != moira::Model::M68EC030) return;
+            for (bool super : { false, true }) {
+                moira::u32 pa = 0, base = 0, len = 0;
+                CHECK(!c.pomJitProbeCode(kCode, super, pa, base, len),
+                      "68EC030: code-window probe accepted super=%d TC=%08X",
+                      int(super), c.getTC());
+            }
+        };
+        p32(c, 2 * 4, kHandler);
+        p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
+        stage(c, 0x2010, 0);                       // MOVE.L (A0),D0
+        c.setSP(0x7000);                           // code/stack in page 0
+        c.setA(0, 0x9000);                         // operand in page 1
+        c.setD(0, 0xaabbccdd);
+        p32(c, 0x9000, 0x12345678);
+        checkWindowRefused();                      // TC cleared by reset
+        c.setTC(0x80f89000u);                       // 32 KB pages, one level
+        c.setCRP(0x7fff000200004000ULL);
+        p32(c, 0x4000, 0x00000001);                // page 0: identity
+        p32(c, 0x4004, 0);                         // page 1: invalid
+        c.armIcacheOverlay();
+        CHECK((c.getCACR() & 1) != 0,
+              "model %d: cache-enable precondition was masked off", int(model));
+        const bool mmu = model == moira::Model::M68030;
+        CHECK(c.hasMMU() == mmu, "model %d: hasMMU()", int(model));
+        const bool contained = executeContained(c);
+        CHECK(contained, "model %d: execute() leaked a fault", int(model));
+        if (!contained) continue;
+        CHECK(c.getD(0) == (mmu ? 0xaabbccdd : 0x12345678) &&
+              c.getPC0() == (mmu ? kHandler : kCode + 2),
+              "model %d: D0=%08X PC0=%08X (want %08X/%08X)", int(model),
+              c.getD(0), c.getPC0(), mmu ? 0xaabbccdd : 0x12345678,
+              mmu ? kHandler : kCode + 2);
+        CHECK((c.overlayFetches() > 0) == mmu,
+              "model %d: overlay counted %lld fetches", int(model),
+              static_cast<long long>(c.overlayFetches()));
+        if (mmu)
+            CHECK(g32(c, c.getSP() + 0x10) == 0x9000,
+                  "68030 control: fault address %08X (want $9000)",
+                  g32(c, c.getSP() + 0x10));
+        checkWindowRefused();                      // TC programmed, still no window
+    }
+}
+
 } // namespace
 
 // POM68K_SURFACE.md § 3, setFPUModel: attaching a 6888x to a 68000 or a
@@ -732,6 +794,7 @@ int main()
     ptestFlagsInvalidAtTheLimit();
     fpuIgnoredOn68000And68010();
     tableSearchBusError030();
+    ec030UsesPlain020Path();
 
     if (failures) {
         std::printf("[moira_rules_test] FAIL: %d check(s)\n", failures);
@@ -743,6 +806,7 @@ int main()
                 "shapes, five-bit FBcc predicate, 68040 FPU store fault, 68040 TTR "
                 "table, CLR without its read from the 68020 up, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
-                "during a table search\n");
+                "during a table search, 68EC030 plain-020 path with a 68030 "
+                "MMU/cache control\n");
     return 0;
 }

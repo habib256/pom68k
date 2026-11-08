@@ -71,16 +71,22 @@ Fixed 1,000-frame Q605 workload: **1.22 s** against 4.55 s threaded
 27.37 s → **22.88 s, −16.4 %**, spreads 0.0/0.1 %, fingerprint
 `cfb184b6faddabec` on both arms. The 2026-08-18/20 same-shape figures
 ("within 3 %", then −5.3 %) are earlier sessions and earlier binaries —
-context, not a delta. Still open: the idle-Finder regime, where the soak
-runs 3× slower than `threaded` (CHANGELOG 2026-08-22 (fourth)).
+context, not a delta. The idle-Finder regression was traced that day to
+stale slice-index keys and overly broad code-guard invalidation, then fixed
+(CHANGELOG 2026-08-22 (fourth)/(fifth)); `jit_asset_free_lockstep_test` holds the
+key-lifetime invariant without a ROM. It is not an open speed deficit.
 
-Current non-LTO Apple-M4 fixed budget (3,000 frames), three ABBA pairs:
+Historical non-LTO Apple-M4 reference (2026-08-23, 3,000 frames), three ABBA pairs:
 **3.24 s median, 15.43× real time** against 29.24 s interpreter (**9.03×**),
 **99.7 % native**, fingerprint `778dd7ad558108fd` in every arm. The
 30,000-frame lifetime
 budget sustains **92.0 % native and 5.51× real time** after generated-code
 capacity recycling; before that correction the full buffer made native share
 collapse to 51.7 % and throughput to 3.10×.
+
+These figures predate the Q605 workload/identity and core changes. Both
+hosts' performance references need a new baseline; a recent AArch64 tier is
+also owed (`TODO.md` § Moteur). They do not describe the current tree.
 
 On the 68030 LC II fixed 6,000-frame budget, three same-process ABBA
 repetitions measure a64 at **18.88 s** median against **19.93 s** for

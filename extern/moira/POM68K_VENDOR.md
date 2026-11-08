@@ -31,13 +31,13 @@ pair):
 
 | | | how to re-measure |
 |---|---|---|
-| distinct `pom*` extension identifiers | **104** (60 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **488** | `grep -rn POM68K Moira/ \| wc -l` |
-| source files carrying a marker | **14 of 25** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **56** | this file |
-| files POM68K *adds* outright | `MoiraCache040.h` | — |
+| distinct `pom*` extension identifiers | **105** (60 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
+| `POM68K`-marked lines | **492** | `grep -rn POM68K Moira/ \| wc -l` |
+| source files carrying a marker | **15 of 26** | `grep -rln POM68K Moira/ \| wc -l` |
+| patch groups in the inventory below | **57** | this file |
+| files POM68K *adds* outright | `MoiraCache040.h`, `MoiraState.h` | — |
 
-Fifty-six patch groups, two of which (the JIT seam, row 22, and the ATC
+Fifty-seven patch groups, two of which (the JIT seam, row 22, and the ATC
 performance work, row 16) are not patches over upstream's design but a second
 consumer of it. A re-sync is no longer a merge with conflicts; it is a port.
 
@@ -67,7 +67,7 @@ interpreter's speed being tolerable.
 
 **Reopening condition** — reversed only by upstream landing something the fork
 cannot cheaply reproduce (a full 68040 FPU, a rewritten dispatch core), and only
-against a *measured* estimate of porting the 55 groups onto it. Not by the
+against a *measured* estimate of porting this patch set onto it. Not by the
 general discomfort of being forked.
 
 The "Before re-syncing from upstream" note further down is now the exception
@@ -97,11 +97,13 @@ find.
   2026-07-31; the 25th file is `MoiraCache040.h`, added).
   The NeoST patches carry `NEOST` markers instead, not `POM68K` ones — the two
   greps are disjoint.
-- **Every comment that cites WinUAE says so with its grade and revision**:
+- **Every comment that cites WinUAE or SingleStepTests carries its grade
+  and revision**. WinUAE:
   `[D] … @ Hatari e77819f7`, the tree pinned under `oracle/uae/upstream`
   (CLAUDE.md § Evidence grades — another emulator is grade D, and a grade-D
   citation without its revision designates nothing). `core_grades_test`
-  (`tools/core_grades.py --check`) holds it: a WinUAE-citing comment block
+  (`tests/core_grades_test.py`, including `tools/core_grades.py --check`'s
+  checks) holds it: a WinUAE-citing comment block
   without `[D]` and a revision, or a `file.c:N` outside the pinned file,
   fails. Until 2026-11-08 the core cited two Hatari revisions without saying
   which — most of the FPU's `fpp.c` lines were read in NeoST's copy
@@ -109,6 +111,12 @@ find.
   retargeted to `e77819f7`. A `[D]` claim never overrules a `[B]` one; where
   the fork follows WinUAE against a manual, `oracle/README.md` names the
   ruling.
+  SingleStepTests comments have their own header, `[D] SingleStepTests/680x0
+  68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3`, matching the fetcher
+  and `tests/sst_corpora.lock`. The gate checks that agreement and rejects
+  an unrelated oracle's grade/revision as evidence for the corpus. Manual
+  and other emulator citations still need the remainder of the grading pass
+  (`TODO.md` § Moteur › Surface).
 - Sections are never rewritten when superseded, only annotated. § *Model support
   in this copy* (last section) is the current state; the journal is history.
 - The vector counts quoted throughout (`sst68000` 1 000 058, `sst68030` 3 082,
@@ -187,8 +195,9 @@ gate in the last column of each row.
 | 54 | **68030 PTEST reports an invalid descriptor fetched at its level limit** — `mmuWalkTables` sets MMUSR.I when the loop leaves on the limit with the last descriptor invalid | `MoiraExecMMU_cpp.h` | the descriptor read in one pass was examined at the top of the next, which a level limit equal to the depth reached prevents: PTESTR level 1 into a DT=0 descriptor answered N=1 and no I. MC68030UM (Freescale edition) § 9.7.4, Table 9-3: I is set if a descriptor encountered during the search is invalid (cited as § 9.7.6 until 2026-11-08 — no such section); WinUAE examines each descriptor as fetched. One fuzz vector in 21 000 ("mmu/tt seed=1006 #1188") | `moira_rules_test` |
 | 55 | **The interpreter arms the fetch window itself** — `pomSetInterpWindow(on, codeSpanFn, ctx)` and `pomInterpArm`, called on a window miss by the 68030 and 68040 loop heads and by `execute()` for the 68000/68010/68020; `jit::Engine` hands the window over when it is disabled and takes it back when it runs. Also drops a stale `assert(S == Word)` in `divlsMoira`: DIVS.L of `$80000000:00000000` by −1 overflows legitimately | `Moira.h`, `MoiraExecMMU_cpp.h`, `MoiraALU_cpp.h` | the window, its fetch path and its eviction hooks were the core's; only the decision to arm lived in the engine, so `POM68K_CPU_ENGINE=interp` — and any bare host — paid a translated bus read per opcode word. The arm is `Engine::armWindow` decision for decision, minus the block guards it has no use for. Fixed-cycle benches, interpreter: Quadra 605 19.75 s → 12.71 s (−36 %), LC II 13.26 s → 11.06 s (−17 %), Mac II 5.83 s → 5.06 s (−13 %), Plus within noise, fingerprints unchanged; JIT mode flat (it never ran this path) | `jit_bench` / `jit_bench_lcii` fingerprints, the lockstep gates (interpreter arm under the window now), `jit_asset_free_lockstep_test` |
 | 56 | **68030: a /BERR on a table-search descriptor fetch ends the search with MMUSR B\|I** — `extBusError()` raised while `mmuInTableSearch` throws the side-effect-free `MmuTableSearchBusError`; `mmuBusWalk` (now a wrapper over `mmuBusWalkBody`) and `mmuWalkTables` catch it: the bus walk adds B\|I to the status it had accumulated, so the ATC entry carries B and the retried access faults on its logical address; PTEST reports B\|I with the faulted descriptor not counted in N, and takes no exception | `MoiraExecMMU_cpp.h`, `Moira.h`, `MoiraTypes.h` | the walk used to throw the access's own fault from inside the search: same frame for a normal access, but no B entry left behind, and PTEST/PLOAD took an exception instead of reporting. MC68030UM (Freescale edition) § 9.5.2 p. 9-49, the ATC B bit p. 9-11, § 9.7.4 Table 9-3; WinUAE mmu030_table_search agrees. Was an "unverified" line of `POM68K_SURFACE.md` | `moira_rules_test` (fails on the old core: MMUSR $0400 after the fault, and PTEST level 7 taking vector 2) |
+| 57 | **Portable instruction-boundary state visitor** — `pomVisitState(Ar&)` owns the CPU inventory, adds the pending 6888x result, integrated-040 frame micro-state, 030 pipe and DF-cleared retry; an armed public MOVEM latch is carried with inactive EA normalized | `Moira.h`, `MoiraState.h` | the host-side visitor omitted state reachable between executed instructions; a fresh CPU lost SQRT completion, retried a software-completed bus access, refetched patched code, and emitted different FSAVE payloads. POM68K adapter delegates; format v29 refuses old payloads | `moira_state_test` |
 
-Rows 2-21, 25-34, 36, 38, 40, 41, 43-47 and 50-54 are the accuracy work; rows 22-24, 35, 39, 42 and 49 are seams (inert
+Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54 and 56 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
 when nothing arms them); rows 48 and 55 are performance alone, with no architectural effect. The eleven files carrying no `POM68K` marker at all —
 `MoiraDasm*` (4), `StrWriter*` (2), `MoiraDebugger.h`, `MoiraMacros.h`,
 `MoiraALU.h`, `MoiraExceptions.h`, `MoiraInit.h` — are where an upstream fix can
@@ -741,9 +750,12 @@ precision boundaries, nonmaskable integer conversion exceptions, datatype
 payloads, FMOVEM, every native `$40-$7F` opcode, FSAVE and BUSY resume.
 
 The family audit found two older gaps outside the 040. On the 68030,
-post-instruction external-FPU exceptions now stack format $2 plus the
-instruction address (pre-instruction exceptions remain format $0). On the
-68020, the empty CALLM/RTM bodies are replaced by the complete 24-byte
+post-instruction external-FPU exceptions then stacked format $2 plus the
+instruction address (pre-instruction exceptions remain format $0).
+**Superseded by row 26, ruling D23a:** the 020/030 currently stack format
+$3 to retain the pinned oracle vectors; this known exception to the manual
+and the RTE inconsistency remain open (`TODO.md` § Moteur › Justesse
+68030). On the 68020, the empty CALLM/RTM bodies are replaced by the complete 24-byte
 type-$00/$01 module-frame protocol, including the optional CPU-space
 access-control hooks and stack/argument transfer. `fpu_sanity` and
 `callm_rtm_test` pin those corrections.
@@ -1687,18 +1699,25 @@ the 030 ATC**. Rather than serialize the ATCs (they are pure caches,
 re-derivable from RAM) or widen the private section, this adds the single
 protected entry point `src/MoiraSnapshot.h` needs.
 
-Everything else about save states is on the POM68K side of the seam: the
-whole CPU chunk lives in `MoiraSnapshot::visitCpuCommon()` (`src/MoiraSnapshot.h`,
-which calls `pomFlushAtcs()` after the reload), and it works only because
-Moira's execution state (`clock`, `reg`, `queue`, the IPL history, `flags`,
-`fpu`) is already `protected` — the CPU wrappers derive from it.
+**Superseded by row 57 (2026-11-08):** the state inventory now lives in
+`Moira::pomVisitState` (`MoiraState.h`), and `MoiraSnapshot::visitCpuCommon`
+is only the POM68K adapter. The archive implementation, RAM and versioned
+container stay on the host side. The visitor also carries the 030 pipe,
+DF-cleared retry, suspended 6888x result, 040 FSAVE micro-state and an
+armed public MOVEM latch. `moira_state_test` proves the first four across
+executed boundaries; the MOVEM latch is tested as host-armed state only.
+The old comments claiming that RTE re-arms it are not implemented by the
+present `execRte`; reproduction is open in `TODO.md` § Moteur › Justesse
+68040. Dirty copyback cache lines are still lost on load (a separate defect).
 
 Free side effect worth knowing: both flush-alls route through
 `pomJitMapMoved()` (§ *JIT seam*, points 1 and 7), so a restore also
-invalidates the JIT code window and data TLB. Restoring under an armed
-engine needs no extra call.
+invalidates the JIT code window and data TLB. The host must also invalidate
+its code guard when RAM is replaced, so cached translated blocks are dropped
+(`POM68K_SURFACE.md` § 8).
 
-Nothing else in the vendored tree changed for save states.
+At that point nothing else in the vendored tree changed for save states;
+row 57 adds the portable visitor described above.
 
 ## 68040 cache-TAG model — historical M1 (2026-08-05)
 
@@ -1862,6 +1881,10 @@ writeBuffer" instead of "byte 312".
 - 68000 / 68010 — cycle-exact execution ✓ (Mac Plus phase)
 - 68EC020 / 68020 — functional execution ✓, including CALLM/RTM module
   frames and optional CPU-space access-control transactions.
+- 68EC030 — the plain-020 execution path, without PMMU translation,
+  i-cache timing overlay or code-window admission. `moira_rules_test`
+  holds that basic contract against a faulting 68030 control; there is no
+  instruction corpus for this model (`POM68K_SURFACE.md` § 1.2).
 - 68030 — functional execution of the **MMU instruction set** ✓ (O4
   slice 1) and of **bus-level address translation + ATC + bus-fault
   frames** ✓ (O4 slice 3, see above), plus 6888x format-$3
@@ -1877,19 +1900,24 @@ writeBuffer" instead of "byte 312".
   ✓** (Q8, section above), and an **integrated FPU ✓** (native sparse
   opmodes, FPSP traps, revision-$41 FSAVE/FRESTORE frames and BUSY resume).
 
-  The architectural caches are now complete at the transaction level:
+  The architectural cache model implements data-bearing transactions:
   physically indexed/tagged I/D line data, WT/CB/NC policy, requested-
   longword-first four-beat fills, dirty replacement/CPUSH, CINV, MOVE16
   bypass, alternate-master snooping and configurable hit/fill/push charges.
   `POM68K_040_DCACHE=1` opts in. While armed, ordinary JIT page-to-RAM data
   windows are fenced; a code block's whole embedded range must be resident
   and byte-identical in I-cache, and direct links cannot bypass the next
-  residency guard. Native backends may serve a sole read from a published
-  physical D-cache line after checking logical privilege, DATA-ATC epoch,
-  live valid bit, physical tag and line boundary. Writes remain on the exact
-  path so dirty masks and format-$7 restart bookkeeping stay centralized.
-  What remains outside scope is pin-level BCLK/TA waveform simulation, not
-  an architectural cache behaviour (`docs/CACHE_040.md`).
+  residency guard. Native sole-access cache-line reads and writes have
+  their own admission/guard contract (`src/jit/POM68K_JIT.md` § 8,
+  `POM68K_SURFACE.md` § 9). Architectural gaps remain: the 040 ATC geometry
+  and supervisor tag, cache-operation address semantics, fault stamps
+  during fills/writebacks and loss of dirty copyback data on save/load
+  (`TODO.md` § Moteur › Justesse 68040). Pin-level BCLK/TA waveform
+  simulation is also outside scope; the existing transaction gates do not
+  establish full cache fidelity. The 68EC040 currently takes this full
+  paging path despite `hasMMU()` being false; it has no profile/corpus and
+  must not be treated as a hardware-accurate EC040 (`TODO.md` § Moteur ›
+  Surface).
 
   The 8K-page (TC.P) cell — `mmu040PageMaskI()` and the walk's
   `if (reg.tc040 & 0x4000)` branch, with the ATC following suit — is

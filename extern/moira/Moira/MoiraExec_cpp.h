@@ -22,6 +22,7 @@ CYCLES_68010(38) \
 CYCLES_68020(34) \
 return; }
 
+// [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
 // POM68K: upstream applied per-mode PC adjustments (+2 for -(An) short,
 // -2 for d16/d8 modes). SingleStepTests/680x0 shows the 68000 stacks
 // getPC()-2 uniformly for data faults (the -2 lives in makeFrame), so the
@@ -391,6 +392,7 @@ Moira::execAddRgEa(u16 opcode)
 
     looping<I>() ? noPrefetch<C>(2) : prefetch<C, POLL>();
 
+    // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
     // POM68K: a long result goes back LOW word first on the 68000 — the
     // carry chain ran that way. [D] SingleStepTests/680x0 v1 transactions
     // (ADD.l, SUB.l to memory); `sst68000 --transactions`.
@@ -567,6 +569,7 @@ Moira::execAddqAn(u16 opcode)
     if (src == 0) src = 8;
     u32 result = (I == Instr::ADDQ) ? U32_ADD(readA(dst), src) : U32_SUB(readA(dst), src);
     prefetch<C, POLL>();
+    // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
     // POM68K: ADDQ/SUBQ.l to An is 6 cycles, not 8 (SingleStepTests/680x0)
     SYNC(S == Long ? 2 : 4);
     writeA(dst, result);
@@ -645,6 +648,7 @@ Moira::execAddxEa(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
+    // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
     // POM68K: no AE_INC_PC (data faults stack getPC()-2 uniformly) and no
     // predecrement undo — the real 68000 keeps An fully decremented when
     // the access faults (SingleStepTests/680x0)
@@ -662,6 +666,7 @@ Moira::execAddxEa(u16 opcode)
 
     } catch (const AddressError &exc) {
 
+        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
         // POM68K: ADDX/SUBX only — a faulting -(An).l leaves An at init-2
         // (two word steps); plain reads keep the full -4 (SingleStepTests)
         if constexpr (S == Long) writeA(src, U32_ADD(readA(src), 2));
@@ -850,6 +855,7 @@ Moira::execAndiccr(u16 opcode)
         u8  dst = getCCR();
         setCCR(u8(logic<C, I, S>(src, dst)));
         SYNC(8);
+        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
         // POM68K (ported from NeoST d8d33bb): microcode 003c/023c/0a3c —
         // 1cc stiw1 (back two bytes) -> 321 stiw4 -> 1e1 malw3 -> 363 b:
         // re-read pc0+4 THEN pc0+6, in PROGRAM space; IRD receives the word
@@ -926,6 +932,7 @@ Moira::execBra(u16 opcode)
 
     u32 newpc = U32_ADD(oldpc, SEXT<S>(disp));
 
+    // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
     // Check for address error
     // POM68K: odd branch target — the 68000 stacks PC = target with the I/N
     // bit set (SingleStepTests/680x0; see extern/moira/POM68K_VENDOR.md)
@@ -1010,6 +1017,7 @@ Moira::execBcc(u16 opcode)
 
         u32 newpc = U32_ADD(oldpc, SEXT<S>(disp));
 
+        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
         // Check for address error
         // POM68K: same rule as Bra above (SingleStepTests/680x0)
         if (misaligned<C>(newpc)) {
@@ -1096,6 +1104,7 @@ Moira::execBitDxEa(u16 opcode)
     data = bit<C, I>(data, b);
 
     if constexpr (I == Instr::BCLR && C == Core::C68010) { SYNC(2); }
+    // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
     // POM68K: BTST Dn,#imm takes 10 cycles, not 8 (SingleStepTests/680x0);
     // on the 68000 the two extra cycles FOLLOW the prefetch (transactions).
     if constexpr (I == Instr::BTST && M == Mode::IM && C != Core::C68000) { SYNC(2); }
@@ -1510,12 +1519,14 @@ Moira::execBsr(u16 opcode)
             throw AddressError(makeFrame<AE_WRITE|AE_DATA>(reg.sp));
         }
 
+        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
         // Save return address on stack
         // POM68K: pushed BEFORE the target alignment check — the real 68000
         // stacks the return address, then faults on the target prefetch
         // (SingleStepTests/680x0: SSP = -18, not -14, on odd BSR targets)
         push<C, Long>(retpc);
 
+        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
         // POM68K: same rule as Bra (SingleStepTests/680x0)
         if (misaligned<C>(newpc)) {
             throw AddressError(makeFrame<AE_PROG|AE_SET_CB3>(newpc, U32_SUB(newpc, 4)));
@@ -1846,6 +1857,7 @@ Moira::execChk(u16 opcode)
     }
     dy = readD<S>(dst);
 
+    // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
     // POM68K: when CHK traps, the 68000 spends the first four of these idle
     // cycles on a bus cycle — it fetches the next word, and discards it.
     // Same total. [D] SingleStepTests/680x0 v1 transactions (CHK.json).
@@ -1888,6 +1900,7 @@ Moira::execChk(u16 opcode)
 
         } else {
 
+            // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
             // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // POM68K O4 slice 4: WinUAE-arbitrated 020/030 undefined CCR —
             // N/Z always refreshed; V/C from the bound-value subtraction when
@@ -1899,6 +1912,7 @@ Moira::execChk(u16 opcode)
 
     } else {
 
+        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
         // POM68K: C=V=0, Z=(value==0) always; N=1 if value<0 (wins),
         // N=0 if value>bound, else preserved (SingleStepTests/680x0)
         reg.sr.c = 0;
@@ -2369,6 +2383,7 @@ Moira::execCmpm(u16 opcode)
 
     if (C == Core::C68000) {
 
+        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
         // POM68K: no AE_INC_PC — data faults stack getPC()-2 uniformly
         // (SingleStepTests/680x0)
         readOp<C, M, S>(src, &ea1, &data1);
@@ -2507,6 +2522,7 @@ Moira::execDbcc(u16 opcode)
 
             bool takeBranch = readD<Word>(dn) != 0;
 
+            // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
             // Decrement loop counter
             // POM68K: before the alignment check — the 68000 decrements Dn
             // even when the branch target faults (SingleStepTests/680x0)
@@ -2575,6 +2591,7 @@ Moira::execDbcc(u16 opcode)
 
             bool takeBranch = readD<Word>(dn) != 0;
 
+            // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
             // Decrement loop counter
             // POM68K: before the alignment check — the 68000 decrements Dn
             // even when the branch target faults (SingleStepTests/680x0)
@@ -2633,6 +2650,7 @@ Moira::execDbcc(u16 opcode)
 
             bool takeBranch = readD<Word>(dn) != 0;
 
+            // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
             // Decrement loop counter
             // POM68K: before the alignment check — the 68000 decrements Dn
             // even when the branch target faults (SingleStepTests/680x0)
@@ -2808,6 +2826,7 @@ Moira::execJmp(u16 opcode)
     [[maybe_unused]] const int delay[] = { 0,0,0,0,0,2,4,2,0,2,4,0 };
     SYNC(delay[(int)M]);
 
+    // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
     // Check for address error
     // POM68K: the 68000 stacks PC = jump target with the I/N bit set
     // (SingleStepTests/680x0; see extern/moira/POM68K_VENDOR.md)
@@ -2877,12 +2896,14 @@ Moira::execJsr(u16 opcode)
 
         case Core::C68000:
 
+            // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
             // Check for address errors
             // POM68K: I/N bit set on the 68000 (SingleStepTests/680x0)
             if (misaligned<C>(ea)) {
                 throw AddressError(makeFrame<AE_PROG|AE_SET_CB3>(ea, U32_SUB(ea, 4)));
             }
 
+            // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
             // POM68K: the first word of the target is fetched BEFORE the
             // return address is pushed; the second follows the push.
             // [D] SingleStepTests/680x0 v1 transactions (JSR.json).
@@ -3016,6 +3037,7 @@ Moira::execLink(u16 opcode)
 
     POLL_IPL;
 
+    // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
     // Write to stack
     // POM68K: LINK A7 pushes the DECREMENTED stack pointer on real hardware
     // too, not only in Musashi mode (SingleStepTests/680x0)
@@ -3243,6 +3265,7 @@ Moira::execMove3(u16 opcode)
 
     if constexpr (C == Core::C68000) {
 
+        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
         // POM68K: interim flags before a faulting write — Long uses the
         // high-word N and full-long Z (SingleStepTests/680x0)
         if constexpr (S == Long) {
@@ -3373,6 +3396,7 @@ Moira::execMove4(u16 opcode)
      */
     readOp<C, M, S, STD_AE_FRAME>(src, &ea, &data);
 
+    // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
     // Determine next address error stack frame format
     // POM68K: one uniform frame with the MOVE's own opcode in IRD/code, no
     // CB3, independent of the S/C flags (SingleStepTests/680x0)
@@ -3395,6 +3419,7 @@ Moira::execMove4(u16 opcode)
     // Check for address error
     if (misaligned<C, S>(ea)) {
 
+        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
         // POM68K: Long dest leaves An at init-2 (one word step) and takes
         // +2 idle; frames carry the captured opcode (SingleStepTests/680x0)
         if constexpr (S != Long) updateAn<Mode::PD, S>(dst);
@@ -3688,6 +3713,7 @@ Moira::execMove8(u16 opcode)
 
         readOp<C, M, S, STD_AE_FRAME>(src, &ea, &data);
 
+        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
         // POM68K: Long-aware interim flags + 2 idle cycles on a faulting
         // abs.l destination (SingleStepTests/680x0)
         if constexpr (S == Long) {
@@ -3989,9 +4015,9 @@ Moira::execMovemEaRg(u16 opcode)
             mmuLogging = false;
         }
         // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // POM68K Q3: 68040 MOVEM restart latch (WinUAE mmu040_movem) —
-        // a faulted MOVEM resumes from the saved EA after the handler's
-        // RTE re-arms the latch (SSW.CM); a fault stacks EA = saved EA
+        // POM68K Q3: 68040 MOVEM latch (WinUAE mmu040_movem) —
+        // a fault stacks EA = saved EA and consumes the latch into SSW.CM.
+        // The current RTE does not re-arm it (TODO: Justesse 68040).
         if (cpuModel >= Model::M68EC040) [[unlikely]] {
             if (mmu040MovemArmed) ea = mmu040MovemEa;
             mmu040MovemArmed = true;
@@ -3999,6 +4025,7 @@ Moira::execMovemEaRg(u16 opcode)
         }
     }
 
+    // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
     // Check for address error
     // POM68K: +2 idle, uniform PC-2 frame, and (An)+ leaves An advanced by
     // one word when the first transfer faults (SingleStepTests/680x0)
@@ -4010,6 +4037,7 @@ Moira::execMovemEaRg(u16 opcode)
         throw AddressError(makeFrame<AE_SET_DF|AE_SET_RW>(ea));
     }
 
+    // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
     // POM68K Q3: the 68040 has no 68000-style guard reads either
     // POM68K: on the 68000 the extra bus cycle of a long MOVEM load is not a
     // guard read BEFORE the transfers but one word read AFTER the last, as
@@ -4162,6 +4190,7 @@ Moira::execMovemRgEa(u16 opcode)
                 if constexpr (C == Core::C68020 && !MOIRA_MIMIC_MUSASHI) {
                     if (cnt == 0) writeA(dst, U32_SUB(readA(dst), S));
                 }
+                // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
                 // POM68K: a predecremented long goes out LOW word first on
                 // the 68000 ([D] SingleStepTests/680x0 transactions) — what
                 // upstream reserved for its Musashi mode.
@@ -4718,6 +4747,7 @@ Moira::execMoveToSr(u16 opcode)
     setSR((u16)data);
 
     if constexpr (C == Core::C68000) {
+        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
         // POM68K (ported from NeoST ce1cc52): microcode 301 rstw1 -> 321 stiw4
         // -> 1e1 malw3 -> 363 b reloads BOTH prefetch words after the SR (so
         // FC) change: the word at reg.pc is re-read, then reg.pc + 2. The old
@@ -5178,6 +5208,7 @@ Moira::execDivsMoira(u16 opcode, bool *divByZero)
     // unreached on overflow (row 38's argument holds).
     if constexpr (C == Core::C68000) {
 
+        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
         // POM68K: every overflow exits early at 16/18 cycles total
         // (SingleStepTests/680x0, CLK rule)
         const int cycles = reg.sr.v ? ((i32(dividend) < 0) ? 14 : 12)
@@ -5191,6 +5222,7 @@ Moira::execDivsMoira(u16 opcode, bool *divByZero)
         writeD(dst, result);
         prefetch<C, POLL>();
 
+        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
         // POM68K: every overflow exits early at 16/18 cycles total
         // (SingleStepTests/680x0, CLK rule)
         if (reg.sr.v) {
@@ -6020,6 +6052,7 @@ Moira::execRte(u16 opcode)
 
         case Core::C68000:
         {
+            // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
             // POM68K: the 68000 unstacks PC high, then SR, then PC low —
             // not bottom-up. [D] SingleStepTests/680x0 v1 transactions
             // (RTE.json); `sst68000 --transactions`.
@@ -6185,9 +6218,9 @@ Moira::execRte(u16 opcode)
                     // WinUAE op_4e73_31 frame 0x7 + m68k_do_rte_mmu040
                     // (cpummu.c:1621-1642): SSW.CT copies the frame's raw
                     // SR/PC and the +8 long to the popped position above
-                    // (a continuation mini-frame); SSW.CM re-arms the
-                    // MOVEM restart latch (machine-level only — no
-                    // architectural state until a MOVEM resumes, Q3).
+                    // (a continuation mini-frame). SSW.CM is not replayed
+                    // into the MOVEM latch here; the older Q3 comment
+                    // claimed it was (TODO: Justesse 68040).
                     u32 base = reg.sp;
                     newsr = (u16)pop<C, Word>();
                     newpc = pop<C, Long>();
