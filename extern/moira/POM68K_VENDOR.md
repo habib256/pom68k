@@ -97,6 +97,18 @@ find.
   2026-07-31; the 25th file is `MoiraCache040.h`, added).
   The NeoST patches carry `NEOST` markers instead, not `POM68K` ones — the two
   greps are disjoint.
+- **Every comment that cites WinUAE says so with its grade and revision**:
+  `[D] … @ Hatari e77819f7`, the tree pinned under `oracle/uae/upstream`
+  (CLAUDE.md § Evidence grades — another emulator is grade D, and a grade-D
+  citation without its revision designates nothing). `core_grades_test`
+  (`tools/core_grades.py --check`) holds it: a WinUAE-citing comment block
+  without `[D]` and a revision, or a `file.c:N` outside the pinned file,
+  fails. Until 2026-11-08 the core cited two Hatari revisions without saying
+  which — most of the FPU's `fpp.c` lines were read in NeoST's copy
+  (`f0736b24`, 9 lines off in places) — and every such line is now
+  retargeted to `e77819f7`. A `[D]` claim never overrules a `[B]` one; where
+  the fork follows WinUAE against a manual, `oracle/README.md` names the
+  ruling.
 - Sections are never rewritten when superseded, only annotated. § *Model support
   in this copy* (last section) is the current state; the journal is history.
 - The vector counts quoted throughout (`sst68000` 1 000 058, `sst68030` 3 082,

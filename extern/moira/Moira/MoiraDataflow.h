@@ -53,6 +53,7 @@ template <Core C, Mode M, Size S, Flags F = 0> u32 computeEA(u32 n);
 template <Core C, Mode M, Size S, Flags F = 0> u32 computeEAbrief(u32 an);
 template <Core C, Mode M, Size S, Flags F = 0> u32 computeEAfull(u32 an);
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // POM68K O4 slice 3: 68030 extended EA with WinUAE disp-store semantics
 template <Core C, Mode M, Size S, Flags F = 0> u32 computeEAdisp030(u32 base);
 

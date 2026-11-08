@@ -105,6 +105,14 @@ add_test(NAME sst68040_fpuh
 # The identity of the vector corpora (tests/sst_corpora.lock): a corpus
 # that is present must match the pinned files byte for byte; an absent one
 # soft-skips, like the harnesses that read it.
+# Evidence grades in the core (CLAUDE.md § Evidence grades): every comment
+# block of extern/moira/Moira that cites WinUAE carries `[D]` and the
+# revision it read (@ Hatari e77819f7, the tree under oracle/uae/upstream),
+# and every file:line it cites exists there. Repository-only, no asset.
+add_test(NAME core_grades_test
+         COMMAND python3 tools/core_grades.py --check
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
 add_test(NAME sst_corpora_lock_test
          COMMAND python3 tools/verify_sst_corpora.py
                  --dir sst68000=${POM68K_SST_DIR}

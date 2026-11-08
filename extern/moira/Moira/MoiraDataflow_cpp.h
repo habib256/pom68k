@@ -5,6 +5,7 @@
 // Published under the terms of the MIT License
 // -----------------------------------------------------------------------------
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // POM68K O4 slice 3: SKIP_LAST_RD advances the PC without refilling the
 // queue; on the 68030 the consumed word must still enter the access log
 // (WinUAE reads every extension word at consumption time)
@@ -41,10 +42,12 @@ Moira::computeEA(u32 n) {
         {
             result = readA(n);
 
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // POM68K O4 slice 3: arm the pending-fixup slot (WinUAE
             // mmufixup) — its encoding lands in $B fault frames and the
             // register is restored from it on non-last-write faults
             if constexpr (C == Core::C68020) {
+                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                 // POM68K Q3: the 68040 restores (An)± on non-last-write
                 // faults too (WinUAE cpu_restore_fixup)
                 if ((cpuModel == Model::M68030 || cpuModel >= Model::M68EC040)
@@ -80,6 +83,7 @@ Moira::computeEA(u32 n) {
         {
             if constexpr (C == Core::C68020) {
 
+                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                 // POM68K O4 slice 3: 68030 extended EAs go through the
                 // disp-store machinery (WinUAE get_disp_ea_020_mmu030)
                 if (cpuModel == Model::M68030) [[unlikely]] {
@@ -116,6 +120,7 @@ Moira::computeEA(u32 n) {
         }
         case 8: // ABS.L
         {
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // POM68K O4 slice 3: the 68030 logs ABS.L as ONE long access
             // (WinUAE next_ilong_mmu030_state), not two word accesses
             if constexpr (C == Core::C68020) {
@@ -249,6 +254,7 @@ Moira::computeEAfull(u32 an)
     // Check if index is present
     if (!is) xn = (lw ? readR(rn) : SEXT<Word>(readR(rn))) << scale;
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Compute effective address
     // POM68K O4 slice 4 (WinUAE-arbitrated): memory indirection only
     // happens when the outer-displacement bits (I/IS & 3) are nonzero —
@@ -269,6 +275,7 @@ Moira::computeEAfull(u32 an)
     return result;
 }
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // POM68K O4 slice 3: 68030 extended-EA computation with the WinUAE
 // get_disp_ea_020_mmu030 restart semantics: the inner extension-word and
 // memory-indirect accesses are rewound from the access log; the result is
@@ -289,7 +296,7 @@ Moira::computeEAdisp030(u32 base)
         result = computeEAbrief<C, M, S, F>(base);
     }
 
-    mmuIdx = oldIdx;                    // WinUAE: mmu030_idx = oldidx
+    mmuIdx = oldIdx;                    // [D] @ Hatari e77819f7: WinUAE: mmu030_idx = oldidx
     mmuIdxDone = oldDone;
 
     const u32 pcadd = (reg.pc - pcBefore) >> 1;
@@ -317,6 +324,7 @@ Moira::readOp(int n, u32 *ea, u32 *result)
             // Emulate -(An) register modification
             updateAnPD<M, S>(n);
 
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // Emulate (An)+ register modification
             // POM68K: applied BEFORE the access — real 68000 updates An even
             // when the access raises an address error (SingleStepTests/680x0;
@@ -352,6 +360,7 @@ Moira::writeOp(int n, u32 val)
             // Emulate -(An) register modification
             updateAnPD<M, S>(n);
 
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // POM68K O4 slice 3: the 68030 updates (An)+ BEFORE its last
             // write and marks the write as restartable (gencpu
             // gen_set_fault_pc: a fault here stacks a format $A frame
@@ -364,6 +373,7 @@ Moira::writeOp(int n, u32 val)
                     writeM<C, M, S, F>(ea, val);
                     return;
                 }
+                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                 // POM68K Q3: 68040 — (An)+ adjusts BEFORE the write, and
                 // the destination store is the instruction's LAST write
                 // (gencpu: incpci + instruction_pc=next + mmu_restart=false
@@ -514,6 +524,7 @@ Moira::read(u32 addr)
     // Update function code pins
     setFC(AS == AddrSpace::DATA ? FC::USER_DATA : FC::USER_PROG);
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K O4 slice 3: 68030 bus-level address translation. Compiled
     // out of the 68000/68010 instantiations; a single predictable branch
     // for the 68020 core (see POM68K_VENDOR.md § MMU bus layer).
@@ -713,6 +724,7 @@ Moira::readI()
 {
     u32 result;
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K O4 slice 3: the 68030 logs a long immediate as ONE access
     // (WinUAE next_ilong_mmu030_state)
     if constexpr (C == Core::C68020 && S == Long) {
@@ -846,6 +858,7 @@ Moira::prefetch()
      */
     reg.pc0 = reg.pc;
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K O4 slice 3: mode-5 68030 has no prefetch queue — the next
     // opcode is fetched (through translation) at the start of the next
     // instruction (mmuExecuteStart); queue refills are suppressed here.
@@ -925,6 +938,7 @@ Moira::noPrefetch(int delay)
 template <Core C> void
 Moira::readExt()
 {
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K O4 slice 3: on the 68030 the CONSUMED extension word is the
     // one the oracle reads (and logs) at this point (WinUAE
     // next_iword_mmu030_state); the refill of irc is Moira's one-slot
@@ -936,6 +950,7 @@ Moira::readExt()
             queue.irc = mmuFetchWord(reg.pc);
             return;
         }
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K Q3: 68040 — the next extension word is fetched through
         // translation at consumption time (WinUAE next_iword_mmu040)
         if (cpuModel >= Model::M68EC040) [[unlikely]] {

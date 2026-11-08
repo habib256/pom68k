@@ -118,6 +118,7 @@ Moira::isValidExtFPU(Instr I, Mode M, u16 op, u32 ext) const
 }
 
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 //
 // POM68K O5/Q9 — MC6888x + integrated MC68040 FPU execution
 //
@@ -144,6 +145,7 @@ Moira::isValidExtFPU(Instr I, Mode M, u16 op, u32 ext) const
 // unimplemented/datatype traps, revision-$41 FSAVE frames, and BUSY resume.
 //
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // FPSR bit layout (MC68881UM § 2.2.2; WinUAE fpp.h:10-17, fpp.c:295-309)
 static constexpr u32 FPSR_CC_N      = 0x08000000;
 static constexpr u32 FPSR_CC_Z      = 0x04000000;
@@ -168,6 +170,7 @@ static constexpr u32 FPSR_AE_UNFL   = 0x00000020;
 static constexpr u32 FPSR_AE_DZ     = 0x00000010;
 static constexpr u32 FPSR_AE_INEX   = 0x00000008;
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // One softfloat context. WinUAE keeps a single static too
 // (fpp_softfloat.c:50); every instruction re-arms it from FPCR via
 // fpuSetMode(), so sharing across Moira instances is safe.
@@ -183,8 +186,9 @@ static inline FpuExtended fpuFromFx80(floatx80 v)
     return FpuExtended { v.high, v.low };
 }
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Operand sizes per format field, in bytes; the second row is the A7
-// variant (SP stays word-aligned for .B) — WinUAE fpp.c:1523-1524
+// variant (SP stays word-aligned for .B) — WinUAE fpp.c:1532-1533
 static constexpr int fpuSzTab1[8] = { 4, 4, 12, 12, 2, 8, 1, 0 };
 static constexpr int fpuSzTab2[8] = { 4, 4, 12, 12, 2, 8, 2, 0 };
 
@@ -235,6 +239,7 @@ static inline i64 fpuToIntV(const FpuExtended &v, int size)
     }
 }
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Packed decimal (P) input — WinUAE fp_to_pack (fpp_softfloat.c:629-687)
 static void fpuToPackedV(FpuExtended &v, const u32 wrd[3])
 {
@@ -272,6 +277,7 @@ static void fpuToPackedV(FpuExtended &v, const u32 wrd[3])
     v = fpuFromFx80(floatdecimal_to_floatx80(f, &moiraFpuFs));
 }
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Packed decimal (P) output with k-factor — WinUAE fp_from_pack
 // (fpp_softfloat.c:690-751)
 static void fpuFromPackedV(const FpuExtended &v, u32 wrd[3], int kfactor)
@@ -319,7 +325,8 @@ static void fpuFromPackedV(const FpuExtended &v, u32 wrd[3], int kfactor)
     }
 }
 
-// The 6888x predicate table (WinUAE fpp.c:2069-2087, condition_table_6888x,
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+// The 6888x predicate table (WinUAE fpp.c:2078-2096, condition_table_6888x,
 // cputester-verified against real silicon). Indexed by
 // [(N Z I NAN) * 32 + predicate]; fpuCondEval applies the sixteen 040
 // differences after this base lookup.
@@ -342,6 +349,7 @@ static const bool fpuCondTable6888x[512] = {
     0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1
 };
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // FMOVECR constant ROM (WinUAE fpp.c:169-192, exact 6888x bit patterns;
 // the `inexact` flag sets INEX2 and rndoff nudges the low long per
 // rounding mode — the real ROM stores more precision than 64 mantissa bits)
@@ -372,6 +380,7 @@ static const FpuCrEntry fpuCrTable[22] = {
     { {0x75250000, 0xc4605202, 0x8a20979b}, 1, {0,-1,-1, 0} }  // 21 = 1e4094
 };
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Undefined constant ROM offsets — 68881 and 68882 hold identical garbage
 // (WinUAE fpp.c:224-236, cputester-dumped)
 static const u32 fpuCrUndef[11][3] = {
@@ -388,7 +397,8 @@ static const u32 fpuCrUndef[11][3] = {
     { 0x407f0000, 0x00060000, 0x00000000 }
 };
 
-// Dyadic opmode predicate (WinUAE fpp.c:372-375)
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+// Dyadic opmode predicate (WinUAE fpp.c:381-384)
 static inline bool fpuIsDyadic(u16 ext)
 {
     return (ext & 0x30) == 0x20 || (ext & 0x7f) == 0x38;
@@ -554,8 +564,9 @@ static constexpr int FPU_CK_FREST_IDLE1 = 57;   // 68881 $18 IDLE
 static constexpr int FPU_CK_FREST_BUSY2 = 339;  // 68882 $D4 BUSY
 static constexpr int FPU_CK_FREST_BUSY1 = 291;  // 68881 $B4 BUSY
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Exception vector from FPSR exception byte, priority order BSUN > SNAN >
-// OPERR > OVFL > UNFL > DZ > INEX (MC68881UM § 5.3; WinUAE fpp.c:432-443)
+// OPERR > OVFL > UNFL > DZ > INEX (MC68881UM § 5.3; WinUAE fpp.c:441-452)
 static u16 fpuVectorFor(u32 exception)
 {
     static const u16 vtable[8] = { 49, 49, 50, 51, 53, 52, 54, 48 };
@@ -574,8 +585,9 @@ static u16 fpuVectorFor(u32 exception)
 void
 Moira::fpuResetState()
 {
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // MC68881/882UM § 6.1 (also FRESTORE of a NULL frame, WinUAE
-    // fpu_null, fpp.c:1443): control registers cleared, data registers
+    // fpu_null, fpp.c:1452): control registers cleared, data registers
     // set to the nonsignaling NaN $7FFF FFFFFFFF FFFFFFFF
     fpu.fpcr = 0;
     fpu.fpsr = 0;
@@ -641,6 +653,7 @@ Moira::fpuRunBusy(int cycles, u16 opcode, u16 ext)
 void
 Moira::fpuSetMode()
 {
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // FPCR mode byte -> softfloat (WinUAE fp_set_mode,
     // fpp_softfloat.c:53-84). Note the 6888x quirk: an invalid precision
     // field ($C0) selects double, not extended.
@@ -660,6 +673,7 @@ Moira::fpuSetMode()
         case 0x30: set_float_rounding_mode(float_round_up, &moiraFpuFs); break;
     }
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // The integrated 040 and external 6888x use different NaN/infinity
     // compatibility flags (WinUAE fp_init_softfloat, fpp_softfloat.c).
     set_special_flags(fpuModel == FPUModel::M68040
@@ -669,8 +683,9 @@ Moira::fpuSetMode()
 void
 Moira::fpuClearStatus()
 {
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Clear the FPSR exception status byte only (WinUAE fpsr_clear_status,
-    // fpp.c:617-624) plus the softfloat flag accumulator
+    // fpp.c:626-633) plus the softfloat flag accumulator
     fpu.fpsr &= 0x0fff00f8;
     moiraFpuFs.float_exception_flags = 0;
 }
@@ -678,8 +693,9 @@ Moira::fpuClearStatus()
 u32
 Moira::fpuMakeStatus()
 {
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Softfloat flags -> FPSR exception byte + accrued byte (WinUAE
-    // fpsr_make_status/fp_get_status/updateaccrued, fpp.c:626-661).
+    // fpsr_make_status/fp_get_status/updateaccrued, fpp.c:635-670).
     // Returns the enabled exceptions that abort the register update
     // (SNAN/OPERR/DZ — softfloat build has support_exceptions).
     auto f = moiraFpuFs.float_exception_flags;
@@ -715,8 +731,9 @@ Moira::fpuMakeStatus()
 void
 Moira::fpuSetResultFlags(const FpuExtended &r)
 {
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Condition code byte from a result (WinUAE fpsr_set_result_always +
-    // fpsr_set_result, fpp.c:593-616)
+    // fpsr_set_result, fpp.c:602-625)
     floatx80 fx = fpuToFx80(r);
 
     fpu.fpsr &= 0x00fffff8;
@@ -730,7 +747,8 @@ Moira::fpuSetResultFlags(const FpuExtended &r)
 void
 Moira::fpuSetQuotient(u64 quot, u8 sign)
 {
-    // FMOD/FREM quotient byte (WinUAE fpsr_set_quotient, fpp.c:679); note
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+    // FMOD/FREM quotient byte (WinUAE fpsr_set_quotient, fpp.c:688); note
     // it clears the cc byte too, cc is re-set from the result afterwards
     fpu.fpsr &= 0x0f00fff8;
     fpu.fpsr |= u32(quot << 16) & FPSR_QUOT_LSB;
@@ -747,9 +765,10 @@ Moira::fpuGetQuotient(u64 *quot, u8 *sign)
 void
 Moira::fpuNormalize(FpuExtended &v)
 {
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // The 6888x supports denormal/unnormal operands by normalizing them
     // on input (WinUAE normalize_or_fault_if_no_denormal_support 6888x
-    // branch, fpp.c:1455-1472)
+    // branch, fpp.c:1464-1481)
     floatx80 fx = fpuToFx80(v);
     if (floatx80_is_unnormal(fx) || floatx80_is_denormal(fx)) {
         if (fpuModel == FPUModel::M68040 && !floatx80_is_zero(fx)) return;
@@ -791,7 +810,8 @@ bool
 Moira::fpuCheckArithException(
     const FpuExtended &src, u16 opcode, u16 ext, u32 ea, u32 nonmaskable)
 {
-    // WinUAE fpsr_check_arithmetic_exception, 6888x branch (fpp.c:445-508):
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+    // WinUAE fpsr_check_arithmetic_exception, 6888x branch (fpp.c:454-517):
     // latch the highest-priority enabled exception vector; the trap itself
     // fires pre-instruction at the NEXT FPU instruction (coprocessor
     // protocol). Also captures the 68882 FSAVE IDLE-frame data.
@@ -801,12 +821,13 @@ Moira::fpuCheckArithException(
     if (!exception) return false;
 
     fpu.expPend = fpuVectorFor(exception);
-    fpu.ea = ea;                                        // fpp.c:476 fp_ea
-    fpu.fpiar = reg.pc0;                                // fpp.c:478-480
+    fpu.ea = ea;                                        // [D] @ Hatari e77819f7: fpp.c:485 fp_ea
+    fpu.fpiar = reg.pc0;                                // [D] @ Hatari e77819f7: fpp.c:487-489
 
     u32 opclass = ext >> 13 & 7;
 
     if (fpuModel == FPUModel::M68040) {
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // Integrated-FPU exception state. The frame fields mirror WinUAE's
         // revision-$41 UNIMP/BUSY capture; who delivers the exception is
         // decided by the return value at the end of this branch.
@@ -911,7 +932,7 @@ Moira::fpuCheckArithException(
     }
 
     fpu.fsaveEo[0] = fpu.fsaveEo[1] = fpu.fsaveEo[2] = 0;
-    if (opclass == 3) {                                 // fpp.c:491-495
+    if (opclass == 3) {                                 // [D] @ Hatari e77819f7: fpp.c:500-504
         fpu.fsaveCcr = (u32(ext) << 16) | ext;
     } else {
         fpu.fsaveCcr = (u32(u16(opcode | 0x0080)) << 16) | ext;
@@ -956,6 +977,7 @@ Moira::fpuCheckArithException(
 template <Core C> void
 Moira::execFpuException(u16 vector, bool pre)
 {
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // FPU exception frames — WinUAE Exception_build_stack_frame_common
     // (newcpu_common.c:1616, nr 48-55): pre-instruction = four-word
     // format $0 with PC = the FP instruction being started (it
@@ -1001,8 +1023,8 @@ void
 Moira::fpuArmFixup(int n)
 {
     // Plain (An)± fixup for FPU operands on the 68030 (WinUAE fpp.c
-    // get_fp_value/put_fp_value2 modes 3/4, fpp.c:1589-1611, and FScc
-    // -(An), fpp.c:2290-2295): the ORIGINAL register value is restored by
+    // get_fp_value/put_fp_value2 modes 3/4, fpp.c:1598-1620, and FScc
+    // -(An), fpp.c:2299-2304): the ORIGINAL register value is restored by
     // a non-lastwrite bus fault (newcpu.c m68k_run_mmu030 CATCH ->
     // cpu_restore_fixup), while the frame's wb2/wb3 status byte stays 0
     // (mmu030fixupreg needs the 0x300 flag bits fpp.c never sets). Bit 7
@@ -1047,8 +1069,9 @@ Moira::execFpuIllegalOpmode040()
 template <Core C> void
 Moira::execFRestoreFormatError()
 {
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // FRESTORE of an invalid frame: format error, vector 14 (WinUAE
-    // fpp.c:2783-2797 -> Exception(14) -> format $0 frame with
+    // fpp.c:2792-2806 -> Exception(14) -> format $0 frame with
     // PC = m68k_getpc(), i.e. past ALL consumed words — NOT Moira's
     // generic reg.pc - 2 convention. Solo-corpus arbitrated 2026-07-15,
     // ruling D21 (WinUAE wins; Musashi too weak on this class).
@@ -1065,6 +1088,7 @@ Moira::execFRestoreFormatError()
 template <Core C> void
 Moira::execFpuDisabled040(u32 ea)
 {
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K Q4 — F2xx on a FPU-less 040 (68LC040/68EC040): vector 11
     // with the format $4 "FP disabled" frame (WinUAE fpu_op_illg
     // fpp.c:1085-1094: fp_unimp_ins -> Exception(11);
@@ -1172,6 +1196,7 @@ Moira::execFpuDatatype040(
 
     const u32 opclass = (ext >> 13) & 7;
     if (packed && opclass != 3) {
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // The 040 BUSY frame carries an incoming packed operand in this
         // deliberately odd split form (WinUAE fp_unimp_datatype).
         fpu.fpt[2] = packed[0];
@@ -1206,7 +1231,8 @@ Moira::fpuCheckPending()
         fpu.busy)
         fpuCompleteBusy(true);
 
-    // WinUAE fp_exception_pending (fpp.c:377-408): a latched arithmetic
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+    // WinUAE fp_exception_pending (fpp.c:386-417): a latched arithmetic
     // exception fires pre-instruction at the next FPU instruction. The
     // 68882 keeps the vector armed after taking it (fpp.c:386-388); the
     // 68881 clears it.
@@ -1221,12 +1247,14 @@ Moira::fpuCheckPending()
 template <Core C> int
 Moira::fpuCondEval(u16 cond)
 {
-    // WinUAE fpp_cond (fpp.c:2090-2112); predicates use 5 bits, bit 4
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+    // WinUAE fpp_cond (fpp.c:2099-2121); predicates use 5 bits, bit 4
     // separates the IEEE non-aware predicates that set BSUN on NaN
     // (MC68881UM § 4.6.2.2)
     if ((cond & 0x10) && (fpu.fpsr & FPSR_CC_NAN)) {
 
-        // fpsr_set_bsun (fpp.c:663-677)
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+        // fpsr_set_bsun (fpp.c:672-686)
         fpu.fpsr |= FPSR_BSUN | FPSR_AE_IOP;
 
         if (fpu.fpcr & FPSR_BSUN) {
@@ -1242,6 +1270,7 @@ Moira::fpuCondEval(u16 cond)
     const int index = control * 32 + (cond & 0x1f);
     bool result = fpuCondTable6888x[index];
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // The 040/060 predicate table differs from the 6888x table at these
     // sixteen NAN/non-aware entries (WinUAE condition_table_040_060).
     if (fpuModel == FPUModel::M68040) {
@@ -1260,7 +1289,8 @@ Moira::fpuCondEval(u16 cond)
 bool
 Moira::fpuGetConstant(FpuExtended &v, int cr)
 {
-    // FMOVECR constant ROM (WinUAE fpu_get_constant, fpp.c:774-932).
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+    // FMOVECR constant ROM (WinUAE fpu_get_constant, fpp.c:783-941).
     // mode/prec from FPCR drive both the inexact-rounding nudge of the
     // defined constants and the bizarre behaviour of undefined offsets.
     u32 f[3] = { 0, 0, 0 };
@@ -1293,7 +1323,7 @@ Moira::fpuGetConstant(FpuExtended &v, int cr)
         case 0x3e: entry = 20; break;   // 1e2048
         case 0x3f: entry = 21; break;   // 1e4096
 
-        default:                        // undefined offsets (fpp.c:850-908)
+        default:                        // [D] @ Hatari e77819f7: undefined offsets (fpp.c:850-908)
         {
             bool checkF1Adjust = false;
             int f1Adjust = 0;
@@ -1368,7 +1398,8 @@ Moira::fpuGetConstant(FpuExtended &v, int cr)
 bool
 Moira::fpuArithmetic(const FpuExtended &srcM, FpuExtended &dstM, u16 ext)
 {
-    // Opmode dispatch, WinUAE fp_arithmetic (fpp.c:2935-3157). The alias
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+    // Opmode dispatch, WinUAE fp_arithmetic (fpp.c:2944-3166). The alias
     // opmodes (0x05, 0x07, 0x0b, ... — undocumented but real on 6888x
     // silicon) map onto their base operation. The native MC68040 subset in
     // $40-$7F reaches this function only after execFGeneric has checked the
@@ -1446,6 +1477,7 @@ Moira::fpuArithmetic(const FpuExtended &srcM, FpuExtended &dstM, u16 ext)
         case 0x30: case 0x31: case 0x32: case 0x33:                         // FSINCOS
         case 0x34: case 0x35: case 0x36: case 0x37:
         {
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // Cosine lands in FPc directly, sine is the stored result
             // (WinUAE fp_sincos, fpp_softfloat.c:527-530); when FPc == FPs
             // the sine (stored last) wins
@@ -1491,7 +1523,8 @@ Moira::fpuArithmetic(const FpuExtended &srcM, FpuExtended &dstM, u16 ext)
 
     fpuSetResultFlags(fpuFromFx80(dst));
 
-    // Enabled SNAN/OPERR/DZ abort the register update (fpp.c:3152-3156)
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+    // Enabled SNAN/OPERR/DZ abort the register update (fpp.c:3161-3165)
     if (fpuMakeStatus()) return false;
 
     dstM = fpuFromFx80(dst);
@@ -1506,7 +1539,8 @@ Moira::fpuArithmetic(const FpuExtended &srcM, FpuExtended &dstM, u16 ext)
 template <Core C, Mode M> int
 Moira::fpuGetSource(u16 opcode, u16 ext, FpuExtended &src, u32 &ea)
 {
-    // WinUAE get_fp_value (fpp.c:1518-1749); the FPx-to-FPx case is
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+    // WinUAE get_fp_value (fpp.c:1527-1758); the FPx-to-FPx case is
     // handled by the caller. Returns 0 on invalid encodings (Line-F).
     const int n = _____________xxx(opcode);
     const int size = ___xxx__________(ext);
@@ -1542,10 +1576,10 @@ Moira::fpuGetSource(u16 opcode, u16 ext, FpuExtended &src, u32 &ea)
             case 6: fpuFromIntV(src, i8(readD(n))); return 1;               // B
 
             default:
-                // X, P, D from Dn: F-line (fpp.c:1563-1576) — except that
+                // X, P, D from Dn: F-line (fpp.c:1572-1585) — except that
                 // the 68040 traps an unimplemented instruction first, for
-                // every size but packed ([D] WinUAE get_fp_value case 0 @
-                // Hatari e77819f7; gate: sst68040 fpuraw cells).
+                // every size but packed ([D] WinUAE get_fp_value case 0
+                // @ Hatari e77819f7; gate: sst68040 fpuraw cells).
                 if (fpuModel == FPUModel::M68040 && size != 3 &&
                     !fpuIsImplemented040(ext)) {
                     execFpuUnimplemented040<C>(opcode, ext, src,
@@ -1557,7 +1591,8 @@ Moira::fpuGetSource(u16 opcode, u16 ext, FpuExtended &src, u32 &ea)
 
     } else if constexpr (M == Mode::AN || M == Mode::IP) {
 
-        // fpp.c:1579-1584 / get_fp_ad default; same 68040 priority as Dn.
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+        // fpp.c:1588-1593 / get_fp_ad default; same 68040 priority as Dn.
         if (fpuModel == FPUModel::M68040 && !fpuIsImplemented040(ext)) {
             execFpuUnimplemented040<C>(opcode, ext, src, (ext >> 7) & 7,
                                        size, 0);
@@ -1567,8 +1602,9 @@ Moira::fpuGetSource(u16 opcode, u16 ext, FpuExtended &src, u32 &ea)
 
     } else if constexpr (M == Mode::IM) {
 
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // Immediate extension words are consumed before conversion
-        // (fpp.c:1640-1667); B/W immediates occupy one word, value in
+        // (fpp.c:1649-1676); B/W immediates occupy one word, value in
         // the low byte/word
         u32 e0, e1, e2;
 
@@ -1619,8 +1655,9 @@ Moira::fpuGetSource(u16 opcode, u16 ext, FpuExtended &src, u32 &ea)
 
     } else {
 
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // Memory operands. (An)+/-(An) update the register before the
-        // access like WinUAE (fpp.c:1589-1611) — the adjustment survives
+        // access like WinUAE (fpp.c:1598-1620) — the adjustment survives
         // a fault, consistent with Moira's 68000 findings.
         if (size == 7) return 0;
 
@@ -1630,17 +1667,17 @@ Moira::fpuGetSource(u16 opcode, u16 ext, FpuExtended &src, u32 &ea)
         if constexpr (M == Mode::AI) {
             ad = readA(n);
         } else if constexpr (M == Mode::PI) {
-            fpuArmFixup(n);                     // fpp.c:1591-1593
+            fpuArmFixup(n);                     // [D] @ Hatari e77819f7: fpp.c:1600-1602
             ad = readA(n);
             writeA(n, ad + bytes);
         } else if constexpr (M == Mode::PD) {
-            fpuArmFixup(n);                     // fpp.c:1600-1602
+            fpuArmFixup(n);                     // [D] @ Hatari e77819f7: fpp.c:1600-1602
             ad = readA(n) - bytes;
             writeA(n, ad);
         } else {
             ad = computeEA<C, M, Long>(n);
         }
-        ea = ad;    // WinUAE *adp (fpp.c:1678) — feeds fp_ea on a latch
+        ea = ad;    // [D] @ Hatari e77819f7: WinUAE *adp (fpp.c:1687) — feeds fp_ea on a latch
 
         switch (size) {
 
@@ -1701,12 +1738,14 @@ Moira::fpuGetSource(u16 opcode, u16 ext, FpuExtended &src, u32 &ea)
 template <Core C, Mode M> int
 Moira::fpuPutDest(u16 opcode, u16 ext, FpuExtended value, u32 &ea)
 {
-    // WinUAE put_fp_value2 (fpp.c:1751-1966). Returns 0 on invalid
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+    // WinUAE put_fp_value2 (fpp.c:1760-1975). Returns 0 on invalid
     // encodings (Line-F).
     const int n = _____________xxx(opcode);
     const int size = ___xxx__________(ext);
 
-    // Signed 7-bit k-factor, static (ext) or dynamic (Dn) — fpp.c:1816-1819
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+    // Signed 7-bit k-factor, static (ext) or dynamic (Dn) — fpp.c:1825-1828
     auto kFactor = [&]() {
         int k = (size == 7) ? int(readD((ext >> 4) & 7)) : ext;
         k &= 127;
@@ -1747,9 +1786,10 @@ Moira::fpuPutDest(u16 opcode, u16 ext, FpuExtended value, u32 &ea)
                 return 1;
             case 3: case 7: // P
             {
+                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                 // The k-factor conversion runs — and updates FPSR — even
                 // though the Dn destination then takes an F-line
-                // (fpp.c:1810-1825 "checked even if EA is illegal").
+                // (fpp.c:1819-1834 "checked even if EA is illegal").
                 // WinUAE folds the raw host flags only (fpp_get_status,
                 // no accrued-byte propagation).
                 u32 wrd[3];
@@ -1774,7 +1814,7 @@ Moira::fpuPutDest(u16 opcode, u16 ext, FpuExtended value, u32 &ea)
     } else if constexpr (M == Mode::AN || M == Mode::DIPC || M == Mode::IXPC ||
                          M == Mode::IM || M == Mode::IP) {
 
-        return 0;           // fpp.c:1830, 1878-1880
+        return 0;           // [D] @ Hatari e77819f7: fpp.c:1839, 1887-1889
 
     } else {
 
@@ -1785,17 +1825,17 @@ Moira::fpuPutDest(u16 opcode, u16 ext, FpuExtended value, u32 &ea)
         if constexpr (M == Mode::AI) {
             ad = readA(n);
         } else if constexpr (M == Mode::PI) {
-            fpuArmFixup(n);                     // fpp.c:1838-1840
+            fpuArmFixup(n);                     // [D] @ Hatari e77819f7: fpp.c:1847-1849
             ad = readA(n);
             writeA(n, ad + bytes);
         } else if constexpr (M == Mode::PD) {
-            fpuArmFixup(n);                     // fpp.c:1847-1849
+            fpuArmFixup(n);                     // [D] @ Hatari e77819f7: fpp.c:1847-1849
             ad = readA(n) - bytes;
             writeA(n, ad);
         } else {
             ad = computeEA<C, M, Long>(n);
         }
-        ea = ad;    // WinUAE *adp (fpp.c:1884) — feeds fp_ea on a latch
+        ea = ad;    // [D] @ Hatari e77819f7: WinUAE *adp (fpp.c:1893) — feeds fp_ea on a latch
 
         if (fpuModel == FPUModel::M68040 &&
             (size == 3 || size == 7 || fpuNeedsDatatype040(value))) {
@@ -1870,7 +1910,8 @@ Moira::execFBcc(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    // FBcc (MC68881UM § 4.6; WinUAE fpuop_bcc, fpp.c:2333-2363). FNOP is
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+    // FBcc (MC68881UM § 4.6; WinUAE fpuop_bcc, fpp.c:2342-2372). FNOP is
     // FBF.W with zero displacement and needs no special handling: the
     // predicate is never true and the fall-through consumes the word.
     // POM68K Q4: FPU-less 040 (68LC040/68EC040) — the shape's words are
@@ -1895,7 +1936,7 @@ Moira::execFBcc(u16 opcode)
     //     5. Settled by: FBcc $F2A1 (predicate $21) on real hardware.
     // Gate: sst68040 (fpuraw cells); fuzz seeds 808, 809 on the 68030.
 
-    fpu.state = 1;                          // maybe_idle_state (fpp.c:2186)
+    fpu.state = 1;                          // [D] @ Hatari e77819f7: maybe_idle_state (fpp.c:2195)
 
     int cc = fpuCondEval<C>(opcode & 0x3f);
     if (cc < 0) { FINALIZE return; }        // enabled BSUN trap taken
@@ -1947,7 +1988,8 @@ Moira::execFDbcc(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    // FDBcc (MC68881UM § 4.7; WinUAE fpuop_dbcc, fpp.c:2201-2241)
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+    // FDBcc (MC68881UM § 4.7; WinUAE fpuop_dbcc, fpp.c:2210-2250)
     // POM68K Q4: FPU-less 040 (68LC040/68EC040) — the shape's words are
     // consumed, then vector 11 / format $4 (see execFpuDisabled040)
     if (cpuModel >= Model::M68EC040 && !hasFPU()) {
@@ -1978,7 +2020,8 @@ Moira::execFDbcc(u16 opcode)
         bool takeBranch = readD<Word>(dn) != 0;
         ck = takeBranch ? FPU_CK_FDBCC_TAKEN : FPU_CK_FDBCC_EXP;
 
-        // Decrement before the branch decision (fpp.c:2232-2234)
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+        // Decrement before the branch decision (fpp.c:2241-2243)
         writeD<Word>(dn, U32_SUB(readD<Word>(dn), 1));
 
         if (takeBranch) {
@@ -2020,9 +2063,10 @@ Moira::execFScc(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    // FScc (MC68881UM § 4.8; WinUAE fpuop_scc, fpp.c:2243-2302). EA
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+    // FScc (MC68881UM § 4.8; WinUAE fpuop_scc, fpp.c:2252-2311). EA
     // extension words are consumed before the predicate is evaluated;
-    // the (An)+/-(An) adjustment happens after (fpp.c:2264-2299).
+    // the (An)+/-(An) adjustment happens after (fpp.c:2273-2308).
     // POM68K Q4: FPU-less 040 (68LC040/68EC040) — the shape's words are
     // consumed, then vector 11 / format $4 (see execFpuDisabled040)
     if (cpuModel >= Model::M68EC040 && !hasFPU()) {
@@ -2030,7 +2074,8 @@ Moira::execFScc(u16 opcode)
         u32 ea40 = 0;                       // get_fp_ad conventions
         int n40 = _____________xxx(opcode);
         if constexpr (M == Mode::AI || M == Mode::PI) ea40 = readA(n40);
-        // fpuop_scc pre-adjusts -(An) by the byte size (fpp.c:2281-2284)
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+        // fpuop_scc pre-adjusts -(An) by the byte size (fpp.c:2290-2293)
         if constexpr (M == Mode::PD) ea40 = readA(n40) - (n40 == 7 ? 2 : 1);
         if constexpr (M == Mode::DI || M == Mode::IX ||
                       M == Mode::AW || M == Mode::AL) {
@@ -2066,8 +2111,9 @@ Moira::execFScc(u16 opcode)
 
     } else {
 
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // -(An) arms a plain fixup before the register update (WinUAE
-        // fpuop_scc, fpp.c:2290-2295; (An)+ updates after the write and
+        // fpuop_scc, fpp.c:2299-2304; (An)+ updates after the write and
         // arms nothing)
         if constexpr (M == Mode::PD) { fpuArmFixup(n); writeA(n, ea); }
         writeM<C, M, Byte>(ea, cc ? 0xff : 0x00);
@@ -2089,7 +2135,8 @@ Moira::execFTrapcc(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    // FTRAPcc (MC68881UM § 4.9; WinUAE fpuop_trapcc, fpp.c:2304-2331).
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+    // FTRAPcc (MC68881UM § 4.9; WinUAE fpuop_trapcc, fpp.c:2313-2340).
     // Takes the TRAPcc exception (vector 7, format $2 frame with the
     // next-instruction PC — same as the integer TRAPcc family).
     // POM68K Q4: FPU-less 040 (68LC040/68EC040) — the shape's words are
@@ -2148,12 +2195,13 @@ Moira::execFSave(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    // FSAVE (MC68882UM § 6; WinUAE fpuop_save, fpp.c:2365-2580, 6888x
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+    // FSAVE (MC68882UM § 6; WinUAE fpuop_save, fpp.c:2374-2589, 6888x
     // branch). Supervisor only. Writes a 4-byte NULL frame when the FPU
     // never left the reset state, else the 68882 $3C-byte IDLE frame
     // (version $1F, length $38). WinUAE's 68030-MMU build skips writing
     // the eight 68882-internal longs "to save MMU state space"
-    // (fpp.c:2532-2534) — the primary oracle runs that path, so it is
+    // (fpp.c:2541-2543) — the primary oracle runs that path, so it is
     // replicated when cpuModel == M68030.
     //
     // If an interrupt stopped a long 6888x operation at a protocol
@@ -2172,6 +2220,7 @@ Moira::execFSave(u16 opcode)
         ad = computeEA<C, M, Long>(n);
     }
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K Q4: FPU-less 040 — privilege check and EA computation first
     // (WinUAE fpuop_save: get_fp_ad before fault_if_no_fpu), then the
     // format $4 frame with the computed address
@@ -2236,7 +2285,7 @@ Moira::execFSave(u16 opcode)
 
     fpuCompleteBusy(false);
 
-    const int fpuVersion = 0x1f;                        // fpp.c:1429-1432
+    const int fpuVersion = 0x1f;                        // [D] @ Hatari e77819f7: fpp.c:1438-1441
     const bool busy = fpu.busy;
     int frameSize = busy ? (fpuModel == FPUModel::M68882 ? 0xd8 : 0xb8)
                          : (fpuModel == FPUModel::M68882 ? 0x3c : 0x1c);
@@ -2246,10 +2295,10 @@ Moira::execFSave(u16 opcode)
             ? u32(frameSize - 4) << 16
             : (u32(fpuVersion) << 24) | (u32(frameSize - 4) << 16);
 
-    u32 biuFlags = 0x540effff;                          // fpp.c:2510
+    u32 biuFlags = 0x540effff;                          // [D] @ Hatari e77819f7: fpp.c:2519
     biuFlags |= fpu.expState ? 0x20000000 : 0x08000000;
 
-    fpu.expPend = 0;                                    // fpp.c:2514
+    fpu.expPend = 0;                                    // [D] @ Hatari e77819f7: fpp.c:2523
     if (!busy && fpu.state == 0) frameSize = 4;         // NULL frame
 
     if constexpr (M == Mode::PD) ad -= frameSize;
@@ -2289,7 +2338,7 @@ Moira::execFSave(u16 opcode)
             if (cpuModel == Model::M68030) {
                 ad += 8 * 4;                            // internal regs untouched
             } else {
-                for (int i = 0; i < 8; i++) {           // zeroed (fpp.c:2556-2561)
+                for (int i = 0; i < 8; i++) {           // [D] @ Hatari e77819f7: zeroed (fpp.c:2565-2570)
                     writeM<C, M, Long>(ad, 0);
                     ad += 4;
                 }
@@ -2325,6 +2374,7 @@ Moira::execFRestore(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // FRESTORE (MC68882UM § 6; WinUAE fpuop_restore, fpp.c:2593-2812).
     // Supervisor only. Frame acceptance mirrors the 6888x branch
     // (fpp.c:2755-2807) exactly, oracle-verified:
@@ -2351,6 +2401,7 @@ Moira::execFRestore(u16 opcode)
         ad = computeEA<C, M, Long>(n);
     }
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K Q4: FPU-less 040 — same convention as FSAVE (WinUAE
     // fpuop_restore: get_fp_ad before fault_if_no_fpu)
     if (cpuModel >= Model::M68EC040 && !hasFPU()) {
@@ -2383,7 +2434,7 @@ Moira::execFRestore(u16 opcode)
             ad += 4;                                    // operand register
             u32 biuFlags = readM<C, M, Long>(ad); ad += 4;
 
-            if ((biuFlags & 0x08000000) == 0) {         // fpp.c:2781-2787
+            if ((biuFlags & 0x08000000) == 0) {         // [D] @ Hatari e77819f7: fpp.c:2781-2787
                 fpu.expState = 2;
                 fpu.expPend = fpuVectorFor(fpu.fpsr & fpu.fpcr & 0xff00);
             } else {
@@ -2420,7 +2471,7 @@ Moira::execFRestore(u16 opcode)
                 // compatibility behavior, but it is never rejected.
                 fpu.busy = false;
             }
-            ad += frameSize;                    // skipped (fpp.c:2788-2790)
+            ad += frameSize;                    // [D] @ Hatari e77819f7: skipped (fpp.c:2788-2790)
             ck = frameSize == 0xD4 ? FPU_CK_FREST_BUSY2 : FPU_CK_FREST_BUSY1;
 
         } else {
@@ -2458,15 +2509,16 @@ Moira::execFRestore(u16 opcode)
 
         if (frameSize == 0x00) {                        // 68040 IDLE
 
-            fpu.state = 1;                              // fpp.c:2732-2734
+            fpu.state = 1;                              // [D] @ Hatari e77819f7: fpp.c:2732-2734
             fpu.expState = 0;                           // expPend untouched
 
         } else if (frameSize == 0x30 || frameSize == 0x28) {    // UNIMP
 
-            ad += frameSize;                            // fpp.c:2727-2730
+            ad += frameSize;                            // [D] @ Hatari e77819f7: fpp.c:2727-2730
 
         } else if (frameSize == 0x60) {                 // 68040 BUSY
 
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // Resume a planted BUSY frame when CU_SAVEPC is $FE, matching
             // WinUAE fpp.c:2668-2725. The FPT/ET operands are raw extended
             // values and CMDREG1B selects the destination and operation.
@@ -2494,6 +2546,7 @@ Moira::execFRestore(u16 opcode)
                 fpuClearStatus();
                 const bool store = fpuArithmetic(src, dst, cmd);
                 if (store) fpu.fp[(cmd >> 7) & 7] = dst;
+                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                 // Whatever the resumed operation raises stays posted: the
                 // oracle ignores the verdict here (fpp.c fpuop_restore).
                 (void)fpuCheckArithException(src, opcode, cmd, fpu.ea);
@@ -2504,7 +2557,7 @@ Moira::execFRestore(u16 opcode)
 
         } else {
 
-            execFRestoreFormatError<C>();               // fpp.c:2735-2739
+            execFRestoreFormatError<C>();               // [D] @ Hatari e77819f7: fpp.c:2735-2739
             CYCLES_68020(FPU_CK_FREST_NULL)
             FINALIZE
             return;
@@ -2532,8 +2585,9 @@ Moira::execFGen(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Router for the general F-line window (WinUAE fpuop_arithmetic,
-    // fpp.c:3159-3608). The extension word is peeked here and consumed by
+    // fpp.c:3168-3617). The extension word is peeked here and consumed by
     // the sub-handlers.
     u16 ext = queue.irc;
 
@@ -2552,6 +2606,7 @@ Moira::execFGen(u16 opcode)
         }
     }
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // An as EA is only decodable for FPx-to-FPx and control-register
     // moves. FMOVEM (opclasses 110/111) refuses it here; an An source or
     // destination (opclasses 010/011) is refused by the operand helpers,
@@ -2570,6 +2625,7 @@ Moira::execFGen(u16 opcode)
         }
     }
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K Q4: FPU-less 040 — mirror WinUAE fpuop_arithmetic2 with
     // fpu_model = 0 per opclass (fpp.c:3168-3600): the extension word is
     // always consumed; the EA (and its extension words) are computed
@@ -2582,6 +2638,7 @@ Moira::execFGen(u16 opcode)
         int n = _____________xxx(opcode);
         int size = (x >> 10) & 7;
 
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // get_fp_value/put_fp_value operand sizes (fpp.c sz1/sz2)
         static constexpr int sz1[8] = { 4, 4, 12, 12, 2, 8, 1, 0 };
 
@@ -2652,6 +2709,7 @@ Moira::execFGen(u16 opcode)
 
         } else if (opclass == 4 || opclass == 5) {
 
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // FMOVE(M) control registers: Dn/An forms fault with ea = 0;
             // the #imm form consumes one long per selected register first
             // (fpp.c:3288-3296); memory forms compute the EA
@@ -2724,9 +2782,9 @@ Moira::execFGen(u16 opcode)
         }
     }
 
-    if (fpuCheckPending<C>()) return;       // pre-instruction (fpp.c:3176)
+    if (fpuCheckPending<C>()) return;       // [D] @ Hatari e77819f7: pre-instruction (fpp.c:3185)
 
-    fpu.state = 1;                          // fpp.c:3598
+    fpu.state = 1;                          // [D] @ Hatari e77819f7: fpp.c:3607
 
     switch (ext >> 13 & 7) {
 
@@ -2753,7 +2811,7 @@ Moira::execFGen(u16 opcode)
             execFMovem<C, Instr::FMOVEM, M, S>(opcode);
             return;
 
-        default:    // opclass 001: undefined — F-line (fpp.c:3590-3593)
+        default:    // [D] @ Hatari e77819f7: opclass 001: undefined — F-line (fpp.c:3599-3602)
 
             execLineF<C, I, M, S>(opcode);
             return;
@@ -2765,7 +2823,8 @@ Moira::execFMovecr(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    // FMOVECR (MC68881UM § 4.6.1.3; WinUAE fpp.c:3518-3532). ROM offsets
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+    // FMOVECR (MC68881UM § 4.6.1.3; WinUAE fpp.c:3527-3541). ROM offsets
     // $40-$7F take an F-line on 6888x.
     u16 ext = u16(readI<C, Word>());
     int dst = ______xxx_______(ext);
@@ -2786,7 +2845,8 @@ Moira::execFMovecr(u16 opcode)
     fpuSetMode();
     fpuClearStatus();
 
-    // maybe_set_fpiar (fpp.c:755-762): FPIAR updates only when an
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+    // maybe_set_fpiar (fpp.c:764-771): FPIAR updates only when an
     // exception other than BSUN is enabled — a WinUAE (= oracle) economy
     // replicated on purpose
     if (fpuModel == FPUModel::M68040 || (fpu.fpcr & 0x7f00)) fpu.fpiar = reg.pc0;
@@ -2810,8 +2870,9 @@ Moira::execFGeneric(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Arithmetic, opclasses 000 (FPx source) and 010 (EA source) — WinUAE
-    // fpp.c:3514-3589
+    // fpp.c:3523-3598
     u16 ext = u16(readI<C, Word>());
     int dstReg = ______xxx_______(ext);
 
@@ -2849,7 +2910,8 @@ Moira::execFGeneric(u16 opcode)
 
     if (!(ext & 0x4000)) {
 
-        // FPx-to-FPx (fpp.c:1532-1539)
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+        // FPx-to-FPx (fpp.c:1541-1548)
         src = fpu.fp[___xxx__________(ext)];
         fpuNormalize(src);
 
@@ -2870,7 +2932,7 @@ Moira::execFGeneric(u16 opcode)
         fpu.fpiar = reg.pc0;
 
     FpuExtended dst = fpu.fp[dstReg];
-    if (fpuIsDyadic(ext)) fpuNormalize(dst);        // fpp.c:3560-3561
+    if (fpuIsDyadic(ext)) fpuNormalize(dst);        // [D] @ Hatari e77819f7: fpp.c:3569-3570
 
     if (fpuModel == FPUModel::M68040 && !fpuIsImplemented040(ext)) {
         const int size = (ext & 0x4000) ? int((ext >> 10) & 7) : -1;
@@ -2932,8 +2994,9 @@ Moira::execFMove(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // FMOVE FPx -> EA, opclass 011 (MC68881UM § 4.5.3; WinUAE
-    // fpp.c:3181-3196). Condition codes are NOT set by a move out; the
+    // fpp.c:3190-3205). Condition codes are NOT set by a move out; the
     // exception byte is (OPERR on integer overflow, INEX on rounding).
     u16 ext = u16(readI<C, Word>());
 
@@ -2963,8 +3026,9 @@ Moira::execFMove(u16 opcode)
     }
     if (fpu.expPend) {
 
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // Mid/post-instruction exception (WinUAE fp_exception_pending(false),
-        // fpp.c:3195); the 68882 keeps the vector pending
+        // fpp.c:3204); the 68882 keeps the vector pending
         u16 vector = u16(fpu.expPend);
         if (fpuModel != FPUModel::M68882) fpu.expPend = 0;
         execFpuException<C>(vector, false);
@@ -2984,9 +3048,10 @@ Moira::execFMovem(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // FMOVEM — control registers (opclasses 100/101, MC68881UM § 4.5.4)
     // and FP data registers (opclasses 110/111, § 4.5.5). WinUAE
-    // fpp.c:3198-3512. Neither form touches the condition codes.
+    // fpp.c:3207-3521. Neither form touches the condition codes.
     u16 ext = u16(readI<C, Word>());
     int n = _____________xxx(opcode);
     int cod = xxx_____________(ext);
@@ -3010,8 +3075,9 @@ Moira::execFMovem(u16 opcode)
 
         if constexpr (M == Mode::DN) {
 
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // Only a single control register transfers with Dn
-            // (fpp.c:3206-3220); no bits = FPIAR
+            // (fpp.c:3215-3229); no bits = FPIAR
             if (bits && bits != 0x1000 && bits != 0x0800 && bits != 0x0400) {
                 execLineF<C, I, M, S>(opcode);
                 return;
@@ -3028,7 +3094,8 @@ Moira::execFMovem(u16 opcode)
 
         } else if constexpr (M == Mode::AN) {
 
-            // Only FPIAR transfers with An (fpp.c:3238-3264)
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+            // Only FPIAR transfers with An (fpp.c:3247-3273)
             if (bits && bits != 0x0400) {
                 execLineF<C, I, M, S>(opcode);
                 return;
@@ -3038,8 +3105,9 @@ Moira::execFMovem(u16 opcode)
 
         } else if constexpr (M == Mode::IM) {
 
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // #imm as source only; multiple registers allowed on 6888x
-            // (fpp.c:3265-3299)
+            // (fpp.c:3274-3308)
             if (toEa) {
                 execLineF<C, I, M, S>(opcode);
                 return;
@@ -3060,7 +3128,8 @@ Moira::execFMovem(u16 opcode)
 
         } else if constexpr (M == Mode::DIPC || M == Mode::IXPC) {
 
-            // PC-relative: source only (fpp.c:3311-3315)
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+            // PC-relative: source only (fpp.c:3320-3324)
             if (toEa) {
                 execLineF<C, I, M, S>(opcode);
                 return;
@@ -3073,7 +3142,8 @@ Moira::execFMovem(u16 opcode)
 
         } else {
 
-            // Memory EAs (fpp.c:3300-3400). -(An)/(An)+ update after the
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+            // Memory EAs (fpp.c:3309-3409). -(An)/(An)+ update after the
             // transfer; -(An) writes/reads ascending from ea - 4*count.
             u16 sel = bits ? bits : 0x0400;
             int count = ((sel >> 12) & 1) + ((sel >> 11) & 1) + ((sel >> 10) & 1);
@@ -3110,7 +3180,8 @@ Moira::execFMovem(u16 opcode)
         const bool toEa = cod == 0b111;
         const int mode = ___xx___________(ext);
 
-        // EA restrictions (fpp.c:3410-3433): registers/immediates never
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+        // EA restrictions (fpp.c:3419-3442): registers/immediates never
         // decode; FP->mem excludes (An)+ and PC-relative; mem->FP
         // excludes -(An)
         if constexpr (M == Mode::DN || M == Mode::AN || M == Mode::IM || M == Mode::IP) {
@@ -3118,6 +3189,7 @@ Moira::execFMovem(u16 opcode)
             return;
         }
 
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // WinUAE computes the EA (get_fp_ad, consuming extension words)
         // before the direction checks
         u32 ad;
@@ -3139,6 +3211,7 @@ Moira::execFMovem(u16 opcode)
 
         u32 list = (mode & 1) ? readD((ext >> 4) & 7) & 0xff : ext & 0xff;
 
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // 6888x and 040 use different list and word orders. On the 040,
         // memory->FP static/dynamic predecrement-format lists count FP0 up;
         // FP->memory may also write each 96-bit register low-mantissa first
@@ -3156,8 +3229,9 @@ Moira::execFMovem(u16 opcode)
                 reverseWords = true;
         }
 
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K O5 (seed-17 solo convergence): 68030 restart bookkeeping,
-        // WinUAE fmovem2mem/fmovem2fpp mmu030 paths (fpp.c:2810-2841,
+        // WinUAE fmovem2mem/fmovem2fpp mmu030 paths (fpp.c:2819-2850,
         // 2875-2910) — MOVEM1 in state[1] (plus FMOVEM for memory->FP), a
         // completed-long counter in state[0], and memory->FP parks the
         // first two longs of the register in flight in fmovem_store
@@ -3195,9 +3269,10 @@ Moira::execFMovem(u16 opcode)
                 if (incr < 0) ad -= 12;
 
                 if (toEa) {
+                    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                     // Raw bits, no conversion (WinUAE fmovem2mem uses
-                    // from_exten_fmovem, fpp.c:2850); data buffer set
-                    // before each put (fpp.c:2829)
+                    // from_exten_fmovem, fpp.c:2859); data buffer set
+                    // before each put (fpp.c:2838)
                     u32 w1 = u32(fpu.fp[fpn].high) << 16;
                     u32 w2 = u32(fpu.fp[fpn].low >> 32);
                     u32 w3 = u32(fpu.fp[fpn].low);
@@ -3211,8 +3286,9 @@ Moira::execFMovem(u16 opcode)
                     writeM<C, M, Long>(ad + 8, third);
                     if (mmu030) mmuState[0]++;
                 } else {
+                    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                     // Save the first two longs in case the 2nd or 3rd
-                    // read faults (WinUAE fpp.c:2896-2898)
+                    // read faults (WinUAE fpp.c:2905-2907)
                     u32 w1 = readM<C, M, Long>(ad);
                     if (mmu030) { mmuFmovemStore[0] = w1; mmuState[0]++; }
                     u32 w2 = readM<C, M, Long>(ad + 4);

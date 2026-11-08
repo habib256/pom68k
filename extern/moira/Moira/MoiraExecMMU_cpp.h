@@ -112,6 +112,7 @@ Moira::isValidExtMMU(Instr I, Mode M, u16 op, u32 ext) const
 }
 
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 //
 // POM68K O4 — 68030 MMU instruction execution, TWO-ORACLE ARBITRATED
 // (2026-07-15). Originally converged on Musashi alone; the first
@@ -160,6 +161,7 @@ Moira::mmuWrite32(u32 addr, u32 val) const
     write16(addr + 2, u16(val));
 }
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // FC field of PTEST/PFLUSH/PLOAD extension words, WinUAE
 // mmu_op30_helper_get_fc: bits 4-3 select the source — 10 immediate,
 // 01 Dn, 00 SFC/DFC on bit 0 alone (so 00010 reads SFC!), 11 undecodable
@@ -274,6 +276,7 @@ Moira::mmuWalkTables(u32 addrIn, int type, u32 table, int fc, int limit,
         u32 entry, entry2;
 
         bitpos -= 4;
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K D3 (WinUAE-arbitrated 2026-07-15): a level is the last
         // one when the NEXT index field is zero (WinUAE last_table);
         // Musashi's unmasked (bits >> bitpos) still saw the consumed
@@ -287,6 +290,7 @@ Moira::mmuWalkTables(u32 addrIn, int type, u32 table, int fc, int limit,
 
             case 0: // invalid descriptor → MMUSR I (§ 9.7.2.6)
 
+                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                 // POM68K D4 (WinUAE-arbitrated 2026-07-15): OR, don't
                 // assign — WP accumulated on the path stays visible
                 // (probe: PTESTW through a WP table descriptor into DT=0
@@ -339,6 +343,7 @@ Moira::mmuWalkTables(u32 addrIn, int type, u32 table, int fc, int limit,
                     level++;
                     addrOut = entry2 & 0xfffffffc;
                     entry = mmuRead32(addrOut);
+                    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                     // POM68K D3 (WinUAE-arbitrated 2026-07-15): the
                     // second long lives at +4. Musashi re-read +0; the
                     // Musashi oracle has been fixed to match.
@@ -401,6 +406,7 @@ Moira::mmuRootPointer(int fc, u32 &table, int &type) const
     }
 }
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 //
 // POM68K O4 slice 3 — 68030 MMU BUS LAYER (2026-07-15)
 //
@@ -416,6 +422,7 @@ Moira::mmuRootPointer(int fc, u32 &table, int &type) const
 // differ compares raw RAM. See POM68K_VENDOR.md § MMU bus layer.
 //
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Instruction-stream word fetch (WinUAE x_prefetch / mmu030_get_iword):
 // translated when TC.E is set, never logged, never split.
 u16
@@ -479,6 +486,7 @@ Moira::mmuCapturePipe()
     }
 }
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Logs the value of a completed instruction-level access
 // (ACCESS_EXIT_GET/PUT in WinUAE cpummu030.h)
 void
@@ -492,6 +500,7 @@ Moira::mmuLogExtWord(u32 value)
     }
 }
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Arms a pending (An)+/-(An) fixup (WinUAE mmufixup[] + mmu030fixupreg
 // encoding: reg | size << 3 | predec << 5 | valid << 6). The encoded byte
 // lands in the wb2/wb3 status bytes of a $B fault frame; the value is
@@ -506,6 +515,7 @@ Moira::mmuArmFixup(int n, bool predec)
     mmuFixupVal[slot] = reg.a[n];
 }
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Per-instruction state reset + mode-5-style opcode fetch (WinUAE
 // m68k_run_mmu030 loop head). Returns false when the fetch faulted (the
 // exception has been processed).
@@ -566,6 +576,7 @@ Moira::mmuExecuteStart()
 
     try {
 
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // Mode-5 WinUAE reads the opcode through translation at the start
         // of every instruction (x_prefetch); extension words follow at
         // consumption time. Moira's queue is therefore refetched here and
@@ -583,6 +594,7 @@ Moira::mmuExecuteStart()
     return true;
 }
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Transparent translation match for bus accesses — OK-match only, wrong
 // r/w direction falls through to normal translation (WinUAE
 // mmu030_match_ttr_access / mmu030_match_lrmw_ttr_access)
@@ -611,6 +623,7 @@ Moira::mmuMatchTTAccess(u32 addr, u8 fc, bool write) const
     return false;
 }
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Bus-level translation-table search — WinUAE mmu030_table_search with
 // level == 0: FCL lookup, short/long descriptors, limit checks, early
 // termination, indirection, U on every traversed descriptor and U+M on
@@ -621,6 +634,7 @@ Moira::mmuBusWalk(u32 addr, u8 fc, bool write, u32 &pageAddr, bool &ci)
 {
     const u32 tc = reg.tc;
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Table index masks and shifts (WinUAE mmu030_decode_tc: TI fields
     // are consumed up to the first zero field)
     u32 tmask[4] = {}; u8 tshift[4] = {}; int lastTable = 0;
@@ -647,6 +661,7 @@ Moira::mmuBusWalk(u32 addr, u8 fc, bool write, u32 &pageAddr, bool &ci)
     int descrNum = 0;
     u32 descrAddr = 0;
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Root pointer (SRP when SRE and supervisor FC, § 9.7.2.2); reserved
     // bits of the upper long are masked (WinUAE RP_ZERO_BITS)
     u64 rp = ((tc & 0x02000000) && super) ? reg.srp : reg.crp;
@@ -788,6 +803,7 @@ stopSearch:
     return status;
 }
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Pseudo-LRU history maintenance (WinUAE mmu030_atc_handle_history_bit)
 void
 Moira::mmuAtcTouch(int i)
@@ -806,6 +822,7 @@ Moira::mmuAtcTouch(int i)
     }
 }
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // ATC lookup (WinUAE mmu030_logical_is_in_atc): exact FC, page-aligned
 // address; a valid write hit on an unmodified, unprotected page is
 // invalidated so the table search re-runs and sets M.
@@ -850,6 +867,7 @@ Moira::mmuAtcLookup(u32 addr, u8 fc, bool write)
     return -1;
 }
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Table search + ATC entry creation (tail of WinUAE mmu030_table_search)
 void
 Moira::mmuAtcFill(u32 addr, u8 fc, bool write)
@@ -883,6 +901,7 @@ Moira::mmuAtcFill(u32 addr, u8 fc, bool write)
     e.writeProtect = (status & 0x0800) != 0;
 }
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // ATC flushes (§ 9.7.3 PFLUSH variants; WinUAE mmu030_flush_atc_*)
 void
 Moira::mmuAtcFlushAll()
@@ -918,6 +937,7 @@ Moira::mmuAtcFlushPageFc(u32 addr, u32 fcBase, u32 fcMask)
             e.valid = false;
 }
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Logical → physical for one bus (sub-)access; faults on invalid /
 // supervisor-only pages and on write-protected writes (WinUAE
 // mmu030_put_atc / mmu030_get_atc / *_generic)
@@ -938,6 +958,7 @@ Moira::mmuTranslateAccess(u32 addr, u8 fc, bool write, u32 sswFlags)
         if (mmuMatchTTAccess(addr, fc, write)) return addr;
     }
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Locked RMW cycles probe the ATC as writes even when reading; the
     // RMW property never applies to instruction-stream fetches (WinUAE
     // sets islrmw030 only around the data access itself)
@@ -958,6 +979,7 @@ Moira::mmuTranslateAccess(u32 addr, u8 fc, bool write, u32 sswFlags)
     return (e.physical & ~mmuPageMask()) | (addr & mmuPageMask());
 }
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Fault capture + throw (WinUAE mmu030_page_fault): SSW per § 8.2.1
 // (oracle-arbitrated encodings, incl. the double DF bit), pending-fixup
 // application, data buffer and MOVEM/EA state snapshots for the frame.
@@ -974,6 +996,7 @@ Moira::mmuPageFault(u32 addr, bool read, u32 sswFlags, u8 fc)
             for (int i = 0; i < 2; i++) {
 
                 u8 enc = mmuFixupReg[i];
+                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                 // O5: plain FPU fixups (bit 7) keep the status byte 0
                 // and get no ± adjustment — WinUAE mmu030fixupreg
                 // returns 0 for fpp.c-armed fixups (no 0x300 flags);
@@ -1043,6 +1066,7 @@ Moira::extBusError000(u32 addr, bool write)
     throw BusError(frame);
 }
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Translated read with 68030 bus splitting (WinUAE mmu030_get_* +
 // *_unaligned): every sub-access is translated separately; the SUBACCESS
 // flags in mmuState[1] and the data buffer track partial completion.
@@ -1209,6 +1233,7 @@ Moira::mmuRead(u32 addr)
     return v;
 }
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Translated write, same structure (WinUAE mmu030_put_* + *_unaligned);
 // the data buffer holds the full pending value (ACCESS_CHECK_PUT), so a
 // faulting write stacks it as wb3_data.
@@ -1225,12 +1250,14 @@ Moira::mmuWrite(u32 addr, u32 val)
     const bool log = mmuLogging;
     if (log) {
         pomMmuBumpIdx();
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // gencpu passes byte/word operands through signed variables, so
         // the pending-write buffer (wb3_data in fault frames) holds the
         // sign-extended value
         mmuDataBuffer = u32(SEXT<S>(val));
     }
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K O6.9: DF-cleared retried write — already done, skip the
     // bus cycle (WinUAE keeps the wb3_data value logged at fault time)
     if (mmuRteSubstArmed && mmuRteSubstWrite
@@ -1355,6 +1382,7 @@ Moira::mmuWrite(u32 addr, u32 val)
 }
 
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // EA decode for the whole $F000-$F03F window, replicating WinUAE's
 // generated MMUOP030 handlers: the EA is computed before any validation,
 // so extension words are consumed and the (An)+/-(An) adjustment survives
@@ -1390,6 +1418,7 @@ Moira::mmuDecodeEA(int n)
     }
 }
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // MMU configuration exception, vector 56 (invalid TC or root pointer
 // written by PMOVE). WinUAE-arbitrated frame: four-word format $0 with
 // the next PC (probe: SR / PC past all consumed words / $00E0). The
@@ -1411,6 +1440,7 @@ Moira::execMmuConfigError()
     jumpToVector<C>(56);
 }
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Instruction router for the $F000-$F03F window, replicating WinUAE's
 // mmu_op30 (see the header comment for the arbitration record).
 template <Core C, Instr I, Mode M, Size S> void
@@ -1418,6 +1448,7 @@ Moira::execPGen(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // PC-relative, immediate and unassigned mode-7 encodings
     // ($F03A-$F03F) are not MMU opcodes at all (WinUAE table68k
     // MMUOP030): Line-F even in user mode (probe P14 analogue).
@@ -1428,6 +1459,7 @@ Moira::execPGen(u16 opcode)
         return;
     }
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // D1: MMU instructions are privileged; WinUAE's generated handlers
     // check S before fetching the extension word.
     SUPERVISOR_MODE_ONLY
@@ -1475,7 +1507,7 @@ Moira::execPGen(u16 opcode)
             execPTest<C, Instr::PTEST, M, S>(opcode);
             return;
 
-        default:    // formats 101/110/111: silent no-op in WinUAE
+        default:    // [D] @ Hatari e77819f7: formats 101/110/111: silent no-op in WinUAE
                     // (mmu_op30 has no case for them), but the extension
                     // word and the EA extension words are consumed
         {
@@ -1489,6 +1521,7 @@ Moira::execPGen(u16 opcode)
         }
     }
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Consume the words like WinUAE before trapping (PC is rewound by
     // the Line-F frame anyway, which stacks the instruction address)
     (void)readI<C, Word>();
@@ -1520,6 +1553,7 @@ Moira::execPFlush(u16 opcode)
         return;
     }
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K O4 slice 3: the ATC is real now (§ 9.7.3; WinUAE
     // mmu_op30_pflush modes $10/$18)
     u32 fcMask = u32(modes >> 5) & 7;
@@ -1540,6 +1574,7 @@ Moira::execPFlusha(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // PFLUSHA (mode $04): the fc/mask bits must be zero (WinUAE
     // mmu_op30_pflush, probe P11c); any EA is accepted — even (An)+,
     // whose increment sticks (probe P1) — since no EA is used.
@@ -1553,6 +1588,7 @@ Moira::execPFlusha(u16 opcode)
         return;
     }
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K O4 slice 3: real flush (WinUAE mmu030_flush_atc_all)
     mmuAtcFlushAll();
 
@@ -1566,6 +1602,7 @@ Moira::execPFlush40(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K Q2/Q8: PFLUSHN/PFLUSH/PFLUSHAN/PFLUSHA (M68040UM § 3.4.1),
     // supervisor-only (WinUAE cpuemu_31 op_f500: Exception 8 first).
     // Mode field bits 4:3 select the variant (MoiraDasmMMU_cpp.h).
@@ -1600,6 +1637,7 @@ Moira::execPLoad(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // MC68030UM § 9.7 PLOAD: table search + ATC fill. The
     // search's history updates (U, and U+M for PLOADW, § 9.5.3.5) land in
     // RAM, early aborts included. MMUSR is NOT affected. WinUAE goes
@@ -1622,6 +1660,7 @@ Moira::execPLoad(u16 opcode)
 
     int rw = modes >> 9 & 1;                // PLOADR = 1, PLOADW = 0
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K O4 slice 3: WinUAE mmu_op30_pload = flush the page, then a
     // level-0 table search that fills the ATC (U/M updates included,
     // even with TC.E = 0 — dispute D5). MMUSR is not affected.
@@ -1638,6 +1677,7 @@ Moira::execPMove(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // MC68030UM § 9.7.5 PMOVE: move to/from TT0/TT1, TC (32-bit),
     // SRP / CRP (64-bit), MMUSR (16-bit). WinUAE-arbitrated validation:
     // memory-indirectable EA only, zero low byte, no rw+fd, no fd on
@@ -1665,11 +1705,12 @@ Moira::execPMove(u16 opcode)
 
     bool trapped = false;
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K O4 slice 3: the register transfer itself is not part of the
     // instruction-restart access log (WinUAE x_get_long, non-state)
     mmuLogging = false;
 
-    switch (modes >> 10 & 0x1f) {       // fmt low bits + preg, WinUAE-style
+    switch (modes >> 10 & 0x1f) {       // [D] @ Hatari e77819f7: fmt low bits + preg, WinUAE-style
 
         case 0x02:  // TT0
 
@@ -1774,12 +1815,13 @@ Moira::execPMove(u16 opcode)
             else    reg.mmusr = u16(readM<C, M, Word>(ea));
             break;
 
-        default:    // not an MMU register (WinUAE: "Bad PMOVE")
+        default:    // [D] @ Hatari e77819f7: not an MMU register (WinUAE: "Bad PMOVE")
 
             execLineF<C, I, M, S>(opcode);
             return;
     }
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K O4 slice 3: a register write with FD clear flushes the whole
     // ATC (WinUAE mmu_op30_pmove tail; skipped when the write trapped,
     // and never for MMUSR)
@@ -1797,6 +1839,7 @@ Moira::execPTest(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // MC68030UM § 9.7.6 PTEST. WinUAE-arbitrated: level 0 searches the
     // TT registers and the (empty) ATC only — a TT match sets T, a miss
     // sets I; level > 0 walks the translation tree directly (no TT
@@ -1825,6 +1868,7 @@ Moira::execPTest(u16 opcode)
 
     if (!level) {
 
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K O4 slice 3: real ATC search (WinUAE
         // mmu030_ptest_atc_search): TT match reports T; then the ATC is
         // searched with the RAW (unmasked) EA — a WinUAE quirk kept
@@ -1870,6 +1914,7 @@ Moira::execPTest40(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K Q3: PTESTR/PTESTW (M68040UM § 3.4.2; WinUAE mmu_op_real,
     // PTEST branch), supervisor-only. DFC selects the address space
     // (super = dfc&4, data = (dfc&3) != 2); a TTR hit reports T|R (or B
@@ -1902,6 +1947,7 @@ Moira::execPTest40(u16 opcode)
     FINALIZE
 }
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // -----------------------------------------------------------------------------
 // POM68K Q3 — 68040 MMU bus translation, modelled byte-for-byte on the
 // primary oracle (WinUAE cpummu.c / cpummu.h mmu040 accessors, hatari
@@ -2053,6 +2099,7 @@ Moira::mmu040AtcFill(bool data, u32 addr, u32 status)
 template <Core C> bool
 Moira::mmu040InstrStart()
 {
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Same shape as the mode-5 68030 loop head (mmuExecuteStart): the
     // 040 oracle has no prefetch queue — the opcode is fetched through
     // translation at every instruction start (WinUAE x_prefetch(0)) and
@@ -2670,6 +2717,7 @@ Moira::mmu040TtrRebuild(Mmu040TtrTable &tab, u32 ttr0, u32 ttr1) const
 int
 Moira::mmu040MatchTTRPair(u32 ttr0, u32 ttr1, u32 addr, bool super, u32 *cm)
 {
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // WinUAE mmu_do_match_ttr over the dtt/itt pair (mmu_match_ttr)
     const u32 ttrs[2] = { ttr0, ttr1 };
 
@@ -3041,6 +3089,7 @@ Moira::pomCacheOp040(u16 opcode)
 template <Core C> u32
 Moira::mmu040Walk(u32 addr, bool super, bool write)
 {
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // WinUAE mmu_fill_atc: descriptors are fetched/updated with
     // supervisor function codes on the raw physical bus. Returns the
     // page descriptor (phys | status bits, R = bit 0) with the WP bit
@@ -3179,11 +3228,13 @@ template <Core C> u32
 Moira::mmu040Translate(u32 addr, u32 val, bool super, bool data,
                        bool write, int szCode)
 {
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // WinUAE mmu_get/put_* accessor heads: TTR match first (a WP match
     // faults writes even with translation disabled), then the walk.
     // Locked RMW cycles translate as WRITES from the read on (WinUAE
     // mmu_get_user_*: the lrmw accessors pass write = true).
     int fc = (super ? 4 : 0) | (data ? 1 : 2);
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // The locked-RMW write-flavor applies to DATA accesses only — the
     // CAS extension word still fetches through the plain read path
     // (WinUAE wraps only the get_lrmw_* data accessors)
@@ -3228,6 +3279,7 @@ Moira::mmu040Translate(u32 addr, u32 val, bool super, bool data,
 
     if ((asWrite && (status & 4)) || (!super && (status & 0x80)) ||
         !(status & 1)) {
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // locked-RMW reads fault with WRITE semantics (WinUAE passes
         // write = true through mmu_get_user_*; SSW.LK strips RW anyway)
         mmu040Fault<C>(addr, val, fc, asWrite, szCode);
@@ -3243,6 +3295,7 @@ template <Core C> void
 Moira::mmu040Fault(u32 addr, u32 val, int fc, bool write, int szCode,
                    bool atc)
 {
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // WinUAE mmu_bus_error, 68040 branch — SSW + writeback capture
     u16 ssw = 0;
 
@@ -3444,6 +3497,7 @@ Moira::mmu040Write(u32 addr, u32 val, bool data)
                                   true);
     };
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Default last-write marking (gencpu gen_set_fault_pc): the store an
     // instruction ends on faults with PC = next instruction and no
     // restore. reg.pc points at the last consumed word = next - 2...
@@ -3525,6 +3579,7 @@ Moira::mmu040Write(u32 addr, u32 val, bool data)
 template <Core C> void
 Moira::mmu040GetMove16(u32 addr)
 {
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // WinUAE mmu_get_move16: line-aligned, one translation, four
     // physical longs into the line buffer (frame PD0-3)
     const bool super = reg.sr.s;
@@ -3563,6 +3618,7 @@ Moira::mmu040PutMove16(u32 addr)
 void
 Moira::extBusError040()
 {
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // External /BERR (unmapped I/O): the machine calls this from inside
     // a bus callback; the captured access context builds the same
     // format $7 frame as a translation fault, with SSW.ATC clear
@@ -3575,6 +3631,7 @@ Moira::extBusError040()
                               mmu040AccWrite, mmu040AccSz, false);
 }
 
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Bus-fault exception processing: WinUAE m68k_run_mmu040 CATCH (restart:
 // CCR + PC restored, (An)± fixups undone) + Exception_mmu nr == 2
 // (vector fetched before the frame; both go through translation — a

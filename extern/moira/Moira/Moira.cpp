@@ -180,6 +180,7 @@ Moira::cacrMask() const
         case Model::M68020: case Model::M68EC020: return 0x0003;
         case Model::M68030: case Model::M68EC030: return 0x3F13;
 
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K Q2: 68040 CACR = DE (bit 31) | IE (bit 15) — WinUAE
         // newcpu_common.c m68k_move2c case 2 (cacr_mask, 68040 row)
         case Model::M68EC040: case Model::M68LC040: case Model::M68040:
@@ -280,6 +281,7 @@ Moira::reset()
 
     SYNC(16);
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // NEOST : gardé — une bus/address error pendant le fetch des vecteurs de
     // reset (SSP/PC à $0-$7 absents, ex. ROM invalide) est une double faute
     // pour le 68000 → HALT (cpu_halt(CPU_HALT_DOUBLE_FAULT) chez WinUAE/Hatari),
@@ -506,6 +508,7 @@ Moira::execute()
             processException(exc);
         }
 
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K Q2: 68040 one-shot trace armed mid-instruction (an SR
         // write with old Tx set — RTE/MOVE-to-SR). Fires after the
         // instruction, exactly like WinUAE's SPCFLAG_DOTRACE.
@@ -539,6 +542,7 @@ Moira::execute()
             // (crash « terminate » observé sur Beyond the Ice Palace, bureau TOS).
             if (flags & TRACE_EXC) {
 
+                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                 // POM68K Q2: on the 68040 a staged trace does not
                 // preempt the instruction — WinUAE runs the next
                 // instruction first and takes vector 9 afterwards
@@ -582,6 +586,7 @@ Moira::execute()
             }
         }
 
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // NEOST_IPLFETCH : applique le niveau DIFFÉRÉ (changement de broche vu <2 cyc
         // avant l'échantillon) — il devient la valeur pollée pour la frontière
         // SUIVANTE, ≙ la rotation `ipl[0] = ipl[1]` de la run loop WinUAE
@@ -734,6 +739,7 @@ Moira::processException(const std::exception &exc)
             }
         }
 
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K O4 slice 3: 68030 MMU translation fault → bus error with
         // a format $A/$B frame; a nested fault while stacking it is a
         // double fault → HALT (WinUAE Exception_mmu030 / cpu_halt)
@@ -885,6 +891,7 @@ Moira::setSR(u16 val)
     bool s   = (val >> 13) & 1;
     u8   ipl = (val >>  8) & 7;
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K Q2: 68040 one-shot trace — an SR write performed while a Tx
     // bit WAS set traces once after the instruction, even if the write
     // cleared Tx (WinUAE MakeFromSR_x: `(oldt0 && t0trace) || oldt1` ->
@@ -1272,7 +1279,8 @@ Moira::setIPL(u8 val)
 {
     if (ipl != val) {
 
-        // NEOST_IPLFETCH : historise la broche (≙ WinUAE update_ipl, newcpu.c:5022) —
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+        // NEOST_IPLFETCH : historise la broche (≙ WinUAE update_ipl, newcpu.c:5006) —
         // le changement PRÉCÉDENT (valeur + horloge) est conservé pour le seuil
         // « cdp » de pollIpl. Sans effet quand la feature est OFF (iplDelay4 == 0).
         iplChangeClockPrev = iplChangeClock;
@@ -1305,6 +1313,7 @@ Moira::pollIpl()
     // (étalons 19/0 vérifiés). POLL_IPL ≡ reg.ipl = ipl.
     if (iplDelay4 == 0) { reg.ipl = ipl; return; }
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // NEOST_IPLFETCH : port FIDÈLE de WinUAE ipl_fetch_next (newcpu.c:4996-5011).
     // L'échantillon se fait ~4 cyc avant la FIN de l'instruction (placement des
     // POLL_IPL de Moira). Trois cas, comme WinUAE :

@@ -79,6 +79,7 @@ protected:
     // Current value on the IPL (Interrupt Priority Level) pins
     u8 ipl {};
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // NEOST_IPLFETCH : historique de la broche IPL pour reconnaissance différée
     // (port fidèle de WinUAE ipl_fetch_next). iplDelay4 == 0 ⇒ feature OFF, donc
     // pollIpl() ≡ reg.ipl = ipl. Réglé via setIplDelay(). Edit dans le sous-module
@@ -88,6 +89,7 @@ protected:
     i64 iplChangeClockPrev {-1000};  // horloge du changement PRÉCÉDENT (≙ ipl_pin_change_evt_p)
     i64 iplDelay4 {0};         // seuil « broche stabilisée » (cyc) ; 0 ⇒ OFF
     i64 iplDelay2 {0};         // seuil « ancienne valeur » (cyc)
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Report « différé » de WinUAE (regs.ipl[1]) : un changement de broche vu <2 cyc
     // avant l'échantillon n'est PAS pris pour la frontière qui vient, mais devient
     // la valeur POLLÉE à la frontière SUIVANTE (rotation ipl[0]=ipl[1] de la run
@@ -98,6 +100,7 @@ protected:
     // lowering SR-write (see setSR / the run loop). 68020+ only.
     int irqDelay {0};
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K Q2 — 68040 trace machinery (WinUAE MakeFromSR_x one-shot +
     // do_trace): trace040Pending fires vector 9 AFTER the current
     // instruction (armed by an SR write whose OLD Tx bits were set, even
@@ -1190,6 +1193,7 @@ protected:
     // Called when an interrupt is about to be processed
     virtual void willInterrupt(u8 level) { }
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // NEOST : cycles idle autour du CYCLE D'IACK du 68000 (execInterrupt<C68000>,
     // entre l'empilement de PClo et celui de SR/PChi). Stock Moira = SYNC(4) avant
     // la lecture du vecteur et SYNC(4) après. Un sous-classeur (NeoST) peut y porter
@@ -1544,6 +1548,7 @@ public:
     u16 getMMUSR() const { return reg.mmusr; }
     void setMMUSR(u16 val) { reg.mmusr = val; }
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K Q2: gets or sets the 68040 MMU registers (M68040UM § 3.1.1).
     // Setter masks mirror the oracle (WinUAE newcpu_common.c m68k_move2c,
     // 68040 rows): TC keeps E|P, ITT/DTT keep $FFFFE364, URP/SRP/MMUSR
@@ -1629,6 +1634,7 @@ public:
     u32 getMMUSR040() const { return reg.mmusr040; }
     void setMMUSR040(u32 val) { reg.mmusr040 = val; }
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K O5/Q9: 6888x/68040 programmer's model. getFP /
     // setFP use the SST030 raw-word contract: w[0] = (sign|exp) << 16,
     // w[1] = mantissa bits 63..32, w[2] = bits 31..0.
@@ -1665,6 +1671,7 @@ public:
     void setFPIAR(u32 val) { fpu.fpiar = val; fpu.state = 1; }
 
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     //
     // 6888x / integrated-040 FPU state (MoiraExecFPU_cpp.h)
     //
@@ -1684,6 +1691,7 @@ protected:
         u32 fpsr {};        // status register (cc, quotient, exc, accrued)
         u32 fpiar {};       // instruction address register
 
+        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // Frame micro-state (WinUAE regs.fpu_state / fpu_exp_state):
         // state 0 = reset/null (FSAVE writes a NULL frame), 1 = idle
         int state {};
@@ -1691,7 +1699,7 @@ protected:
         int expPend {};     // pending arithmetic exception vector (0 = none)
         u32 fsaveCcr {};    // IDLE-frame command/condition register
         u32 fsaveEo[3] {};  // IDLE-frame exceptional operand
-        u32 ea {};          // last operand EA (WinUAE regs.fp_ea) — lands
+        u32 ea {};          // [D] @ Hatari e77819f7: last operand EA (WinUAE regs.fp_ea) — lands
                             // in the format $3 post-instruction frame
 
         // Integrated-040 FSAVE UNIMP/BUSY frame micro-state.
@@ -1726,6 +1734,7 @@ private:
     // fp_set_mode) + the 6888x NaN/infinity special flags
     void fpuSetMode();
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // FPSR maintenance (WinUAE fpp.c fpsr_* helpers)
     void fpuClearStatus();                      // exc byte + host flags
     u32  fpuMakeStatus();                       // host flags -> FPSR + accrued
@@ -1738,19 +1747,23 @@ private:
     // enabled BSUN trap was taken
     template <Core C> int fpuCondEval(u16 cond);
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Pending pre-instruction exception check (WinUAE fp_exception_pending)
     template <Core C> bool fpuCheckPending();
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // FPU exception: pre-instruction = format $0 (PC = re-executing FP
     // instruction), post-instruction = format $3 with fp_ea (WinUAE
     // Exception_build_stack_frame_common nr 48-55)
     template <Core C> void execFpuException(u16 vector, bool pre);
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // FRESTORE invalid-frame format error (vector 14) — stacks WinUAE's
     // PC (past all consumed words), ruling D21
     template <Core C> void execFRestoreFormatError();
     template <Core C> void execFpuIllegalOpmode040();   // POM68K
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K Q4: 68LC040/68EC040 F2xx with no FPU — vector 11, format $4
     // "FP disabled" frame {SR, PC-after-consumed-words, $402C, EA,
     // instruction PC} (WinUAE fpu_op_illg + Exception_build_stack_frame
@@ -1769,11 +1782,13 @@ private:
         u16 opcode, u16 ext, const FpuExtended &src, int dst, int size, u32 ea,
         const u32 *packed = nullptr, bool encodedDenormal = false);
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Arms a plain (An)± fixup for FPU operands on the 68030 (WinUAE
     // fpp.c mmufixup arming): the register is RESTORED on a non-lastwrite
     // bus fault, but the $A/$B frame's wb2/wb3 status byte stays 0
     void fpuArmFixup(int n);
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Arithmetic-exception latch + 68882 FSAVE frame data capture
     // (WinUAE fpsr_check_arithmetic_exception, 6888x branch); ea = the
     // operand's effective address (0 for register/immediate operands),
@@ -1782,17 +1797,21 @@ private:
         const FpuExtended &src, u16 opcode, u16 ext, u32 ea,
         u32 nonmaskable = 0);
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Normalizes denormal/unnormal operands (6888x supports denormals:
     // WinUAE normalize_or_fault_if_no_denormal_support, 6888x branch)
     void fpuNormalize(FpuExtended &v);
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // FMOVECR constant ROM incl. undefined offsets (WinUAE fpu_get_constant)
     bool fpuGetConstant(FpuExtended &v, int cr);
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Opmode dispatch (WinUAE fp_arithmetic); returns true when the result
     // is to be stored in the destination register
     bool fpuArithmetic(const FpuExtended &src, FpuExtended &dst, u16 ext);
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Operand transfer, all 7 formats (WinUAE get_fp_value/put_fp_value2);
     // return 1 = done, 0 = invalid encoding (Line-F); ea receives the
     // memory operand's effective address (untouched otherwise)
@@ -1892,6 +1911,7 @@ private:
     bool isValidExtFPU(Instr I, Mode M, u16 op, u32 ext) const;
 
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     //
     // 68030 MMU instruction support (POM68K O4, MoiraExecMMU_cpp.h)
     //
@@ -1927,6 +1947,7 @@ private:
     // Root pointer selection for a walk (SRP when SRE + supervisor FC)
     void mmuRootPointer(int fc, u32 &table, int &type) const;
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // EA decode for the $F000-$F03F window (WinUAE MMUOP030 order:
     // computed before validation, side effects survive Line-F)
     template <Core C, Mode M> u32 mmuDecodeEA(int n);
@@ -1935,6 +1956,7 @@ private:
     template <Core C> void execMmuConfigError();
 
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     //
     // 68030 MMU bus layer (POM68K O4 slice 3, MoiraExecMMU_cpp.h)
     //
@@ -1972,6 +1994,7 @@ public:
 
 protected:
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Address translation cache — 22 fully-associative entries with a
     // pseudo-LRU history bit (§ 9.5.2; WinUAE MMU030_ATC_LINE)
     struct MmuAtcEntry {
@@ -1998,6 +2021,7 @@ protected:
     int mmuAtcMruCount {0};
     i8  mmuAtcLast[8][2] {};
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Per-instruction restart/fault bookkeeping (WinUAE globals in
     // comments). Values land verbatim in the $A/$B frame internal words.
     u16 mmuState[3] {};         // mmu030_state[0..2] (MOVEM count, flags, EA words)
@@ -2010,6 +2034,7 @@ protected:
     u32 mmuDispStore[2] {};     // mmu030_disp_store (extended-EA results)
     u32 mmuOpcodeV {0xFFFFFFFF};// mmu030_opcode ($FFFFFFFF = prefetch phase)
     u8  mmuFixupReg[2] {};      // mmufixup encodings (wb2/wb3 status bytes)
+                                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                                 // O5: bit 7 = plain (FPU) fixup — restore
                                 // active but the frame status byte reads 0
                                 // (WinUAE mmu030fixupreg returns 0 when the
@@ -2038,6 +2063,7 @@ protected:
     u32 mmuAccSsw {};
     u8  mmuAccFc {};
     bool mmuAccWrite {};
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K O6.9: RTE of a $B fault frame whose SSW DF bit was cleared
     // by the handler (bit 9 = "frame carried DF" marker, per WinUAE's
     // encoding, survives; bit 8 cleared) — the faulted data cycle must
@@ -2102,15 +2128,18 @@ private:
     // mmuPipe members above); never faults — a short capture just ends
     void mmuCapturePipe();
 
-    // Logs the consumption of an extension word (WinUAE next_iword_state)
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+    // Logs the consumption of an extension word (WinUAE next_iword_mmu030_state)
     void mmuLogExtWord(u32 value);
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Arms a pending (An)+/-(An) fixup (WinUAE mmufixup[])
     template <Size S> void mmuArmFixup(int n, bool predec);
 
     // Transparent translation match for bus accesses (OK-match only)
     bool mmuMatchTTAccess(u32 addr, u8 fc, bool write) const;
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Bus-level table search (WinUAE mmu030_table_search, level 0):
     // U/M maintenance, limit checks; returns MMUSR-style status bits
     u16 mmuBusWalk(u32 addr, u8 fc, bool write, u32 &pageAddr, bool &ci);
@@ -2167,6 +2196,7 @@ private:
     // Logical → physical for one bus (sub-)access; throws MmuBusError
     MOIRA_HOT_INLINE u32 mmuTranslateAccess(u32 addr, u8 fc, bool write, u32 sswFlags);
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Fault capture + throw (WinUAE mmu030_page_fault)
     [[noreturn]] void mmuPageFault(u32 addr, bool read, u32 sswFlags, u8 fc);
 
@@ -2179,23 +2209,27 @@ private:
     template <Core C> void writeStackFrameShortBusFault(u16 sr, u32 pc);
     template <Core C> void writeStackFrameLongBusFault(u16 sr, u32 pc, int nr = 2);
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K O4 slice 4 — 68030 odd-address instruction-fetch fault
     // (WinUAE Exception_mmu030 vector 3: format $B frame, SSW $0066).
     // mmuCheckOddPc raises it and returns true when `target` is odd.
     template <Core C> void execAddressError030(u32 target, u32 stackedPc);
     template <Core C> bool mmuCheckOddPc(u32 target, u32 stackedPc);
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K Q2: 68040 odd instruction-flow target — vector 3, format $2
     // frame (WinUAE Exception_mmu nr == 3). Call sites apply the WinUAE
     // per-instruction A7/CCR conventions first (see the exec handlers).
     template <Core C> void execAddressError040(u32 target, u32 stackedPc);
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     //
     // POM68K Q3 — 68040 MMU bus translation (WinUAE cpummu.c, mmu040)
     //
 
 public:
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Fault capture for the format $7 frame, plus the MOVEM restart
     // latch (WinUAE mmu040_movem) and the MOVE16 line buffer (frame
     // PD0-3). mmu040EffAddr mirrors WinUAE regs.mmu_effective_addr:
@@ -2213,6 +2247,7 @@ public:
 
 private:
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Context of the (possibly page-split) access in flight — later
     // sub-accesses fault with FA = the base address and SSW.MA set
     // (WinUAE misalignednotfirst); split write faults report the FULL
@@ -2223,6 +2258,7 @@ private:
     u32 mmu040FullVal {};
     u8 mmu040CcrSave {};
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Last-write dichotomy (gencpu gen_set_fault_pc, mmu040 build): a
     // fault on the instruction's LAST write stacks the NEXT instruction
     // and skips every restore (the OS completes the write from WB3);
@@ -2230,6 +2266,7 @@ private:
     bool mmu040LastWrite {};
     u32 mmu040LastWritePc {};
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // MOVES fc override (WinUAE ismoves: SFC/DFC drive the translation
     // and mangle the SSW fc bits); -1 = inactive
     int mmu040Moves {-1};
@@ -2240,6 +2277,7 @@ private:
 
 public:
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K Q5 — external /BERR entry for the 68040 machine (the O6
     // extBusError twin): called from INSIDE a read8/16 / write8/16 bus
     // callback when the machine asserts /BERR (unmapped I/O). Replays
@@ -2338,6 +2376,7 @@ private:
     u32  mmu040PeekWalk(u32 addr, bool super) const;
     void pomCacheOp040(u16 opcode);
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // 3-level table walk with U/M maintenance (WinUAE mmu_fill_atc);
     // returns the page descriptor with accumulated WP, or 0 if invalid
     template <Core C> u32 mmu040Walk(u32 addr, bool super, bool write);
@@ -2361,6 +2400,7 @@ private:
     MOIRA_HOT_INLINE void mmu040BusWrite(u32 pa, u32 val, bool data,
                                          int bytes);
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Fault capture + throw (WinUAE mmu_bus_error, 68040 branch);
     // szCode: 0 = byte, 1 = word, 2 = long, 3 = MOVE16 line;
     // atc = false for external /BERR (nonmmu — SSW.ATC stays clear)
@@ -2379,6 +2419,7 @@ private:
     // Bus-fault exception processing (format $7 frame + vector 2)
     template <Core C> void execMmu040BusError();
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Rebuilds the per-instruction access log so a fault frame stacks
     // exactly what WinUAE's get_iword/get_long_mmu030_state logged
     void mmuLogReset() { mmuIdx = mmuIdxDone = 0; for (auto &v : mmuAd) v = 0; }

@@ -508,6 +508,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-08 (second)** — [Every WinUAE citation in the core says `[D] … @ Hatari e77819f7`; it had been citing two revisions](#2026-11-08-core-grades)
 - **2026-11-08** — [The core says what each model executes; the unbound PACK 4 escape hatch is gone](#2026-11-08-core-dead-code)
 - **2026-11-07 (sixteenth)** — [The Quadra 605 recipe reaches the Quadra 630 and Quadra 700/900/950; the Centris refuses it — its PIC1654S ADB outcome depends on where the slices fall](#2026-11-07-040-siblings-deadline)
 - **2026-11-07 (fifteenth)** — [The LC II's device slice was 9.6 cycles and 60 % of its flushes were the board's own: every V8 device publishes its bound, cached as an absolute time — boot −24 %, JIT −5 %](#2026-11-07-v8-deadline)
@@ -1226,6 +1227,48 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-08-core-grades"></a>
+## 2026-11-08 (second) — Every WinUAE citation in the core now says `[D] … @ Hatari e77819f7`; it had been citing two revisions without knowing it
+
+Second step of the clean-up (`TODO.md` § Objectif principal). The rule is
+`CLAUDE.md`'s: another emulator is grade D, and a grade-D citation without
+its revision designates nothing. The core cited WinUAE in 341 comment
+blocks; 19 carried a grade, 18 a revision.
+
+**A blind stamp would have been false.** The first check — does an
+identifier named in the comment occur near the cited `file.c:N` of the
+pinned oracle tree (`oracle/uae/upstream`, Hatari `e77819f7`, unchanged
+since 2026-07-17)? — landed 82 of 90 judgeable cites, and two of the
+misses were 9 lines off (`*adp = ad;` cited at `fpp.c:1678`/`1884`, at
+1687/1893 in the tree). They match **NeoST's own Hatari copy** exactly
+(`neost/extern/hatari`, `f0736b24`, 2.6.1-devel): most of the FPU's `fpp.c`
+lines were read there, while the FRESTORE block, the IPL fetch and a few
+others were read in the oracle tree. Each of the 103 line citations was
+classified by the tree it lands in — distinctive tokens in the exact range
+first, then by hand for the 70 the tokens could not separate (in nearly
+every case the cited range starts on a function or `case` boundary in
+exactly one of the two trees) — and the 74 written against `f0736b24`
+retargeted through a line map of the two files, the one comma-continued
+cite by hand. One function name was wrong in both trees
+(`next_iword_state` → `next_iword_mmu030_state`, `cpummu030.h:559`).
+
+**Then the stamp and the gate.** `tools/core_grades.py --apply` heads every
+WinUAE-citing block with `// [D] WinUAE @ Hatari e77819f7 — oracle
+reading, cited below.` (inline comments get the bracket in place): 322
+units. `core_grades_test` (`--check`, repository scope, no asset) fails on
+a WinUAE-citing block without `[D]` and a revision, or a `file.c:N` outside
+the pinned file; `--report` lists cites whose named identifiers do not
+land (advisory: 10 left, all read and correct — generic names, or a
+consequence named instead of the line). `POM68K_VENDOR.md` § How to read
+this file states the rule; `STATUS.md` regenerated (549 gates).
+
+**Still to grade** (`TODO.md` § Moteur › Surface): the manual citations as
+`[B]` heads, the other grade-D sources (SingleStepTests, Clock Signal,
+Musashi) with their revisions, and the unsourced rules as `[F]`.
+
+**Held by** `core_grades_test`, the whole-tree `-Werror` build (comments
+only, but 11 core files touched) and the `asset-none` + `m040` tiers.
 
 <a id="2026-11-08-core-dead-code"></a>
 ## 2026-11-08 — The core says what each model executes; the unbound PACK 4 escape hatch is gone
