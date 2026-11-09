@@ -144,6 +144,14 @@ from now on the manual does. The rulings already taken that way are kept as
 — `oracle/README.md` § *Rulings taken against a manual* lists each with what
 would settle it.
 
+For CPU manual citations, `tests/core_manuals.lock` identifies the reviewed
+edition, source PDF hash and one-based PDF page for each locator. Run
+`python3 tools/core_grades.py --check` to hold the comments to it; reviewers
+with those PDFs can additionally run `--verify-manual-files DIRECTORY`.
+The normal gate needs no PDF download. A B citation identifies primary
+evidence; approximations remain F with a `Settled by:` witness. The checker
+holds attribution, not semantic correctness or uncited hardware claims.
+
 The Plus material is cross-checked across MAME `mac128.cpp`, pce-macplus,
 Mini vMac, GttMFH and *Inside Macintosh* III (web research, 2026-07-14).
 LC II and Quadra details use MAME's Apple machine/device models plus the

@@ -211,8 +211,9 @@ public:
     void setModel(Model cpuModel, Model dasmModel);
     void setModel(Model model) { setModel(model, model); }
 
+    // [B] MC68881UM-1989 §6.4.2.1: reset state; attachment is a host API.
     // POM68K O5: attaches or detaches an FPU (rebuilds the jump table and
-    // resets the FPU to its power-up state, MC68881/882UM § 6.1)
+    // resets the FPU to its power-up state, MC68881UM-1989 § 6.4.2.1)
     void setFPUModel(FPUModel model);
     FPUModel getFPUModel() const { return fpuModel; }
     Model getModel() const { return cpuModel; }
@@ -1231,17 +1232,20 @@ protected:
     // Called when the CAAR register is modified
     virtual void didChangeCAAR(u32 value) { }
 
+    // [B] MC68030UM-1989 §6.1.1 and §6.3.1: instruction-cache geometry/control.
     // POM68K: 68030 instruction-cache timing overlay, folded inline into
     // mmuFetchWord. It was a virtual willFetchInstr(addr, super) hook fired
     // per instruction word; the indirect call + out-of-line model cost ~11%
     // of the whole emulator (TODO § Performance), and everything it needs
     // (reg.cacr, reg.sr.s, clock) lives right here. The wrapper (Cpu030)
     // arms it, owns the knobs and reads the stats; the model itself is the
-    // MC68030UM §6 on-chip i-cache: 256 bytes = 16 lines × 4 longwords,
+    // MC68030UM-1989 § 6 on-chip i-cache: 256 bytes = 16 lines × 4 longwords,
     // LOGICAL, direct-mapped, tag = A[31:8] + supervisor(FC2), per-longword
     // valid bits, whole-line evict on tag change, gated on CACR bit 0.
     // A miss charges `missPenalty` cycles (the fetch bus access the real
     // chip pays only on a miss). Zero cost when not armed.
+    // [F] missPenalty is a host-selected timing approximation.
+    // Settled by: calibrated cache-hit/miss bus timing on the target machine.
     struct PomIcache {
         bool armed = false;         // wrapper opted in (LC II machine)
         i32  missPenalty = 0;       // cycles charged per i-cache miss
@@ -1533,7 +1537,8 @@ public:
     u32 getCAAR() const { return reg.caar; }
     void setCAAR(u32 val);
 
-    // POM68K: gets or sets the 68030 MMU registers (MC68030UM § 9.7.2)
+    // [B] MC68030UM-1989 §9.7: the six MMU registers.
+    // POM68K: gets or sets the 68030 MMU registers (MC68030UM-1989 § 9.7)
     u64 getCRP() const { return reg.crp; }
     void setCRP(u64 val) { reg.crp = val; }
 
@@ -1552,8 +1557,9 @@ public:
     u16 getMMUSR() const { return reg.mmusr; }
     void setMMUSR(u16 val) { reg.mmusr = val; }
 
+    // [B] MC68040UM-1993 §3.1: MMU programmer model; oracle setter masks below.
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K Q2: gets or sets the 68040 MMU registers (M68040UM § 3.1.1).
+    // POM68K Q2: gets or sets the 68040 MMU registers (MC68040UM-1993 § 3.1).
     // Setter masks mirror the oracle (WinUAE newcpu_common.c m68k_move2c,
     // 68040 rows): TC keeps E|P, ITT/DTT keep $FFFFE364, URP/SRP/MMUSR
     // store all 32 bits.
@@ -1617,7 +1623,8 @@ public:
     }
     PomCache040Timing getPomCache040Timing() const { return pomCache040Timing; }
 
-    // Alternate-master snoop interface (MC68040UM §4.5, SC1:SC0).
+    // [B] MC68040UM-1993 §4.5: alternate-master snooping.
+    // Alternate-master snoop interface (MC68040UM-1993 §4.5, SC1:SC0).
     // Reads supply dirty data and optionally invalidate it. Sink writes
     // return true when the 040 owns a dirty hit and memory must be inhibited.
     bool pomSnoop040Read(u32 pa, u8 *dst, int bytes, bool invalidate);
@@ -1690,7 +1697,7 @@ protected:
 
     struct {
 
-        FpuExtended fp[8];  // FP0-FP7 (reset = nonsignaling NaN, § 6.1)
+        FpuExtended fp[8];  // [B] MC68881UM-1989 §2.1: reset floating-point registers. — FP0-FP7 (reset = nonsignaling NaN, § 2.1)
         u32 fpcr {};        // control register (enables + mode byte)
         u32 fpsr {};        // status register (cc, quotient, exc, accrued)
         u32 fpiar {};       // instruction address register
@@ -1728,7 +1735,8 @@ protected:
 
 private:
 
-    // Power-up / null-frame state (MC68881/882UM § 6.1: control registers
+    // [B] MC68881UM-1989 §6.4.2.1: programmer-model reset.
+    // Power-up / null-frame state (MC68881UM-1989 § 6.4.2.1: control registers
     // zeroed, data registers = nonsignaling NaN $7FFF FFFF...FFFF)
     void fpuResetState();
     void fpuCompleteBusy(bool wait);
@@ -1746,7 +1754,8 @@ private:
     void fpuSetQuotient(u64 quot, u8 sign);
     void fpuGetQuotient(u64 *quot, u8 *sign);
 
-    // The 32 conditional predicates (MC68881UM § 4.6.2.2, 6888x table);
+    // [B] MC68881UM-1989 §4.4 and §4.8.6: conditional predicates.
+    // The 32 conditional predicates (MC68881UM-1989 § 4.4, 6888x table);
     // sets BSUN/AIOP on the IEEE non-aware predicates, returns -2 when an
     // enabled BSUN trap was taken
     template <Core C> int fpuCondEval(u16 cond);
@@ -1915,15 +1924,17 @@ private:
     bool isValidExtFPU(Instr I, Mode M, u16 op, u32 ext) const;
 
 
+    // [B] MC68030UM-1989 §9: MMU architecture; oracle arbitration below.
+    // [F] Retired Musashi comparison: local patched revision unavailable.
+    // Settled by: a replay with a pinned replacement oracle.
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     //
     // 68030 MMU instruction support (POM68K O4, MoiraExecMMU_cpp.h)
     //
     // Two-oracle arbitrated (2026-07-15): WinUAE (oracle/uae, primary) +
     // Musashi (oracle/musashi); rulings in oracle/fuzz/disputes/NOTES.md.
-    // Manual references MC68030UM § 9. Physical bus accesses (table
+    // Manual references MC68030UM-1989 § 9. Physical bus accesses (table
     // walks) go through the raw read16/write16 interface.
-    //
 
 private:
 
@@ -1931,20 +1942,25 @@ private:
     u32 mmuRead32(u32 addr) const;
     void mmuWrite32(u32 addr, u32 val) const;
 
-    // FC field decoding of PTEST/PFLUSH/PLOAD extension words (§ 9.7.6);
-    // false = undecodable field (bits 4-3 = 11) → Line-F
+    // [D] WinUAE mmu_op30_helper_get_fc @ Hatari e77819f7.
+    // FC field decoding of PTEST/PFLUSH/PLOAD extension words;
+    // false = undecodable field (bits 4-3 = 11) -> Line-F.
     bool mmuFCFromModes(u16 modes, int &fc) const;
 
-    // Transparent translation register match (§ 9.5.4)
+    // [B] MC68030UM-1989 §9.3: transparent translation.
+    // Transparent translation register match (§ 9.3)
     bool mmuMatchTT(u32 tt, u32 addr, int fc, int rw, u16 &sr) const;
 
-    // MMUSR bit accumulation from a fetched descriptor (§ 9.7.2.6)
+    // [B] MC68030UM-1989 §9.7.4: MMUSR fields.
+    // MMUSR bit accumulation from a fetched descriptor (§ 9.7.4)
     void mmuUpdateSR(int type, u32 entry, int fc, bool isLong, u16 &sr) const;
 
-    // History (U) / modified (M) descriptor maintenance in RAM (§ 9.5.3.5)
+    // [B] MC68030UM-1989 §9.5.4: U/M descriptor maintenance.
+    // History (U) / modified (M) descriptor maintenance in RAM (§ 9.5.4)
     void mmuUpdateDescriptor(u32 tptr, int type, u32 entry, int rw) const;
 
-    // Translation-table walk (§ 9.5.3); returns true when resolved
+    // [B] MC68030UM-1989 §9.5.2: general table search.
+    // Translation-table walk (§ 9.5.2); returns true when resolved
     bool mmuWalkTables(u32 addrIn, int type, u32 table, int fc, int limit,
                        int rw, bool ptest, u32 &addrOut, u16 &sr) const;
 
@@ -1960,18 +1976,18 @@ private:
     template <Core C> void execMmuConfigError();
 
 
+    // [B] MC68030UM-1989 §9.2 and §8.4: translation and bus-fault frames.
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     //
     // 68030 MMU bus layer (POM68K O4 slice 3, MoiraExecMMU_cpp.h)
     //
     // Address translation on every bus access when cpuModel == M68030 and
-    // TC.E is set (MC68030UM § 9.5), modeled byte-for-byte on the primary
+    // TC.E is set (MC68030UM-1989 § 9.2), modeled byte-for-byte on the primary
     // oracle, WinUAE cpummu030.c (hatari e77819f7) — including the 22-entry
     // ATC, the format $A/$B bus-fault frames and their internal-state words
     // (access log, SSW, pending register fixups). All members and hooks are
     // compiled out of the Core::C68000/C68010 template instantiations; the
     // Mac Plus path is untouched. See POM68K_VENDOR.md § MMU bus layer.
-    //
 
 public:
 
@@ -1998,9 +2014,10 @@ public:
 
 protected:
 
+    // [B] MC68030UM-1989 §9.4: ATC geometry/replacement.
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Address translation cache — 22 fully-associative entries with a
-    // pseudo-LRU history bit (§ 9.5.2; WinUAE MMU030_ATC_LINE)
+    // pseudo-LRU history bit (§ 9.4; WinUAE MMU030_ATC_LINE)
     struct MmuAtcEntry {
         u32 logical;            // page-aligned logical address
         u32 physical;           // page-aligned physical address
@@ -2099,7 +2116,8 @@ private:
         return cpuModel == Model::M68030 && (reg.tc & 0x80000000);
     }
 
-    // Page masks derived from TC.PS (§ 9.7.2.2)
+    // [B] MC68030UM-1989 §9.7.2: TC.PS page size.
+    // Page masks derived from TC.PS (§ 9.7.2)
     u32 mmuPageMask() const { return (u32(1) << (reg.tc >> 20 & 0xf)) - 1; }
 
     // POM68K patch 31 (2026-08-28): an IDENTITY probe answer needs an
@@ -2150,12 +2168,13 @@ private:
     void mmuBusWalkBody(u32 addr, u8 fc, bool write, u32 &pageAddr, bool &ci,
                         u16 &status);
 
+    // [B] MC68030UM-1989 §9.5.2 and §9.7.4: descriptor bus errors.
     // POM68K: true while a 68030 table search fetches descriptors (the bus
     // walk and the PTEST walk). A host /BERR on such a fetch is not a fault
     // of the instruction's access: it ends the search with MMUSR B|I.
-    // [B] MC68030UM § 9.5.2 (p. 9-49): "a bus error also terminates a table
+    // MC68030UM-1989 § 9.5.2 (table-search termination): "a bus error also terminates a table
     //     search, and the MC68030 takes an exception on the retry of the
-    //     cycle"; the ATC entry's B bit (p. 9-11) "is set for an entry if a
+    //     cycle"; the ATC entry's B bit (ATC bus-error bit) "is set for an entry if a
     //     bus error ... is encountered during the table search"; Table 9-3
     //     (§ 9.7.4): for PTEST levels 1-7, B "is set if a bus error is
     //     encountered during the table search for the PTEST instruction",
@@ -2168,7 +2187,8 @@ private:
     // reporting. Gate: moira_rules_test § bus error during a table search.
     mutable bool mmuInTableSearch = false;
 
-    // ATC operations (§ 9.5.2)
+    // [B] MC68030UM-1989 §9.4: ATC operations.
+    // ATC operations (§ 9.4)
     // POM68K perf (callgrind 2026-07-17): lookup/touch/translate run on
     // EVERY memory access but GCC keeps them out of line (the 22-entry
     // fallback scan trips its size heuristics) — ~35 Ir/access of pure
@@ -2321,11 +2341,12 @@ private:
     bool mmu040Enabled() const { return (reg.tc040 & 0x8000) != 0; }
     u32 mmu040PageMaskI() const { return (reg.tc040 & 0x4000) ? 0xFFFFE000 : 0xFFFFF000; }
 
-    // POM68K Q8: separate instruction/data ATCs (M68040UM §3.3). 32 fully
-    // associative lines each with pseudo-LRU; page size follows TC.P
-    // (4K/8K). Global bit G ($400) is honoured by PFLUSHN/PFLUSHAN.
-    // Behaviour matches walk-per-access for U/M/WP (write hits on
-    // unmodified pages re-walk). POM68K_MMU040_WALK disables the overlay.
+    // [B] MC68040UM-1993 §3.3: hardware ATCs; fork approximation below.
+    // Hardware has separate 64-entry, four-way I/D ATCs and an FC2 tag.
+    // [F] POM68K Q8 uses 32 fully associative entries per side without that
+    // supervisor tag, with pseudo-LRU and TC.P-selected 4K/8K pages. Global
+    // G is honoured by non-global flushes. Settled by: the ATC geometry/FC2
+    // work in TODO, with colliding user/supervisor maps and replacement traces.
     struct Mmu040AtcEntry {
         u32 logical = 0;            // page-aligned logical
         u32 physical = 0;           // page-aligned physical
@@ -2373,15 +2394,14 @@ private:
     static int mmu040MatchTTRPair(u32 ttr0, u32 ttr1, u32 addr, bool super,
                                   u32 *cm);
 
+    // [B] MC68040UM-1993 §4.2: physical cache-management operands.
     // POM68K M2 (docs/CACHE_040.md) — data-bearing cache plumbing.
     // pomCache040Touch records the translated access attributes; the actual
     // read/write helpers perform line fills, copyback, hit service and timing.
-    // pomCache040Phys resolves
-    // a CINV/CPUSH operand without faulting and without the U/M
-    // descriptor write-back a real table search would do (the read-only
-    // mmu040PeekWalk); an unmapped operand skips the op. pomCacheOp040
-    // decodes the CINV/CPUSH
-    // cache/scope/register fields (bit 5 = push).
+    // pomCacheOp040 decodes the CINV/CPUSH cache/scope/register fields
+    // (bit 5 = push). An supplies a physical address even with paging enabled;
+    // operand selection never consults TTRs, ATCs or page tables. A CPUSH
+    // writeback still uses the host's physical bus and may fault there.
     bool pomCache040On {false};
     bool pomCmStats040 {false};     // POM68K: setPomCmStats040()
     bool pomExceptionDiag {false};  // POM68K: setPomExceptionDiag()
@@ -2396,8 +2416,6 @@ private:
     void pomCache040Writeback(u32 base, const Cache040::Line &line);
     void pomCache040Writeback(u32 base, const Cache040::Evicted &line);
     void pomCache040PushHit(u32 pa);
-    bool pomCache040Phys(u32 addr, u32 &pa);
-    u32  mmu040PeekWalk(u32 addr, bool super) const;
     void pomCacheOp040(u16 opcode);
 
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.

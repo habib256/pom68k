@@ -453,10 +453,14 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   l'invité (bits U réécrits) et diverge sous la fenêtre de fetch par
   décision (J3b). `sst68040` n'y voit rien : l'oracle purge son ATC à
   chaque vecteur — il faut une cellule à plusieurs instructions.
-- [ ] **Arbitrer l'opérande de CINV/CPUSH ligne et page.**
-  `pomCache040Phys` traduit An par le MMU de données ; le manuel de
-  programmation et WinUAE le prennent comme adresse physique. Sans effet
-  tant que logique = physique.
+  Le défaut FC2 est maintenant reproduit par
+  `tests/repros/mmu040_fc2.cpp` (2026-11-09) : 184 contrôles échouent sur
+  les accès I/D, MOVES SFC/DFC et sondes JIT. Repro volontairement non
+  enregistré dans CTest ; le promouvoir en gate avec la correction.
+- [ ] **Cadencer le remplacement du cache 040 sur les accès.** Le compteur
+  de `Cache040::allocate` avance au remplacement seulement ; MC68040UM-1993
+  § 4.1 le fait aussi avancer aux accès au cache. Une séquence de hits puis
+  conflit doit exposer la victime choisie avant de changer la politique.
 - [ ] **Vider ou sérialiser les lignes copyback sales à la sauvegarde.**
   *À reproduire.* Sous `POM68K_040_DCACHE=1` une ligne sale porte des
   données absentes de la RAM ; la sauvegarde ne les pousse pas et le
@@ -682,19 +686,13 @@ compilation et dans la documentation.
   l'interpréteur.** `mmu040InstrStart`, `mmu040Read` et `mmu040Write`
   portent en ligne fenêtre, DTLB, sonde de timing et publication de
   cache ; un interpréteur seul doit pouvoir se construire sans.
-- [ ] **Vérifier les numéros de section MC68030UM du cœur contre une
-  édition nommée.** L'édition Freescale (sections 7 à 14, NXP
-  `MC68030UM-P2.pdf`) n'a ni § 9.7.2.2, ni § 9.7.2.6, ni § 9.7.5.5 ni
-  § 9.7.6, cités six fois dans `MoiraExecMMU_cpp.h` (les deux § 9.7.6
-  corrigés le 2026-11-08). Vérifier contre la 2e édition de 1989 avant de
-  renuméroter ; obtenir la partie 1 pour les § 6 (cache d'instructions).
-- [ ] **Finir les grades de preuve dans les commentaires du cœur.** Restent :
-  les citations de manuel
-  à porter en `[B]` en tête (≈ 80 blocs : MC68030UM, M68040UM, MC6888x),
-  les autres sources de grade D sans révision (Clock Signal, Musashi),
-  et les règles sans source à étiqueter `[F]` avec ce qui les trancherait.
-  Étendre alors le gate à ces sources. WinUAE et SingleStepTests :
-  `CHANGELOG` 2026-11-08 (deuxième et cinquième).
+- [ ] **Terminer la revue des affirmations matérielles sans source du cœur.**
+  Les citations explicites de manuel ont une édition et un emplacement
+  vérifiés ; les comparaisons Musashi perdues sont `[F]` avec leur témoin
+  manquant et les alias Clock Signal sans preuve indépendante sont retirés.
+  `core_grades_test` tient ces sources (`CHANGELOG` 2026-11-08, huitième).
+  Restent les règles sans citation, à relier à une preuve ou à étiqueter
+  `[F]` avec ce qui les trancherait ; le gate de citations ne les détecte pas.
 - [ ] **Choisir un seul softfloat 80 bits et le rendre réentrant.**
   `extern/softfloat` ici, un second portage de la même lignée dans
   `src/io/SoftFloat*.hpp` chez NeoST ; `moiraFpuFs` est un état statique

@@ -254,6 +254,8 @@ Moira::computeEAfull(u32 an)
     // Check if index is present
     if (!is) xn = (lw ? readR(rn) : SEXT<Word>(readR(rn))) << scale;
 
+    // [F] Retired Musashi comparison: local patched revision unavailable.
+    // Settled by: a replay with a pinned replacement oracle.
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Compute effective address
     // POM68K O4 slice 4 (WinUAE-arbitrated): memory indirection only

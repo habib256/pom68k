@@ -4,8 +4,8 @@
 // ── Side-effect-free logical→physical translation on the 68040 MMU ──
 // The 68040 counterpart of Mmu030Peek.h, for the same reason: the debugger
 // must answer "what is at this LOGICAL address" without the live walk's
-// U/M descriptor write-back or a fault. It mirrors Moira::mmu040PeekWalk
-// (MoiraExecMMU_cpp.h) and Moira::mmu040MatchTTR for the data side, but
+// U/M descriptor write-back or a fault. It follows Moira::mmu040Walk
+// (MoiraExecMMU_cpp.h), omitting writes/faults, and mmu040MatchTTR for data, but
 // reads descriptors through the caller's physical, side-effect-free peek
 // instead of mmuRead32 — a table in I/O space is reported invalid rather
 // than read through a device.

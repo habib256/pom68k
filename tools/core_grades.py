@@ -11,13 +11,22 @@ corpus pinned in tests/sst_corpora.lock. A grade-D citation without its
 revision designates nothing (upstream line numbers move on every commit).
 A reader porting the core must be able to tell a reading of WinUAE from a
 manual (`[B]`) before deciding whether a divergence is deliberate.
+Manual editions and checked locators live in tests/core_manuals.lock. B is
+primary-document evidence, not proof that every implementation choice in the
+same block agrees with it. F names the missing witness. Historical Musashi
+comparisons whose patched local tree is lost stay F; CLK aliases add no
+independent evidence to the pinned SingleStepTests corpus.
 
   --check   the gate: every WinUAE-citing block carries `[D]` and a
             revision; every `file.c:N[-M]` it cites exists in the pinned
             tree and the range lies inside the file. Every SingleStepTests
             block has its own grade-D source/revision header; another
             oracle's revision does not qualify. Fetcher and corpus lock
-            must agree with that pin.
+            must agree with that pin. Manual references need their own
+            B/F edition header and a reviewed locator; F needs a witness.
+  --verify-manual-files DIRECTORY
+            optional reviewer check: the four fetched PDFs match their
+            locked hashes. Normal CI needs no PDFs and performs no fetch.
   --report  for each line citation, whether an identifier named in the
             same comment occurs near the cited lines (±25) — the way a
             citation written against another revision shows (fpp.c:1678
@@ -28,11 +37,14 @@ manual (`[B]`) before deciding whether a divergence is deliberate.
             get the bracket in place. Also insert a pinned SingleStepTests
             header on its ungraded blocks. Run --report first and fix the lines
             it names: --apply stamps a revision, it does not verify one.
+            It never promotes a manual citation to B automatically.
 
 Gate: core_grades_test (cmake/Pom68kCpuGates.cmake).
 """
 import argparse
 import glob
+import hashlib
+import json
 import os
 import re
 import sys
@@ -54,6 +66,119 @@ CITE = re.compile(r"\b((?:gencpu|newcpu|newcpu_common|fpp|fpp_softfloat|cpummu03
                   r":(\d+)(?:-(\d+))?")
 IDENT = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]{3,})\b")
 QUOTED_OR_COMMENT = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|//')
+MANUAL_LOCK = os.path.join(ROOT, "tests", "core_manuals.lock")
+MANUAL_FAMILY = re.compile(
+    r"\b(?:MC68030UM|M?C?68040UM|MC68881UM|MC68882UM|M68000PRM|"
+    r"MC68881/(?:MC68882|882)\s*UM)"
+    r"(?:-\d{4})?\b")
+MANUAL_HEAD = re.compile(r"^\s*//\s*\[([BF])\]\s+([^\n]*)", re.MULTILINE)
+LOCATOR = re.compile(r"§\s*(\d+(?:\.\d+)*)|\b((?:Table|Figure)\s+[A-Z0-9]+-\d+)\b")
+
+
+def manual_catalog():
+    with open(MANUAL_LOCK, encoding="utf-8") as f:
+        return json.load(f)["sources"]
+
+
+def manual_problems(text, catalog=None):
+    """Hold edition/locator attribution, not semantic agreement with a manual.
+
+    A B header identifies reviewed primary evidence. F identifies a missing
+    witness or a deliberate approximation, and must say what settles it.
+    Other sources' D/B headers cannot qualify a manual reference.
+    """
+    references = set(MANUAL_FAMILY.findall(text))
+    if not references:
+        # A repository's own numbered section is not a manual citation.
+        external = re.sub(r"[\w./-]+\.(?:md|h|cpp)\s+§\s*\d+(?:\.\d+)*", "", text)
+        if LOCATOR.search(external):
+            return ["anonymous manual locator needs a named edition and grade"]
+        return []
+    catalog = manual_catalog() if catalog is None else catalog
+    problems = []
+    for source in sorted(references):
+        if source not in catalog:
+            problems.append(f"manual {source} has no checked edition in core_manuals.lock")
+            continue
+        heads = [(grade, line) for grade, line in MANUAL_HEAD.findall(text)
+                 if source in MANUAL_FAMILY.findall(line)]
+        if not heads:
+            problems.append(f"manual {source} needs its own [B] or [F] source header")
+        elif all(grade == "F" for grade, _ in heads) and "Settled by:" not in text:
+            problems.append(f"manual {source}: [F] must name its missing witness (Settled by:)")
+        # Single-manual units also check inherited/anonymous paragraph and
+        # table references. With multiple manuals, check each attributed
+        # header; do not silently assign one manual's paragraph to another.
+        fragments = [text] if len(references) == 1 else [line for _, line in heads]
+        locators = set()
+        for fragment in fragments:
+            for section, table in LOCATOR.findall(fragment):
+                locators.add("§" + section if section else table)
+        for locator in sorted(locators):
+            if locator not in catalog[source]["locators"]:
+                problems.append(f"{source}: {locator} is not a reviewed locator")
+        if any(grade == "B" for grade, _ in heads) and not locators:
+            # PRM instructions are named entries, not numbered subsections.
+            names = catalog[source]["locators"]
+            if not any(re.search(r"\b" + re.escape(name) + r"\b", line)
+                       for grade, line in heads if grade == "B"
+                       for name in names if not name.startswith(("§", "Table ", "Figure "))):
+                problems.append(f"manual {source}: [B] needs a reviewed locator")
+    return problems
+
+
+def catalog_problems(catalog):
+    problems = []
+    for source, entry in catalog.items():
+        if not re.fullmatch(r"[0-9a-f]{64}", entry.get("sha256", "")):
+            problems.append(f"{source}: missing PDF SHA-256")
+        if not entry.get("edition") or not entry.get("url", "").startswith("https://"):
+            problems.append(f"{source}: missing edition/source URL")
+        pages = entry.get("pdf_pages", 0)
+        for locator, page in entry.get("locators", {}).items():
+            if not isinstance(page, int) or not 1 <= page <= pages:
+                problems.append(f"{source}: {locator} points outside the PDF")
+    return problems
+
+
+def verify_manual_files(directory):
+    """Optional reviewer check. Normal CI never needs the PDF payloads."""
+    failures = []
+    for source, entry in manual_catalog().items():
+        path = os.path.join(directory, entry["file"])
+        if not os.path.isfile(path):
+            failures.append(f"{source}: missing {path}")
+        else:
+            with open(path, "rb") as f:
+                digest = hashlib.sha256(f.read()).hexdigest()
+            if digest != entry["sha256"]:
+                failures.append(f"{source}: PDF differs from the reviewed bytes")
+    for failure in failures:
+        print("FAIL", failure)
+    print(f"manual PDF identity: {len(failures)} problem(s)")
+    return 1 if failures else 0
+
+
+def other_emulator_problems(text):
+    # Compatibility syntax is an API choice, not a claim of hardware proof.
+    if text.strip() == "// Musashi compatibility":
+        return []
+    names = re.findall(r"\bMusashi\b|\bCLK\b|Clock Signal", text)
+    if not names:
+        return []
+    problems = []
+    for name in set(names):
+        evidence = re.findall(r"\[([DF])\]([^\n]*)", text)
+        own = [(grade, line) for grade, line in evidence if name in line]
+        if not own:
+            problems.append(f"{name}: needs its own [D] revision or explicit [F] witness")
+        elif any(grade == "D" and not re.search(
+                r"@\s*(?:[0-9a-f]{7,40}\b|[vV]?\d+(?:\.\d+)+\b|"
+                r"[A-Za-z][\w.-]*\d[\w.-]*\b)", line) for grade, line in own):
+            problems.append(f"{name}: [D] needs a revision")
+        elif all(grade == "F" for grade, _ in own) and "Settled by:" not in text:
+            problems.append(f"{name}: [F] needs its missing witness (Settled by:)")
+    return problems
 
 
 def core_files():
@@ -114,7 +239,10 @@ def sst_pin_problems(fetcher, lock):
 
 
 def comment_problems(text):
-    problems = sst_problems(text)
+    problems = (sst_problems(text) + manual_problems(text) +
+                other_emulator_problems(text))
+    if "[F]" in text and "Settled by:" not in text:
+        problems.append("[F] needs its missing witness (Settled by:)")
     if UAE.search(text):
         if not GRADE_D.search(text):
             problems.append("WinUAE cited without a [D] grade")
@@ -146,8 +274,8 @@ def check():
         fetcher = f.read()
     with open(os.path.join(ROOT, "tests", "sst_corpora.lock")) as f:
         lock = f.read()
-    problems = sst_pin_problems(fetcher, lock)
-    blocks = sst_blocks = 0
+    problems = sst_pin_problems(fetcher, lock) + catalog_problems(manual_catalog())
+    blocks = sst_blocks = manual_blocks = 0
     for f in core_files():
         lines = open(f).read().split("\n")
         rel = os.path.relpath(f, ROOT)
@@ -155,6 +283,8 @@ def check():
             text = comment_text(lines, a, b, inline)
             if SST.search(text):
                 sst_blocks += 1
+            if MANUAL_FAMILY.search(text):
+                manual_blocks += 1
             problems.extend(f"{rel}:{a + 1}: {p}" for p in comment_problems(text))
             if not UAE.search(text):
                 continue
@@ -171,7 +301,8 @@ def check():
     for p in problems:
         print("FAIL", p)
     print(f"{'ok  ' if not problems else 'FAIL'} {blocks} WinUAE-citing comment blocks in the "
-          f"core, {sst_blocks} SingleStepTests blocks, {len(problems)} problem(s)")
+          f"core, {sst_blocks} SingleStepTests blocks, {manual_blocks} manual blocks, "
+          f"{len(problems)} problem(s)")
     return 1 if problems else 0
 
 
@@ -248,5 +379,7 @@ if __name__ == "__main__":
     g.add_argument("--check", action="store_true")
     g.add_argument("--report", action="store_true")
     g.add_argument("--apply", action="store_true")
+    g.add_argument("--verify-manual-files", metavar="DIRECTORY")
     a = ap.parse_args()
-    sys.exit(check() if a.check else report() if a.report else apply())
+    sys.exit(verify_manual_files(a.verify_manual_files) if a.verify_manual_files
+             else check() if a.check else report() if a.report else apply())

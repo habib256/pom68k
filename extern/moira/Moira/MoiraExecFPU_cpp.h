@@ -118,14 +118,16 @@ Moira::isValidExtFPU(Instr I, Mode M, u16 op, u32 ext) const
 }
 
 
+// [B] MC68881UM-1989 §2 and §7.5.4.3: programmer model and interrupt protocol.
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 //
 // POM68K O5/Q9 — MC6888x + integrated MC68040 FPU execution
 //
-// The 68882 programmer's model (MC68881/MC68882 User's Manual) executed on
+// The 68882 programmer's model (MC68881UM-1989) executed on
 // top of extern/softfloat — the same 80-bit softfloat family the primary
-// oracle (WinUAE) runs, so numerical convergence with the differential
-// corpus holds by construction. The instruction semantics below are ported
+// oracle (WinUAE) runs, numerical agreement still requires the differential
+// corpus: a shared arithmetic library does not prove instruction semantics.
+// The instruction semantics below are ported
 // from WinUAE fpp.c / fpp_softfloat.c (oracle vendor tree, hatari e77819f7)
 // with file:line citations; the manual is cited where it is the source.
 //
@@ -135,7 +137,8 @@ Moira::isValidExtFPU(Instr I, Mode M, u16 op, u32 ext) const
 //
 // External-coprocessor interruption boundary:
 //   * 020/030 pre-instruction traps use format $0 and post-instruction
-//     traps use format $2. Long 6888x operations publish null/come-again
+//     traps architecturally use format $2 (retained D23a uses $3). Long
+//     6888x operations publish null/come-again
 //     checkpoints; an eligible IRQ stacks format $9 and leaves a resumable
 //     coprocessor command.
 //   * FSAVE serializes that command as a $1F/$B4 or $1F/$D4 BUSY frame;
@@ -143,10 +146,10 @@ Moira::isValidExtFPU(Instr I, Mode M, u16 op, u32 ext) const
 //     hardware BUSY frames for compatibility (POM68K_VENDOR.md § FPU).
 // The integrated 040 path implements its native opcode subset, FPSP
 // unimplemented/datatype traps, revision-$41 FSAVE frames, and BUSY resume.
-//
 
+// [B] MC68881UM-1989 §2.3: FPSR fields.
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-// FPSR bit layout (MC68881UM § 2.2.2; WinUAE fpp.h:10-17, fpp.c:295-309)
+// FPSR bit layout (MC68881UM-1989 § 2.3; WinUAE fpp.h:10-17, fpp.c:295-309)
 static constexpr u32 FPSR_CC_N      = 0x08000000;
 static constexpr u32 FPSR_CC_Z      = 0x04000000;
 static constexpr u32 FPSR_CC_I      = 0x02000000;
@@ -404,7 +407,8 @@ static inline bool fpuIsDyadic(u16 ext)
     return (ext & 0x30) == 0x20 || (ext & 0x7f) == 0x38;
 }
 
-// Native MC68040 forced-precision arithmetic opmodes (MC68040UM Table E-1).
+// [B] MC68040UM-1993 Table E-1: native 040 instructions.
+// Native MC68040 forced-precision arithmetic opmodes (MC68040UM-1993 Table E-1).
 // The 68881/68882 reject the whole $40-$7F range; the 040 implements only
 // these sixteen encodings.  Keeping the predicate in one place is important:
 // an unknown command in this range is an F-line instruction, not a silent
@@ -471,8 +475,9 @@ static inline int fpuForcedPrecision040(u16 ext)
     }
 }
 
+// [B] MC68881UM-1989 §8.5.1: timing tables under their stated assumptions.
 //
-// MC68882 instruction timing — MC68881/MC68882UM Section 8, all figures
+// MC68882 instruction timing — MC68881UM-1989 Section 8, all figures
 // in FPCP clock cycles under the manual's assumptions (68020/030 host,
 // same clock, no wait states). One table/section for every FPU cost:
 //
@@ -495,11 +500,12 @@ static inline int fpuForcedPrecision040(u16 ext)
 // Phase-2 cycles are advisory (SST030 `length` is not compared) but
 // emuCycles orders events, so the old CYCLES_68020(6/20) placeholders and
 // their gross underestimates (a 570-cycle FTWOTOX billed as 20) are gone.
-//
 
+// [B] MC68881UM-1989 Table 8-3: FPn-to-FPm total times.
 // Table 8-3, FPn-to-FPm totals by command-word opmode. Alias opmodes
 // ($05, $07, ... — see fpuArithmetic) charge their base operation;
-// $40-$7F never execute (Line-F).
+// $40-$7F are outside this external-6888x timing table; the 040 has
+// its own admitted subset. Alias costs follow the base op as an estimate.
 static constexpr i16 fpuCk882Op[64] = {
      21,  58, 690,  58, 110, 110, 574, 574, // FMOVE FINT FSINH FINTRZ FSQRT×2 FLOGNP1×2
     548, 664, 406, 406, 584, 696, 394, 476, // FETOXM1 FTANH FATAN×2 FASIN FATANH FSIN FTAN
@@ -511,19 +517,25 @@ static constexpr i16 fpuCk882Op[64] = {
      38,  38,  36,  36,  38,  38,  36,  36  // FCMP FTST (+aliases)
 };
 
+// [B] MC68881UM-1989 Table 8-3: format-dependent totals; approximation below.
 // Table 8-3 column spread over the FPn-to-FPm column, by format field:
 // L +38, S +13, X +25, P +855, W +38, D +19, B +38. The integer formats
 // show +30 on the monadic rows and +38 on the dyadic ones; the dyadic
 // figure is charged uniformly (advisory, ±8 cycles).
+// [F] Uniform dyadic surcharge on monadic formats is an approximation.
+// Settled by: per-op/per-format timing with calibrated FPCP/MPU clocks.
 static constexpr i16 fpuCk882Fmt[8] = { 38, 13, 25, 855, 38, 19, 38, 855 };
 
+// [B] MC68881UM-1989 Table 8-3: memory destination times.
 // Table 8-3 "FMOVE to memory" row, by format field: integer 110, S 38,
 // X 50, P 2006 (static k; dynamic k +14 per footnote *****), D 44.
 static constexpr i16 fpuCk882MoveOut[8] = { 110, 38, 50, 2006, 110, 44, 110, 2020 };
 
+// [B] MC68881UM-1989 Table 8-3: FMOVECR.
 // Table 8-3: FMOVECR total (constant-ROM source)
 static constexpr int FPU_CK_FMOVECR = 32;
 
+// [B] MC68881UM-1989 Table 8-7: conditional instruction times.
 // Table 8-7 (cache case): FBcc taken/not (FNOP = FBF not-taken), FDBcc
 // (cc-true / false-taken / false-not-taken), FScc by destination,
 // FTRAPcc taken/not per operand size (none/W/L)
@@ -538,6 +550,7 @@ static constexpr int FPU_CK_FSCC_MEM    = 20;
 static constexpr int FPU_CK_FTRAP_T[3]  = { 39, 41, 43 };
 static constexpr int FPU_CK_FTRAP_N[3]  = { 18, 20, 22 };
 
+// [B] MC68881UM-1989 Table 8-6: control-register/FMOVEM times.
 // Table 8-6 (cache case + the "+2 clocks if MC68882" footnote): single
 // control-register moves and per-register FMOVEM increments
 static constexpr int FPU_CK_CR_TO_RN    = 33;   // FMOVE FPcr,Rn
@@ -551,10 +564,13 @@ static constexpr int FPU_CK_FDR_FROM_MEM= 37;   // FMOVEM <ea>,FPdr_list 37+31n
 static constexpr int FPU_CK_FDR_IN_REG  = 31;
 static constexpr int FPU_CK_FDR_DYN     = 14;   // dynamic (Dn) list surcharge
 
+// [B] MC68881UM-1989 Table 8-8: state-frame instruction times.
 // Table 8-8 (MC68882/MC68881 rows, cache case): FSAVE/FRESTORE by frame.
 // BUSY uses the manual's frame costs for both save/restore staging; an
 // invalid frame charges the NULL figure before the format error (documented
 // estimate — the manual has no such row).
+// [F] Invalid-frame and resumable private BUSY staging costs are estimates.
+// Settled by: FSAVE/FRESTORE protocol timing on a real 68881/68882.
 static constexpr int FPU_CK_FSAVE_NULL  = 16;
 static constexpr int FPU_CK_FSAVE_IDLE2 = 100;  // 68882 $38 IDLE
 static constexpr int FPU_CK_FSAVE_IDLE1 = 52;   // 68881 $18 IDLE
@@ -564,9 +580,10 @@ static constexpr int FPU_CK_FREST_IDLE1 = 57;   // 68881 $18 IDLE
 static constexpr int FPU_CK_FREST_BUSY2 = 339;  // 68882 $D4 BUSY
 static constexpr int FPU_CK_FREST_BUSY1 = 291;  // 68881 $B4 BUSY
 
+// [B] MC68881UM-1989 §6.1.9: exception priority.
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Exception vector from FPSR exception byte, priority order BSUN > SNAN >
-// OPERR > OVFL > UNFL > DZ > INEX (MC68881UM § 5.3; WinUAE fpp.c:441-452)
+// OPERR > OVFL > UNFL > DZ > INEX (MC68881UM-1989 § 6.1.9; WinUAE fpp.c:441-452)
 static u16 fpuVectorFor(u32 exception)
 {
     static const u16 vtable[8] = { 49, 49, 50, 51, 53, 52, 54, 48 };
@@ -585,8 +602,9 @@ static u16 fpuVectorFor(u32 exception)
 void
 Moira::fpuResetState()
 {
+    // [B] MC68881UM-1989 §6.4.2.1: NULL restore resets the programmer model.
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // MC68881/882UM § 6.1 (also FRESTORE of a NULL frame, WinUAE
+    // MC68881UM-1989 § 6.4.2.1 (also FRESTORE of a NULL frame, WinUAE
     // fpu_null, fpp.c:1452): control registers cleared, data registers
     // set to the nonsignaling NaN $7FFF FFFFFFFF FFFFFFFF
     fpu.fpcr = 0;
@@ -629,6 +647,7 @@ Moira::fpuCompleteBusy(bool wait)
 template <Core C> void
 Moira::fpuRunBusy(int cycles, u16 opcode, u16 ext)
 {
+    // [B] MC68881UM-1989 §7.4.2.1: IA in null response primitives.
     // MC68881/2 protocol null/come-again primitives set IA, allowing the
     // MPU to sample interrupts at short checkpoints while it waits. The
     // integrated 040 never enters this external-coprocessor path.
@@ -713,9 +732,10 @@ Moira::fpuMakeStatus()
 
     u32 exception = fpu.fpsr & fpu.fpcr & (FPSR_SNAN | FPSR_OPERR | FPSR_DZ);
 
+    // [B] MC68040UM-1993 §9.7.4.2 and §9.7.5.2: nonmaskable range exceptions.
     // POM68K (ruling D24): on the 68040 an overflow or an underflow always
     // goes to the FPSP, enabled or not, and the destination register keeps
-    // its value ([B] M68040UM § 9.7.4.2: "the register is not affected";
+    // its value (MC68040UM-1993 § 9.7.4.2: "the register is not affected";
     // [D] WinUAE fpp.c fpsr_make_status @ Hatari e77819f7). Invisible while
     // every such exception was delivered before the store.
     if (fpuModel == FPUModel::M68040)
@@ -911,13 +931,14 @@ Moira::fpuCheckArithException(
             }
         }
 
+        // [B] MC68040UM-1993 §9.7.2.1, §9.7.3.1 and §9.7.6: posted exceptions.
         // POM68K (ruling D24): an exception the user ENABLED is posted — the
         // instruction completes and the next floating-point instruction
         // takes it as a pre-instruction exception (fpuCheckPending, format
         // $0). Only an exception that is pending without being enabled —
         // the 68040's nonmaskable OVFL/UNFL, or SNAN/OPERR on a move to an
         // integer — is taken at once, post-instruction, by the caller.
-        // [B] M68040UM § 9.7.2.1 b: "the processor posts an exception and
+        // MC68040UM-1993 § 9.7.2.1 b: "the processor posts an exception and
         //     another floating-point instruction is eventually encountered;
         //     a pre-instruction exception is reported at that time";
         //     § 9.7.3.1 b, § 9.7.6 likewise; § 9.7.3.2 for the immediate
@@ -977,27 +998,16 @@ Moira::fpuCheckArithException(
 template <Core C> void
 Moira::execFpuException(u16 vector, bool pre)
 {
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // FPU exception frames — WinUAE Exception_build_stack_frame_common
-    // (newcpu_common.c:1616, nr 48-55): pre-instruction = four-word
-    // format $0 with PC = the FP instruction being started (it
-    // re-executes after the handler); post-instruction (FMOVE out) =
-    // format $3 "floating-point post-instruction" frame — SR, next PC,
-    // $3xxx vector word, then the operand's effective address (fp_ea).
-    // Solo-corpus arbitrated 2026-07-15 (was a format $0 stub).
-    //
-    // ── D23 (2026-08-18): the format is $3 on the 020/030 TOO. ──
-    // A `cpuModel < M68EC040 → format $2` branch stood here for a day
-    // (2026-08-17), justified by MC68030UM reading — and it was wrong by
-    // the project's own law. The pinned solo corpus carries $3-with-EA
-    // frames for the external 6888x (fpu_tt #63: frame word $30C4, EA
-    // pushed), a fresh replay of all 2042 pinned FPU vectors through the
-    // unchanged oracle reproduces them bit-for-bit (oracle/fuzz/
-    // replay030.py), and disputes/NOTES.md reserves overruling the oracle
-    // for real-hardware traces, which nobody has produced. sst68030 was
-    // red for that day and NOBODY SAW IT because the gate's binary was
-    // stale — the freshness guard (tools/check_binaries_fresh.py) is what
-    // surfaced it. Reopen only with a real 68030's own stack frame.
+    // [B] MC68030UM-1989 §8.4: external-coprocessor frame; retained oracle exception below.
+    // [D] WinUAE @ Hatari e77819f7 — retained ruling D23a.
+    // FPU exceptions follow Exception_build_stack_frame_common
+    // (newcpu_common.c:1616, nr 48-55): pre-instruction = format $0;
+    // post-instruction = format $3 with the operand EA, including on 020/030.
+    // The MC68030UM-1989 §8.4 instead specifies the external-coprocessor
+    // post-instruction frame as format $2 with an instruction address. The
+    // pinned corpus retains the oracle exception (oracle/README.md, D23a).
+    // [F] No hardware frame settles this retained divergence. Settled by:
+    // a real 68030 + 6888x post-instruction frame and handler RTE sequence.
     u16 status = getSR();
 
     setSupervisorMode(true);
@@ -1053,7 +1063,7 @@ Moira::execFpuIllegalOpmode040()
     //     Vector and PC come from the same reading; until 2026-11-07 the
     //     vector was the oracle's and the PC the generic illegal-opcode
     //     one, a pair nobody had observed.
-    // [F] Not in M68040UM, which sends every F-line hole to vector 11.
+    // [F] Not in MC68040UM-1993, which sends every F-line hole to vector 11.
     //     Settled by: the frame of $F200 $0078 on a real 68040.
     // Gate: sst68040 (fline and fpuraw cells).
     u16 status = getSR();
@@ -1069,6 +1079,8 @@ Moira::execFpuIllegalOpmode040()
 template <Core C> void
 Moira::execFRestoreFormatError()
 {
+    // [F] Retired Musashi comparison: local patched revision unavailable.
+    // Settled by: a replay with a pinned replacement oracle.
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // FRESTORE of an invalid frame: format error, vector 14 (WinUAE
     // fpp.c:2792-2806 -> Exception(14) -> format $0 frame with
@@ -1121,6 +1133,7 @@ template <Core C> void
 Moira::execFpuUnimplemented040(
     u16 opcode, u16 ext, const FpuExtended &src, int dst, int size, u32 ea)
 {
+    // [B] MC68040UM-1993 §9.6.1 and §9.8: unimplemented-operation state.
     // MC68040 unimplemented arithmetic instruction.  The format-$2
     // exception frame points at the operand EA, while a following FSAVE
     // exposes the revision-$41 UNIMP state used by Motorola FPSP.
@@ -1247,10 +1260,11 @@ Moira::fpuCheckPending()
 template <Core C> int
 Moira::fpuCondEval(u16 cond)
 {
+    // [B] MC68881UM-1989 §4.4 and §4.8.6: predicates and BSUN.
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // WinUAE fpp_cond (fpp.c:2099-2121); predicates use 5 bits, bit 4
     // separates the IEEE non-aware predicates that set BSUN on NaN
-    // (MC68881UM § 4.6.2.2)
+    // (MC68881UM-1989 § 4.4)
     if ((cond & 0x10) && (fpu.fpsr & FPSR_CC_NAN)) {
 
         // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
@@ -1400,8 +1414,8 @@ Moira::fpuArithmetic(const FpuExtended &srcM, FpuExtended &dstM, u16 ext)
 {
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Opmode dispatch, WinUAE fp_arithmetic (fpp.c:2944-3166). The alias
-    // opmodes (0x05, 0x07, 0x0b, ... — undocumented but real on 6888x
-    // silicon) map onto their base operation. The native MC68040 subset in
+    // opmodes (0x05, 0x07, 0x0b, ... — accepted by the pinned oracle) map
+    // onto their base operation. The native MC68040 subset in
     // $40-$7F reaches this function only after execFGeneric has checked the
     // CPU model and the exact whitelist above.
     floatx80 src = fpuToFx80(srcM);
@@ -1410,11 +1424,12 @@ Moira::fpuArithmetic(const FpuExtended &srcM, FpuExtended &dstM, u16 ext)
     uint64_t q = 0;     // softfloat's uint64_t may differ from moira::u64
     u8 s = 0;
 
+    // [B] MC68040UM-1993 §9.4.2 and Table E-1: precision/range control.
     // FSMOVE/FDMOVE and the S/D arithmetic variants override FPCR.PREC.
     // Set the precision before the operation, rather than rounding an
     // extended result afterwards: that avoids a double-rounding error and
     // lets SoftFloat raise INEX/OVFL/UNFL at the architecturally selected
-    // boundary (MC68040UM 9.4.1).
+    // boundary (MC68040UM-1993 §9.4.2).
     if (int precision = fpuForcedPrecision040(ext))
         set_floatx80_rounding_precision(precision, &moiraFpuFs);
 
@@ -1910,8 +1925,9 @@ Moira::execFBcc(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // [B] MC68881UM-1989 §4.6 (FBcc): conditional branch.
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // FBcc (MC68881UM § 4.6; WinUAE fpuop_bcc, fpp.c:2342-2372). FNOP is
+    // FBcc (MC68881UM-1989 § 4.6; WinUAE fpuop_bcc, fpp.c:2342-2372). FNOP is
     // FBF.W with zero displacement and needs no special handling: the
     // predicate is never true and the fall-through consumes the word.
     // POM68K Q4: FPU-less 040 (68LC040/68EC040) — the shape's words are
@@ -1978,7 +1994,7 @@ Moira::execFBcc(u16 opcode)
         prefetch<C, POLL>();
     }
 
-    CYCLES_68020(cc ? FPU_CK_FBCC_T : FPU_CK_FBCC_N)    // Table 8-7
+    CYCLES_68020(cc ? FPU_CK_FBCC_T : FPU_CK_FBCC_N)    // [B] MC68881UM-1989 Table 8-7.
 
     FINALIZE
 }
@@ -1988,8 +2004,9 @@ Moira::execFDbcc(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // [B] MC68881UM-1989 §4.6 (FDBcc): decrement/branch.
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // FDBcc (MC68881UM § 4.7; WinUAE fpuop_dbcc, fpp.c:2210-2250)
+    // FDBcc (MC68881UM-1989 § 4.6 (FDBcc); WinUAE fpuop_dbcc, fpp.c:2210-2250)
     // POM68K Q4: FPU-less 040 (68LC040/68EC040) — the shape's words are
     // consumed, then vector 11 / format $4 (see execFpuDisabled040)
     if (cpuModel >= Model::M68EC040 && !hasFPU()) {
@@ -2010,7 +2027,7 @@ Moira::execFDbcc(u16 opcode)
     int cc = fpuCondEval<C>(ext & 0x3f);
     if (cc < 0) { FINALIZE return; }
 
-    int ck = FPU_CK_FDBCC_TRUE;             // Table 8-7: cc true, no branch
+    int ck = FPU_CK_FDBCC_TRUE;             // [B] MC68881UM-1989 Table 8-7: true predicate.
 
     if (!cc) {
 
@@ -2063,8 +2080,9 @@ Moira::execFScc(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // [B] MC68881UM-1989 §4.6 (FScc): set condition.
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // FScc (MC68881UM § 4.8; WinUAE fpuop_scc, fpp.c:2252-2311). EA
+    // FScc (MC68881UM-1989 § 4.6 (FScc); WinUAE fpuop_scc, fpp.c:2252-2311). EA
     // extension words are consumed before the predicate is evaluated;
     // the (An)+/-(An) adjustment happens after (fpp.c:2273-2308).
     // POM68K Q4: FPU-less 040 (68LC040/68EC040) — the shape's words are
@@ -2122,6 +2140,7 @@ Moira::execFScc(u16 opcode)
 
     prefetch<C, POLL>();
 
+    // [B] MC68881UM-1989 Table 8-7: destination class.
     // Table 8-7 by destination class ((An)± row includes the update)
     CYCLES_68020(M == Mode::DN ? FPU_CK_FSCC_DN :
                  (M == Mode::PI || M == Mode::PD) ? FPU_CK_FSCC_PIPD
@@ -2135,8 +2154,9 @@ Moira::execFTrapcc(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // [B] MC68881UM-1989 §4.6 (FTRAPcc): conditional trap.
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // FTRAPcc (MC68881UM § 4.9; WinUAE fpuop_trapcc, fpp.c:2313-2340).
+    // FTRAPcc (MC68881UM-1989 § 4.6 (FTRAPcc); WinUAE fpuop_trapcc, fpp.c:2313-2340).
     // Takes the TRAPcc exception (vector 7, format $2 frame with the
     // next-instruction PC — same as the integer TRAPcc family).
     // POM68K Q4: FPU-less 040 (68LC040/68EC040) — the shape's words are
@@ -2169,14 +2189,14 @@ Moira::execFTrapcc(u16 opcode)
     if (cc) {
 
         execException<C>(M68kException::TRAPV);
-        CYCLES_68020(FPU_CK_FTRAP_T[opd])   // Table 8-7, trap taken
+        CYCLES_68020(FPU_CK_FTRAP_T[opd])   // [B] MC68881UM-1989 Table 8-7: taken trap.
         FINALIZE
         return;
     }
 
     prefetch<C, POLL>();
 
-    CYCLES_68020(FPU_CK_FTRAP_N[opd])       // Table 8-7, trap not taken
+    CYCLES_68020(FPU_CK_FTRAP_N[opd])       // [B] MC68881UM-1989 Table 8-7: untaken trap.
 
     FINALIZE
 }
@@ -2195,8 +2215,9 @@ Moira::execFSave(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // [B] MC68881UM-1989 §6.4.2: frame sizes; private/omitted payload below.
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // FSAVE (MC68882UM § 6; WinUAE fpuop_save, fpp.c:2374-2589, 6888x
+    // FSAVE (MC68881UM-1989 § 6.4.2; WinUAE fpuop_save, fpp.c:2374-2589, 6888x
     // branch). Supervisor only. Writes a 4-byte NULL frame when the FPU
     // never left the reset state, else the 68882 $3C-byte IDLE frame
     // (version $1F, length $38). WinUAE's 68030-MMU build skips writing
@@ -2360,6 +2381,7 @@ Moira::execFSave(u16 opcode)
 
     prefetch<C, POLL>();
 
+    // [B] MC68881UM-1989 Table 8-8: FSAVE.
     // Table 8-8 (FSAVE row) by emitted frame
     CYCLES_68020(frameSize == 4 ? FPU_CK_FSAVE_NULL :
                  frameSize == 0xd8 ? FPU_CK_FREST_BUSY2 :
@@ -2374,8 +2396,9 @@ Moira::execFRestore(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // [B] MC68881UM-1989 §6.4.2: frame formats.
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // FRESTORE (MC68882UM § 6; WinUAE fpuop_restore, fpp.c:2593-2812).
+    // FRESTORE (MC68881UM-1989 § 6.4.2; WinUAE fpuop_restore, fpp.c:2593-2812).
     // Supervisor only. Frame acceptance mirrors the 6888x branch
     // (fpp.c:2755-2807) exactly, oracle-verified:
     //
@@ -2389,7 +2412,7 @@ Moira::execFRestore(u16 opcode)
     //   anything else         -> format error (vector 14, fpp.c:2804-2806)
     //
     // Note the version byte of BOTH 68881 and 68882 frames is $1F
-    // (get_fpu_version, fpp.c:1432-1449) — MC68882UM § 6 agrees.
+    // (get_fpu_version, fpp.c:1432-1449) — MC68881UM-1989 § 6.4.2 defines the version field.
     SUPERVISOR_MODE_ONLY
 
     int n = _____________xxx(opcode);
@@ -2416,7 +2439,7 @@ Moira::execFRestore(u16 opcode)
 
     ad = adOrig + 4;
 
-    int ck = FPU_CK_FREST_NULL;             // Table 8-8 (FRESTORE row)
+    int ck = FPU_CK_FREST_NULL;             // [B] MC68881UM-1989 Table 8-8: FRESTORE.
 
     if (frameVersion == 0x1f && fpuModel != FPUModel::M68040) { // 6888x frame
 
@@ -2488,6 +2511,7 @@ Moira::execFRestore(u16 opcode)
 
     } else if (frameVersion == 0x41 && fpuModel == FPUModel::M68040) {
 
+        // [B] MC68881UM-1989 §6.2.8 and §6.4.2: invalid saved-frame version.
         // The 68040's own frame (get_fpu_version(68040) == $41, fpp.c).
         //
         // POM68K, ruling D23b (settled 2026-11-07): a 68882 given this frame
@@ -2498,7 +2522,7 @@ Moira::execFRestore(u16 opcode)
         // four pinned sst68030 vectors holding the acceptance were generated
         // in (fpu_tt #166, fpu_off #28/#83, fpu_identity #75, now listed in
         // tests/sst68030.known). The strict oracle takes the format error.
-        // [B] MC68881/MC68882 UM § 6: no such frame version exists for the
+        // MC68881UM-1989 § 6.4.2: no such frame version exists for the
         //     coprocessor — a format error.
         // [D] WinUAE fpp.c fpuop_restore @ Hatari e77819f7, strict setting.
         // Gate: sst68030_fpuraw and sst68030_fpu2 (their D23b blocks are
@@ -2823,8 +2847,9 @@ Moira::execFMovecr(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // [B] MC68881UM-1989 §4.7.1.3 (FMOVECR): command encoding.
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // FMOVECR (MC68881UM § 4.6.1.3; WinUAE fpp.c:3527-3541). ROM offsets
+    // FMOVECR (MC68881UM-1989 § 4.7.1.3; WinUAE fpp.c:3527-3541). ROM offsets
     // $40-$7F take an F-line on 6888x.
     u16 ext = u16(readI<C, Word>());
     int dst = ______xxx_______(ext);
@@ -2860,7 +2885,7 @@ Moira::execFMovecr(u16 opcode)
 
     prefetch<C, POLL>();
 
-    CYCLES_68020(FPU_CK_FMOVECR)    // Table 8-3
+    CYCLES_68020(FPU_CK_FMOVECR)    // [B] MC68881UM-1989 Table 8-3.
 
     FINALIZE
 }
@@ -2981,6 +3006,7 @@ Moira::execFGeneric(u16 opcode)
 
     prefetch<C, POLL>();
 
+    // [B] MC68881UM-1989 Table 8-3: base costs; format approximation above.
     // Table 8-3: opmode base (FPn-to-FPm) + per-format spread for
     // memory/Dn/#imm sources; EA cycles arrive via cp (see table header)
     CYCLES_68020(fpuCk882Op[ext & 0x3f] +
@@ -2994,8 +3020,9 @@ Moira::execFMove(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // [B] MC68881UM-1989 §7.5.1.3: register-to-external dialog.
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // FMOVE FPx -> EA, opclass 011 (MC68881UM § 4.5.3; WinUAE
+    // FMOVE FPx -> EA, opclass 011 (MC68881UM-1989 § 7.5.1.3; WinUAE
     // fpp.c:3190-3205). Condition codes are NOT set by a move out; the
     // exception byte is (OPERR on integer overflow, INEX on rounding).
     u16 ext = u16(readI<C, Word>());
@@ -3038,7 +3065,7 @@ Moira::execFMove(u16 opcode)
 
     prefetch<C, POLL>();
 
-    CYCLES_68020(fpuCk882MoveOut[___xxx__________(ext)])   // Table 8-3
+    CYCLES_68020(fpuCk882MoveOut[___xxx__________(ext)])   // [B] MC68881UM-1989 Table 8-3.
 
     FINALIZE
 }
@@ -3048,14 +3075,15 @@ Moira::execFMovem(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // [B] MC68881UM-1989 §7.5.1.4 and §7.5.1.5: FMOVEM dialogs.
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // FMOVEM — control registers (opclasses 100/101, MC68881UM § 4.5.4)
-    // and FP data registers (opclasses 110/111, § 4.5.5). WinUAE
+    // FMOVEM — control registers (opclasses 100/101, MC68881UM-1989 § 7.5.1.4)
+    // and FP data registers (opclasses 110/111, § 7.5.1.5). WinUAE
     // fpp.c:3207-3521. Neither form touches the condition codes.
     u16 ext = u16(readI<C, Word>());
     int n = _____________xxx(opcode);
     int cod = xxx_____________(ext);
-    int ck = 0;                     // Table 8-6 cost, set per branch below
+    int ck = 0;                     // [B] MC68881UM-1989 Table 8-6.
 
     if (cod == 0b100 || cod == 0b101) {
 
@@ -3252,6 +3280,7 @@ Moira::execFMovem(u16 opcode)
             }
         }
 
+        // [B] MC68881UM-1989 Table 8-6: register-list costs.
         // Table 8-6 FPdr rows (n = registers moved; dynamic-list rows
         // add a Dn-read surcharge)
         int nr = 0;

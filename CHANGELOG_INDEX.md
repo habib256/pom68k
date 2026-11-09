@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 729 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 732 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -9,7 +9,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | Subsystem | Entries |
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 96 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 93 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 95 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 37 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 31 |
@@ -17,7 +17,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 26 |
 | [Save states](#save-states) | 10 |
 | [Machine bring-ups](#machine-bring-ups) | 94 |
-| [Build, packaging and release](#build-packaging-and-release) | 21 |
+| [Build, packaging and release](#build-packaging-and-release) | 22 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 42 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
 | [Cross-cutting](#cross-cutting) | 150 |
@@ -214,8 +214,10 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-07 (third)** — [The Moira core reads no environment variable: NeoST's exception trace is switched by its host](CHANGELOG.md#2026-11-07-core-env-free)
 - **2026-11-07 (thirteenth)** — [The interpreter arms its own fetch window: Quadra 605 interpreted −36 %, LC II −17 %, fingerprints unchanged — ×2.5 on the 68040 interpreter since yesterday's profile](CHANGELOG.md#2026-11-07-interp-window)
 - **2026-11-07 (twelfth)** — [PTEST at its level limit did not report an invalid descriptor: the one 68030 MMU vector of the sweep](CHANGELOG.md#2026-11-07-ptest-limit)
+- **2026-11-08 (eighth)** — [Moira's manual evidence names real editions and sections; approximations stop borrowing their authority](CHANGELOG.md#2026-11-08-moira-manual-proofs)
 - **2026-11-08 (fifth)** — [Moira's SingleStepTests citations carry their own pin; the portable surface records the machine-clock traps, and the core documents catch up](CHANGELOG.md#2026-11-08-core-sst-grades-surface-docs)
 - **2026-11-08 (fourth)** — [A /BERR during a 68030 table search is reported, not thrown: the "unverified" line was a defect](CHANGELOG.md#2026-11-08-030-tablesearch-berr)
+- **2026-11-08 (ninth)** — [The 68040 cache gate required a logical translation that CINV and CPUSH must never perform](CHANGELOG.md#2026-11-08-physical-cache-operands)
 - **2026-11-08 (seventh)** — [The CPU visitor moves into Moira; snapshots stop losing pending PMMU and FPU work](CHANGELOG.md#2026-11-08-moira-state-visitor)
 - **2026-11-08 (sixth)** — [The 68EC030's declared plain-020 path gets a bare-core gate with a 68030 control](CHANGELOG.md#2026-11-08-ec030-surface-gate)
 
@@ -581,6 +583,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-10-14 (seventh)** — [The Retro68 host tools rebuilt against boost 1.90: NetProbe's gate runs again, and the agent build is not the shipped one](CHANGELOG.md#2026-10-14-retro68-boost)
 - **2026-10-25** — [The push that repairs red CI names the run it repairs](CHANGELOG.md#2026-10-25-ci-fix-trailer)
 - **2026-11-06 (later)** — [CLAUDE.md's size ceiling follows the evidence-grades section: five days of red CI had one cause](CHANGELOG.md#2026-11-06-claude-md-budget)
+- **2026-11-09** — [CI failed because the x86 gate registry was not regenerated after a common gate was added](CHANGELOG.md#2026-11-09-x64-status-registry)
 
 ## Tests, gates and measurement
 

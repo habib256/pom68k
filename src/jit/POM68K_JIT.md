@@ -482,7 +482,7 @@ stopwatch (§ 3.3) — never quote it against a bench number.
 **The 68030 i-cache is identical across engines, to the digit** —
 1 602 507 733 fetches / 1 093 456 393 hits / 509 047 173 misses (68.23 %) on
 both. That is not a coincidence to be grateful for, it is the ordering in
-`mmuFetchWord` (`MoiraExecMMU_cpp.h:408-461`): the overlay is charged BEFORE
+`mmuFetchWord` (`MoiraExecMMU_cpp.h`, `Moira::mmuFetchWord`): the overlay is charged BEFORE
 the window hook, and the threaded backend replays through Moira's own
 handlers. It had never been measured; it is the premise a 68030 code
 generator has to preserve by hand (`docs/JIT_BRINGUP.md` § B).

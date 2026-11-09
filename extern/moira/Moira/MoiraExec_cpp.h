@@ -2075,13 +2075,14 @@ Moira::execClr(u16 opcode)
 
         u32 ea, data;
 
+        // [B] M68000PRM-1992 CLR: the read-before-clear note.
         // POM68K Q3: the 68040 CLR is a pure store (gencpu genastore) —
         // no destination read (which would fault/update U where the
         // oracle only writes); flags final before the last write.
         //
         // POM68K (2026-11-07): so is the 68020's and the 68030's. Only the
         // 68000 and 68008 read the destination before clearing it.
-        // [B] M68000PRM, CLR, note: "In the MC68000 and MC68008 a memory
+        // M68000PRM-1992, CLR, note: "In the MC68000 and MC68008 a memory
         //     location is read before it is cleared."
         // [D] WinUAE gencpu i_CLR @ Hatari e77819f7: the read is generated
         //     for cpu_level 0 only.
@@ -3039,8 +3040,8 @@ Moira::execLink(u16 opcode)
 
     // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
     // Write to stack
-    // POM68K: LINK A7 pushes the DECREMENTED stack pointer on real hardware
-    // too, not only in Musashi mode (SingleStepTests/680x0)
+    // POM68K: LINK A7 pushes the DECREMENTED stack pointer under the native
+    // rules too, following SingleStepTests/680x0
     push <C, Long>(readA(ax) - (ax == 7 ? 4 : 0));
 
     // Modify address register and stack pointer
@@ -3889,8 +3890,9 @@ Moira::execMovecRcRx(u16 opcode)
         case 0x803: reg.r[dst] = reg.sr.m ? getSP() : getMSP(); break;
         case 0x804: reg.r[dst] = reg.sr.m ? getISP() : getSP(); break;
 
+        // [B] MC68040UM-1993 §3.1: MMU registers.
         // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // POM68K Q2: 68040 MMU registers (M68040UM § 3.1.1; WinUAE
+        // POM68K Q2: 68040 MMU registers (MC68040UM-1993 § 3.1; WinUAE
         // m68k_movec2 68040 rows). Only reachable on 040 models — the
         // legality gate above rejects them on 010/020/030.
         case 0x003: reg.r[dst] = getTC040(); break;
@@ -4158,11 +4160,12 @@ Moira::execMovemRgEa(u16 opcode)
 
             // Write register contents into memory
             ea -= S;
+            // [B] M68000PRM-1992 MOVEM: base register in a predecrement list.
             // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // POM68K (two-oracle arbitrated 2026-07-15): on 020+, when
             // the base register is part of the list, the value stored is
             // the INITIAL value decremented by one operation size
-            // (M68000PRM MOVEM; WinUAE stores initial - S regardless of
+            // (M68000PRM-1992 MOVEM; WinUAE stores initial - S regardless of
             // the register's position in the list) — not the running EA
             // that upstream's per-iteration writeA produced.
             if (mmu030) {
@@ -4193,7 +4196,7 @@ Moira::execMovemRgEa(u16 opcode)
                 // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
                 // POM68K: a predecremented long goes out LOW word first on
                 // the 68000 ([D] SingleStepTests/680x0 transactions) — what
-                // upstream reserved for its Musashi mode.
+                // upstream reserved for its optional compatibility mode.
                 writeM<C, M, S, (MOIRA_MIMIC_MUSASHI || C == Core::C68000) ? REVERSE : 0>(ea, reg.r[i]);
             }
             cnt++;
@@ -5210,7 +5213,7 @@ Moira::execDivsMoira(u16 opcode, bool *divByZero)
 
         // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
         // POM68K: every overflow exits early at 16/18 cycles total
-        // (SingleStepTests/680x0, CLK rule)
+        // (SingleStepTests/680x0)
         const int cycles = reg.sr.v ? ((i32(dividend) < 0) ? 14 : 12)
                                     : cyclesDiv<C, I>(dividend, (u16)divisor) - 4;
         SYNC(cycles);
@@ -5224,7 +5227,7 @@ Moira::execDivsMoira(u16 opcode, bool *divByZero)
 
         // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
         // POM68K: every overflow exits early at 16/18 cycles total
-        // (SingleStepTests/680x0, CLK rule)
+        // (SingleStepTests/680x0)
         if (reg.sr.v) {
             SYNC((i32(dividend) < 0) ? 14 : 12);
             return;
@@ -7078,8 +7081,9 @@ Moira::execUnpkPd(u16 opcode)
     FINALIZE
 }
 
+// [B] MC68040UM-1993 §4.2: cache-management instructions.
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-// POM68K Q2: CINV/CPUSH execute on the 040 models (M68040UM § 4.5/4.6).
+// POM68K Q2: CINV/CPUSH execute on the 040 models (MC68040UM-1993 § 4.2).
 // Since M2 (docs/CACHE_040.md) they act on data-bearing architectural
 // caches when armed (POM68K_040_DCACHE); CPUSH writes dirty longwords
 // before invalidating its selected lines. Scope 00 is
@@ -7131,8 +7135,9 @@ Moira::execCpush(u16 opcode)
     FINALIZE
 }
 
+// [B] M68000PRM-1992 MOVE16: aligned line transfer.
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-// POM68K Q2: MOVE16 (M68040UM § MOVE16), modelled on the WinUAE mmu040
+// POM68K Q2: MOVE16 (M68000PRM-1992 MOVE16), modelled on the WinUAE mmu040
 // handlers (generated/cpuemu_31.c op_f6xx + cpummu.c mmu_get/put_move16):
 // both line addresses are masked & ~15, the absolute-long operand is
 // consumed first, the 16 bytes move as four longs read-then-written, and

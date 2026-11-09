@@ -99,6 +99,14 @@ milestone is safe), CACR enable bits gate allocation. **Data is still
 served by the bus** — coherent by construction, zero risk to every
 green gate.
 
+**Operand correction, 2026-11-08:** the M1 logical resolver described
+below was wrong. MC68040UM-1993 § 4.2 specifies a physical address in An;
+`pomCacheOp040` now takes it directly. The sole-use resolver/peek walk are
+removed. The expanded `cache040_test` checks 128 opcode combinations with
+separate physical/translated lines, physical writeback and no descriptor
+access, including cache-disabled operation. The old translation-accepting
+checks were replaced; the M1 account below is historical.
+
 As landed:
 
 - `extern/moira/Moira/MoiraCache040.h` — the self-contained tag store

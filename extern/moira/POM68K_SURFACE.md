@@ -8,6 +8,13 @@ cases are listed in § 10. Identifiers are cited as `file` + name. Line numbers
 are deliberately absent. "Unverified" marks a statement read from the code
 but not proved by execution or by a gate.
 
+Evidence grades apply to the cited rule, not to every choice in its
+implementation. `tests/core_manuals.lock` pins four manual editions, their
+PDF hashes and reviewed locators; `core_grades_test` holds comment
+attribution. `[F]` and `Settled by:` identify a missing witness or a model
+approximation. Neither a valid citation nor agreement with another emulator
+establishes silicon fidelity (`POM68K_VENDOR.md` § *Manual evidence audit*).
+
 ---
 
 ## 1. Scope and vocabulary
@@ -54,6 +61,11 @@ core. Inside `Core::C68020`, the 030 and 040 are distinguished at run time by
 `Moira::hasMMU()` answers false for `M68EC040` while every `>= M68EC040`
 model takes the 040 translation path; `TODO.md` § *Surface portable* records
 the contradiction. No profile or corpus exercises 68EC040.
+
+`Moira::reset` is a host cold initialization: it resets registers and
+flushes ATCs. It is not a pin-level RESET model. In particular, the 68030
+hardware retains ATC contents on RESET (MC68030UM-1989 § 9.2.2); the
+fork's stronger reset policy is explicitly F in `Moira.cpp`.
 
 ### 1.3 "Mode 5"
 
@@ -603,9 +615,9 @@ The struct owns no bus and no clock.
 In `Moira` (active only when `setPomCache040(true)` and model `>= M68EC040`):
 `pomCache040I`, `pomCache040D`, line fills and writebacks through the host's
 `read16`/`write16`, charges from `PomCache040Timing` through `sync()`,
-`CINV`/`CPUSH` via `pomCacheOp040` (CPUSH drains dirty longwords before
-invalidating), MOVE16 bypass, locked RMW and MOVES resolving dirty data
-first. The legacy `PomIcache` overlay is independent of this model.
+`CINV`/`CPUSH` via `pomCacheOp040` (An is physical, without a TTR/ATC/table
+lookup; CPUSH drains dirty longwords before invalidating), MOVE16 bypass,
+locked RMW and MOVES resolving dirty data first. The legacy `PomIcache` overlay is independent of this model.
 
 Host obligations when the model is armed:
 

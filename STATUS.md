@@ -62,27 +62,27 @@ Scheduling cost if every gate ran at once: 780 slots of 256 MiB (`slots_src` say
 
 ## Registered on x86_64
 
-545 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
+546 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
 
 | dimension | value | gates |
 |---|---|---|
-| assets | none | 136 |
+| assets | none | 137 |
 | assets | optional | 26 |
 | assets | required | 383 |
-| host | any | 534 |
+| host | any | 535 |
 | host | native | 6 |
 | host | x64 | 5 |
-| scope | component | 149 |
+| scope | component | 150 |
 | scope | engine | 22 |
 | scope | profile | 370 |
 | scope | repository | 4 |
-| tier | daily | 136 |
+| tier | daily | 137 |
 | tier | full | 393 |
 | tier | platform | 16 |
-| slots_src | assumed | 432 |
+| slots_src | assumed | 433 |
 | slots_src | measured | 113 |
 
-Scheduling cost if every gate ran at once: 904 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 905 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## PRODUCT_LLE on aarch64
 
@@ -231,3 +231,4 @@ overwrites it, including a one-gate `ctest -R`.
 | Nov 08 21:29 +04 | aarch64 | default | 6 | 6 | 0 | 0 | Moira v29: bare continuation gate and five existing save-state gates |
 | Nov 08 21:26 +04 | aarch64 | default | 12 | 3 | 9 | 0 | Moira v29 ARM64: 000/030/040 corpora present; nine extended corpora absent |
 | Nov 08 21:35 +04 | aarch64 | default | 140 | 140 | 0 | 0 | Moira v29: asset-none plus the two remaining prior ARM64 jit-fast\|m030 gates (LC II boot, IIfx persistence) |
+| Nov 09 06:56 +04 | aarch64 | default | 138 | 138 | 0 | 0 | Manual citation audit and physical CINV/CPUSH: full rebuild; all asset-none gates executed. FC2 reproduction remains separate and expected-failing. |

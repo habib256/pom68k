@@ -1,15 +1,19 @@
+// [B] MC68040UM-1993 §4.1 and Figure 4-2: cache organization.
 // POM68K M2 (docs/CACHE_040.md § M2) — 68040 cache tags + line data.
 //
-// MC68040UM § 4: each on-chip cache (instruction and data) is 4 KB,
+// MC68040UM-1993 § 4: each on-chip cache (instruction and data) is 4 KB,
 // 4-way set-associative, 64 sets of 16-byte lines, physically indexed
 // and physically tagged — set index = PA[9:4], tag = PA[31:10]. Data
-// cache lines carry four dirty bits, one per longword (UM Fig. 4-4);
+// cache lines carry four dirty bits, one per longword (UM Figure 4-2);
 // instruction lines have none. Replacement uses a 2-bit counter shared
 // by the whole cache, invalid ways first (UM § 4.1).
 //
 // The struct owns replacement, tags, data and dirty state. It deliberately
 // owns neither a bus nor a clock: Moira supplies line-fill/writeback callbacks
 // so bus errors, MMU restart state and machine timing remain in one place.
+// [F] The fork increments rot on replacement only; the manual increments
+// the counter on cache accesses too. Settled by: an access-counted
+// replacement gate or a hardware replacement trace.
 
 #pragma once
 
@@ -22,7 +26,8 @@ struct Cache040 {
     static constexpr int SETS = 64;
     static constexpr int WAYS = 4;
 
-    // CM field encoding (descriptor/TTR bits 6-5, M68040UM Table 3-3)
+    // [B] MC68040UM-1993 §3.1.3: CM encoding.
+    // CM field encoding (descriptor/TTR bits 6-5, MC68040UM-1993 §3.1.3)
     static constexpr int CM_WRITETHROUGH = 0;
     static constexpr int CM_COPYBACK     = 1;
     static constexpr int CM_SERIAL_NC    = 2;
@@ -42,7 +47,7 @@ struct Cache040 {
         u8 data[16] = {};
     };
     Line sets[SETS][WAYS];
-    u8 rot = 0;                 // 2-bit replacement counter (UM § 4.1)
+    u8 rot = 0;                 // [B] MC68040UM-1993 §4.1: two-bit replacement counter.
 
     // Gate observables — counters, not architecture
     u64 fills = 0, hits = 0, pushes = 0;
@@ -90,11 +95,12 @@ struct Cache040 {
         return &s[w];
     }
 
-    // One CPU access over [pa, pa+bytes). Caller has already checked the
-    // cache-enable bit; cm is the page/TTR cache mode. Both non-cacheable
-    // modes bypass the cache entirely (UM § 4.2: the cache is not
-    // searched). MOVE16 never allocates; its line WRITE invalidates a
-    // matching line instead of updating it (UM § 4.2, MOVE16 note).
+    // [B] MC68040UM-1993 §4.3.2 and §4.3.3: NC and MOVE16 accesses.
+    // The manual defines NC handling (§4.3.2) and MOVE16 no-allocation/
+    // write-hit invalidation (§4.3.3). Caller has checked the cache enable bit.
+    // [F] This policy helper bypasses NC without resolving a resident line;
+    // that is not the complete push/invalidate protocol of §4.3.2. Settled by:
+    // a resident dirty-line NC-transition gate with visible writeback cycles.
     void touch(u32 pa, bool write, int cm, int bytes, bool move16 = false) {
 
         if (cm >= CM_SERIAL_NC) return;
@@ -119,7 +125,8 @@ struct Cache040 {
         }
     }
 
-    // CINV scopes (UM § 4.5) — discard, dirty state included
+    // [B] M68000PRM-1992 CINV: invalidate selected physical lines/pages.
+    // CINV scopes (M68000PRM-1992 CINV) — discard, dirty state included
     void invalidateLine(u32 pa) {
         if (Line* l = lookup(pa)) { l->valid = false; l->dirty = 0; }
     }
@@ -208,9 +215,10 @@ private:
             return;
         }
 
+        // [B] MC68040UM-1993 §4.3.1.1 and §4.3.1.2: allocation policy.
         // Miss: reads allocate in both cachable modes; a copyback write
         // miss line-fills then modifies; a writethrough write miss goes
-        // to memory without allocating (no write-allocate, UM § 4.2)
+        // to memory without allocating (no write-allocate, UM § 4.3.1.1)
         if (write && cm == CM_WRITETHROUGH) return;
 
         Line* l = allocate(pa);

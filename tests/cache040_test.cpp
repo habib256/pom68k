@@ -172,6 +172,7 @@ public:
         setPomCache040(true);
     }
     std::vector<uint8_t> mem;
+    mutable unsigned tableReads = 0;
 
     static bool inHole(moira::u32 a) {
         return (a & 0xFFFFFF) >= 0xF00000 && (a & 0xFFFFFF) < 0xF10000;
@@ -179,10 +180,12 @@ public:
 
 private:
     moira::u8 read8(moira::u32 a) const override {
+        if (a >= 0x4000 && a < 0x5000) ++tableReads;
         if (inHole(a)) const_cast<Cpu*>(this)->extBusError040();
         return mem[a & 0xFFFFFF];
     }
     moira::u16 read16(moira::u32 a) const override {
+        if (a >= 0x4000 && a < 0x5000) ++tableReads;
         if (inHole(a)) const_cast<Cpu*>(this)->extBusError040();
         return moira::u16((mem[a & 0xFFFFFF] << 8) | mem[(a + 1) & 0xFFFFFF]);
     }
@@ -259,7 +262,8 @@ void testCpu() {
     m.w16(0x2410);                              // MOVE.L (A0),D2  no alloc
     m.w16(0xF469);                              // CPUSH DC,(A1)   disabled
     m.w16(0xF448);                              // CINV DC,(A0)    disabled
-    // K: MMU on — ATC-hit, peek-walk and unmapped-skip resolver paths
+    // K: MMU on — cache management must spare a translated alias,
+    // both while its ATC entry is present and after an ATC flush.
     m.w16(0x203C); m.w32(0x0000C000);           // MOVE.L #tt,D0
     m.w16(0x4E7B); m.w16(0x0004);               // MOVEC D0,ITT0  ($00xxxxxx)
     m.w16(0x4E7B); m.w16(0x0007);               // MOVEC D0,DTT1  ($00xxxxxx)
@@ -271,16 +275,16 @@ void testCpu() {
     m.w16(0x4E7B); m.w16(0x0003);               // MOVEC D0,TC    MMU ON
     m.w16(0x47F9); m.w32(0x01000000);           // LEA $01000000.L,A3
     m.w16(0x2681);                              // MOVE.L D1,(A3) walk+fill
-    m.w16(0xF46B);                              // CPUSH DC,(A3)  ATC hit
+    m.w16(0xF46B);                              // CPUSH physical $01000000
     m.w16(0x2681);                              // MOVE.L D1,(A3) re-dirty
     m.w16(0x4E7B); m.w16(0x0003);               // MOVEC D0,TC    ATC flush
-    m.w16(0xF44B);                              // CINV DC,(A3)   peek walk
+    m.w16(0xF44B);                              // CINV physical $01000000
     m.w16(0x49F9); m.w32(0x01800000);           // LEA $01800000.L,A4
-    m.w16(0xF44C);                              // CINV DC,(A4)   unmapped
-    // L: a resident descriptor chain into the /BERR hole must be
-    // swallowed (treated as unmapped), never delivered to the guest
+    m.w16(0xF44C);                              // CINV physical $01800000
+    // L: the operand is physical even if interpreting it as logical
+    // would lead the table walker into the /BERR hole.
     m.w16(0x4BF9); m.w32(0x02000000);           // LEA $02000000.L,A5
-    m.w16(0xF44D);                              // CINV DC,(A5)   berr chain
+    m.w16(0xF44D);                              // CINV physical $02000000
     m.w16(0x7E2A);                              // MOVEQ #42,D7
 
     // Phase K page tables (4K pages, SRP = $4000): logical $01000000 →
@@ -360,19 +364,107 @@ void testCpu() {
     m.step(11);                                 // K: MMU on, walked write
     check(dc.lookup(0x9000) && (dc.lookup(0x9000)->dirty & 1),
           "MMU on: the walk feeds copyback CM into the model");
-    m.step(1);                                  //    CPUSH via ATC hit
-    check(!dc.lookup(0x9000) && dc.pushes == 5,
-          "CPUSH resolves its operand through the ATC");
+    m.step(1);                                  //    physical CPUSH, no match
+    check(dc.lookup(0x9000) && dc.lookup(0x9000)->dirty && dc.pushes == 4,
+          "CPUSH does not select the operand's translated alias");
     m.step(3);                                  //    re-dirty, flush, CINV
-    check(!dc.lookup(0x9000) && dc.pushes == 5,
-          "CINV resolves through the read-only peek walk after a flush");
+    check(dc.lookup(0x9000) && dc.lookup(0x9000)->dirty && dc.pushes == 4,
+          "CINV spares the translated alias after an ATC flush");
+    dc.touch(0x01800000, false, Cache040::CM_WRITETHROUGH, 4);
     m.step(2);                                  //    unmapped operand
-    check(dc.validCount() == 0,
-          "an unmapped CINV operand is skipped, not faulted");
+    check(!dc.lookup(0x01800000) && dc.lookup(0x9000),
+          "CINV selects a physical line with no logical mapping");
 
+    dc.touch(0x02000000, false, Cache040::CM_WRITETHROUGH, 4);
+    const auto tableReads = m.cpu.tableReads;
     m.step(3);                                  // L: berr chain + marker
-    check(m.cpu.getD(7) == 42,
-          "a bus-erroring descriptor chain is swallowed (no exception)");
+    check(m.cpu.getD(7) == 42 && !dc.lookup(0x02000000) &&
+          m.cpu.tableReads == tableReads,
+          "CINV never follows a descriptor chain into the bus-error hole");
+}
+
+void testPhysicalOperands() {
+    // [B] MC68040UM-1993 §4.2: CINV/CPUSH take a physical address in An.
+    // Keep both the physical target and its unrelated logical translation
+    // resident. A no-op, an ATC lookup and a cold table walk all differ from
+    // the required cache selection; CPUSH must also write the physical RAM.
+    std::printf("part 2b — physical cache operands with paging enabled\n");
+    constexpr uint32_t target = 0x00808000;
+    constexpr uint32_t old = 0x11223344;
+    constexpr uint32_t fresh = 0xA1B2C3D4;
+    for (bool page8k : {false, true})
+    for (bool warm : {false, true})
+    for (bool enabled : {false, true})
+    for (bool push : {false, true})
+    for (unsigned caches : {0u, 1u, 2u, 3u})
+    for (unsigned scope : {1u, 2u}) {
+        Img m;
+        const uint32_t alias = page8k ? 0x8000 : 0x9000;
+        const uint32_t addresses[] = {
+            target, target + 0x10, target + 0x1000, target + 0x2000, alias
+        };
+        m.at(0); m.w32(0x2000); m.w32(0x1110);
+        m.at(0x1110);                         // fetch uses a different set
+        m.w16(uint16_t(0xF400 | (push ? 0x20 : 0) |
+                       (caches << 6) | (scope << 3))); // (A0)
+        m.w16(0x4E71); m.w16(0x4E71);
+        m.at(0x4000); m.w32(0x4202);
+        m.at(0x4280); m.w32(0x4402);
+        m.at(page8k ? 0x4410 : 0x4420); m.w32(alias | 0x21);
+        for (auto address : addresses) {
+            m.at(address); m.w32(old);
+        }
+        m.cpu.reset();
+        m.cpu.setITT0(0x0000C000);             // instruction fetch is TT
+        m.cpu.setSRP040(0x4000);
+        m.cpu.setTC040(page8k ? 0xC000 : 0x8000);
+        m.cpu.setCACR(enabled ? 0x80008000 : 0);
+        m.cpu.setA(0, target + 3);            // low line bits are ignored
+        if (warm) {
+            uint32_t value = 0;
+            check(m.cpu.pomJitReadData(target, 4, value) && value == old,
+                  "prime the different logical-to-physical translation");
+        }
+        auto &dc = m.cpu.pomCache040Data();
+        auto &ic = m.cpu.pomCache040Inst();
+        for (auto address : addresses) {
+            dc.touch(address, false, Cache040::CM_COPYBACK, 4);
+            ic.touch(address, false, Cache040::CM_WRITETHROUGH, 4);
+            auto *line = dc.lookup(address);
+            line->dirty = 1;
+            for (unsigned byte = 0; byte < 4; ++byte)
+                line->data[byte] = uint8_t(fresh >> (24 - 8 * byte));
+        }
+        // Management must also act on retained lines with CACR disabled.
+        const auto readsBefore = m.cpu.tableReads;
+        const auto tablesBefore = std::vector<uint8_t>(
+            m.cpu.mem.begin() + 0x4000, m.cpu.mem.begin() + 0x5000);
+        m.step(1);
+        bool selected = true, memory = true;
+        for (auto address : addresses) {
+            const bool inScope = scope == 1 ? address == target :
+                address >= target && address < target + (page8k ? 8192 : 4096);
+            selected &= (dc.lookup(address) == nullptr) ==
+                        (inScope && (caches & 1));
+            selected &= (ic.lookup(address) == nullptr) ==
+                        (inScope && (caches & 2));
+            const auto &ram = m.cpu.mem;
+            const uint32_t value = uint32_t(ram[address]) << 24 |
+                uint32_t(ram[address + 1]) << 16 |
+                uint32_t(ram[address + 2]) << 8 | ram[address + 3];
+            memory &= value == (push && inScope && (caches & 1) ? fresh : old);
+        }
+        std::printf("  %s cache=%u scope=%u %uK %s ATC, cache %s\n",
+                    push ? "CPUSH" : "CINV", caches, scope,
+                    page8k ? 8 : 4, warm ? "warm" : "cold",
+                    enabled ? "enabled" : "disabled");
+        check(selected, "select physical cache lines, spare translated aliases");
+        check(memory, "only CPUSH data writes selected physical memory");
+        check(m.cpu.tableReads == readsBefore &&
+              std::vector<uint8_t>(m.cpu.mem.begin() + 0x4000,
+                                   m.cpu.mem.begin() + 0x5000) == tablesBefore,
+              "cache operand neither reads nor updates page tables");
+    }
 }
 
 void testDataPath() {
@@ -493,6 +585,7 @@ int main() {
                 "(docs/CACHE_040.md)\n");
     testStruct();
     testCpu();
+    testPhysicalOperands();
     testDataPath();
     std::printf(gFails ? "FAILED (%d)\n" : "PASSED\n", gFails);
     return gFails ? 1 : 0;
