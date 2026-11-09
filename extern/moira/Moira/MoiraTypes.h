@@ -323,9 +323,11 @@ struct Registers {
     u32 cacr;                   // Cache Control Register           (68020+)
     u32 caar;                   // Cache Address Register           (68020+)
 
-    // POM68K: 68030 on-chip MMU registers (MC68030UM § 9.7.2). Cleared on
-    // reset (reg = { } — § 9.7.2.2: reset clears TC.E, so translation is
-    // off). PMOVE/PTEST maintain them; bus translation is a later slice.
+    // [B] MC68030UM-1989 §9.7 and §9.2.2: register model and reset enables.
+    // POM68K: 68030 on-chip MMU registers (§9.7).
+    // Hardware reset clears TC/TTx enable bits (§9.2.2). Host reset clears the
+    // whole struct as cold initialization; that is not register-retention proof.
+    // PMOVE/PTEST and the bus translation layer use this state.
     u64 crp;                    // CPU Root Pointer                 (68030)
     u64 srp;                    // Supervisor Root Pointer          (68030)
     u32 tc;                     // Translation Control              (68030)
@@ -333,7 +335,8 @@ struct Registers {
     u32 tt1;                    // Transparent Translation 1        (68030)
     u16 mmusr;                  // MMU Status Register (PSR)        (68030)
 
-    // POM68K Q2: 68040 on-chip MMU registers (M68040UM § 3.1.1), MOVEC-
+    // [B] MC68040UM-1993 §3.1 and §3.6.1: MMU register model/reset.
+    // POM68K Q2: 68040 on-chip MMU registers (MC68040UM-1993 § 3.1), MOVEC-
     // accessible only. Distinct from the 030 set above — an OS switching
     // models never aliases. Cleared on reset (reg = { }: TC.E off).
     u32 urp040;                 // User Root Pointer                (68040)
@@ -523,15 +526,17 @@ struct BusError : public std::exception {
     BusError(const StackFrame frame) { stackFrame = frame; }
 };
 
+// [B] MC68030UM-1989 §8.4: bus-fault frames.
 // POM68K O4 slice 3: 68030 MMU translation fault (bus error, vector 2,
-// format $A/$B frame per MC68030UM § 8.1.4). All fault details live in
+// format $A/$B frame per MC68030UM-1989 § 8.4). All fault details live in
 // Moira's mmu* members, captured by mmuPageFault before the throw — see
 // POM68K_VENDOR.md § MMU bus layer.
 struct MmuBusError : public std::exception { };
+// [B] MC68030UM-1989 §9.5.2 and §9.7.4: table-search bus errors.
 // POM68K: /BERR asserted by the host on a 68030 table-search descriptor
 // fetch (extBusError() while mmuInTableSearch). Carries nothing and leaves
 // no fault state behind: the search catches it and reports MMUSR B|I —
-// MC68030UM § 9.5.2, Table 9-3 (Moira.h § mmuInTableSearch).
+// MC68030UM-1989 § 9.5.2, Table 9-3 (Moira.h § mmuInTableSearch).
 struct MmuTableSearchBusError : public std::exception { };
 
 // Internal control transfer: a 68020/030 accepted an interrupt while the

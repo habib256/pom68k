@@ -3,6 +3,9 @@
 # VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 """Hold the evidence checker itself, then check the actual Moira comments."""
 import importlib.util
+import contextlib
+import hashlib
+import io
 import os
 from pathlib import Path
 import sys
@@ -87,6 +90,81 @@ class EvidenceCheckerTest(unittest.TestCase):
         self.assertEqual(grades.sst_pin_problems(fetcher, lock), [])
         self.assertTrue(grades.sst_pin_problems(fetcher.replace(grades.SST_REV, 'deadbee'), lock))
         self.assertTrue(grades.sst_pin_problems(fetcher, lock.replace(grades.SST_REV, 'deadbee')))
+
+    def test_manual_needs_its_own_edition_and_grade(self):
+        valid = "// [B] MC68030UM-1989 §9.7.2: translation control register"
+        self.assertEqual(grades.manual_problems(valid), [])
+        for wrong in (
+            "// [B] MC68030UM §9.7.2",
+            "// [B] MC68881/882UM §6.1",
+            "// [B] MC68030UM-1999 §9.7.2",
+            "// [D] WinUAE @ Hatari e77819f7\n// MC68030UM-1989 §9.7.2",
+            "// [B] MC68040UM-1993 §3.1\n// MC68030UM-1989 §9.7.2",
+        ):
+            with self.subTest(wrong=wrong):
+                self.assertTrue(grades.manual_problems(wrong))
+
+    def test_manual_rejects_missing_and_inherited_bad_locators(self):
+        for wrong in (
+            "// [B] MC68030UM-1989 §9.7.2.2",
+            "// [B] MC68030UM-1989 §9.7.2\n// MMUSR (§9.7.2.6)",
+            "// [B] MC68881UM-1989 §4.6.2.2",
+            "// [B] MC68040UM-1993 §3.4.1",
+            "// [B] MC68881UM-1989 Table 8-999",
+            "// [B] MC68030UM-1989: MMU",
+            "// Table 8-3: timing",
+            "// §9.7.2: translation control register",
+        ):
+            with self.subTest(wrong=wrong):
+                self.assertTrue(grades.manual_problems(wrong))
+        self.assertEqual(grades.manual_problems("// [B] M68000PRM-1992 CINV: physical address"), [])
+        self.assertEqual(grades.manual_problems("// POM68K_SURFACE.md § 1: host contract"), [])
+
+    def test_unknown_manual_claim_needs_a_witness(self):
+        unknown = "// [F] MC68040UM-1993 §4.3.2 does not prove this bypass"
+        self.assertTrue(grades.manual_problems(unknown))
+        self.assertEqual(grades.manual_problems(
+            unknown + "\n// Settled by: a cache-resident MOVES bus trace"), [])
+        self.assertTrue(grades.comment_problems("// [F] Host timing approximation"))
+        self.assertEqual(grades.comment_problems(
+            "// [F] Host timing approximation\n// Settled by: a calibrated bus trace"), [])
+
+    def test_retired_emulator_is_not_blessed_by_the_active_one(self):
+        active = "// [D] WinUAE @ Hatari e77819f7\n"
+        for wrong in ("// Musashi agrees", "// CLK rule", "// [D] Musashi agrees",
+                      "// [D] Musashi @ latest"):
+            self.assertTrue(grades.other_emulator_problems(active + wrong))
+        self.assertEqual(grades.other_emulator_problems(
+            "// [F] Musashi tree revision unavailable\n"
+            "// Settled by: replay at a pinned revision"), [])
+        self.assertEqual(grades.other_emulator_problems("// Musashi compatibility"), [])
+        self.assertEqual(grades.other_emulator_problems("// [D] Musashi @ 4.60"), [])
+
+    def test_manual_catalog_has_bounded_locators_and_pdf_identity(self):
+        catalog = grades.manual_catalog()
+        self.assertEqual(grades.catalog_problems(catalog), [])
+        import copy
+        bad = copy.deepcopy(catalog)
+        bad["MC68030UM-1989"]["sha256"] = "unverified"
+        self.assertTrue(grades.catalog_problems(bad))
+        bad = copy.deepcopy(catalog)
+        bad["MC68030UM-1989"]["locators"]["§9.7.2"] = 10000
+        self.assertTrue(grades.catalog_problems(bad))
+
+    def test_optional_pdf_verification_rejects_changed_and_missing_bytes(self):
+        original = b"reviewed source bytes"
+        source = {"checked-edition": {"file": "source.pdf",
+                  "sha256": hashlib.sha256(original).hexdigest()}}
+        with tempfile.TemporaryDirectory() as directory:
+            pdf = Path(directory) / "source.pdf"
+            pdf.write_bytes(original)
+            with patch.object(grades, "manual_catalog", return_value=source), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(grades.verify_manual_files(directory), 0)
+                pdf.write_bytes(original + b"changed")
+                self.assertEqual(grades.verify_manual_files(directory), 1)
+                pdf.unlink()
+                self.assertEqual(grades.verify_manual_files(directory), 1)
 
 
 if __name__ == "__main__":

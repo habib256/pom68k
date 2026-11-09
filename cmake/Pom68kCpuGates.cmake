@@ -103,11 +103,11 @@ add_test(NAME sst68040_fpuh
          COMMAND sst68040 "${POM68K_SST040_FPUH_DIR}" --fpu
                  --known "${CMAKE_CURRENT_SOURCE_DIR}/tests/sst68040_fpuh.known")
 
-# Evidence grades in the core (CLAUDE.md § Evidence grades): every comment
-# block of extern/moira/Moira that cites WinUAE or SingleStepTests carries
-# its own `[D]` revision (pinned oracle tree / corpus lock and fetcher).
-# Every WinUAE file:line exists in the oracle tree; checker negative
-# controls run before scanning the core. Repository-only, no asset.
+# Evidence grades: pinned emulator/corpus revisions and checked manual editions.
+# Manual B/F headers use tests/core_manuals.lock and reviewed locators;
+# unknown claims name a witness. A different source's grade is insufficient.
+# WinUAE file:line ranges are checked in the oracle tree; negative controls
+# run before scanning the core. Repository-only: PDF payloads are optional.
 add_test(NAME core_grades_test
          COMMAND python3 tests/core_grades_test.py
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})

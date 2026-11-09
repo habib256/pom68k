@@ -182,7 +182,8 @@ Moira::Op(u16 reg, u32 &pc) const
                 result.dw = u8(baseDispWords((u16)result.ext1));
                 result.ow = u8(outerDispWords((u16)result.ext1));
 
-                // Compensate Musashi bug (?)
+                // [F] POM68K audit: inherited Musashi syntax workaround, revision unknown.
+                // Settled by: a disassembly replay against a pinned Musashi revision.
                 if (instrStyle.syntax == Syntax::MUSASHI && (result.ext1 & 0x47) >= 0x44) {
 
                     result.ow = 0;

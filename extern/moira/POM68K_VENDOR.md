@@ -17,6 +17,8 @@ towards upstream had quietly expired while the file still read as if a rebase
 were the plan.
 
 What forced it, measured on this tree rather than remembered (re-measured
+2026-11-08 with rows 44 to 59: FPU corrections, portable continuation
+state, manual evidence and physical cache operands; before that
 2026-11-06 with rows 38 to 43: the DIVS absolute values back-ported from
 NeoST, the 68040 cache switch taken out of the environment, three NeoST
 68000 prefetch fixes, the 68000 bus-cycle order, three NeoST host hooks
@@ -31,13 +33,13 @@ pair):
 
 | | | how to re-measure |
 |---|---|---|
-| distinct `pom*` extension identifiers | **105** (60 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
+| distinct `pom*` extension identifiers | **104** (60 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
 | `POM68K`-marked lines | **492** | `grep -rn POM68K Moira/ \| wc -l` |
-| source files carrying a marker | **15 of 26** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **57** | this file |
+| source files carrying a marker | **16 of 26** | `grep -rln POM68K Moira/ \| wc -l` |
+| patch groups in the inventory below | **59** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h`, `MoiraState.h` | — |
 
-Fifty-seven patch groups, two of which (the JIT seam, row 22, and the ATC
+Fifty-nine patch groups, two of which (the JIT seam, row 22, and the ATC
 performance work, row 16) are not patches over upstream's design but a second
 consumer of it. A re-sync is no longer a merge with conflicts; it is a port.
 
@@ -115,8 +117,12 @@ find.
   68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3`, matching the fetcher
   and `tests/sst_corpora.lock`. The gate checks that agreement and rejects
   an unrelated oracle's grade/revision as evidence for the corpus. Manual
-  and other emulator citations still need the remainder of the grading pass
-  (`TODO.md` § Moteur › Surface).
+  citations now name an edition and a locator reviewed against the original
+  PDF, held in `tests/core_manuals.lock`. Their own `[B]` header establishes
+  primary-document evidence; an implementation approximation stays `[F]`
+  with a `Settled by:` witness. Historical Musashi comparisons whose
+  patched local tree was lost are F, not unpinned D. The remaining pass is
+  over hardware claims without any source (`TODO.md` § Moteur › Surface).
 - Sections are never rewritten when superseded, only annotated. § *Model support
   in this copy* (last section) is the current state; the journal is history.
 - The vector counts quoted throughout (`sst68000` 1 000 058, `sst68030` 3 082,
@@ -196,10 +202,12 @@ gate in the last column of each row.
 | 55 | **The interpreter arms the fetch window itself** — `pomSetInterpWindow(on, codeSpanFn, ctx)` and `pomInterpArm`, called on a window miss by the 68030 and 68040 loop heads and by `execute()` for the 68000/68010/68020; `jit::Engine` hands the window over when it is disabled and takes it back when it runs. Also drops a stale `assert(S == Word)` in `divlsMoira`: DIVS.L of `$80000000:00000000` by −1 overflows legitimately | `Moira.h`, `MoiraExecMMU_cpp.h`, `MoiraALU_cpp.h` | the window, its fetch path and its eviction hooks were the core's; only the decision to arm lived in the engine, so `POM68K_CPU_ENGINE=interp` — and any bare host — paid a translated bus read per opcode word. The arm is `Engine::armWindow` decision for decision, minus the block guards it has no use for. Fixed-cycle benches, interpreter: Quadra 605 19.75 s → 12.71 s (−36 %), LC II 13.26 s → 11.06 s (−17 %), Mac II 5.83 s → 5.06 s (−13 %), Plus within noise, fingerprints unchanged; JIT mode flat (it never ran this path) | `jit_bench` / `jit_bench_lcii` fingerprints, the lockstep gates (interpreter arm under the window now), `jit_asset_free_lockstep_test` |
 | 56 | **68030: a /BERR on a table-search descriptor fetch ends the search with MMUSR B\|I** — `extBusError()` raised while `mmuInTableSearch` throws the side-effect-free `MmuTableSearchBusError`; `mmuBusWalk` (now a wrapper over `mmuBusWalkBody`) and `mmuWalkTables` catch it: the bus walk adds B\|I to the status it had accumulated, so the ATC entry carries B and the retried access faults on its logical address; PTEST reports B\|I with the faulted descriptor not counted in N, and takes no exception | `MoiraExecMMU_cpp.h`, `Moira.h`, `MoiraTypes.h` | the walk used to throw the access's own fault from inside the search: same frame for a normal access, but no B entry left behind, and PTEST/PLOAD took an exception instead of reporting. MC68030UM (Freescale edition) § 9.5.2 p. 9-49, the ATC B bit p. 9-11, § 9.7.4 Table 9-3; WinUAE mmu030_table_search agrees. Was an "unverified" line of `POM68K_SURFACE.md` | `moira_rules_test` (fails on the old core: MMUSR $0400 after the fault, and PTEST level 7 taking vector 2) |
 | 57 | **Portable instruction-boundary state visitor** — `pomVisitState(Ar&)` owns the CPU inventory, adds the pending 6888x result, integrated-040 frame micro-state, 030 pipe and DF-cleared retry; an armed public MOVEM latch is carried with inactive EA normalized | `Moira.h`, `MoiraState.h` | the host-side visitor omitted state reachable between executed instructions; a fresh CPU lost SQRT completion, retried a software-completed bus access, refetched patched code, and emitted different FSAVE payloads. POM68K adapter delegates; format v29 refuses old payloads | `moira_state_test` |
+| 58 | **Manual evidence audit** — explicit editions and reviewed locators; model approximations and lost historical Musashi comparisons have an F witness | `Moira.cpp`, `Moira.h`, `MoiraALU_cpp.h`, `MoiraCache040.h`, `MoiraDasm_cpp.h`, `MoiraDataflow_cpp.h`, `MoiraExceptions_cpp.h`, `MoiraExecFPU_cpp.h`, `MoiraExecMMU_cpp.h`, `MoiraExec_cpp.h`, `MoiraTypes.h` | nonexistent or misattributed sections and unsupported silicon claims could be carried into another host as established rules. Comments only; CPU executable tokens unchanged | `core_grades_test`, optional `tools/core_grades.py --verify-manual-files DIR`, `docs_test` |
+| 59 | **Physical CINV/CPUSH operands** — `pomCacheOp040` takes An directly; the logical resolver and its private peek walk are removed | `Moira.h`, `MoiraExecMMU_cpp.h` | with paging enabled, cache management selected an unrelated translated alias or skipped a resident physical line; cold operands also read guest descriptors. Motorola defines the operand as physical | `cache040_test` (128 physical-operand combinations, RAM writeback and descriptor access checks) |
 
-Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54 and 56 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
-when nothing arms them); rows 48 and 55 are performance alone, with no architectural effect. The eleven files carrying no `POM68K` marker at all —
-`MoiraDasm*` (4), `StrWriter*` (2), `MoiraDebugger.h`, `MoiraMacros.h`,
+Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54, 56 and 59 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
+when nothing arms them); rows 48 and 55 are performance alone, with no architectural effect. Row 58 is evidence documentation only. The ten files carrying no `POM68K` marker at all —
+`MoiraDasm.h`, `MoiraDasmFPU_cpp.h`, `MoiraDasmMMU_cpp.h`, `StrWriter*` (2), `MoiraDebugger.h`, `MoiraMacros.h`,
 `MoiraALU.h`, `MoiraExceptions.h`, `MoiraInit.h` — are where an upstream fix can
 still be taken as-is; everything else is ported by hand, per the fork decision
 above. One caveat on that list: `MoiraMacros.h` carries a **NeoST** patch
@@ -1876,6 +1884,90 @@ under both engines. `tests/CpuChunkMap.h` now names the field behind a
 divergence offset, so the next occurrence reports "CPU chunk +256 =
 writeBuffer" instead of "byte 312".
 
+## Manual evidence audit (2026-11-08, row 58)
+
+The code's manual aliases designate specific documents, not a processor
+family with unspecified pagination. `tests/core_manuals.lock` owns the URLs,
+editions, SHA-256 digests and one-based PDF pages for the checked locators:
+
+| Alias | Reviewed primary document |
+|---|---|
+| `MC68030UM-1989` | Motorola second edition, MC68030UM/AD REV 1 (1989), complete scan hosted by Vintage Apple |
+| `MC68040UM-1993` | NXP-hosted Motorola M68040 User's Manual, cover 1990, revised 1992/1993 |
+| `MC68881UM-1989` | NXP-hosted MC68881/MC68882 User's Manual, second edition (1989) |
+| `M68000PRM-1992` | NXP-hosted M68000 Family Programmer's Reference Manual (1992) |
+
+This pass reviewed 116 manual-containing comment units against those PDFs.
+It repaired both nonexistent references (030 §§ 9.7.2.2, 9.7.2.6, 9.7.5.5,
+9.7.6) and valid section numbers pointing at the wrong subject (TT, ATC,
+exception frames, PTEST/PFLUSH, rounding and FPU state/timing). The NXP
+third-edition 030 parts were cross-checked: the nonexistent paragraphs
+were not explained by an edition change. The complete 1989 scan avoids
+mixing the split third-edition parts' different PDF pagination.
+
+A primary citation does not bless a stronger implementation claim. The
+040 ATC remains 32 fully associative entries without a supervisor tag,
+against the manual's 64 four-way entries. The cache replacement counter
+advances only on allocation, while hardware also counts cache accesses.
+`Moira::reset` is a host cold initialization, not the 030 RESET pin's
+ATC-retaining behavior. The old `Cache040::touch` policy helper does not
+implement the resident-line handling required for cache-inhibited accesses;
+it is not the live data-access routine. Uniform FPU format surcharges and
+i-cache miss penalties remain estimates. Each such cited approximation
+carries F and its missing witness rather than borrowing the adjacent B.
+Locked and MOVES accesses being implicitly noncacheable are primary-backed
+by 040 §§ 7.4.1 and 7.4.3. CINV/CPUSH operands being physical is confirmed by
+040 § 4.2. The translator correction follows in row 59 below.
+
+The retired Musashi oracle was a locally patched tree deleted before this
+repository's history. Historical version labels cannot identify its exact
+bytes: those comparisons stay F until a pinned replay exists. Unqualified
+Clock Signal aliases attached to SST observations were removed; the actual
+SingleStepTests revision remains their D evidence.
+
+`core_grades_test` holds the reviewed edition/locator headers, independent
+source attribution and explicit F witnesses. Its 11 checker controls include
+wrong editions/locators, lost oracle revisions and mismatching PDF bytes.
+The new rules reject 113 manual comment units from the pre-audit tree.
+Normal CI needs no manual download; reviewers can check the original bytes:
+
+```sh
+python3 tools/core_grades.py --check
+python3 tools/core_grades.py --verify-manual-files /path/to/manuals
+```
+
+The lock is an identity/locator register, not an automated reading of the
+manual or proof of uncited hardware claims. `--apply` does not promote
+manual references to B. This pass changes comments in eleven core files;
+comparison with the pre-audit tree preserves every executable C++ token.
+No CPU algorithm or hardware behavior is changed by row 58.
+
+## Physical cache-management operands (2026-11-08, row 59)
+
+The audit's confirmed rule now has an executed regression: CINV/CPUSH
+line/page operands are physical addresses, including when paging is on
+(MC68040UM-1993 § 4.2; M68000PRM-1992 CINV). `pomCacheOp040` takes An
+directly. The old `pomCache040Phys` resolver and its sole-use
+`mmu040PeekWalk` are gone. CPUSH still drains dirty physical data through
+the host bus, which may raise a real writeback fault; only operand
+translation and its descriptor accesses are removed.
+
+`cache040_test` drives the actual opcodes with different resident physical
+and translated-alias lines. Its 128 combinations cover CINV/CPUSH, all four
+cache fields (including no-op), line/page scope, 4K/8K pages, cold/warm ATC
+and caches enabled/disabled. It checks the selected lines, physical RAM
+writes and unchanged/unread page tables. The existing CPU sequence now
+also checks physical lines with invalid logical mappings and descriptor
+chains that would have entered the bus-error hole. The final regression
+fails 196 checks on the pre-fix core; the old gate had instead required the
+incorrect translation. All-scope, privilege/decode, TTR and ordinary cache
+transactions retain their existing coverage.
+
+The earlier M1 descriptions are history: the non-faulting
+logical resolver and its tests were deliberate but based on the wrong
+operand rule. The debugger's independent `src/Mmu040Peek.h` remains a
+logical-address peek; cache management no longer needs a copy of it.
+
 ## Model support in this copy (`MoiraTypes.h`)
 
 - 68000 / 68010 — cycle-exact execution ✓ (Mac Plus phase)
@@ -1910,7 +2002,7 @@ writeBuffer" instead of "byte 312".
   residency guard. Native sole-access cache-line reads and writes have
   their own admission/guard contract (`src/jit/POM68K_JIT.md` § 8,
   `POM68K_SURFACE.md` § 9). Architectural gaps remain: the 040 ATC geometry
-  and supervisor tag, cache-operation address semantics, fault stamps
+  and supervisor tag, replacement-counter cadence, fault stamps
   during fills/writebacks and loss of dirty copyback data on save/load
   (`TODO.md` § Moteur › Justesse 68040). Pin-level BCLK/TA waveform
   simulation is also outside scope; the existing transaction gates do not

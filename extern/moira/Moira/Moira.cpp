@@ -256,8 +256,11 @@ Moira::reset()
     mmu040MovemArmed = false;
     mmu040MovemEa = 0;
 
-    // POM68K O4 slice 3: reset invalidates the ATC and the MMU restart
-    // bookkeeping (MC68030UM § 9.5.2; TC.E is cleared via reg = { })
+    // [B] MC68030UM-1989 §9.2.2; host reset policy distinguished below.
+    // POM68K host reset invalidates ATCs and restart bookkeeping. Hardware
+    // reset clears TC/TTx enable bits but leaves the ATC intact (§9.2.2).
+    // [F] Cold-reset initialization policy, not a pin-level warm-reset model.
+    // Settled by: a reset-retention gate and a defined cold/warm reset API.
     for (auto &e : mmuAtcArr) { e.valid = false; e.mru = false; }
     mmuAtcMruCount = 0;                 // POM68K perf: O(1) LRU counter
     for (auto &r : mmuAtcLast) r[0] = r[1] = 0;
@@ -275,8 +278,9 @@ Moira::reset()
     mmuRmw = false;
     mmuPipeCnt = 0;                     // POM68K O6: prefetch-pipe carry
 
+    // [B] MC68881UM-1989 §10.2 and §6.4.2.1: FPCP reset state.
     // POM68K O5: the reset line also resets an attached FPU
-    // (MC68881/882UM § 6.1)
+    // (MC68881UM-1989 § 6.4.2.1)
     fpuResetState();
 
     SYNC(16);

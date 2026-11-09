@@ -154,6 +154,8 @@ Moira::shift(int cnt, u64 data) {
                 data = shifted;
             }
 
+            // [F] Retired Musashi comparison: local patched revision unavailable.
+            // Settled by: a replay with a pinned replacement oracle.
             // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
             // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // POM68K: shifting past the operand width clears C and X even
@@ -880,8 +882,9 @@ Moira::divlsMoira(i64 a, u32 src)
 
     if ((u64)a == 0x8000000000000000UL && (i32)src == -1) {
 
+        // [B] M68000PRM-1992 DIVS: quotient overflow.
         // POM68K: reachable for the 64-bit dividend too — DIVS.L
-        // $80000000:00000000 / -1 overflows, V is the answer (M68000PRM,
+        // $80000000:00000000 / -1 overflows, V is the answer (M68000PRM-1992,
         // DIVS). Upstream asserted S == Word here, which a Debug build of
         // jit_asset_free_lockstep_test tripped on 2026-11-07.
         reg.sr.v = 1;

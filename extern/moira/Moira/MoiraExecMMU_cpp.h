@@ -112,14 +112,17 @@ Moira::isValidExtMMU(Instr I, Mode M, u16 op, u32 ext) const
 }
 
 
+// [B] MC68030UM-1989 §9.8: MMU instruction overview; decode from oracle below.
+// [F] Retired Musashi comparison: local patched revision unavailable.
+// Settled by: a replay with a pinned replacement oracle.
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 //
 // POM68K O4 — 68030 MMU instruction execution, TWO-ORACLE ARBITRATED
 // (2026-07-15). Originally converged on Musashi alone; the first
 // arbitration turn re-ran every dispute (oracle/fuzz/disputes/NOTES.md
 // D1-D5) against WinUAE (oracle/uae, hatari e77819f7 cpummu030.c +
-// gencpu MMUOP030 handlers), which the MC68030 User's Manual backs on
-// every conflict. The decode below therefore replicates WinUAE:
+// gencpu MMUOP030 handlers). The manual supplies the architectural
+// contract; oracle-specific decode/order choices remain grade D. The decode below therefore replicates WinUAE:
 //
 //   * D1  — PMOVE/PTEST/PLOAD/PFLUSH are privileged (vector 8); S is
 //           checked before the extension word is fetched.
@@ -141,9 +144,8 @@ Moira::isValidExtMMU(Instr I, Mode M, u16 op, u32 ext) const
 // words are consumed and (An)+/-(An) adjustments survive a Line-F trap
 // (probes P10b/P12). Line-F stacks a format $0 frame with the
 // instruction address; vector 56 stacks format $0 with the next PC.
-// No ATC is modelled: both oracles flush theirs on every state load, so
-// single-instruction vectors never observe ATC state.
-//
+// Those single-instruction arbitration vectors do not observe retained
+// ATC state: the oracles flush it on load. The bus layer below models it.
 
 // Raw physical bus accesses used by the table walk. Both oracles read the
 // translation tree in physical space; the bus translation layer is a
@@ -161,6 +163,8 @@ Moira::mmuWrite32(u32 addr, u32 val) const
     write16(addr + 2, u16(val));
 }
 
+// [F] Retired Musashi comparison: local patched revision unavailable.
+// Settled by: a replay with a pinned replacement oracle.
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // FC field of PTEST/PFLUSH/PLOAD extension words, WinUAE
 // mmu_op30_helper_get_fc: bits 4-3 select the source — 10 immediate,
@@ -179,9 +183,10 @@ Moira::mmuFCFromModes(u16 modes, int &fc) const
     }
 }
 
-// Transparent translation match (MC68030UM § 9.5.4, TTx format § 9.7.3):
+// [B] MC68030UM-1989 §9.3 and §9.7.3: transparent translation.
+// Transparent translation match (MC68030UM-1989 § 9.3, TTx format § 9.7.3):
 // enabled (E, bit 15), address base/mask on A31-A24, FC base/mask, R/W(M).
-// On a match the MMUSR T bit is set (§ 9.7.2.6).
+// On a match the MMUSR T bit is set (§ 9.7.4).
 bool
 Moira::mmuMatchTT(u32 tt, u32 addr, int fc, int rw, u16 &sr) const
 {
@@ -202,7 +207,8 @@ Moira::mmuMatchTT(u32 tt, u32 addr, int fc, int rw, u16 &sr) const
     return true;
 }
 
-// MMUSR accumulation while walking (§ 9.7.2.6): M from page descriptors,
+// [B] MC68030UM-1989 §9.7.4: MMUSR flags.
+// MMUSR accumulation while walking (§ 9.7.4): M from page descriptors,
 // WP from any valid descriptor, S from long descriptors on user accesses.
 void
 Moira::mmuUpdateSR(int type, u32 entry, int fc, bool isLong, u16 &sr) const
@@ -230,7 +236,8 @@ Moira::mmuUpdateSR(int type, u32 entry, int fc, bool isLong, u16 &sr) const
     }
 }
 
-// History maintenance (§ 9.5.3.5): the walk sets U in every descriptor it
+// [B] MC68030UM-1989 §9.5.4 and §9.8: table updates and PTEST/PLOAD.
+// History maintenance (§ 9.5.4): the walk sets U in every descriptor it
 // traverses, and U+M in the page descriptor on a write access that is not
 // write-protected. PTEST performs no updates (§ 9.8: it "does not alter the ATC"); PLOAD does.
 void
@@ -245,7 +252,10 @@ Moira::mmuUpdateDescriptor(u32 tptr, int type, u32 entry, int rw) const
     }
 }
 
-// Translation-table walk (§ 9.5.3). Short (4-byte) and long (8-byte)
+// [B] MC68030UM-1989 §9.5.2: table search; PTEST simplification below.
+// [F] Retired Musashi comparison: local patched revision unavailable.
+// Settled by: a replay with a pinned replacement oracle.
+// Translation-table walk (§ 9.5.2). Short (4-byte) and long (8-byte)
 // descriptors, early termination (page descriptor above the last level),
 // indirect descriptors on the last populated level, FCL initial lookup,
 // early abort on WP (write access) and S-only (user access). Limit fields
@@ -260,7 +270,7 @@ Moira::mmuWalkTables(u32 addrIn, int type, u32 table, int fc, int limit,
     const u32 bits = reg.tc & 0xffff;                   // TIA..TID
     const int pagesize = int(reg.tc >> 20) & 0xf;       // PS
     const int is = int(reg.tc >> 16) & 0xf;             // IS
-    int bitpos = (reg.tc & 0x01000000) ? 16 : 12;       // FCL (§ 9.5.3.1)
+    int bitpos = (reg.tc & 0x01000000) ? 16 : 12;       // [B] MC68030UM-1989 §9.5.5.1: function-code lookup. — FCL (§ 9.5.5.1)
     int pageshift = is;
     bool resolved = false;
 
@@ -282,6 +292,8 @@ Moira::mmuWalkTables(u32 addrIn, int type, u32 table, int fc, int limit,
         u32 entry, entry2;
 
         bitpos -= 4;
+        // [F] Retired Musashi comparison: local patched revision unavailable.
+        // Settled by: a replay with a pinned replacement oracle.
         // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K D3 (WinUAE-arbitrated 2026-07-15): a level is the last
         // one when the NEXT index field is zero (WinUAE last_table);
@@ -294,8 +306,10 @@ Moira::mmuWalkTables(u32 addrIn, int type, u32 table, int fc, int limit,
 
         switch (type) {
 
-            case 0: // invalid descriptor → MMUSR I (§ 9.7.2.6)
+            case 0: // [B] MC68030UM-1989 §9.7.4: invalid descriptor status. — invalid descriptor → MMUSR I (§ 9.7.4)
 
+                // [F] Retired Musashi comparison: local patched revision unavailable.
+                // Settled by: a replay with a pinned replacement oracle.
                 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                 // POM68K D4 (WinUAE-arbitrated 2026-07-15): OR, don't
                 // assign — WP accumulated on the path stays visible
@@ -305,7 +319,7 @@ Moira::mmuWalkTables(u32 addrIn, int type, u32 table, int fc, int limit,
                 resolved = true;
                 break;
 
-            case 1: // page descriptor (or early termination, § 9.5.3.4)
+            case 1: // [B] MC68030UM-1989 §9.5.3.1: early termination. — page descriptor (or early termination, § 9.5.3.1)
 
                 if (!ptest) {
 
@@ -316,7 +330,7 @@ Moira::mmuWalkTables(u32 addrIn, int type, u32 table, int fc, int limit,
                 resolved = true;
                 break;
 
-            case 2: // valid 4-byte (short) descriptors (§ 9.5.1.2)
+            case 2: // [B] MC68030UM-1989 §9.5.1.3: short table descriptor. — valid 4-byte (short) descriptors (§ 9.5.1.3)
 
                 level++;
                 addrOut = table + (tableIndex << 2);
@@ -336,7 +350,7 @@ Moira::mmuWalkTables(u32 addrIn, int type, u32 table, int fc, int limit,
                 if (!ptest) mmuUpdateDescriptor(addrOut, type, entry, rw);
                 break;
 
-            case 3: // valid 8-byte (long) descriptors (§ 9.5.1.2)
+            case 3: // [B] MC68030UM-1989 §9.5.1.4: long table descriptor. — valid 8-byte (long) descriptors (§ 9.5.1.4)
 
                 level++;
                 addrOut = table + (tableIndex << 3);
@@ -349,6 +363,8 @@ Moira::mmuWalkTables(u32 addrIn, int type, u32 table, int fc, int limit,
                     level++;
                     addrOut = entry2 & 0xfffffffc;
                     entry = mmuRead32(addrOut);
+                    // [F] Retired Musashi comparison: local patched revision unavailable.
+                    // Settled by: a replay with a pinned replacement oracle.
                     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                     // POM68K D3 (WinUAE-arbitrated 2026-07-15): the
                     // second long lives at +4. Musashi re-read +0; the
@@ -388,14 +404,14 @@ Moira::mmuWalkTables(u32 addrIn, int type, u32 table, int fc, int limit,
     }
     mmuInTableSearch = false;
 
+    // [B] MC68030UM-1989 §9.7.4: invalid descriptor at the search limit.
     // POM68K: a descriptor fetched AT the level limit is still examined —
     // an invalid one reports I. The loop above examines a descriptor at
     // the top of the next pass, which the limit prevents.
-    // [B] MC68030UM (Freescale edition) § 9.7.4, Table 9-3, PTEST levels
+    // MC68030UM-1989 § 9.7.4, Table 9-3, PTEST levels
     //     1-7: "The I bit is set if the DT field of a table or a page
     //     descriptor encountered during the search is set to invalid" —
-    //     whatever ended the search. (Cited as "§ 9.7.6" until 2026-11-08:
-    //     no such section in that edition.)
+    //     whatever ended the search. (The former subsection citation did not exist in either checked edition.)
     // [D] WinUAE cpummu030.c mmu030_table_search @ Hatari e77819f7 checks
     //     each descriptor as fetched, before its level test.
     // Found by fuzz vector "mmu/tt seed=1006 #1188" (PTESTR level 1 into a
@@ -406,8 +422,9 @@ Moira::mmuWalkTables(u32 addrIn, int type, u32 table, int fc, int limit,
     return resolved;
 }
 
+// [B] MC68030UM-1989 §9.7.1 and §9.8: root selection and explicit searches.
 // Root pointer selection for PTEST/PLOAD walks: SRP when SRE is set and
-// FC is a supervisor code, else CRP (§ 9.7.2.2). Like both oracles, the
+// FC is a supervisor code, else CRP (§ 9.7.1). Like both oracles, the
 // caller walks even when translation is off (TC.E = 0, dispute D5) — a
 // zeroed root pointer then reads as DT invalid → MMUSR I.
 void
@@ -425,21 +442,21 @@ Moira::mmuRootPointer(int fc, u32 &table, int &type) const
     }
 }
 
+// [B] MC68030UM-1989 §9.2, §9.4, §9.5.2 and §8.4: translation architecture.
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 //
 // POM68K O4 slice 3 — 68030 MMU BUS LAYER (2026-07-15)
 //
-// Bus-level address translation (MC68030UM § 9.5), converged on the
+// Bus-level address translation (MC68030UM-1989 § 9.2), converged on the
 // primary oracle WinUAE cpummu030.c (hatari e77819f7): transparent
-// translation first (§ 9.5.4), then the 22-entry ATC (§ 9.5.2), then a
-// table search (§ 9.5.3) that fills the ATC and maintains the U/M bits.
+// translation first (§ 9.3), then the 22-entry ATC (§ 9.4), then a
+// table search (§ 9.5.2) that fills the ATC and maintains the U/M bits.
 // Translation faults raise a bus error (vector 2) with a format $A frame
 // (fault on the instruction's last write) or a format $B frame (any
-// other data or instruction-stream fault) — § 8.1.4. The internal-state
+// other data or instruction-stream fault) — § 8.4. The internal-state
 // words of those frames (access log, pending-fixup encodings, SSW,
 // MOVEM counters) replicate WinUAE's byte-for-byte, because the fuzzing
 // differ compares raw RAM. See POM68K_VENDOR.md § MMU bus layer.
-//
 
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Instruction-stream word fetch (WinUAE x_prefetch / mmu030_get_iword):
@@ -642,11 +659,12 @@ Moira::mmuMatchTTAccess(u32 addr, u8 fc, bool write) const
     return false;
 }
 
+// [B] MC68030UM-1989 §9.5.4: table-search descriptor updates.
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Bus-level translation-table search — WinUAE mmu030_table_search with
 // level == 0: FCL lookup, short/long descriptors, limit checks, early
 // termination, indirection, U on every traversed descriptor and U+M on
-// the page descriptor (§ 9.5.3.5, skipped on supervisor violation).
+// the page descriptor (§ 9.5.4, skipped on supervisor violation).
 // Returns MMUSR-style status bits; pageAddr/ci describe the page.
 u16
 Moira::mmuBusWalk(u32 addr, u8 fc, bool write, u32 &pageAddr, bool &ci)
@@ -701,8 +719,9 @@ Moira::mmuBusWalkBody(u32 addr, u8 fc, bool write, u32 &pageAddr, bool &ci,
     int descrNum = 0;
     u32 descrAddr = 0;
 
+    // [B] MC68030UM-1989 §9.7.1: root pointer.
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // Root pointer (SRP when SRE and supervisor FC, § 9.7.2.2); reserved
+    // Root pointer (SRP when SRE and supervisor FC, § 9.7.1); reserved
     // bits of the upper long are masked (WinUAE RP_ZERO_BITS)
     u64 rp = ((tc & 0x02000000) && super) ? reg.srp : reg.crp;
     u32 descr0 = u32(rp >> 32) & ~u32(0x0000FFFC);
@@ -719,7 +738,8 @@ Moira::mmuBusWalkBody(u32 addr, u8 fc, bool write, u32 &pageAddr, bool &ci,
         case 3: nextSize = 8; break;
     }
 
-    // Function code lookup (§ 9.5.3.1)
+    // [B] MC68030UM-1989 §9.5.5.1: function-code lookup.
+    // Function code lookup (§ 9.5.5.1)
     if (tc & 0x01000000) {
 
         u32 tableAddr = (descrSize == 4 ? descr0 : descr1) & 0xFFFFFFF0;
@@ -760,7 +780,8 @@ Moira::mmuBusWalkBody(u32 addr, u8 fc, bool write, u32 &pageAddr, bool &ci,
             u32 tableIndex = (addr & tmask[t]) >> tshift[t];
             t++;
 
-            // Limit check on long descriptors (§ 9.5.1.5)
+            // [B] MC68030UM-1989 §9.5.1.1: limit fields.
+            // Limit check on long descriptors (§ 9.5.1.1)
             if (descrSize == 8) {
                 u32 limit = (descr0 & 0x7FFF0000) >> 16;
                 if ((descr0 & 0x80000000) && tableIndex < limit) { status |= 0x4400; goto stopSearch; }
@@ -787,7 +808,8 @@ Moira::mmuBusWalkBody(u32 addr, u8 fc, bool write, u32 &pageAddr, bool &ci,
 
     } while (t <= lastTable);
 
-    // Indirect descriptor on the last populated level (§ 9.5.3.3)
+    // [B] MC68030UM-1989 §9.5.3.2: indirection.
+    // Indirect descriptor on the last populated level (§ 9.5.3.2)
     {
         u32 indirect = (descrSize == 4 ? descr0 : descr1) & 0xFFFFFFFC;
         descrNum++;
@@ -830,7 +852,8 @@ pageDescriptor:
                 if (!(descr0 & 0x80000000) && tableIndex > limit) { status |= 0x4400; goto stopSearch; }
             }
         }
-        // Unused index bits are added to the page address (§ 9.5.3.4)
+        // [B] MC68030UM-1989 §9.5.3.1: early-termination address bits.
+        // Unused index bits are added to the page address (§ 9.5.3.1)
         u32 unused = 0;
         for (int i = t; i <= lastTable; i++) unused |= tmask[i];
         pageAddr = addr & unused;
@@ -941,8 +964,9 @@ Moira::mmuAtcFill(u32 addr, u8 fc, bool write)
     e.writeProtect = (status & 0x0800) != 0;
 }
 
+// [B] MC68030UM-1989 §9.8: PFLUSH.
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-// ATC flushes (§ 9.7.3 PFLUSH variants; WinUAE mmu030_flush_atc_*)
+// ATC flushes (§ 9.8 PFLUSH variants; WinUAE mmu030_flush_atc_*)
 void
 Moira::mmuAtcFlushAll()
 {
@@ -1019,6 +1043,7 @@ Moira::mmuTranslateAccess(u32 addr, u8 fc, bool write, u32 sswFlags)
     return (e.physical & ~mmuPageMask()) | (addr & mmuPageMask());
 }
 
+// [B] MC68030UM-1989 §8.2.1: documented SSW fields; oracle-private bits below.
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Fault capture + throw (WinUAE mmu030_page_fault): SSW per § 8.2.1
 // (oracle-arbitrated encodings, incl. the double DF bit), pending-fixup
@@ -1461,6 +1486,8 @@ Moira::mmuDecodeEA(int n)
     }
 }
 
+// [F] Retired Musashi comparison: local patched revision unavailable.
+// Settled by: a replay with a pinned replacement oracle.
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // MMU configuration exception, vector 56 (invalid TC or root pointer
 // written by PMOVE). WinUAE-arbitrated frame: four-word format $0 with
@@ -1578,7 +1605,8 @@ Moira::execPFlush(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    // PFLUSH by FC (mode $10) / by FC + EA (mode $18), § 9.7.3. The FC
+    // [B] MC68030UM-1989 §9.8: PFLUSH variants.
+    // PFLUSH by FC (mode $10) / by FC + EA (mode $18), § 9.8. The FC
     // field is validated (Line-F on bits 4-3 = 11); the fc+ea form also
     // validates the EA. POM68K O4 slice 3: the flushes are real.
     int n = _____________xxx(opcode);
@@ -1596,8 +1624,9 @@ Moira::execPFlush(u16 opcode)
         return;
     }
 
+    // [B] MC68030UM-1989 §9.8: PFLUSH.
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K O4 slice 3: the ATC is real now (§ 9.7.3; WinUAE
+    // POM68K O4 slice 3: the ATC is real now (§ 9.8; WinUAE
     // mmu_op30_pflush modes $10/$18)
     u32 fcMask = u32(modes >> 5) & 7;
 
@@ -1645,8 +1674,9 @@ Moira::execPFlush40(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // [B] MC68040UM-1993 §3.7.2: PFLUSH variants.
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K Q2/Q8: PFLUSHN/PFLUSH/PFLUSHAN/PFLUSHA (M68040UM § 3.4.1),
+    // POM68K Q2/Q8: PFLUSHN/PFLUSH/PFLUSHAN/PFLUSHA (MC68040UM-1993 § 3.7.2),
     // supervisor-only (WinUAE cpuemu_31 op_f500: Exception 8 first).
     // Mode field bits 4:3 select the variant (MoiraDasmMMU_cpp.h).
     SUPERVISOR_MODE_ONLY
@@ -1680,9 +1710,10 @@ Moira::execPLoad(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // [B] MC68030UM-1989 §9.8: PLOAD.
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // MC68030UM § 9.7 PLOAD: table search + ATC fill. The
-    // search's history updates (U, and U+M for PLOADW, § 9.5.3.5) land in
+    // MC68030UM-1989 § 9.8 PLOAD: table search + ATC fill. The
+    // search's history updates (U, and U+M for PLOADW, § 9.5.4) land in
     // RAM, early aborts included. MMUSR is NOT affected. WinUAE goes
     // straight to the table search — no TT match, no fc=7 bypass — and
     // runs even with translation disabled (D5). Unused extension bits
@@ -1720,8 +1751,11 @@ Moira::execPMove(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // [B] MC68030UM-1989 §9.8 and §9.7.5.3: PMOVE/configuration exception.
+    // [F] Retired Musashi comparison: local patched revision unavailable.
+    // Settled by: a replay with a pinned replacement oracle.
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // MC68030UM § 9.7.5 PMOVE: move to/from TT0/TT1, TC (32-bit),
+    // MC68030UM-1989 § 9.8 PMOVE: move to/from TT0/TT1, TC (32-bit),
     // SRP / CRP (64-bit), MMUSR (16-bit). WinUAE-arbitrated validation:
     // memory-indirectable EA only, zero low byte, no rw+fd, no fd on
     // MMUSR, only the six real registers — everything else Line-F.
@@ -1767,7 +1801,7 @@ Moira::execPMove(u16 opcode)
             else    reg.tt1 = readM<C, M, Long>(ea);
             break;
 
-        case 0x10:  // TC (§ 9.7.2.2)
+        case 0x10:  // [B] MC68030UM-1989 §9.7.2: TC. — TC (§ 9.7.2)
 
             if (rw) {
 
@@ -1847,7 +1881,7 @@ Moira::execPMove(u16 opcode)
             }
             break;
 
-        case 0x18:  // MMUSR (§ 9.7.5.5); fd must be clear
+        case 0x18:  // [B] MC68030UM-1989 §9.7.4 and §9.8: MMUSR/PMOVE. — MMUSR (§ 9.7.4); fd must be clear
 
             if (fd) {
 
@@ -1882,8 +1916,9 @@ Moira::execPTest(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // [B] MC68030UM-1989 §9.8: PTEST.
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // MC68030UM (Freescale edition) § 9.8, PTEST. WinUAE-arbitrated: level 0 searches the
+    // MC68030UM-1989 § 9.8, PTEST. WinUAE-arbitrated: level 0 searches the
     // TT registers and the (empty) ATC only — a TT match sets T, a miss
     // sets I; level > 0 walks the translation tree directly (no TT
     // match, no fc=7 bypass), regardless of TC.E (D5). Validation:
@@ -1957,13 +1992,16 @@ Moira::execPTest40(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // [B] MC68040UM-1993 §3.7.3: PTEST; missing ATC side effects below.
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K Q3: PTESTR/PTESTW (M68040UM § 3.4.2; WinUAE mmu_op_real,
+    // POM68K Q3: PTESTR/PTESTW (MC68040UM-1993 § 3.7.3; WinUAE mmu_op_real,
     // PTEST branch), supervisor-only. DFC selects the address space
     // (super = dfc&4, data = (dfc&3) != 2); a TTR hit reports T|R (or B
     // when a PTESTW hits a write-protected TTR), otherwise the walk's
     // page descriptor lands in MMUSR040 (0 when invalid; WinUAE
     // mmu_fill_atc status = phys | G|Ux|S|CM|M|W|R).
+    // [F] Hardware PTEST flushes/refills its ATC entry; this fork does not.
+    // Settled by: the ATC side-effect gate in TODO, Justesse 68040.
     SUPERVISOR_MODE_ONLY
 
     int n = _____________xxx(opcode);
@@ -2793,8 +2831,10 @@ Moira::pomCache040Touch(bool data, u32 pa, bool write, int cm, int szCode)
     pomCache040Move16 = szCode == 3;
     pomCache040Enabled = (reg.cacr & (data ? 0x80000000 : 0x8000)) != 0;
 
-    // Locked transfers and MOVES alternate-space accesses are implicitly
-    // noncacheable (MC68040UM §7.4.3), independently of descriptor CM.
+    // [B] MC68040UM-1993 §7.4.1 and §7.4.3: implicitly noncacheable
+    // byte/word/long read/write transfers include RMW and MOVES accesses,
+    // independently of descriptor CM. §4.3.2 also specifies serialization
+    // for locked accesses; serialization alone was not the cache-inhibit proof.
     if ((data && mmu040Lrmw) || mmu040Moves >= 0) pomCache040Enabled = false;
 }
 
@@ -3011,91 +3051,20 @@ Moira::pomSnoop040Write(u32 pa, const u8 *src, int bytes, bool sink)
     return inhibitMemory;
 }
 
-u32
-Moira::mmu040PeekWalk(u32 addr, bool super) const
-{
-    // mmu040Walk minus every side effect: no U/M descriptor write-back,
-    // no fault — the CINV/CPUSH operand resolver (M1) may not disturb
-    // MMU state the interpreter would not have disturbed. Reads guest
-    // RAM only (page tables), like the real walk does.
-    u32 wp = 0;
-
-    u32 desc = super ? reg.srp040 : reg.urp040;
-    u32 descAddr = (desc & 0xFFFFFE00) | ((addr >> 23) & 0x1FC);
-    desc = mmuRead32(descAddr);
-    if (!(desc & 2)) return 0;                          // invalid root
-    wp |= desc;
-
-    descAddr = (desc & 0xFFFFFE00) | ((addr >> 16) & 0x1FC);
-    desc = mmuRead32(descAddr);
-    if (!(desc & 2)) return 0;                          // invalid pointer
-    wp |= desc;
-
-    if (reg.tc040 & 0x4000) {                           // 8K pages
-        descAddr = (desc & 0xFFFFFF80) + ((addr >> 11) & 0x7C);
-    } else {                                            // 4K pages
-        descAddr = (desc & 0xFFFFFF00) + ((addr >> 10) & 0xFC);
-    }
-    desc = mmuRead32(descAddr);
-    if ((desc & 3) == 2) {                              // indirect (once)
-        descAddr = desc & 0xFFFFFFFC;
-        desc = mmuRead32(descAddr);
-    }
-    if (!(desc & 1)) return 0;                          // invalid page
-    desc |= wp & 4;                                     // accumulated WP
-    return desc;
-}
-
-bool
-Moira::pomCache040Phys(u32 addr, u32 &pa)
-{
-    // Non-faulting logical → physical for a CINV/CPUSH operand. The
-    // caches are physically indexed/tagged, so line/page scopes need the
-    // operand translated — through the DATA side (UM § 4.5: the operand
-    // is a data reference). ATC scan without MRU/M side effects, then
-    // the read-only walk; an unmapped operand skips the op (M1: nothing
-    // to lose — memory is current).
-    const bool super = reg.sr.s;
-    if (mmu040MatchTTR(addr, super, true)) { pa = addr; return true; }
-    if (!mmu040Enabled()) { pa = addr; return true; }
-
-    const u32 maski = mmu040PageMaskI();
-    for (const Mmu040AtcEntry &e : mmu040AtcD) {
-        if (e.valid && (e.logical & maski) == (addr & maski) &&
-            (e.status & 1)) {
-            pa = e.physical | (addr & ~maski);
-            return true;
-        }
-    }
-    // The peek walk's descriptor fetches ride the bus like a real table
-    // search — a garbage-but-resident chain can land them in unmapped
-    // space, where the machine raises extBusError040 (bughunt
-    // 2026-08-05). Flag ON may not surface a fault flag OFF's no-op
-    // never produced: a bus-erroring chain is UNMAPPED here, full stop.
-    u32 status = 0;
-    try {
-        status = mmu040PeekWalk(addr, super);
-    } catch (MmuBusError &) {
-        return false;
-    }
-    if (!(status & 1)) return false;
-    pa = (status & maski) | (addr & ~maski);
-    return true;
-}
-
 void
 Moira::pomCacheOp040(u16 opcode)
 {
-    // CINV/CPUSH acting on the M2 data-bearing model (M68040UM § 4.5/4.6).
+    // [B] MC68040UM-1993 §4.2: CINV/CPUSH use physical operands.
+    // CINV/CPUSH acting on the M2 data-bearing model (MC68040UM-1993 § 4.2).
     // Bits 7-6 = caches (01 DC, 10 IC, 11 both, 00 none), bit 5 = push,
     // bits 4-3 = scope (01 line, 10 page, 11 all), bits 2-0 = An.
     // CPUSH writes each dirty longword before invalidating the selected
-    // line(s); both instructions act with caches disabled too (UM §4.4).
+    // line(s); both instructions act with caches disabled too (UM §4.2).
     const bool push = opcode & 0x20;
     const int scope = (opcode >> 3) & 3;
 
-    u32 pa = 0;
-    if (scope != 3 && !pomCache040Phys(reg.a[opcode & 7], pa)) return;
+    // An is already physical: no TTR, ATC lookup or descriptor access.
+    const u32 pa = reg.a[opcode & 7];
     const u32 pmask = mmu040PageMaskI();
 
     auto apply = [&](Cache040 &c, bool data) {
@@ -3292,8 +3261,9 @@ Moira::mmu040Translate(u32 addr, u32 val, bool super, bool data,
         return addr;
     }
     if (!mmu040Enabled()) {
+        // [B] MC68040UM-1993 §4.3: default write-through with translation disabled.
         // POM68K M1: translation disabled → default attributes, CM =
-        // cachable/writethrough (M68040UM § 3.5.1, default TTR)
+        // cachable/writethrough (MC68040UM-1993 § 4.3, translation-disabled default)
         if (pomCache040On) pomCache040Touch(data, addr, asWrite, 0, szCode);
         return addr;
     }
@@ -3696,7 +3666,7 @@ Moira::execMmu040BusError()
     //     gen_set_fault_pc never brackets: a faulting store restarts the
     //     instruction. Decided at fault time from the opcode (cpID 1,
     //     $F200-$F3FF) so the store path carries no extra test.
-    // [F] Not checked against a manual or a 68040: M68040UM § 8.4 does not
+    // [F] Not checked against a manual or a 68040: MC68040UM-1993 § 8.4 does not
     //     single the FPU stores out. Settled by: a capture of the format $7
     //     frame of a faulting FMOVE.X FPn,(An)+ on a real 68040.
     // Gate: moira_rules_test (FMOVE to a faulting page), fpu corpus replay.

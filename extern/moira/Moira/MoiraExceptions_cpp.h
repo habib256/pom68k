@@ -283,15 +283,15 @@ Moira::writeStackFrame1011(u16 sr, u32 pc, u32 ia, u16 nr)
     push<C, Word>(sr);
 }
 
+// [B] MC68030UM-1989 §8.4: frame formats, not opaque internal encodings.
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 //
-// POM68K O4 slice 3 — 68030 MMU bus-fault frames (MC68030UM § 8.1.4),
+// POM68K O4 slice 3 — 68030 MMU bus-fault frames (MC68030UM-1989 § 8.4),
 // byte-for-byte replicas of WinUAE Exception_build_stack_frame cases
 // $A/$B (newcpu_common.c) as produced by the mode-5 68030+MMU core:
 // prefetch020[] and the pipeline words are always zero there, the
 // internal words carry the access log, the pending-fixup encodings and
 // the MOVEM/EA restart state. See POM68K_VENDOR.md § MMU bus layer.
-//
 
 template <Core C> void
 Moira::writeStackFrameShortBusFault(u16 sr, u32 pc)
@@ -719,12 +719,14 @@ Moira::execException(M68kException exc, int nr)
         case M68kException::CHK:
         case M68kException::TRAPV:
 
+            // [F] Retired Musashi comparison: local patched revision unavailable.
+            // Settled by: a replay with a pinned replacement oracle.
             // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
             // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // Write stack frame
             // POM68K: divide-by-zero stacks the DIV instruction's own
             // address; CHK/TRAPV stack the next instruction
-            // (SingleStepTests/680x0, CLK use_current_instruction_pc).
+            // (SingleStepTests/680x0: the DIV instruction address).
             // O4 slice 4: on the 020/030 the format-$2 "instruction
             // address" field also holds the NEXT instruction (WinUAE
             // Exception_cpu oldpc, probed; Musashi patched to match).

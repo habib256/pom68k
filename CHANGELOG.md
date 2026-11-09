@@ -40,6 +40,10 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **Why did Linux CI fail while the ARM64 check passed after adding a common test?** → [The stale x86 registry section](#2026-11-09-x64-status-registry)
+
+- **The M1 cache gate required translating CINV/CPUSH operands; Motorola defines them as physical.** → [The physical-operand regression](#2026-11-08-physical-cache-operands)
+
 - **Why did the PowerBook external-video probe advertise 16 bits on a 512 KB board?** → [The MMU-mode control alias, capacity bank and real two-screen driver](#2026-10-20-pb030-external-video)
 
 - **Can the Portable and PB100 sleep from Finder and resume through their real PMU?** → [Finder sleep, key wake and exact public-state replay](#2026-10-20-portable-sleep)
@@ -262,6 +266,10 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **why untrained machines came out of a PGO build slower than out of `-O3`** → [2026-08-08 — NeoST's Pi recipe, ported…](#2026-08-08-raspberry-pi)
 
 ### CPU cores, MMU/FPU, and the WinUAE oracle
+
+- **Why did cache invalidation touch a translated alias while all CPU corpora passed?** → [Physical CINV/CPUSH operands and the gate that expected the bug](#2026-11-08-physical-cache-operands)
+
+- **Which manual edition supports a CPU rule, and which parts remain assumptions?** → [The manual evidence audit and explicit F witnesses](#2026-11-08-moira-manual-proofs)
 
 - **Can pending PMMU/FPU work survive a snapshot without a Macintosh?** → [The portable CPU visitor and executed continuation round trips](#2026-11-08-moira-state-visitor)
 
@@ -514,6 +522,9 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-09** — [The x86 gate registry missed the common snapshot test; regenerate both host sections](#2026-11-09-x64-status-registry)
+- **2026-11-08 (ninth)** — [CINV/CPUSH use physical operands; the translation-accepting cache gate was wrong](#2026-11-08-physical-cache-operands)
+- **2026-11-08 (eighth)** — [Moira manual evidence: checked editions and locators, explicit model limits](#2026-11-08-moira-manual-proofs)
 - **2026-11-08 (seventh)** — [The CPU visitor moves into Moira and carries its pending PMMU/FPU state](#2026-11-08-moira-state-visitor)
 - **2026-11-08 (sixth)** — [The 68EC030's declared plain-020 path gets a bare-core gate with a 68030 control](#2026-11-08-ec030-surface-gate)
 - **2026-11-08 (fifth)** — [Moira's SingleStepTests citations carry their own pin; the portable surface records the machine-clock traps, and the core documents catch up](#2026-11-08-core-sst-grades-surface-docs)
@@ -1238,6 +1249,131 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-09-x64-status-registry"></a>
+## 2026-11-09 — CI failed because the x86 gate registry was not regenerated after a common gate was added
+
+CI run 42506797106 on `88732bb8` failed its Linux and three link-configuration
+jobs at `docs_test`: `STATUS.md` said 545 x86-64 gates, but CMake registered
+546. Its dimension table was stale too. The portable `moira_state_test` had
+been added to both architectures; regeneration on ARM64 correctly preserved
+the other host's old section. The ARM64/macOS job stayed green, hiding the
+missing second regeneration locally.
+
+The x86-64 section is regenerated with `tools/status_md.py` from an actual
+`CMAKE_OSX_ARCHITECTURES=x86_64`, `POM68K_JIT_BACKENDS=x64` configure. It now
+has 546 registered gates and 137 asset-free gates; all dimension counts and
+the scheduling sum match that configure's manifests. ARM64 remains at 545
+registered gates. The union and test registrations are unchanged. The
+existing `docs_test` already detects this drift; no test is weakened.
+
+The x86-64 `docs_test` target builds, but cannot execute on this ARM64 host:
+Rosetta is absent (launch error -86). This is registration/manifest proof,
+not a claim of local x86 execution. The next Linux CI run must establish
+execution. ARM64 repository checks run against the regenerated document;
+the preceding full build and 138 executed asset-free gates cover the CPU
+change being published with it. The fixing commit names the failed run
+with `CI-Fix: 42506797106`, as required by the pre-push hook.
+
+<a id="2026-11-08-physical-cache-operands"></a>
+## 2026-11-08 (ninth) — The 68040 cache gate required a logical translation that CINV and CPUSH must never perform
+
+The manual audit's next defect was already protected by a test expecting
+the wrong behavior. With paging enabled, `pomCache040Phys` resolved An
+through data TTRs, an ATC scan or a private read-only walk. An unrelated
+translated cache line was invalidated/pushed; an unmapped physical operand
+was skipped. Cold operands also read guest page descriptors, potentially
+calling side-effecting host bus callbacks before swallowing a bus fault.
+MC68040UM-1993 § 4.2 and M68000PRM-1992 CINV specify physical operands.
+
+`pomCacheOp040` now takes An directly. The resolver and its sole-use
+`mmu040PeekWalk` are removed, including their private declarations. Normal
+MMU translation, physical dirty writeback, page-size selection and I-cache
+code-generation invalidation keep their existing paths. A CPUSH writeback
+can still fault on the physical host bus; operand selection no longer reads
+page tables or produces a translation fault. The debugger's independent
+logical peek remains, with its source comment following the live walk.
+
+`cache040_test` executes **128 combinations** with different resident
+physical and translated-alias lines: CINV/CPUSH, all four cache fields,
+line/page scope, 4K/8K pages, cold/warm ATC, caches enabled/disabled. It checks
+exact line selection, physical backing-memory writes and no descriptor
+reads or updates. The existing sequence now also selects resident physical
+lines whose logical interpretation is invalid or would reach a descriptor
+bus-error hole. The final regression fails **196 checks** on the pre-fix
+core. The old cache gate and the three pinned corpora had all passed it;
+neither had established physical cache-management semantics.
+
+This is the behavior change following the [comment-only manual audit](#2026-11-08-moira-manual-proofs).
+`POM68K_VENDOR.md` row 59, the surface contract and `docs/CACHE_040.md`
+record it; the M1 logical-resolver account is preserved as superseded
+history. The separate ATC geometry/S tag, replacement-counter cadence,
+dirty snapshot data and fill/writeback fault-stamp items remain open.
+
+**Validation completed 2026-11-09:** the complete ARM64 build succeeds.
+All **138 asset-none gates execute and pass, zero soft-skipped, zero failed**,
+including the rebuilt `cache040_test` with all 128 physical-operand
+combinations and the existing transaction/JIT lockstep checks. The four
+locked PDF identities also match. `STATUS.md` records the saved CTest run.
+The separate FC2 reproduction is expected-failing and is not included in
+those 138 gates; no whole-repository or full machine-tier replay is claimed.
+
+The next ATC item is reproduced but not fixed: the standalone
+`tests/repros/mmu040_fc2.cpp` fails 184 checks across 40 fresh CPU sequences,
+covering both privilege orders, I/D translations, MOVES SFC/DFC and read-only
+JIT probes on 68LC040/68040, with 4K/8K pages and caches on/off. It also
+keeps both translations live after descriptor edits, so flushing on each
+mode switch would not be a valid repair. It is intentionally outside CTest
+until its implementation fix; `tests/repros/README.md` gives the command.
+No FC2 implementation change is included.
+
+<a id="2026-11-08-moira-manual-proofs"></a>
+## 2026-11-08 (eighth) — Moira's manual evidence names real editions and sections; approximations stop borrowing their authority
+
+The remaining source-grading task exposed references that could not be
+followed: 030 §§ 9.7.2.2, 9.7.2.6, 9.7.5.5 and 9.7.6 do not exist in the
+complete second edition (1989), nor in the NXP third-edition contents.
+Other valid numbers described the wrong subject. TT is § 9.3, ATC § 9.4,
+030 exception frames § 8.4; 040 PFLUSH/PTEST are §§ 3.7.2/3.7.3. FPU
+frame, reset, exception-priority and timing references also needed repair.
+
+`tests/core_manuals.lock` pins four original PDFs by edition, source URL,
+SHA-256 and checked one-based PDF pages. The audit covers **116 manual
+comment units**. `core_grades_test` now requires an own B/F source header
+and reviewed locator for each manual, as well as the existing independent
+WinUAE and SingleStepTests pins. F needs `Settled by:`; historical Musashi
+comparisons cannot be stamped D when the exact patched tree is lost.
+Clock Signal aliases add no independent source to pinned SST observations.
+Eleven checker unit tests exercise accepted and rejected headers, locators,
+revision attribution and optional PDF identity. The new rules reject 113
+manual units from the old tree. CI fetches no PDFs; a reviewer can compare
+their bytes with `tools/core_grades.py --verify-manual-files DIRECTORY`.
+
+The reading identifies limits, not just stronger labels. The 040 ATC's
+32 entries and absent S tag are an approximation of 64 four-way entries;
+the cache replacement counter's cadence is incomplete; host cold reset
+is stronger than the 030 RESET pin. Uniform FPU surcharges remain estimates.
+The legacy cache-policy helper's NC handling is incomplete, without
+claiming that helper is the live CPU access path. Conversely, the primary
+manual does confirm implicit NC for MOVES/locked accesses. CINV/CPUSH
+uses physical addresses: the open item now asks for a regression and fix,
+not arbitration of a settled manual rule. `POM68K_VENDOR.md` row 58 records
+the documents and limits; the surface contract explains the grades/reset.
+
+**Scope:** comments only in eleven core files, with every executable C++
+token identical to the pre-audit tree. No CPU behavior changed. A valid
+locator holds attribution, not every semantic claim or silicon fidelity;
+uncited hardware rules remain an explicit TODO.
+
+**Audit validation before the cache correction:** all four PDF hashes
+match; the eleven checker controls and repository gates (`docs_test`,
+`config_test`, `core_grades_test`, `file_size_budget_test`) pass. Nine
+existing CPU/corpus gates pass: `moira_rules_test`, `moira_state_test`,
+`cache040_test`, `fpu_sanity`, `fpu040_test`, `berr030_test`, `sst68000`,
+`sst68030`, `sst68040`. This cache run predates the new physical-operand
+regression; that regression deliberately fails the old core and is recorded
+in the [physical-operand entry](#2026-11-08-physical-cache-operands). These are selected gates, not a fresh full-tier
+execution claim.
 
 <a id="2026-11-08-moira-state-visitor"></a>
 ## 2026-11-08 (seventh) — The CPU visitor moves into Moira; snapshots stop losing pending PMMU and FPU work
