@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 732 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 733 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,7 +8,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 96 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 97 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 95 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 37 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
@@ -122,6 +122,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-07 (fifteenth)** — [The LC II's device slice was 9.6 cycles, and 60 % of its flushes were the board's own: every V8 device now publishes its bound, cached as an absolute time; the blanket per-I/O flush goes — boot −24 %, JIT −5 %](CHANGELOG.md#2026-11-07-v8-deadline)
 - **2026-11-07 (fourteenth)** — [The Quadra 605 woke its devices 1.27 million times a guest second for a VIA that had nothing to say: timer-aware VIA bound, per-access deadline re-arm — JIT mode −50 %, interpreter −18 %](CHANGELOG.md#2026-11-07-q605-via-deadline)
 - **2026-11-08 (third)** — [Three "unverified" lines of the surface contract settled: FPU on a 68000, softfloat's globals, JIT invalidation on restore](CHANGELOG.md#2026-11-08-surface-three)
+- **2026-11-09 (second)** — [The 68040 ATC distinguishes user and supervisor translations, including MOVES and JIT publications](CHANGELOG.md#2026-11-09-atc-fc2)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 

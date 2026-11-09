@@ -267,6 +267,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### CPU cores, MMU/FPU, and the WinUAE oracle
 
+- **Can the same logical page keep different user/supervisor translations, including MOVES?** → [The FC2 regression becomes a permanent gate](#2026-11-09-atc-fc2)
+
 - **Why did cache invalidation touch a translated alias while all CPU corpora passed?** → [Physical CINV/CPUSH operands and the gate that expected the bug](#2026-11-08-physical-cache-operands)
 
 - **Which manual edition supports a CPU rule, and which parts remain assumptions?** → [The manual evidence audit and explicit F witnesses](#2026-11-08-moira-manual-proofs)
@@ -522,6 +524,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-09 (second)** — [FC2-tagged ATCs, MOVES and correct JIT publication associations](#2026-11-09-atc-fc2)
 - **2026-11-09** — [The x86 gate registry missed the common snapshot test; regenerate both host sections](#2026-11-09-x64-status-registry)
 - **2026-11-08 (ninth)** — [CINV/CPUSH use physical operands; the translation-accepting cache gate was wrong](#2026-11-08-physical-cache-operands)
 - **2026-11-08 (eighth)** — [Moira manual evidence: checked editions and locators, explicit model limits](#2026-11-08-moira-manual-proofs)
@@ -1249,6 +1252,55 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-09-atc-fc2"></a>
+## 2026-11-09 (second) — The 68040 ATC distinguishes user and supervisor translations, including MOVES and JIT publications
+
+One logical page with different URP/SRP mappings reused whichever translation
+had been loaded first. The hardware tags FC2 independently of descriptor S
+(MC68040UM-1993 § 3.3). `Mmu040AtcEntry` now stores that access privilege;
+lookup/fill, the hot translated path and read-only I/D probes compare it.
+MOVES passes its SFC/DFC privilege through the access, rather than taking
+current SR. Replacing another domain's entry for the same logical address
+also revokes derived windows/TLBs.
+
+A publication can fail more subtly: an exact MOVES user store runs while
+SR is supervisor. Re-probing that logical address for current SR can find
+a supervisor cache line while the last write memo still selects the user
+ATC. `pomJitCache040Publish` now refuses that mismatch. Otherwise native
+code could validate the wrong ATC index/MRU state even when the cache
+bytes themselves happened to be correct.
+
+The standalone reproduction moves into the registered `mmu040_atc_test`.
+Its 40 initial CPU sequences failed 184 checks. Four added copyback/MOVES
+publication sequences bring the complete pre-fix failure count to **192**.
+It covers both models, both page sizes, cache on/off, either privilege
+first, I/D reads and writes, read-only probes and alternate FC. After both
+domains are resident, changing the guest descriptors must retain both old
+translations; flushing at every mode switch is not an acceptable repair.
+The publication cases also keep a dirty supervisor line live while a user
+store completes and verify the exposed ATC association.
+
+The bare CPU targets now share their same-named-source/link registration
+loop, leaving the CPU gate module inside its existing size budget. Both
+host registry sections are regenerated from their real CMake manifests.
+The snapshot format is unchanged: ATCs are derived state, flushed on load.
+
+This closes the FC2 lookup/publication defect only. The ATC is still 32 fully
+associative entries with pseudo-LRU; PFLUSH still ignores DFC, and PTEST
+still lacks flush/refill. The TODO separates those remaining requirements
+and records two further static findings requiring reproducers: MMU-register
+writes flushing ATCs and implicit-NC accesses bypassing resident dirty-line
+handling. No claim of complete 68040 ATC/cache fidelity is made.
+
+**Validation:** the complete ARM64 build and **139 executed asset-none
+gates** pass, with zero soft-skipped or failed gates. The three present
+corpora re-execute: 68000 **1 000 058 / 1 000 058**, 68030 **3 078 / 3 082
+plus four named divergences**, 68040 **7 200 / 7 200**. The Quadra 605 boot
+gate also executes and passes. The corpus/boot run is four executed, zero
+soft-skipped, zero failed; `STATUS.md` records it separately from the 139.
+The extended corpora are not claimed as replayed. Final documentary checks
+hold the regenerated ARM64/x86-64 registries to their CMake manifests.
 
 <a id="2026-11-09-x64-status-registry"></a>
 ## 2026-11-09 — CI failed because the x86 gate registry was not regenerated after a common gate was added

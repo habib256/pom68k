@@ -17,7 +17,7 @@ carry `tools/gate_execution_census.py`'s executed/soft-skipped pair: quote the
 pair, never the green total alone — a soft-skipped gate exited 0 and proved
 nothing about the behaviour it names.
 
-## Union across hosts — 550 gates
+## Union across hosts — 551 gates
 
 | `ctest -L` | selects |
 |---|---|
@@ -29,7 +29,7 @@ nothing about the behaviour it names.
 | `m030` | 141 |
 | `m040` | 102 |
 | `smoke` | 9 |
-| `unit` | 177 |
+| `unit` | 178 |
 | `wasm` | 46 |
 
 `-L` is a regex over each label: `jit` also selects `jit-fast`, `etalon`
@@ -38,51 +38,51 @@ scheduling slots are per-host manifest facts and live in the sections below.
 
 ## Registered on aarch64
 
-545 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
+546 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
+
+| dimension | value | gates |
+|---|---|---|
+| assets | none | 139 |
+| assets | optional | 26 |
+| assets | required | 381 |
+| host | a64 | 4 |
+| host | any | 536 |
+| host | native | 6 |
+| scope | component | 151 |
+| scope | engine | 21 |
+| scope | profile | 370 |
+| scope | repository | 4 |
+| tier | daily | 139 |
+| tier | full | 391 |
+| tier | platform | 16 |
+| slots_src | assumed | 426 |
+| slots_src | measured | 120 |
+
+Scheduling cost if every gate ran at once: 781 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+
+## Registered on x86_64
+
+547 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
 
 | dimension | value | gates |
 |---|---|---|
 | assets | none | 138 |
 | assets | optional | 26 |
-| assets | required | 381 |
-| host | a64 | 4 |
-| host | any | 535 |
-| host | native | 6 |
-| scope | component | 150 |
-| scope | engine | 21 |
-| scope | profile | 370 |
-| scope | repository | 4 |
-| tier | daily | 138 |
-| tier | full | 391 |
-| tier | platform | 16 |
-| slots_src | assumed | 425 |
-| slots_src | measured | 120 |
-
-Scheduling cost if every gate ran at once: 780 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
-
-## Registered on x86_64
-
-546 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
-
-| dimension | value | gates |
-|---|---|---|
-| assets | none | 137 |
-| assets | optional | 26 |
 | assets | required | 383 |
-| host | any | 535 |
+| host | any | 536 |
 | host | native | 6 |
 | host | x64 | 5 |
-| scope | component | 150 |
+| scope | component | 151 |
 | scope | engine | 22 |
 | scope | profile | 370 |
 | scope | repository | 4 |
-| tier | daily | 137 |
+| tier | daily | 138 |
 | tier | full | 393 |
 | tier | platform | 16 |
-| slots_src | assumed | 433 |
+| slots_src | assumed | 434 |
 | slots_src | measured | 113 |
 
-Scheduling cost if every gate ran at once: 905 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 906 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## PRODUCT_LLE on aarch64
 
@@ -232,3 +232,5 @@ overwrites it, including a one-gate `ctest -R`.
 | Nov 08 21:26 +04 | aarch64 | default | 12 | 3 | 9 | 0 | Moira v29 ARM64: 000/030/040 corpora present; nine extended corpora absent |
 | Nov 08 21:35 +04 | aarch64 | default | 140 | 140 | 0 | 0 | Moira v29: asset-none plus the two remaining prior ARM64 jit-fast\|m030 gates (LC II boot, IIfx persistence) |
 | Nov 09 06:56 +04 | aarch64 | default | 138 | 138 | 0 | 0 | Manual citation audit and physical CINV/CPUSH: full rebuild; all asset-none gates executed. FC2 reproduction remains separate and expected-failing. |
+| Nov 09 16:44 +04 | aarch64 | default | 139 | 139 | 0 | 0 | FC2-tagged 68040 ATCs: complete rebuild, permanent 44-sequence gate, all asset-none gates executed; PFLUSH/PTEST and geometry remain open. |
+| Nov 09 16:46 +04 | aarch64 | default | 4 | 4 | 0 | 0 | FC2 correction: the three present CPU corpora and Quadra 605 boot executed; no extended-corpus replay claimed. |
