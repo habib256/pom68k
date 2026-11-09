@@ -501,6 +501,9 @@ expected.
   corpus is present), global bit honoured
   by `mmu040AtcFlushNonGlobal`. `setMmu040AtcArmed(false)` forces a walk per
   access.
+  Tags distinguish logical page plus access FC2, independently of descriptor
+  supervisor protection. MOVES uses SFC/DFC. JIT probes and cache-line
+  publications enforce the same domain (`mmu040_atc_test`).
 - Registers: `setURP040`, `setSRP040`, `setTC040` (all flush the ATCs),
   `setITT0/ITT1/DTT0/DTT1` (masked `$FFFFE364`, bump `pomJitMmuGen`),
   `setMMUSR040`.

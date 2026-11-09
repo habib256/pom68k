@@ -36,10 +36,10 @@ pair):
 | distinct `pom*` extension identifiers | **104** (60 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
 | `POM68K`-marked lines | **492** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **16 of 26** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **59** | this file |
+| patch groups in the inventory below | **60** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h`, `MoiraState.h` | — |
 
-Fifty-nine patch groups, two of which (the JIT seam, row 22, and the ATC
+Sixty patch groups, two of which (the JIT seam, row 22, and the ATC
 performance work, row 16) are not patches over upstream's design but a second
 consumer of it. A re-sync is no longer a merge with conflicts; it is a port.
 
@@ -204,8 +204,9 @@ gate in the last column of each row.
 | 57 | **Portable instruction-boundary state visitor** — `pomVisitState(Ar&)` owns the CPU inventory, adds the pending 6888x result, integrated-040 frame micro-state, 030 pipe and DF-cleared retry; an armed public MOVEM latch is carried with inactive EA normalized | `Moira.h`, `MoiraState.h` | the host-side visitor omitted state reachable between executed instructions; a fresh CPU lost SQRT completion, retried a software-completed bus access, refetched patched code, and emitted different FSAVE payloads. POM68K adapter delegates; format v29 refuses old payloads | `moira_state_test` |
 | 58 | **Manual evidence audit** — explicit editions and reviewed locators; model approximations and lost historical Musashi comparisons have an F witness | `Moira.cpp`, `Moira.h`, `MoiraALU_cpp.h`, `MoiraCache040.h`, `MoiraDasm_cpp.h`, `MoiraDataflow_cpp.h`, `MoiraExceptions_cpp.h`, `MoiraExecFPU_cpp.h`, `MoiraExecMMU_cpp.h`, `MoiraExec_cpp.h`, `MoiraTypes.h` | nonexistent or misattributed sections and unsupported silicon claims could be carried into another host as established rules. Comments only; CPU executable tokens unchanged | `core_grades_test`, optional `tools/core_grades.py --verify-manual-files DIR`, `docs_test` |
 | 59 | **Physical CINV/CPUSH operands** — `pomCacheOp040` takes An directly; the logical resolver and its private peek walk are removed | `Moira.h`, `MoiraExecMMU_cpp.h` | with paging enabled, cache management selected an unrelated translated alias or skipped a resident physical line; cold operands also read guest descriptors. Motorola defines the operand as physical | `cache040_test` (128 physical-operand combinations, RAM writeback and descriptor access checks) |
+| 60 | **FC2-tagged 68040 I/D ATCs** — lookup/fill, hot translation, JIT probes and cache-line publication use the access privilege | `Moira.h`, `MoiraExecMMU_cpp.h` | one logical page could reuse the other root's mapping. MOVES uses SFC/DFC, not current SR; a JIT publication must not borrow the opposite domain's ATC index | `mmu040_atc_test` (44 CPU sequences; 192 pre-fix failures) |
 
-Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54, 56 and 59 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
+Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54, 56, 59 and 60 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
 when nothing arms them); rows 48 and 55 are performance alone, with no architectural effect. Row 58 is evidence documentation only. The ten files carrying no `POM68K` marker at all —
 `MoiraDasm.h`, `MoiraDasmFPU_cpp.h`, `MoiraDasmMMU_cpp.h`, `StrWriter*` (2), `MoiraDebugger.h`, `MoiraMacros.h`,
 `MoiraALU.h`, `MoiraExceptions.h`, `MoiraInit.h` — are where an upstream fix can
@@ -1968,6 +1969,27 @@ logical resolver and its tests were deliberate but based on the wrong
 operand rule. The debugger's independent `src/Mmu040Peek.h` remains a
 logical-address peek; cache management no longer needs a copy of it.
 
+## FC2 in the 68040 ATC tag (2026-11-09, row 60)
+
+MC68040UM-1993 § 3.3 includes FC2 in each ATC tag, independently of the
+page descriptor's supervisor-protection bit. Each entry now records that
+access privilege. Lookup/fill, the hot translated path and read-only I/D
+JIT probes match it. Replacing the same logical page from the other
+privilege also revokes derived mappings. The tag comes from the access's
+function code: MOVES SFC/DFC can differ from current SR.
+
+`pomJitCache040Publish` additionally refuses to bind a supervisor publication
+to the last user ATC entry of a MOVES store. Otherwise its cached bytes could
+be correct while the native guard validated the wrong memo/MRU state.
+
+The former standalone FC2 repro becomes the registered `mmu040_atc_test`.
+It now has 44 CPU sequences: both models, both page sizes, cache on/off,
+either mode first, instruction/data reads and writes, retained translations
+after descriptor edits, MOVES and read-only probes. Four copyback/MOVES
+sequences check the publication's ATC association. The pre-fix core fails
+192 checks. Cache geometry/replacement, PFLUSH/PTEST and register-write
+retention remain open; row 60 does not claim full ATC fidelity.
+
 ## Model support in this copy (`MoiraTypes.h`)
 
 - 68000 / 68010 — cycle-exact execution ✓ (Mac Plus phase)
@@ -2002,7 +2024,7 @@ logical-address peek; cache management no longer needs a copy of it.
   residency guard. Native sole-access cache-line reads and writes have
   their own admission/guard contract (`src/jit/POM68K_JIT.md` § 8,
   `POM68K_SURFACE.md` § 9). Architectural gaps remain: the 040 ATC geometry
-  and supervisor tag, replacement-counter cadence, fault stamps
+  and replacement, cache replacement-counter cadence, fault stamps
   during fills/writebacks and loss of dirty copyback data on save/load
   (`TODO.md` § Moteur › Justesse 68040). Pin-level BCLK/TA waveform
   simulation is also outside scope; the existing transaction gates do not

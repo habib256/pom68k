@@ -3,35 +3,19 @@
 # CPU proof that can travel with the core (TODO.md § Moteur › Socle). Included
 # from Pom68kJitGates.cmake at the position these registrations always had.
 
-# M1-M3 gate (docs/CACHE_040.md): 68040 cache geometry and line data,
-# CACR/CM/TTR policy, copyback/CPUSH/CINV, snooping and hit/fill timing.
-add_executable(cache040_test tests/cache040_test.cpp)
-target_link_libraries(cache040_test PRIVATE moira)
-add_test(NAME cache040_test COMMAND cache040_test)
-
-# O5: 68882 smoke, format-$9 IRQ + BUSY resume, detached F-line.
-# Differential coverage lives in sst68030's FPU cells.
-add_executable(fpu_sanity tests/fpu_sanity.cpp)
-target_link_libraries(fpu_sanity PRIVATE moira)
-add_test(NAME fpu_sanity COMMAND fpu_sanity)
-
-add_executable(fpu040_test tests/fpu040_test.cpp)
-target_link_libraries(fpu040_test PRIVATE moira)
-add_test(NAME fpu040_test COMMAND fpu040_test)
-
-add_executable(callm_rtm_test tests/callm_rtm_test.cpp)
-target_link_libraries(callm_rtm_test PRIVATE moira)
-add_test(NAME callm_rtm_test COMMAND callm_rtm_test)
-
-# Rules no corpus reaches: e.g. DIVS.W of $80000000 on six models.
-add_executable(moira_rules_test tests/moira_rules_test.cpp)
-target_link_libraries(moira_rules_test PRIVATE moira)
-add_test(NAME moira_rules_test COMMAND moira_rules_test)
-
-# Instruction-boundary CPU state, pending FPU result and PMMU retry.
-add_executable(moira_state_test tests/moira_state_test.cpp)
-target_link_libraries(moira_state_test PRIVATE moira)
-add_test(NAME moira_state_test COMMAND moira_state_test)
+# Each gate has a same-named source and shares the standalone Moira link.
+foreach(cpu_gate IN ITEMS
+    cache040_test       # cache data, policy, physical management and snooping
+    fpu_sanity          # external FPU, format-$9 IRQ and BUSY resume
+    fpu040_test         # integrated FPU and FPSP exception frames
+    callm_rtm_test      # 68020 module protocol
+    moira_rules_test    # hardware-rule cells outside random corpora
+    moira_state_test    # instruction-boundary PMMU/FPU continuations
+    mmu040_atc_test)    # multi-instruction I/D and FC2 translations
+    add_executable(${cpu_gate} tests/${cpu_gate}.cpp)
+    target_link_libraries(${cpu_gate} PRIVATE moira)
+    add_test(NAME ${cpu_gate} COMMAND ${cpu_gate})
+endforeach()
 
 # The 68030 against WinUAE alone, all fourteen cells: the pinned sst68030
 # keeps, in several cells, only the vectors a retired second oracle agreed

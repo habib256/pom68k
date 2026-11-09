@@ -1,33 +1,27 @@
-# Bare-core reproductions of open defects
+# Bare-core regression reproductions
 
-These are deliberately failing standalone programs, not registered CTest gates.
-They preserve evidence for an open TODO; a green test suite does not include them.
-Promote the relevant cells into a regular gate when fixing the defect.
+A standalone reproduction of an open defect can become a permanent CTest
+gate with its implementation fix. This index preserves that transition.
 
-## 68040 ATC FC2 — `mmu040_fc2.cpp`
+## 68040 ATC FC2
 
-MC68040UM-1993 §3.3, Figures 3-20/3-21, defines FC2 in the ATC tag separately
-from the page descriptor's supervisor-protection bit. The current core has
-neither that tag nor the hardware's 64-entry/four-way geometry. This program
-isolates the FC2 defect; it does not test the remaining geometry or replacement.
-
-From the repository root after building `moira`:
+The reproduction originally lived at `tests/repros/mmu040_fc2.cpp` and failed
+184 checks across 40 CPU sequences on commit `1b36defd`. It now lives in
+[`tests/mmu040_atc_test.cpp`](../mmu040_atc_test.cpp), registered as
+`mmu040_atc_test`. Four added MOVES/cache-publication sequences raise the
+pre-fix failure count to 192.
 
 ```sh
-c++ -O2 -std=c++20 -Itests -Isrc -Iextern/softfloat -isystem extern/moira/Moira \
-  tests/repros/mmu040_fc2.cpp build/libmoira.a \
-  build/extern/softfloat/libsoftfloat68k.a -o /tmp/pom68k-mmu040-fc2
-/tmp/pom68k-mmu040-fc2
+cmake --build build --target mmu040_atc_test -j 4
+ctest --test-dir build -R '^mmu040_atc_test$' --output-on-failure
 ```
 
-Expected on the pre-FC2-fix core: exit 1, **184 failed checks**. It covers
-68LC040/68040, 4K/8K pages, caches enabled/disabled, either privilege mode
-first, instruction/data translations, read-only JIT probes and MOVES SFC/DFC.
-After both modes have warmed their ATCs, changing the page descriptors must
-not discard either resident translation: flushing on a mode switch is not
-an acceptable fix. The repro contains 40 fresh CPU sequences; each sequence
-keeps ATC state across its instructions. The hardware cache model is explicitly
-enabled or disabled within the program, without an environment variable.
+The gate covers 68LC040/68040, 4K/8K pages, caches enabled/disabled, either
+privilege mode first, instruction/data translations, JIT probes, MOVES
+SFC/DFC and cache publications bound to the right ATC entry. It preserves
+both resident translations after guest descriptor edits: a mode-switch
+flush is not a valid fix. MC68040UM-1993 §3.3 distinguishes the FC2 tag from
+the descriptor's supervisor-protection bit.
 
-The physical CINV/CPUSH fix is already present in the baseline used here.
-The FC2 implementation is still unchanged. See `TODO.md` under Justesse 68040.
+The 64-entry/four-way geometry, replacement policy and PFLUSH/PTEST side
+effects remain separate open items. This gate does not establish them.

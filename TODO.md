@@ -445,18 +445,21 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   --seed 845 --n 2000`, #1967 (`0789 54F5`, MOVEP.W D3,(d16,A1)) : la
   frame $7 empile PC+4 de trop. Le marqueur « dernière écriture » s'arme
   sur la première des écritures d'octet.
-- [ ] **Donner à l'ATC du 68040 sa géométrie et son tag.** Trente-deux
-  entrées associatives sans bit S, là où l'oracle (et le manuel) ont 4
-  voies × 16 jeux taggés par S. Avec URP ≠ SRP un accès superviseur peut
-  toucher une traduction utilisateur ; PFLUSH (An) ignore DFC ; PTEST ne
-  purge ni ne remplit l'entrée. L'ordre de remplacement est visible de
-  l'invité (bits U réécrits) et diverge sous la fenêtre de fetch par
-  décision (J3b). `sst68040` n'y voit rien : l'oracle purge son ATC à
-  chaque vecteur — il faut une cellule à plusieurs instructions.
-  Le défaut FC2 est maintenant reproduit par
-  `tests/repros/mmu040_fc2.cpp` (2026-11-09) : 184 contrôles échouent sur
-  les accès I/D, MOVES SFC/DFC et sondes JIT. Repro volontairement non
-  enregistré dans CTest ; le promouvoir en gate avec la correction.
+- [ ] **Donner à l'ATC du 68040 sa géométrie et son remplacement.**
+  Trente-deux entrées pleinement associatives avec pseudo-LRU, contre
+  quatre voies × seize jeux et un compteur aux accès (MC68040UM-1993
+  § 3.3). L'ordre est visible par les bits U réécrits et la fenêtre de
+  fetch J3b ; `sst68040` purge son ATC à chaque vecteur. Le gate FC2
+  `mmu040_atc_test` ne prouve ni cette géométrie ni ce remplacement.
+- [ ] **Tenir les effets ATC de PFLUSH/PTEST du 68040.** PFLUSH (An)
+  ignore encore DFC et purge les deux privilèges ; PTEST ne purge ni ne
+  remplit son entrée. MC68040UM-1993 §§ 3.7.2/3.7.3 et M68000PRM-1992 :
+  isoler d'abord chaque effet sur des entrées I/D et utilisateur/superviseur
+  résidentes, puis modifier les descripteurs avant l'instruction testée.
+- [ ] **Conserver les entrées ATC lors d'un MOVEC aux racines/TC du 040.**
+  Les setters URP/SRP/TC purgent actuellement tout l'ATC ; MC68040UM-1993
+  § 3.7.4 dit qu'écrire les registres ne le purge pas. Écrire d'abord une
+  cellule avec deux racines différentes et un PFLUSHA explicite en contrôle.
 - [ ] **Cadencer le remplacement du cache 040 sur les accès.** Le compteur
   de `Cache040::allocate` avance au remplacement seulement ; MC68040UM-1993
   § 4.1 le fait aussi avancer aux accès au cache. Une séquence de hits puis
@@ -476,6 +479,10 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   etalons ROM sans cache ; le débogueur lit la RAM sous le cache et
   `pomSnoop040Read/Write` n'ont aucun appelant, donc tout écrivain hôte de
   RAM invitée est un maître non espionné.
+  *À reproduire aussi* : MOVES/locked force `pomCache040Enabled=false`,
+  tandis que la résolution d'une ligne sale avant un accès non cachable
+  dans `pomCache040ReadValue/WriteValue` exige ce même booléen à true.
+  Distinguer le cache désactivé (rétention) de l'accès implicitement NC.
 - [ ] **Décider l'hybride 68LC040 + 68882 logiciel.** Défaut produit des
   LC 475/575/580 et Centris 610/650, combinaison qui n'existe pas en
   matériel ; un vrai `NONE` boote déjà le Quadra 605

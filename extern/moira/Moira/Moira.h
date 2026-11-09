@@ -2343,16 +2343,18 @@ private:
 
     // [B] MC68040UM-1993 §3.3: hardware ATCs; fork approximation below.
     // Hardware has separate 64-entry, four-way I/D ATCs and an FC2 tag.
-    // [F] POM68K Q8 uses 32 fully associative entries per side without that
-    // supervisor tag, with pseudo-LRU and TC.P-selected 4K/8K pages. Global
-    // G is honoured by non-global flushes. Settled by: the ATC geometry/FC2
-    // work in TODO, with colliding user/supervisor maps and replacement traces.
+    // FC2 tags each translation independently of the descriptor's S bit.
+    // [F] POM68K Q8 still uses 32 fully associative entries per side with
+    // pseudo-LRU and TC.P-selected 4K/8K pages. Global G is honoured by
+    // non-global flushes. Settled by: the ATC geometry/replacement work in
+    // TODO, with set conflicts and hardware replacement traces.
     struct Mmu040AtcEntry {
         u32 logical = 0;            // page-aligned logical
         u32 physical = 0;           // page-aligned physical
         u32 status = 0;             // descriptor status (WP|G|S|CM|M|R…)
         bool valid = false;
         bool mru = false;
+        bool supervisor = false;   // FC2 tag, not supervisor protection
     };
     static constexpr int MMU040_ATC_ENTRIES = 32;
     Mmu040AtcEntry mmu040AtcI[MMU040_ATC_ENTRIES] {};
@@ -2366,8 +2368,8 @@ private:
     void mmu040AtcFlushNonGlobal();
     void mmu040AtcFlushPage(u32 addr, bool nonGlobalOnly);
     void mmu040AtcTouch(Mmu040AtcEntry* arr, int& mruCount, int i);
-    int  mmu040AtcLookup(bool data, u32 addr, bool write);
-    void mmu040AtcFill(bool data, u32 addr, u32 status);
+    int  mmu040AtcLookup(bool data, u32 addr, bool write, bool super);
+    void mmu040AtcFill(bool data, u32 addr, u32 status, bool super);
 
     // Per-instruction loop head: translated opcode/irc fetch (mode-5
     // pattern); returns false when the fetch faulted

@@ -2090,7 +2090,7 @@ Moira::mmu040AtcTouch(Mmu040AtcEntry* arr, int& mruCount, int i)
 }
 
 int
-Moira::mmu040AtcLookup(bool data, u32 addr, bool write)
+Moira::mmu040AtcLookup(bool data, u32 addr, bool write, bool super)
 {
     Mmu040AtcEntry* arr = data ? mmu040AtcD : mmu040AtcI;
     int& mruCount = data ? mmu040AtcMruD : mmu040AtcMruI;
@@ -2100,7 +2100,7 @@ Moira::mmu040AtcLookup(bool data, u32 addr, bool write)
 
     {
         auto &e = arr[last[write]];
-        if (e.valid && (e.logical & imask) == maddr) {
+        if (e.valid && e.supervisor == super && (e.logical & imask) == maddr) {
             // Write hit on an unmodified, unprotected page must re-walk
             // so the table search sets M (030 ATC precedent).
             if (!write || (e.status & 0x10) || (e.status & 4)) {
@@ -2114,7 +2114,7 @@ Moira::mmu040AtcLookup(bool data, u32 addr, bool write)
 
     for (int i = 0; i < MMU040_ATC_ENTRIES; i++) {
         auto &e = arr[i];
-        if (!e.valid || (e.logical & imask) != maddr) continue;
+        if (!e.valid || e.supervisor != super || (e.logical & imask) != maddr) continue;
         if (!write || (e.status & 0x10) || (e.status & 4)) {
             mmu040AtcTouch(arr, mruCount, i);
             last[write] = i8(i);
@@ -2127,7 +2127,7 @@ Moira::mmu040AtcLookup(bool data, u32 addr, bool write)
 }
 
 void
-Moira::mmu040AtcFill(bool data, u32 addr, u32 status)
+Moira::mmu040AtcFill(bool data, u32 addr, u32 status, bool super)
 {
     // POM68K M0 probe (docs/CACHE_040.md): histogram the descriptor CM
     // bits Mac OS actually maps, per ATC fill. Diagnostic only, prints at
@@ -2168,11 +2168,13 @@ Moira::mmu040AtcFill(bool data, u32 addr, u32 status)
     // the entry being REPLACED dies with it, so a window/TLB hit implies a
     // resident ATC entry and the walk/U-bit pattern stays bit-identical to
     // an engine with no windows at all.
-    if (e.valid && (e.logical & imask) != (addr & imask))
+    if (e.valid && ((e.logical & imask) != (addr & imask) ||
+                    e.supervisor != super))
         pomJitAtcEvict(e.logical & imask, ~imask + 1, !data);
     e.logical = addr & imask;
     e.physical = status & imask;
     e.status = status;
+    e.supervisor = super;
     e.valid = true;
     last[0] = last[1] = i8(i);
 }
@@ -2382,14 +2384,14 @@ Moira::pomJitProbeCode(u32 logical, bool super,
     // O(1) first, same memo trick as the 030 branch above.
     {
         const Mmu040AtcEntry &e = mmu040AtcI[mmu040AtcLastI[0]];
-        if (e.valid && (e.logical & maski) == mmuPageBase) {
+        if (e.valid && e.supervisor == super && (e.logical & maski) == mmuPageBase) {
             if (!(e.status & 1)) return false;
             if (!super && (e.status & 0x80)) return false;
             return finish(e.physical | (logical & ~maski));
         }
     }
     for (const Mmu040AtcEntry &e : mmu040AtcI) {
-        if (!e.valid || (e.logical & maski) != mmuPageBase) continue;
+        if (!e.valid || e.supervisor != super || (e.logical & maski) != mmuPageBase) continue;
         if (!(e.status & 1)) return false;                  // invalid descriptor
         if (!super && (e.status & 0x80)) return false;      // supervisor-only page
         return finish(e.physical | (logical & ~maski));
@@ -2497,7 +2499,7 @@ Moira::pomJitProbeData(u32 logical, bool super, bool write,
     if (!mmu040AtcArmed) return false;      // POM68K_MMU040_WALK differential mode
 
     for (const Mmu040AtcEntry &e : mmu040AtcD) {
-        if (!e.valid || (e.logical & maski) != pageBase) continue;
+        if (!e.valid || e.supervisor != super || (e.logical & maski) != pageBase) continue;
         if (!(e.status & 1)) return false;                  // invalid descriptor
         if (!super && (e.status & 0x80)) return false;      // supervisor-only page
         if (write) {
@@ -2545,7 +2547,8 @@ Moira::pomJitCache040Publish(u32 logical, int bytes, bool write)
         const int idx = int(mmu040AtcLastD[write ? 1 : 0]);
         if (idx < 0 || idx >= MMU040_ATC_ENTRIES) return;
         const Mmu040AtcEntry &atc = mmu040AtcD[idx];
-        if (!atc.valid || (atc.logical & mmu040PageMaskI()) !=
+        if (!atc.valid || atc.supervisor != bool(reg.sr.s) ||
+            (atc.logical & mmu040PageMaskI()) !=
                           (logical & mmu040PageMaskI())) return;
         atcIndex = u8(idx);
         atcMru = &atc.mru;
@@ -3181,7 +3184,8 @@ Moira::mmu040TranslateHot(u32 addr, u32 val, bool super, bool data,
             const int idx = (data ? mmu040AtcLastD : mmu040AtcLastI)[write];
             const Mmu040AtcEntry &e = arr[idx];
             const u32 status = e.status;
-            if (e.valid && (e.logical & imask) == (addr & imask) &&
+            if (e.valid && e.supervisor == super &&
+                (e.logical & imask) == (addr & imask) &&
                 (!write || (status & 0x10) || (status & 4)) &&
                 !((write && (status & 4)) || (!super && (status & 0x80)) ||
                   !(status & 1))) {
@@ -3272,7 +3276,7 @@ Moira::mmu040Translate(u32 addr, u32 val, bool super, bool data,
     u32 status;
 
     if (mmu040AtcArmed) {
-        int hit = mmu040AtcLookup(data, addr, asWrite);
+        int hit = mmu040AtcLookup(data, addr, asWrite, super);
         if (hit >= 0) {
             const auto &e = (data ? mmu040AtcD : mmu040AtcI)[hit];
             status = e.status;
@@ -3297,7 +3301,7 @@ Moira::mmu040Translate(u32 addr, u32 val, bool super, bool data,
         // write = true through mmu_get_user_*; SSW.LK strips RW anyway)
         mmu040Fault<C>(addr, val, fc, asWrite, szCode);
     }
-    if (mmu040AtcArmed) mmu040AtcFill(data, addr, status);
+    if (mmu040AtcArmed) mmu040AtcFill(data, addr, status, super);
     const u32 wpa = (status & maski) | (addr & ~maski);
     if (pomCache040On)
         pomCache040Touch(data, wpa, asWrite, int((status >> 5) & 3), szCode);

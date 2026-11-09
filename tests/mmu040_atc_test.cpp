@@ -1,9 +1,6 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// Expected-failing standalone reproduction, not a registered CTest gate.
-// See tests/repros/README.md for the command and the open TODO.
-//
 // Bare-core, multi-instruction ATC regressions. Single-instruction vectors
 // flush their ATCs and cannot distinguish two resident FC2 translations.
 // [B] MC68040UM-1993 §3.3, Figures 3-20/3-21: the tag includes FC2;
@@ -46,7 +43,8 @@ public:
                uint32_t(mem[a + 2]) << 8 | mem[a + 3];
     }
 
-    void map(bool super, bool page8k, uint32_t la, uint32_t pa) {
+    void map(bool super, bool page8k, uint32_t la, uint32_t pa,
+             uint32_t attributes = 0x19) {
         const uint32_t root = super ? 0x4000 : 0x6000;
         const uint32_t pointers = root + 0x200;
         const uint32_t pointerIndex = (la >> 16) & 0x1FC;
@@ -57,7 +55,7 @@ public:
                                                (la >> 10) & 0xFC;
         // U/M already set, no protection: a later write must use the
         // resident mapping without the first-write descriptor re-search.
-        put32(pages + pageIndex, pa | 0x19);
+        put32(pages + pageIndex, pa | attributes);
     }
 
     void start(bool page8k, bool cache) {
@@ -187,6 +185,43 @@ void movesDomains(moira::Model model, bool page8k, bool cache) {
     }
 }
 
+void movesPublication(moira::Model model, bool page8k) {
+    Cpu cpu(model);
+    cpu.put16(code, 0x0E90); cpu.put16(code + 2, 0x1800); // MOVES.L D1,(A0)
+    cpu.put16(code + 4, 0x4E71); cpu.put16(code + 6, 0x4E71);
+    for (bool s : {false, true}) {
+        cpu.map(s, page8k, logical, phys[s], 0x39); // copyback, U/M/R
+        cpu.put32(phys[s], value[s]);
+    }
+    cpu.start(page8k, true); cpu.setSR(0x2000);
+    const auto slot = (logical >> 4) & (moira::Moira::PomJitCache040Table::kEntries - 1);
+    CHECK(cpu.pomJitWriteData(logical, 4, value[1] ^ 1),
+          "prepare a dirty supervisor cache line");
+    const auto supervisorIndex = cpu.pomJitCache040R.e[slot].atcIndex;
+    cpu.setSR(0);
+    uint32_t got = 0;
+    CHECK(cpu.pomJitReadData(logical, 4, got) && got == value[0],
+          "prepare the distinct user ATC and cache line");
+    cpu.setSR(0x2000); cpu.setDFC(1); cpu.setD(1, value[0] ^ 0xFFFFFFFF);
+    cpu.pomJitCache040R.e[slot] = {};
+    cpu.pomJitCache040W.e[slot] = {};
+    cpu.pomJitCache040Consumer = true;
+    cpu.execute();
+    CHECK(cpu.get32(phys[0]) == (value[0] ^ 0xFFFFFFFF) &&
+          cpu.get32(phys[1]) == value[1],
+          "MOVES user store must spare dirty supervisor data");
+    // A publication for the current supervisor context may never borrow
+    // the access's user ATC index. The native guard would then validate
+    // the wrong last-hit/MRU state even if the cache bytes were correct.
+    for (const auto *entry : {&cpu.pomJitCache040R.e[slot],
+                              &cpu.pomJitCache040W.e[slot]}) {
+        if (entry->generation == cpu.pomJitCache040Gen &&
+            entry->tag == cpu.pomJitCache040Tag(logical, true))
+            CHECK(entry->atcIndex == supervisorIndex,
+                  "supervisor publication borrowed the user access's ATC index");
+    }
+}
+
 } // namespace
 
 int main() {
@@ -200,7 +235,8 @@ int main() {
             instructionDomains(model, page8k, cache, firstSuper);
         }
         movesDomains(model, page8k, cache);
+        if (cache) movesPublication(model, page8k);
     }
-    std::printf("mmu040_fc2 repro: %u failure(s)\n", failures);
+    std::printf("mmu040_atc_test: %u failure(s)\n", failures);
     return failures ? 1 : 0;
 }
