@@ -19,6 +19,18 @@
 
 namespace jit {
 
+// Which semantic slots share one proved translation. A repeated span
+// carries its element count; preflighting its endpoints records one weight,
+// not one new architectural access per probe. Invalid tokens cannot invent
+// a native ATC debit.
+struct AtcRoute {
+    uint8_t mask = 0, weight = 0;
+    explicit AtcRoute(const MemoryAccessPlan& a, unsigned elements = 1)
+        : mask(a.mask()), weight(a.valid() && elements <= 16 ? uint8_t(elements) : 0) {}
+    AtcRoute(const MemoryAccessPlan& a, const MemoryAccessPlan& b)
+        : mask(uint8_t(a.mask() | b.mask())), weight(a.valid() && b.valid() ? 1 : 0) {}
+};
+
 struct EaPlan {
     int mode = 0, reg = 0;
     int idx = -1;                   // EaCostIndex row (JitCost.h)

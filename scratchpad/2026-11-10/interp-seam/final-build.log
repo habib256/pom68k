@@ -1,0 +1,88 @@
+[ 50%] Built target softfloat68k
+[ 50%] Building CXX object CMakeFiles/moira_interp.dir/extern/moira/Moira/MoiraDebugger.cpp.o
+[100%] Linking CXX static library libmoira_interp.a
+[100%] Built target moira_interp
+[100%] Linking CXX executable moira_interp_bare
+[100%] Built target moira_interp_bare
+[100%] Built target softfloat68k
+[100%] Built target moira
+[100%] Built target moira_interp_full
+[ 50%] Built target softfloat68k
+[100%] Built target moira_interp
+[100%] Building CXX object CMakeFiles/moira_interp_berr030_test.dir/tests/berr030_test.cpp.o
+[100%] Linking CXX executable moira_interp_berr030_test
+[100%] Built target moira_interp_berr030_test
+[ 50%] Built target softfloat68k
+[100%] Built target moira_interp
+[100%] Building CXX object CMakeFiles/moira_interp_fpu_sanity.dir/tests/fpu_sanity.cpp.o
+[100%] Linking CXX executable moira_interp_fpu_sanity
+[100%] Built target moira_interp_fpu_sanity
+[ 33%] Built target softfloat68k
+[ 66%] Built target moira_interp
+[ 66%] Building CXX object CMakeFiles/moira_interp_fpu040_test.dir/tests/fpu040_test.cpp.o
+[100%] Linking CXX executable moira_interp_fpu040_test
+[100%] Built target moira_interp_fpu040_test
+[ 50%] Built target softfloat68k
+[100%] Built target moira_interp
+[100%] Building CXX object CMakeFiles/moira_interp_callm_rtm_test.dir/tests/callm_rtm_test.cpp.o
+[100%] Linking CXX executable moira_interp_callm_rtm_test
+[100%] Built target moira_interp_callm_rtm_test
+[ 50%] Built target softfloat68k
+[ 50%] Built target moira
+[ 50%] Building CXX object CMakeFiles/fpu_sanity.dir/tests/fpu_sanity.cpp.o
+[100%] Linking CXX executable fpu_sanity
+[100%] Built target fpu_sanity
+[100%] Built target softfloat68k
+[100%] Built target moira
+[100%] Building CXX object CMakeFiles/fpu040_test.dir/tests/fpu040_test.cpp.o
+[100%] Linking CXX executable fpu040_test
+[100%] Built target fpu040_test
+[ 50%] Built target softfloat68k
+[ 50%] Built target moira
+[ 50%] Building CXX object CMakeFiles/berr030_test.dir/tests/berr030_test.cpp.o
+[100%] Linking CXX executable berr030_test
+[100%] Built target berr030_test
+[ 50%] Built target softfloat68k
+[ 50%] Built target moira
+[ 50%] Building CXX object CMakeFiles/callm_rtm_test.dir/tests/callm_rtm_test.cpp.o
+[100%] Linking CXX executable callm_rtm_test
+[100%] Built target callm_rtm_test
+[  6%] Built target softfloat68k
+[  6%] Built target moira
+[ 93%] Built target pom68k_core
+[100%] Building CXX object CMakeFiles/jit_restart_write_030_test.dir/tests/jit_restart_write_030_test.cpp.o
+[100%] Linking CXX executable jit_restart_write_030_test
+[100%] Built target jit_restart_write_030_test
+[  6%] Built target softfloat68k
+[  6%] Built target moira
+[ 93%] Built target pom68k_core
+[ 93%] Building CXX object CMakeFiles/jit_copyback_write_040_test.dir/tests/jit_copyback_write_040_test.cpp.o
+[100%] Linking CXX executable jit_copyback_write_040_test
+[100%] Built target jit_copyback_write_040_test
+[  6%] Built target softfloat68k
+[  6%] Built target moira
+[100%] Built target pom68k_core
+[100%] Building CXX object CMakeFiles/jit_store_guard_a64_test.dir/tests/jit_store_guard_a64_test.cpp.o
+[100%] Linking CXX executable jit_store_guard_a64_test
+[100%] Built target jit_store_guard_a64_test
+[  6%] Built target softfloat68k
+[  6%] Built target moira
+[100%] Built target pom68k_core
+[100%] Building CXX object CMakeFiles/jit_backend_parity_test.dir/src/jit/backends/JitBackendX64.cpp.o
+[100%] Linking CXX executable jit_backend_parity_test
+[100%] Built target jit_backend_parity_test
+[100%] Built target softfloat68k
+[100%] Built target moira
+[100%] Building CXX object CMakeFiles/sst68000.dir/tests/sst68000.cpp.o
+[100%] Linking CXX executable sst68000
+[100%] Built target sst68000
+[ 50%] Built target softfloat68k
+[ 50%] Built target moira
+[ 50%] Building CXX object CMakeFiles/sst68030.dir/tests/sst68030.cpp.o
+[100%] Linking CXX executable sst68030
+[100%] Built target sst68030
+[100%] Built target softfloat68k
+[100%] Built target moira
+[100%] Building CXX object CMakeFiles/sst68040.dir/tests/sst68040.cpp.o
+[100%] Linking CXX executable sst68040
+[100%] Built target sst68040

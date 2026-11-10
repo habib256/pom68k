@@ -1,0 +1,17 @@
+FAIL all seven intermediate-result getters belong to their status context
+PASS the overflow context retains its own exception flags
+model=5 output=0 FP=3fff0000:80000100:00000000/3fff0000:80000000:00000000 FPSR=00000208/00000208
+PASS the nested CPU executed during the operand callback
+FAIL nested execution preserves the outer CPU's precision, rounding and exception flags
+model=5 output=1 FP=3fff0000:c0000000:00000000/3fff0000:c0000000:00000000 FPSR=00000208/00000000
+PASS the nested CPU executed during the operand callback
+FAIL nested execution preserves the outer CPU's precision, rounding and exception flags
+FAIL two host threads retain separate rounding and flags for 1024 instructions
+model=8 output=0 FP=3fff0000:80000100:00000000/3fff0000:80000000:00000000 FPSR=00000208/00000208
+PASS the nested CPU executed during the operand callback
+FAIL nested execution preserves the outer CPU's precision, rounding and exception flags
+model=8 output=1 FP=3fff0000:c0000000:00000000/3fff0000:c0000000:00000000 FPSR=00000208/00000000
+PASS the nested CPU executed during the operand callback
+FAIL nested execution preserves the outer CPU's precision, rounding and exception flags
+FAIL two host threads retain separate rounding and flags for 1024 instructions
+fpu_context_test: 7 failure(s)

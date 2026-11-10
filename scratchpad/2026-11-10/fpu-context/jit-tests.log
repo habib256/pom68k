@@ -1,0 +1,44 @@
+Test project /Users/mercure/src/pom68k/build
+      Start  67: docs_test
+ 1/13 Test  #67: docs_test .............................   Passed    1.03 sec
+      Start  68: config_test
+ 2/13 Test  #68: config_test ...........................   Passed    0.21 sec
+      Start  69: store_inventory_test
+ 3/13 Test  #69: store_inventory_test ..................   Passed    0.07 sec
+      Start 386: jit_restart_write_030_test
+ 4/13 Test #386: jit_restart_write_030_test ............   Passed    1.82 sec
+      Start 437: jit_asset_free_lockstep_test
+ 5/13 Test #437: jit_asset_free_lockstep_test ..........   Passed   35.74 sec
+      Start 438: jit_copyback_write_040_test
+ 6/13 Test #438: jit_copyback_write_040_test ...........   Passed    0.71 sec
+      Start 439: jit_copyback_write_040_control_test
+ 7/13 Test #439: jit_copyback_write_040_control_test ...   Passed    0.08 sec
+      Start 440: jit_copyback_bsr_040_test
+ 8/13 Test #440: jit_copyback_bsr_040_test .............   Passed    0.06 sec
+      Start 441: jit_copyback_pair_040_test
+ 9/13 Test #441: jit_copyback_pair_040_test ............   Passed    0.05 sec
+      Start 442: jit_copyback_pair_040_control_test
+10/13 Test #442: jit_copyback_pair_040_control_test ....   Passed    0.06 sec
+      Start 443: jit_store_guard_a64_test
+11/13 Test #443: jit_store_guard_a64_test ..............   Passed    0.56 sec
+      Start 474: jit_backend_test
+12/13 Test #474: jit_backend_test ......................   Passed    0.50 sec
+      Start 475: jit_backend_parity_test
+13/13 Test #475: jit_backend_parity_test ...............   Passed    0.63 sec
+
+100% tests passed out of 13
+
+Label Time Summary:
+asset-none          =  41.52 sec*proc (13 tests)
+host-a64            =   0.56 sec*proc (1 test)
+host-any            =   4.27 sec*proc (6 tests)
+host-native         =  36.70 sec*proc (6 tests)
+jit                 =  40.21 sec*proc (10 tests)
+jit-fast            =  38.37 sec*proc (8 tests)
+scope-engine        =  40.21 sec*proc (10 tests)
+scope-repository    =   1.31 sec*proc (3 tests)
+smoke               =   0.50 sec*proc (1 test)
+tier-daily          =  41.52 sec*proc (13 tests)
+unit                =  41.52 sec*proc (13 tests)
+
+Total Test time (real) =  41.61 sec

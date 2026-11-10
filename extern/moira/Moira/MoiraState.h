@@ -84,13 +84,26 @@ template<class Ar> void Moira::pomVisitState(Ar& ar)
     if constexpr (Ar::loading) {
         cp = 0;                  // not carried; the next instruction
                                  // would zero it anyway (see above)
-        // Caches are not carried: drop them so the
-        // first fetch after a restore refills against the restored RAM.
+        // Drop derived translations and native mappings. The architectural
+        // 040 caches are restored from their payload below, after the old
+        // target's lines have been invalidated by pomFlushAtcs().
         // Both ATCs are flushed regardless of model — the set the model
         // does not use is already empty, so the extra call is free.
         pomIcache.reset();
+#if MOIRA_ENABLE_JIT
         pomJitDisarm();
+#endif
         pomFlushAtcs();
+    }
+
+    // POM68K: the 040 I/D caches can contain bytes newer OR older than RAM.
+    // Saving must not push them onto the guest bus or change guest time.
+    // The execution mode travels too, so a host constructed with the cache
+    // model off can restore a cache-active snapshot faithfully.
+    if (cpuModel >= Model::M68EC040) {
+        ar(pomCache040On);
+        pomCache040I.visit(ar);
+        pomCache040D.visit(ar);
     }
 }
 

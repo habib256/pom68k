@@ -117,6 +117,10 @@ class EvidenceCheckerTest(unittest.TestCase):
         ):
             with self.subTest(wrong=wrong):
                 self.assertTrue(grades.manual_problems(wrong))
+        self.assertEqual(grades.manual_problems(
+            "// [B] MC68020UM-1992 §6.2.2: DF-cleared software completion"), [])
+        self.assertTrue(grades.manual_problems(
+            "// [B] MC68020UM §6.2.2: missing edition"))
         self.assertEqual(grades.manual_problems("// [B] M68000PRM-1992 CINV: physical address"), [])
         self.assertEqual(grades.manual_problems("// POM68K_SURFACE.md § 1: host contract"), [])
 

@@ -13,6 +13,7 @@ class Cpu : public moira::Moira {
 public:
     std::vector<moira::u8> mem = std::vector<moira::u8>(1 << 20);
     mutable int holeReads = 0;
+    bool wordHole040 = false;
     moira::i64 irqClock = -1;
     explicit Cpu(moira::Model model, moira::FPUModel fpu = moira::FPUModel::NONE) {
         setModel(model); setFPUModel(fpu);
@@ -36,7 +37,10 @@ private:
         if (a == kHole) { ++holeReads; const_cast<Cpu*>(this)->extBusError(); }
         return mem[a & 0xfffff];
     }
-    moira::u16 read16(moira::u32 a) const override { return word(a & 0xfffff); }
+    moira::u16 read16(moira::u32 a) const override {
+        if (wordHole040 && a == kHole) { ++holeReads; const_cast<Cpu*>(this)->extBusError040(); }
+        return word(a & 0xfffff);
+    }
     void write8(moira::u32 a, moira::u8 v) const override {
         const_cast<Cpu*>(this)->mem[a & 0xfffff] = v;
     }
@@ -139,6 +143,38 @@ void frame040(bool busy) {
           busy ? "68040: restored BUSY micro-state gives identical FSAVE payload"
                : "68040: restored UNIMP micro-state gives identical FSAVE payload");
 }
+// [B] MC68040UM-1993 §8.4.6.7: RTE produces a live CM continuation.
+void movem040() {
+    for (auto model : {moira::Model::M68EC040, moira::Model::M68LC040, moira::Model::M68040}) {
+        Cpu direct(model);
+        direct.program(0x1000, {0x4cf0, 0x0103, 0x2800, 0x4e71, 0x4e71});
+        direct.lng(8, 0x3000); direct.program(0x3000, {0x4e73, 0x4e71});
+        direct.lng(kHole - 8, 0x11223344); direct.lng(kHole - 4, 0x55667788);
+        direct.lng(kHole, 0x99aabbcc);
+        direct.start(); direct.setA(0, kHole - 8); direct.setD(2, 0);
+        direct.wordHole040 = true; direct.execute();
+        check(direct.getPC0() == 0x3000 && (direct.word(direct.getSP() + 12) & 0x1000),
+              "040: partial MOVEM produces CM in its access-error frame");
+        // Re-fault once: the continuation must survive RTE and be consumed
+        // into another frame without adopting the handler's changed An.
+        direct.setA(0, 0x4000); direct.execute(); direct.execute();
+        check(direct.getPC0() == 0x3000 && direct.holeReads == 2 &&
+              (direct.word(direct.getSP() + 12) & 0x1000),
+              "040: continued MOVEM can fault again with the original EA");
+        direct.wordHole040 = false; direct.execute();
+        check(direct.getPC0() == 0x1000 && direct.mmu040MovemArmed &&
+              direct.mmu040MovemEa == kHole - 8,
+              "040: save between guest RTE and the continued MOVEM");
+        Cpu loaded(model); restore(direct, loaded);
+        direct.execute(); loaded.execute();
+        check(loaded.getD(0) == 0x11223344 && loaded.getD(1) == 0x55667788 &&
+              loaded.getA(0) == 0x99aabbcc && !loaded.mmu040MovemArmed,
+              "040: restored continuation uses the original EA and completes all transfers");
+        check(direct.mem == loaded.mem && save(direct) == save(loaded),
+              "040: guest-produced MOVEM continuation round-trips without new archive fields");
+    }
+}
+
 void hostState() {
     Cpu src(moira::Model::M68LC040), dst(moira::Model::M68LC040);
     src.start(); dst.start();
@@ -162,10 +198,95 @@ void hostState() {
     check(!dst.mmu040MovemArmed && !dst.mmu040MovemEa,
           "host: inactive saved latch clears an armed destination");
 }
+
+void cache040State(moira::Model model, unsigned disabled) {
+    Cpu direct(model);
+    direct.program(0x1000, {0x7001, 0x7002, 0x4E71, 0x4E71});
+    direct.start();
+    direct.setPomCache040(true); direct.setCACR(0x80008000);
+    direct.setDTT0(0x0000C020);                  // low memory, copyback
+    direct.execute();                           // fill I-cache, MOVEQ #1
+    direct.word(0x1002, 0x7007);                 // RAM newer than I-cache
+    for (unsigned i = 0; i < 5; ++i) {
+        direct.lng(0x4000 + i * 0x400, 0x11223344);
+        direct.lng(0x4004 + i * 0x400, 0x55667788);
+    }
+    moira::u32 value = 0;
+    check(direct.pomJitReadData(0x4000, 4, value), "040 cache: seed clean way");
+    check(direct.pomJitWriteData(0x4403, 2, 0xA1B2), "040 cache: dirty two longwords");
+    for (unsigned i = 2; i < 5; ++i)
+        check(direct.pomJitWriteData(0x4008 + i * 0x400, 4, 0xA0B0C000 + i),
+              "040 cache: fill conflicting dirty way");
+    check(direct.pomCache040Data().rot == 1 && direct.word(0x4402) == 0x3344 &&
+          direct.pomCache040Data().lookup(0x4400)->dirty == 3,
+          "040 cache: nonzero replacement phase, dirty data absent from RAM");
+    if (disabled == 1) direct.setCACR(0);
+    if (disabled == 2) direct.setPomCache040(false);
+    const auto clock = direct.getClock();
+    const auto ram = direct.mem;
+    const auto bytes = save(direct);
+    check(direct.mem == ram && direct.getClock() == clock &&
+          direct.pomCache040Data().lookup(0x4400)->dirty == 3,
+          "040 cache: saving neither pushes data nor advances the clock");
+
+    Cpu loaded(model);
+    loaded.start();
+    // A target with the opposite host cache setting and old derived state
+    // cannot supply the restored mode or a fetch window from before load.
+    loaded.setPomCache040(!direct.pomCache040Armed());
+    loaded.pomJitArm(loaded.mem.data() + 0x1000, 0x1000, 0x1000, 16, true);
+    const auto generation = loaded.pomJitMmuGen;
+    loaded.mem = direct.mem;
+    sav::Reader ar(bytes.data(), bytes.size()); loaded.state(ar);
+    check(ar.ok() && ar.remaining() == 0 && save(loaded) == bytes,
+          "040 cache: fresh CPU consumes archive and re-saves identical bytes");
+    check(loaded.pomCache040Armed() == direct.pomCache040Armed() &&
+          loaded.pomCache040Data().rot == direct.pomCache040Data().rot,
+          "040 cache: runtime mode and replacement phase round-trip");
+    check(!loaded.pomJitWindow.armed && loaded.pomJitMmuGen != generation,
+          "040 cache: restored lines do not revive a previous JIT window");
+    direct.setPomCache040(true); loaded.setPomCache040(true);
+    direct.setCACR(0x80008000); loaded.setCACR(0x80008000);
+    direct.execute(); loaded.execute();
+    check(direct.getD(0) == 2 && loaded.getD(0) == 2,
+          "040 cache: stale instruction bytes survive newer backing RAM");
+    moira::u32 a = 0, b = 0;
+    check(direct.pomJitReadData(0x4400, 4, a) &&
+          loaded.pomJitReadData(0x4400, 4, b) && a == 0x112233A1 && b == a,
+          "040 cache: restored copyback bytes remain newer than RAM");
+    // With rot=1, the next collision writes the two dirty longwords at
+    // $4400 to RAM. Losing either data or replacement phase changes it.
+    check(direct.pomJitWriteData(0x5408, 4, 0xCAFEBABE) &&
+          loaded.pomJitWriteData(0x5408, 4, 0xCAFEBABE), "040 cache: replacement after restore");
+    check(direct.word(0x4402) == 0x33A1 && loaded.word(0x4404) == 0xB266 &&
+          direct.mem == loaded.mem && save(direct) == save(loaded),
+          "040 cache: restored dirty victim writes back identically");
+}
+
+void invalidCacheLinesAreNotState() {
+    Cpu cpu(moira::Model::M68040);
+    cpu.start();
+    const auto plain = save(cpu);
+    auto& line = cpu.pomCache040Data().sets[0][0];
+    line.tag = 0x12345; line.dirty = 15; line.data[3] = 0xA5;
+    cpu.pomCache040Data().hits = 17;
+    check(save(cpu) == plain, "040 cache: invalid bytes and diagnostic counters are omitted");
+    Cpu loaded(moira::Model::M68040);
+    loaded.pomCache040Data().sets[0][0] = line;
+    restore(cpu, loaded);
+    const auto& restored = loaded.pomCache040Data().sets[0][0];
+    check(!restored.valid && !restored.tag && !restored.dirty && !restored.data[3],
+          "040 cache: loading an invalid slot clears target garbage");
+}
 }
 int main() {
     pending68882(); clearedDf030(); pipe030(); frame040(false); frame040(true);
     hostState();
+    movem040();
+    for (auto model : {moira::Model::M68LC040, moira::Model::M68040})
+        for (unsigned disabled = 0; disabled < 3; ++disabled)
+            cache040State(model, disabled);
+    invalidCacheLinesAreNotState();
     std::printf("moira_state_test: %d failure(s)\n", failures);
     return failures ? 1 : 0;
 }

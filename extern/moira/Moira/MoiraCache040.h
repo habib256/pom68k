@@ -52,6 +52,19 @@ struct Cache040 {
     // Gate observables — counters, not architecture
     u64 fills = 0, hits = 0, pushes = 0;
 
+    // POM68K: data-bearing caches are not reconstructible from RAM. Keep
+    // the replacement phase and every valid line, including clean stale
+    // instruction bytes and retained lines while the cache is disabled.
+    // Invalid tags/data and diagnostic counters have no architectural use.
+    template<class Ar> void visit(Ar& ar) {
+        ar(rot);
+        for (auto& set : sets) for (auto& line : set) {
+            ar(line.valid);
+            if (line.valid) ar(line.tag, line.dirty, line.data);
+            else if constexpr (Ar::loading) line = {};
+        }
+    }
+
     static int setOf(u32 pa) { return int((pa >> 4) & 63); }
     static u32 tagOf(u32 pa) { return pa >> 10; }
 
@@ -174,13 +187,15 @@ struct Cache040 {
     }
 
     // Data-bearing CPUSH helpers. `sink(base,line)` writes the dirty
-    // longwords to memory. The line is invalidated only after the callback
-    // returns, so a bus error leaves recoverable cache state behind.
+    // image to memory. Invalidate before calling the sink, keeping a local
+    // image: a CPUSH bus error exports PD rather than retaining the line.
+    // [B] MC68040UM-1993 §7.6.1: CPUSH invalidates even when the push faults.
     template <class F> int drainLine(u32 pa, F sink) {
         int n = 0;
         if (Line* l = lookup(pa)) {
-            if (l->dirty) { sink(pa & ~u32(15), *l); pushes++; n = 1; }
+            const Line pending = *l;
             l->valid = false; l->dirty = 0;
+            if (pending.dirty) { sink(pa & ~u32(15), pending); pushes++; n = 1; }
         }
         return n;
     }
@@ -189,8 +204,9 @@ struct Cache040 {
         for (int set = 0; set < SETS; set++) for (Line &l : sets[set]) {
             const u32 base = (l.tag << 10) | (u32(set) << 4);
             if (!l.valid || (base & pageMask) != (pa & pageMask)) continue;
-            if (l.dirty) { sink(base, l); pushes++; n++; }
+            const Line pending = l;
             l.valid = false; l.dirty = 0;
+            if (pending.dirty) { sink(base, pending); pushes++; n++; }
         }
         return n;
     }
@@ -199,8 +215,9 @@ struct Cache040 {
         for (int set = 0; set < SETS; set++) for (Line &l : sets[set]) {
             if (!l.valid) continue;
             const u32 base = (l.tag << 10) | (u32(set) << 4);
-            if (l.dirty) { sink(base, l); pushes++; n++; }
+            const Line pending = l;
             l.valid = false; l.dirty = 0;
+            if (pending.dirty) { sink(base, pending); pushes++; n++; }
         }
         return n;
     }

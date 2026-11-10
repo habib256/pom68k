@@ -73,8 +73,8 @@ endfunction()
 # 68040 program compares complete architectural boundaries and RAM, then
 # injects both restart and last-write bus faults. `jit-fast` makes native
 # host execution mandatory on the A64 and x64 CI runners.
-add_executable(jit_asset_free_lockstep_test
-               tests/jit_asset_free_lockstep_test.cpp)
+add_executable(jit_asset_free_lockstep_test tests/jit_asset_free_lockstep_test.cpp
+               tests/jit_atc040_cases.cpp)
 target_link_libraries(jit_asset_free_lockstep_test PRIVATE pom68k_core)
 pom68k_perf_budget(jit_asset_free_lockstep_test
     synthetic_68040_lockstep 68040 min_blocks_compiled

@@ -1,0 +1,2 @@
+/private/tmp/pom68k-softfloat-shift-before/softfloat-macros.h:348:16: runtime error: shift exponent 64 is too large for 64-bit type 'uint64_t' (aka 'unsigned long long')
+SUMMARY: UndefinedBehaviorSanitizer: undefined-behavior /private/tmp/pom68k-softfloat-shift-before/softfloat-macros.h:348:16 

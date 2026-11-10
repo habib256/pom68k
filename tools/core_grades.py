@@ -68,7 +68,7 @@ IDENT = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]{3,})\b")
 QUOTED_OR_COMMENT = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|//')
 MANUAL_LOCK = os.path.join(ROOT, "tests", "core_manuals.lock")
 MANUAL_FAMILY = re.compile(
-    r"\b(?:MC68030UM|M?C?68040UM|MC68881UM|MC68882UM|M68000PRM|"
+    r"\b(?:MC68020UM|MC68030UM|M?C?68040UM|MC68881UM|MC68882UM|M68000PRM|"
     r"MC68881/(?:MC68882|882)\s*UM)"
     r"(?:-\d{4})?\b")
 MANUAL_HEAD = re.compile(r"^\s*//\s*\[([BF])\]\s+([^\n]*)", re.MULTILINE)

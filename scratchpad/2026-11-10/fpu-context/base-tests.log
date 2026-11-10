@@ -1,0 +1,24 @@
+Test project /Users/mercure/src/pom68k/build
+    Start 67: docs_test
+1/4 Test #67: docs_test ........................   Passed    1.57 sec
+    Start 74: sst68000
+2/4 Test #74: sst68000 .........................   Passed   21.41 sec
+    Start 75: sst68030
+3/4 Test #75: sst68030 .........................   Passed    1.13 sec
+    Start 76: sst68040
+4/4 Test #76: sst68040 .........................   Passed    3.09 sec
+
+100% tests passed out of 4
+
+Label Time Summary:
+asset-none          =   1.57 sec*proc (1 test)
+asset-optional      =  25.63 sec*proc (3 tests)
+host-any            =  27.20 sec*proc (4 tests)
+jit-fast            =   1.57 sec*proc (1 test)
+scope-component     =  25.63 sec*proc (3 tests)
+scope-repository    =   1.57 sec*proc (1 test)
+tier-daily          =   1.57 sec*proc (1 test)
+tier-full           =  25.63 sec*proc (3 tests)
+unit                =  27.20 sec*proc (4 tests)
+
+Total Test time (real) =  27.24 sec

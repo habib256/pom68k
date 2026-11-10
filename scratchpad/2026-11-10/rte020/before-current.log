@@ -1,0 +1,441 @@
+020 model=2 bytes=1 write=0 mode=0 completed=0 restore=0
+020 model=2 bytes=1 write=0 mode=0 completed=0 restore=1
+020 model=2 bytes=1 write=0 mode=0 completed=1 restore=0
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+020 model=2 bytes=1 write=0 mode=0 completed=1 restore=1
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+020 model=2 bytes=1 write=0 mode=1 completed=0 restore=0
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=1 write=0 mode=1 completed=0 restore=1
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=1 write=0 mode=1 completed=1 restore=0
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=1 write=0 mode=1 completed=1 restore=1
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=1 write=0 mode=2 completed=0 restore=0
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=1 write=0 mode=2 completed=0 restore=1
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=1 write=0 mode=2 completed=1 restore=0
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=1 write=0 mode=2 completed=1 restore=1
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=1 write=1 mode=0 completed=0 restore=0
+020 model=2 bytes=1 write=1 mode=0 completed=0 restore=1
+020 model=2 bytes=1 write=1 mode=0 completed=1 restore=0
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+020 model=2 bytes=1 write=1 mode=0 completed=1 restore=1
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+020 model=2 bytes=1 write=1 mode=1 completed=0 restore=0
+020 model=2 bytes=1 write=1 mode=1 completed=0 restore=1
+020 model=2 bytes=1 write=1 mode=1 completed=1 restore=0
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=1 write=1 mode=1 completed=1 restore=1
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=1 write=1 mode=2 completed=0 restore=0
+  FAIL format $B names the faulted instruction
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=1 write=1 mode=2 completed=0 restore=1
+  FAIL format $B names the faulted instruction
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=1 write=1 mode=2 completed=1 restore=0
+  FAIL format $B names the faulted instruction
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=1 write=1 mode=2 completed=1 restore=1
+  FAIL format $B names the faulted instruction
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=2 write=0 mode=0 completed=0 restore=0
+020 model=2 bytes=2 write=0 mode=0 completed=0 restore=1
+020 model=2 bytes=2 write=0 mode=0 completed=1 restore=0
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+020 model=2 bytes=2 write=0 mode=0 completed=1 restore=1
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+020 model=2 bytes=2 write=0 mode=1 completed=0 restore=0
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=2 write=0 mode=1 completed=0 restore=1
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=2 write=0 mode=1 completed=1 restore=0
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=2 write=0 mode=1 completed=1 restore=1
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=2 write=0 mode=2 completed=0 restore=0
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=2 write=0 mode=2 completed=0 restore=1
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=2 write=0 mode=2 completed=1 restore=0
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=2 write=0 mode=2 completed=1 restore=1
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=2 write=1 mode=0 completed=0 restore=0
+020 model=2 bytes=2 write=1 mode=0 completed=0 restore=1
+020 model=2 bytes=2 write=1 mode=0 completed=1 restore=0
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+020 model=2 bytes=2 write=1 mode=0 completed=1 restore=1
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+020 model=2 bytes=2 write=1 mode=1 completed=0 restore=0
+020 model=2 bytes=2 write=1 mode=1 completed=0 restore=1
+020 model=2 bytes=2 write=1 mode=1 completed=1 restore=0
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=2 write=1 mode=1 completed=1 restore=1
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=2 write=1 mode=2 completed=0 restore=0
+  FAIL format $B names the faulted instruction
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=2 write=1 mode=2 completed=0 restore=1
+  FAIL format $B names the faulted instruction
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=2 write=1 mode=2 completed=1 restore=0
+  FAIL format $B names the faulted instruction
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=2 write=1 mode=2 completed=1 restore=1
+  FAIL format $B names the faulted instruction
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=4 write=0 mode=0 completed=0 restore=0
+020 model=2 bytes=4 write=0 mode=0 completed=0 restore=1
+020 model=2 bytes=4 write=0 mode=0 completed=1 restore=0
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+020 model=2 bytes=4 write=0 mode=0 completed=1 restore=1
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+020 model=2 bytes=4 write=0 mode=1 completed=0 restore=0
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=4 write=0 mode=1 completed=0 restore=1
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=4 write=0 mode=1 completed=1 restore=0
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=4 write=0 mode=1 completed=1 restore=1
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=4 write=0 mode=2 completed=0 restore=0
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=4 write=0 mode=2 completed=0 restore=1
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=4 write=0 mode=2 completed=1 restore=0
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=4 write=0 mode=2 completed=1 restore=1
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=4 write=1 mode=0 completed=0 restore=0
+020 model=2 bytes=4 write=1 mode=0 completed=0 restore=1
+020 model=2 bytes=4 write=1 mode=0 completed=1 restore=0
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+020 model=2 bytes=4 write=1 mode=0 completed=1 restore=1
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+020 model=2 bytes=4 write=1 mode=1 completed=0 restore=0
+020 model=2 bytes=4 write=1 mode=1 completed=0 restore=1
+020 model=2 bytes=4 write=1 mode=1 completed=1 restore=0
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=4 write=1 mode=1 completed=1 restore=1
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=4 write=1 mode=2 completed=0 restore=0
+  FAIL format $B names the faulted instruction
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=4 write=1 mode=2 completed=0 restore=1
+  FAIL format $B names the faulted instruction
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=4 write=1 mode=2 completed=1 restore=0
+  FAIL format $B names the faulted instruction
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=4 write=1 mode=2 completed=1 restore=1
+  FAIL format $B names the faulted instruction
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=1 write=0 mode=0 completed=0 restore=0
+020 model=3 bytes=1 write=0 mode=0 completed=0 restore=1
+020 model=3 bytes=1 write=0 mode=0 completed=1 restore=0
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+020 model=3 bytes=1 write=0 mode=0 completed=1 restore=1
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+020 model=3 bytes=1 write=0 mode=1 completed=0 restore=0
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=1 write=0 mode=1 completed=0 restore=1
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=1 write=0 mode=1 completed=1 restore=0
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=1 write=0 mode=1 completed=1 restore=1
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=1 write=0 mode=2 completed=0 restore=0
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=1 write=0 mode=2 completed=0 restore=1
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=1 write=0 mode=2 completed=1 restore=0
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=1 write=0 mode=2 completed=1 restore=1
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=1 write=1 mode=0 completed=0 restore=0
+020 model=3 bytes=1 write=1 mode=0 completed=0 restore=1
+020 model=3 bytes=1 write=1 mode=0 completed=1 restore=0
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+020 model=3 bytes=1 write=1 mode=0 completed=1 restore=1
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+020 model=3 bytes=1 write=1 mode=1 completed=0 restore=0
+020 model=3 bytes=1 write=1 mode=1 completed=0 restore=1
+020 model=3 bytes=1 write=1 mode=1 completed=1 restore=0
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=1 write=1 mode=1 completed=1 restore=1
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=1 write=1 mode=2 completed=0 restore=0
+  FAIL format $B names the faulted instruction
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=1 write=1 mode=2 completed=0 restore=1
+  FAIL format $B names the faulted instruction
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=1 write=1 mode=2 completed=1 restore=0
+  FAIL format $B names the faulted instruction
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=1 write=1 mode=2 completed=1 restore=1
+  FAIL format $B names the faulted instruction
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=2 write=0 mode=0 completed=0 restore=0
+020 model=3 bytes=2 write=0 mode=0 completed=0 restore=1
+020 model=3 bytes=2 write=0 mode=0 completed=1 restore=0
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+020 model=3 bytes=2 write=0 mode=0 completed=1 restore=1
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+020 model=3 bytes=2 write=0 mode=1 completed=0 restore=0
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=2 write=0 mode=1 completed=0 restore=1
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=2 write=0 mode=1 completed=1 restore=0
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=2 write=0 mode=1 completed=1 restore=1
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=2 write=0 mode=2 completed=0 restore=0
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=2 write=0 mode=2 completed=0 restore=1
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=2 write=0 mode=2 completed=1 restore=0
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=2 write=0 mode=2 completed=1 restore=1
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=2 write=1 mode=0 completed=0 restore=0
+020 model=3 bytes=2 write=1 mode=0 completed=0 restore=1
+020 model=3 bytes=2 write=1 mode=0 completed=1 restore=0
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+020 model=3 bytes=2 write=1 mode=0 completed=1 restore=1
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+020 model=3 bytes=2 write=1 mode=1 completed=0 restore=0
+020 model=3 bytes=2 write=1 mode=1 completed=0 restore=1
+020 model=3 bytes=2 write=1 mode=1 completed=1 restore=0
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=2 write=1 mode=1 completed=1 restore=1
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=2 write=1 mode=2 completed=0 restore=0
+  FAIL format $B names the faulted instruction
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=2 write=1 mode=2 completed=0 restore=1
+  FAIL format $B names the faulted instruction
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=2 write=1 mode=2 completed=1 restore=0
+  FAIL format $B names the faulted instruction
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=2 write=1 mode=2 completed=1 restore=1
+  FAIL format $B names the faulted instruction
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=4 write=0 mode=0 completed=0 restore=0
+020 model=3 bytes=4 write=0 mode=0 completed=0 restore=1
+020 model=3 bytes=4 write=0 mode=0 completed=1 restore=0
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+020 model=3 bytes=4 write=0 mode=0 completed=1 restore=1
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+020 model=3 bytes=4 write=0 mode=1 completed=0 restore=0
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=4 write=0 mode=1 completed=0 restore=1
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=4 write=0 mode=1 completed=1 restore=0
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=4 write=0 mode=1 completed=1 restore=1
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=4 write=0 mode=2 completed=0 restore=0
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=4 write=0 mode=2 completed=0 restore=1
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=4 write=0 mode=2 completed=1 restore=0
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=4 write=0 mode=2 completed=1 restore=1
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=4 write=1 mode=0 completed=0 restore=0
+020 model=3 bytes=4 write=1 mode=0 completed=0 restore=1
+020 model=3 bytes=4 write=1 mode=0 completed=1 restore=0
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+020 model=3 bytes=4 write=1 mode=0 completed=1 restore=1
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+020 model=3 bytes=4 write=1 mode=1 completed=0 restore=0
+020 model=3 bytes=4 write=1 mode=1 completed=0 restore=1
+020 model=3 bytes=4 write=1 mode=1 completed=1 restore=0
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=4 write=1 mode=1 completed=1 restore=1
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=4 write=1 mode=2 completed=0 restore=0
+  FAIL format $B names the faulted instruction
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=4 write=1 mode=2 completed=0 restore=1
+  FAIL format $B names the faulted instruction
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=4 write=1 mode=2 completed=1 restore=0
+  FAIL format $B names the faulted instruction
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=4 write=1 mode=2 completed=1 restore=1
+  FAIL format $B names the faulted instruction
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+berr020_test: 296 failure(s)

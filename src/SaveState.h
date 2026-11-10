@@ -24,6 +24,8 @@
 //     re-derivable from the page tables and RAM.
 //   - Host-backed bulk data (ROM image, disk images). The snapshot carries
 //     an identity checksum plus whatever the guest has since modified.
+// Data-bearing 040 I/D caches are CPU state: copyback or stale instruction
+// bytes cannot be reconstructed from backing RAM.
 //
 // Integers are encoded little-endian explicitly, so the format is defined
 // rather than accidental. Snapshots are still same-version artifacts:
@@ -312,7 +314,9 @@ inline constexpr char     kMagic[8]  = {'P','O','M','6','8','K','S','S'};
 // v29: Moira's pending 6888x result, integrated-040 frame micro-state,
 // 68030 pre-switch pipe and DF-cleared retry, and an armed MOVEM latch.
 // These are live across instruction boundaries; v28 cannot restore them.
-inline constexpr u32      kVersion   = 29;
+// v30: data-bearing 040 I/D caches, dirty masks, replacement phase and
+// cache-model mode. RAM alone cannot reconstruct stale or copyback bytes.
+inline constexpr u32      kVersion   = 30;
 
 struct Header {
     u32 version     = kVersion;

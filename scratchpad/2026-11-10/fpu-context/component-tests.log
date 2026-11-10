@@ -1,0 +1,47 @@
+Test project /Users/mercure/src/pom68k/build
+      Start  67: docs_test
+ 1/16 Test  #67: docs_test ........................   Passed    1.40 sec
+      Start 385: berr030_test
+ 2/16 Test #385: berr030_test .....................   Passed    0.51 sec
+      Start 444: moira_interp_berr020_test
+ 3/16 Test #444: moira_interp_berr020_test ........   Passed    1.50 sec
+      Start 445: moira_interp_berr030_test
+ 4/16 Test #445: moira_interp_berr030_test ........   Passed    0.50 sec
+      Start 446: moira_interp_fpu_sanity
+ 5/16 Test #446: moira_interp_fpu_sanity ..........   Passed    0.48 sec
+      Start 447: moira_interp_fpu040_test
+ 6/16 Test #447: moira_interp_fpu040_test .........   Passed    0.46 sec
+      Start 448: moira_interp_fpu_context_test
+ 7/16 Test #448: moira_interp_fpu_context_test ....   Passed    0.50 sec
+      Start 449: moira_interp_callm_rtm_test
+ 8/16 Test #449: moira_interp_callm_rtm_test ......   Passed    0.43 sec
+      Start 450: moira_interp_test
+ 9/16 Test #450: moira_interp_test ................   Passed    1.11 sec
+      Start 452: fpu_sanity
+10/16 Test #452: fpu_sanity .......................   Passed    0.46 sec
+      Start 453: fpu040_test
+11/16 Test #453: fpu040_test ......................   Passed    0.45 sec
+      Start 454: fpu_context_test
+12/16 Test #454: fpu_context_test .................   Passed    0.09 sec
+      Start 456: berr020_test
+13/16 Test #456: berr020_test .....................   Passed    1.56 sec
+      Start 458: moira_state_test
+14/16 Test #458: moira_state_test .................   Passed    0.49 sec
+      Start 469: core_grades_test
+15/16 Test #469: core_grades_test .................   Passed    0.72 sec
+      Start 555: file_size_budget_test
+16/16 Test #555: file_size_budget_test ............   Passed    5.56 sec
+
+100% tests passed out of 16
+
+Label Time Summary:
+asset-none          =  16.20 sec*proc (16 tests)
+host-any            =  16.20 sec*proc (16 tests)
+interp-only         =   4.97 sec*proc (7 tests)
+jit-fast            =   1.40 sec*proc (1 test)
+scope-component     =  14.09 sec*proc (14 tests)
+scope-repository    =   2.11 sec*proc (2 tests)
+tier-daily          =  16.20 sec*proc (16 tests)
+unit                =  16.20 sec*proc (16 tests)
+
+Total Test time (real) =  16.28 sec

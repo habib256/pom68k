@@ -459,7 +459,7 @@ int main() {
     const std::string startupOptionSchema = slurp(startupOptions);
     const std::string startupPolicySchema = slurp(startupValuePolicy);
     const std::string startupValueDecoder = slurp(startupValueDecoding);
-    const std::string jitDecoder = slurp(jitConfigHeader);
+    const std::string jitDecoder = slurp(testasset::find("src/JitStartupConfig.h"));
     check(runtimeComposition.find("parseProductStartup") !=
                   std::string::npos &&
               runtimeComposition.find("parseCoreStartup") !=
@@ -580,7 +580,7 @@ int main() {
                   std::string::npos &&
               jitDecoder.find("values.boolean") !=
                   std::string::npos &&
-              jitDecoder.find("const pom68k::StartupSnapshot& values") !=
+              jitDecoder.find("const StartupSnapshot& values") !=
                   std::string::npos,
           "each startup decoder is compile-time restricted to its option domain");
     check(mainSource.find("makeGuiMachineRuntime()") != std::string::npos &&
@@ -2742,6 +2742,39 @@ int main() {
               jitConfigSource.find("ResolvedConfig resolveConfig()") ==
                   std::string::npos,
           "each JIT Engine requires one explicitly injected snapshot");
+    // Keep the reusable engine closed over jit/ and the Moira CPU contract.
+    // A local product header can otherwise creep back in through a leaf.
+    {
+        namespace fs = std::filesystem;
+        const fs::path root = fs::path(jitConfigPath).parent_path();
+        for (const auto& entry : fs::recursive_directory_iterator(root)) {
+            const auto ext = entry.path().extension();
+            if (ext != ".h" && ext != ".cpp" && ext != ".inl") continue;
+            const std::string source = slurp(entry.path().string());
+            std::istringstream lines(source);
+            std::string line;
+            while (std::getline(lines, line)) {
+                const auto directive = line.find("#include");
+                if (directive == std::string::npos) continue;
+                const auto first = line.find('"', directive);
+                if (first == std::string::npos) continue;
+                const auto last = line.find('"', first + 1);
+                const std::string include = line.substr(first + 1, last - first - 1);
+                const auto target = (entry.path().parent_path() / include).lexically_normal();
+                const auto relative = target.lexically_relative(root).generic_string();
+                check(include == "Moira.h" ||
+                          (relative.rfind("../", 0) != 0 && fs::exists(target)),
+                      entry.path().string() + ": portable JIT include " + include);
+            }
+            if (entry.path().parent_path() == root &&
+                entry.path().filename() != "JitCodeBuffer.cpp")
+                check(source.find("__aarch64__") == std::string::npos &&
+                          source.find("__x86_64__") == std::string::npos &&
+                          source.find("_M_ARM64") == std::string::npos &&
+                          source.find("_M_X64") == std::string::npos,
+                      entry.path().string() + ": host architecture stays in backends");
+        }
+    }
     for (const std::string& path : jitConfigConsumers) {
         const std::string source = slurp(path);
         check(!path.empty() &&

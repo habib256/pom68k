@@ -2,13 +2,24 @@
 # with no Macintosh object, no ROM and no JIT engine. They are the part of the
 # CPU proof that can travel with the core (TODO.md § Moteur › Socle). Included
 # from Pom68kJitGates.cmake at the position these registrations always had.
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Pom68kCorpusGates.cmake)
+add_executable(softfloat_primitives_test tests/softfloat_primitives_test.c)
+target_link_libraries(softfloat_primitives_test PRIVATE softfloat68k)
+add_test(NAME softfloat_primitives_test COMMAND softfloat_primitives_test)
+set_tests_properties(softfloat_primitives_test PROPERTIES LABELS cpu-vectors)
 
-# Each gate has a same-named source and shares the standalone Moira link.
+if(NOT EMSCRIPTEN)
+    find_package(Threads REQUIRED)
+    set(POM68K_CPU_CONTEXT_THREADS Threads::Threads)
+endif()
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Pom68kInterpGates.cmake)
 foreach(cpu_gate IN ITEMS
     cache040_test       # cache data, policy, physical management and snooping
     fpu_sanity          # external FPU, format-$9 IRQ and BUSY resume
     fpu040_test         # integrated FPU and FPSP exception frames
+    fpu_context_test    # independent arithmetic state under nested/parallel CPUs
     callm_rtm_test      # 68020 module protocol
+    berr020_test        # 020/EC020 software-completed format-$B cycles
     moira_rules_test    # hardware-rule cells outside random corpora
     moira_state_test    # instruction-boundary PMMU/FPU continuations
     mmu040_atc_test)    # multi-instruction I/D and FC2 translations
@@ -16,6 +27,7 @@ foreach(cpu_gate IN ITEMS
     target_link_libraries(${cpu_gate} PRIVATE moira)
     add_test(NAME ${cpu_gate} COMMAND ${cpu_gate})
 endforeach()
+target_link_libraries(fpu_context_test PRIVATE ${POM68K_CPU_CONTEXT_THREADS})
 
 # The 68030 against WinUAE alone, all fourteen cells: the pinned sst68030
 # keeps, in several cells, only the vectors a retired second oracle agreed

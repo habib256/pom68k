@@ -1296,12 +1296,9 @@ struct Instr {
     uint16_t baseCycles = 0;
     uint16_t icacheCycles = 0;
     uint16_t postExceptionCycles = 0;
-    // How many instruction-stream words the traced run actually fetched
-    // through mmuFetchWord (the pomIcache.fetches delta). NOT words + 1:
-    // a form whose last extension is consumed under SKIP_LAST_RD fetches
-    // only `words` (MOVEA.L (xxx).W,An was the counterexample the
-    // retained-cache lockstep produced, 2026-08-19). 0 = not captured;
-    // the 030 emitted charge refuses to guess and must not emit then.
+    // 030 mmuFetchWord count (pomIcache.fetches delta). SKIP_LAST_RD can
+    // omit the trailing read: MOVEA.L (xxx).W,An fetches words, not words+1.
+    // Zero is unobserved; emitting a 030 fetch charge must then refuse.
     uint8_t fetchWords = 0;
     uint32_t observedNextPc = 0; // PC after the traced instruction
     uint16_t terminalIrd = 0;    // queue at that same boundary
@@ -1321,6 +1318,9 @@ struct Instr {
     // polls sit inside the access, not around it).
     uint8_t iplPollMask = 0;
     bool iplPollPosValid = false;
+    // Observed 040 stream words; live provenance selects ATC debits.
+    // Program-space target reads are separate exact accesses.
+    uint16_t fetchWords040 = 0; // zero means unobserved
     MemoryContract memory{};          // `{}`: filled after the aggregate
     InstructionSemantics semantics{}; // init, and -Wextra flags Instr{...}
 

@@ -21,7 +21,10 @@ interpreter and native corrections.
 
 Read `extern/moira/POM68K_VENDOR.md` § *JIT seam* (row 22 of the patch
 table, twelve numbered points plus 3b) for the extension this subsystem
-needs inside the vendored core.
+needs inside the vendored core. `MOIRA_ENABLE_JIT=0` omits that seam at compile
+time for standalone interpreter hosts (`moira_interp`, vendor row 76); this
+subsystem uses the enabled build. `moira_interp_test` compares the two builds'
+unaccelerated state, cycles, bus and memory, including snapshot restoration.
 
 **On the name (updated 2026-08-10).** The portable `threaded` backend is NOT
 a JIT: it is the interpreter running behind a fetch window, with a block
@@ -159,7 +162,7 @@ what it does and does not drive today:
 The per-opcode question is **not** a block boundary: `Backend::canEmit()` is
 an encoding-only answer — consulted by the opcode census
 (`POM68K_JIT_HISTO`), by `jit_backend_test`, and by `A64Backend::compile()`
-as the dispatch test in front of `emitRegInstr` (`JitBackendA64.cpp:4825-4827`;
+as the dispatch test in front of `emitRegInstr` (`JitBackendA64.cpp:4724-4726`;
 the x64 emitters carry their own switch and never call it). The coverage
 floor is a separate thing and is not built on it: `compile()` counts what
 the emitter actually produced and refuses a block below
@@ -1321,7 +1324,12 @@ de-duplicates any explicit `LABELS` a registration already set.
 
 ## 6. Environment surface
 
-Everything in `JitConfig.h` unless noted. Product startup captures the whole
+Policy fields live in the host-independent `JitConfig.h`; POM68K option
+decoding lives outside the engine in `src/JitStartupConfig.h`. Another host
+constructs `jit::ResolvedConfig` directly, without `StartupSnapshot` or the
+POM68K option schema. `docs_test` guards this include boundary and keeps host
+architecture detection under `backends/` (apart from the code allocator).
+Product startup captures the whole
 surface once in `RuntimeConfig::jit()` and injects that immutable snapshot
 through every CPU wrapper into its `Engine`. Standalone gates capture the same
 keys at their test boundary (`tests/JitTestConfig.h`) and inject the snapshot;
@@ -1837,7 +1845,7 @@ are the safety argument for the whole path:
 * **no page-table walk, no U/M write-back** — `pomJitProbeData` only reads
   resident ATC entries, and refuses a write to a page not already marked
   modified, because that write owes the descriptor an M bit. The 68030
-  branch (`MoiraExecMMU_cpp.h:2363-2438`) probes DATA space, `fc = 5/1`,
+  branch (`MoiraExecMMU_cpp.h:2482-2557`) probes DATA space, `fc = 5/1`,
   not the program space the code probe uses: the 030 ATC matches `fc`
   exactly, so probing the data side with the program-space `fc` would miss
   every entry and refuse everything — an engine that looks merely slow;
@@ -2031,15 +2039,37 @@ RAM. The packed x64 Q605 replay exposed this at checkpoint 4,852,195 in the
 loop at `$0019833A`. Whole-instruction replay restores the pristine boundary;
 68030 and cacheless-040 access thunks are unchanged.
 
-A generated line hit also skips the interpreter's `mmu040AtcLookup`, whose
-translation result is not its only effect: it updates the per-direction
-`last` entry and pseudo-LRU state. Each published cache-line proof therefore
-records the selected data-ATC row. Both emitters accept the hit only if the
-matching `last` memo already selects it and its MRU bit is already set, making
-the omitted lookup a state-preserving no-op. Identity translations through a
-TTR or disabled MMU carry no ATC condition. With these two contracts, the
-x64 packed/cache-on replay reaches all 5,000,000 requested steps identically
-while retaining 4,324,995 native reads and 611,088 native copy-back writes.
+A generated line hit also skips the interpreter's `mmu040AtcLookup`. Under
+the former 32-entry pseudo-LRU model, both emitters required the selected
+`last` memo and MRU bit to make that lookup a state-preserving no-op. That
+contract held the historical x64 packed/cache-on replay for 5,000,000 steps,
+with 4,324,995 native reads and 611,088 native copyback writes.
+
+Since 2026-11-09, vendor row 75 replaces that policy with 64 entries per I/D
+ATC, sixteen four-way sets and access-driven replacement (§3.3 of
+MC68040UM-1993). Native hits stage ATC provenance in the same semantic slots
+as `Instr::memory`; MOVEM spans carry element weights and optional bitfield
+tails contribute only when taken. Commit advances the phase. Exact thunks
+debit earlier operands before their own access; an abandoned attempt restores
+private ATC state and invalidates derived publications before Moira repeats
+the instruction. Descriptor U/M writes are not rolled back; this is an
+architectural-boundary witness, not a pin-level bus-waveform claim.
+
+Instruction-stream word counts are observed separately from 030 cache timing.
+They use the live code window's ATC classification, allowing cached blocks
+to survive TC/TTR changes when their physical byte proof still holds.
+Ordinary 040 JSR also uses its ordered push/target-read transaction with the
+cache model off: the interpreter's existing target-word read must contribute
+its I-ATC access and terminal IRC. The previous cacheless native path omitted
+both. Full-indirect A64 JSR keeps its existing preflight transaction.
+
+The asset-free JIT gate now holds 432 access/fault/TC-TTR cases and 1,152
+victim/U-bit cases across interpreter windows, threaded and both native ISAs.
+Native cache read/write counters reject a witness that merely enters a block
+but replays its operand. The pure-RAM witnesses also exercise the optional
+cache-active positioned-poll admission; the production fallback arm remains
+covered. Exact reset/clock/PTEST phase and I/D counter coupling remain grade F,
+pending real 040 traces. No default data-window or cache-model policy changes.
 
 The permanent native gates run this mode, not just the cacheless DTLB:
 `jit_lockstep_a64_coarse_test` and `jit_lockstep_x64_test` arm the cache and
@@ -2251,7 +2281,7 @@ from 149,265,073 to 72,507,478. Two fixed-budget runs improved from
   coverage.
 * **2026-08-09/10 — the default flipped on the 68040.** `defaultEngine()`
   stopped being a constant and became a per-family answer
-  (`JitConfig.h:323`, `JitEngine.cpp:193`): `jit/auto` on 68040, interpreter
+  (`JitConfig.h:206`, `JitEngine.cpp:193`): `jit/auto` on 68040, interpreter
   everywhere else, `POM68K_CPU_ENGINE` overriding either way. The plain
   `q605/centris650/q630/q700_boot_etalon` gates therefore now run the
   engine, and four `interp_*` registrations preserve one explicit

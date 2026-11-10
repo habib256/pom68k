@@ -73,6 +73,14 @@ jobs:
           set -o pipefail
           cmake --build build -j"$(nproc)" 2>&1 | tee "${{ runner.temp }}/build.log"
 
+      - name: Oracle smoke and reproducible CPU vectors
+        run: |
+          .venv-tools/bin/pip install --quiet numpy
+          cmake -S oracle/uae -B build-oracle -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-oracle --parallel 2
+          ctest --test-dir build-oracle --output-on-failure
+          .venv-tools/bin/python tools/cpu_vectors.py regenerate --oracle build-oracle/liboracle_uae.so
+
       - name: GCC warning census (non-blocking)
         if: always()
         run: |

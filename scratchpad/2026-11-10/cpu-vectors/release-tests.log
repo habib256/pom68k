@@ -1,0 +1,19 @@
+Test project /Users/mercure/src/pom68k/build
+    Start 444: cpu_vectors030_test
+1/3 Test #444: cpu_vectors030_test ..............   Passed    0.86 sec
+    Start 445: cpu_vectors040_test
+2/3 Test #445: cpu_vectors040_test ..............   Passed    1.14 sec
+    Start 446: cpu_vectors_contract_test
+3/3 Test #446: cpu_vectors_contract_test ........   Passed    0.29 sec
+
+100% tests passed out of 3
+
+Label Time Summary:
+asset-none         =   2.29 sec*proc (3 tests)
+cpu-vectors        =   2.29 sec*proc (3 tests)
+host-any           =   2.29 sec*proc (3 tests)
+scope-component    =   2.29 sec*proc (3 tests)
+tier-daily         =   2.29 sec*proc (3 tests)
+unit               =   2.29 sec*proc (3 tests)
+
+Total Test time (real) =   2.33 sec

@@ -15,6 +15,7 @@
 #include "jit/JitEngine.h"
 #include "JitTestConfig.h"
 #include "jit/JitMetrics.h"
+#include "jit_atc040_cases.h"
 
 #include <chrono>
 #include <bit>
@@ -218,6 +219,7 @@ private:
             p = bus(p);
             if (inHole(p)) return nullptr;
             len = uint32_t(c.mem.size()) - p;
+            if (p < kHole && len > kHole - p) len = kHole - p;
             return c.mem.data() + p;
         };
         h.dataSpan = [](void* s, uint32_t p, uint32_t& len, int) -> uint8_t* {
@@ -226,6 +228,7 @@ private:
             p = bus(p);
             if (inHole(p)) return nullptr;
             len = uint32_t(c.mem.size()) - p;
+            if (p < kHole && len > kHole - p) len = kHole - p;
             return c.mem.data() + p;
         };
         h.setGuard = [](void* s, jit::CodeGuard* g) {
@@ -1373,6 +1376,87 @@ bool runFaultLockstep(FaultProgram p) {
     // resulting boundary/frame, and both engines must have observed /BERR.
     return boundary && frame && ram && nativeEntry &&
            ref.busFaults != 0 && native.busFaults != 0;
+}
+
+// [B] MC68040UM-1993 §§8.4.6.2/8.4.6.7: a guest RTE arms CM.
+// A compiled plain-(An) MOVEM must take its existing continuation guard,
+// then repeat using the handler's current An and consume the latch.
+bool runMovemContinuation(bool threaded, bool packedCcr) {
+    jit::ResolvedConfig config = injectedJitConfig();
+    if (threaded) config.backend = "threaded";
+    config.packedCcr = packedCcr;
+    const auto refOwner = std::make_unique<SyntheticCpu>(config);
+    const auto nativeOwner = std::make_unique<SyntheticCpu>(config);
+    auto& ref = *refOwner; auto& native = *nativeOwner;
+    for (auto* c : {&ref, &native}) {
+        installVectors(*c);
+        put16(*c, kCode, 0x4CD0); put16(*c, kCode + 2, 0x0003); // MOVEM.L (A0),D0-D1
+        put16(*c, kCode + 4, 0x60FA); put16(*c, kCode + 6, 0x4E71);
+        put16(*c, kHandler, 0x4E73); put16(*c, kHandler + 2, 0x4E71);
+        put32(*c, kData + 0x200, 0x11223344); put32(*c, kData + 0x204, 0x89ABCDEF);
+        resetCpu(*c); c->setA(0, kData + 0x200);
+    }
+    native.jit.setEnabled(true);
+    native.jit.executeUntil(native.getClock() + 512);
+    const auto trained = native.jit.stats().snapshot();
+    if (!threaded && (trained.blocksCompiled == 0 || trained.blocksRun == 0 || trained.slowInstrs)) {
+        std::printf("    MOVEM training failed compiled=%llu runs=%llu slow=%llu\n",
+            (unsigned long long)trained.blocksCompiled, (unsigned long long)trained.blocksRun,
+            (unsigned long long)trained.slowInstrs);
+        return false;
+    }
+    ref.mem = native.mem;
+    for (auto* c : {&ref, &native}) {
+        c->setPC(kCode); c->setPC0(kCode); c->setIRD(0x4CD0); c->setIRC(3);
+        c->setA(0, kHole - 4); c->setA(7, kStack); c->setSR(0x271F);
+        c->setD(0, 0x13579BDF); c->setD(1, 0x2468ACE0);
+        c->setClock(0); c->busFaults = 0; clearRunFlags(*c);
+    }
+    // A faulted MOVEM can charge zero coarse cycles. Observe one core
+    // instruction, rather than letting a cycle budget run the handler too.
+    // The trained native block is retained for the continued instruction.
+    ref.execute(); native.execute();
+    if (!sameCpu(ref, native, true) || !sameMemory(ref, native, 0, kRamBytes, true) ||
+        ref.getPC0() != kHandler || ref.getSP() != kStack - 60 ||
+        !(uint16_t(ref.mem[ref.getSP() + 12] << 8 | ref.mem[ref.getSP() + 13]) & 0x1000)) {
+        std::printf("    MOVEM initial fault PC=%08X/%08X SP=%08X/%08X\n",
+                    ref.getPC0(), native.getPC0(), ref.getSP(), native.getSP());
+        return false;
+    }
+    ref.setA(0, kData + 0x200); native.setA(0, kData + 0x200);
+    ref.execute(); native.execute(); // guest RTE, one instruction boundary
+    if (!sameCpu(ref, native, true) || !ref.mmu040MovemArmed || !native.mmu040MovemArmed ||
+        ref.mmu040MovemEa != kHole - 4 || native.mmu040MovemEa != kHole - 4) {
+        std::printf("    MOVEM RTE PC=%08X/%08X armed=%u/%u EA=%08X/%08X\n",
+                    ref.getPC0(), native.getPC0(), ref.mmu040MovemArmed,
+                    native.mmu040MovemArmed, ref.mmu040MovemEa, native.mmu040MovemEa);
+        return false;
+    }
+    // RTE requests an IRQ check even with pin=0 and mask=7. Resolve that
+    // known-empty request so this witness reaches the generated CM guard,
+    // rather than the engine's generic CPU-flags interpreter exit.
+    for (auto* c : {&ref, &native}) {
+        const auto layout = c->pomJitLayout();
+        const auto flags = *reinterpret_cast<const uint32_t*>(
+            reinterpret_cast<const uint8_t*>(c) + layout.flags);
+        if (flags != moira::State::CHECK_IRQ) return false;
+        clearRunFlags(*c);
+    }
+    const auto before = native.jit.stats().snapshot();
+    ref.executeUntil(ref.getClock() + 1); native.jit.executeUntil(native.getClock() + 1);
+    const auto after = native.jit.stats().snapshot();
+    const bool same = sameCpu(ref, native, true) && sameMemory(ref, native, 0, kRamBytes, true) &&
+        !ref.mmu040MovemArmed && !native.mmu040MovemArmed &&
+        native.getD(0) == 0x11223344 && native.getD(1) == 0x89ABCDEF &&
+        native.getPC0() == kCode + 4;
+    const bool guarded = threaded || (after.blocksRun > before.blocksRun &&
+        after.slowInstrs == before.slowInstrs + 1);
+    std::printf("    MOVEM CM backend=%s packed=%u guarded=%u identical=%u runs=%llu slow=%llu interp=%llu\n",
+                native.jit.backendName(), packedCcr, guarded, same,
+                (unsigned long long)(after.blocksRun - before.blocksRun),
+                (unsigned long long)(after.slowInstrs - before.slowInstrs),
+                (unsigned long long)(after.interpInstrs - before.interpInstrs));
+    return same && guarded;
 }
 
 bool runExactSourceMove() {
@@ -3386,7 +3470,7 @@ bool runFpuMemberLockstep(FpuProgram program, bool member,
     return progressed && settled;
 }
 
-int main() {
+int main(int argc, char** argv) {
     std::printf("jit_asset_free_lockstep_test — deterministic native 68040 proof\n");
     unsetenv("POM68K_JIT_BACKEND");
     setenv("POM68K_JIT_PROFILE", "production", 1);
@@ -3412,6 +3496,29 @@ int main() {
         return unavailableNative(probe);
     }
     std::printf("  host generator: %s\n", probe.jit.backendName());
+
+    if (argc == 2 && !std::strcmp(argv[1], "--atc-replacement"))
+        return runJitAtc040ReplacementCases(injectedJitConfig()) ? 0 : 1;
+
+    if (argc == 2 && !std::strcmp(argv[1], "--atc-accounting")) {
+        check(runJitAtc040Cases(injectedJitConfig()),
+              "040 ATC accesses agree through interpreter windows, threaded and native paths");
+        return failures ? 1 : 0;
+    }
+
+    for (bool threaded : {false, true})
+    for (bool packed : {false, true})
+        check(runMovemContinuation(threaded, packed),
+              "guest-produced MOVEM CM continuation agrees through native guard/threaded replay");
+    if (argc == 2 && !std::strcmp(argv[1], "--movem-restart")) {
+        std::printf("%s\n", failures ? "FAILED" : "PASSED");
+        return failures ? 1 : 0;
+    }
+
+    check(runJitAtc040Cases(injectedJitConfig()),
+          "040 ATC accesses agree through interpreter windows, threaded and native paths");
+    check(runJitAtc040ReplacementCases(injectedJitConfig()),
+          "040 set victims and descriptor U bits agree after window, threaded and native hits");
 
     check(runDeterministicLoop(),
           "768 deterministic checkpoints match registers, queue, cycles and RAM");

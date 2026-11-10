@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 733 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 753 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,19 +8,19 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 97 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 95 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 98 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 105 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 37 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 31 |
 | [Sound](#sound) | 14 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 26 |
-| [Save states](#save-states) | 10 |
+| [Save states](#save-states) | 11 |
 | [Machine bring-ups](#machine-bring-ups) | 94 |
-| [Build, packaging and release](#build-packaging-and-release) | 22 |
+| [Build, packaging and release](#build-packaging-and-release) | 23 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 42 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 150 |
+| [Cross-cutting](#cross-cutting) | 157 |
 
 ---
 
@@ -123,6 +123,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-07 (fourteenth)** — [The Quadra 605 woke its devices 1.27 million times a guest second for a VIA that had nothing to say: timer-aware VIA bound, per-access deadline re-arm — JIT mode −50 %, interpreter −18 %](CHANGELOG.md#2026-11-07-q605-via-deadline)
 - **2026-11-08 (third)** — [Three "unverified" lines of the surface contract settled: FPU on a 68000, softfloat's globals, JIT invalidation on restore](CHANGELOG.md#2026-11-08-surface-three)
 - **2026-11-09 (second)** — [The 68040 ATC distinguishes user and supervisor translations, including MOVES and JIT publications](CHANGELOG.md#2026-11-09-atc-fc2)
+- **2026-11-10** — [The JIT consumes host-independent policy without POM68K startup headers](CHANGELOG.md#2026-11-10-jit-startup-boundary)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 
@@ -221,6 +222,16 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-08 (ninth)** — [The 68040 cache gate required a logical translation that CINV and CPUSH must never perform](CHANGELOG.md#2026-11-08-physical-cache-operands)
 - **2026-11-08 (seventh)** — [The CPU visitor moves into Moira; snapshots stop losing pending PMMU and FPU work](CHANGELOG.md#2026-11-08-moira-state-visitor)
 - **2026-11-08 (sixth)** — [The 68EC030's declared plain-020 path gets a bare-core gate with a 68030 control](CHANGELOG.md#2026-11-08-ec030-surface-gate)
+- **2026-11-09 (eleventh)** — [68040 write-allocate faults retain the pending store, and replacement reads precede dirty pushes](CHANGELOG.md#2026-11-09-write-allocate-pending)
+- **2026-11-09 (fifteenth)** — [68040 validity/protection faults retain their ATC mapping and deny before M re-walk](CHANGELOG.md#2026-11-09-atc-failure-retention)
+- **2026-11-09 (fifth)** — [A faulting 68040 MOVEP no longer skips the rest of its byte stream after RTE](CHANGELOG.md#2026-11-09-movep040-restart)
+- **2026-11-09 (fourteenth)** — [68040 descriptor errors fault the original access and preserve deferred U history](CHANGELOG.md#2026-11-09-descriptor-bus-errors)
+- **2026-11-09 (fourth)** — [PFLUSH selects a privilege; PTEST renews one ATC and keeps negative results resident](CHANGELOG.md#2026-11-09-atc-flush-test)
+- **2026-11-09 (third)** — [68040 MMU register writes keep resident translations until an explicit flush](CHANGELOG.md#2026-11-09-atc-register-retention)
+- **2026-11-09 (thirteenth)** — [68040 split-page MA marks ATC faults, not external data errors](CHANGELOG.md#2026-11-09-split-page-ma)
+- **2026-11-09 (twelfth)** — [68040 push faults export physical frames and retain completed replacement lines](CHANGELOG.md#2026-11-09-cache-push-faults)
+- **2026-11-10 (fifth)** — [A clean checkout executes 256 reproducible CPU vectors](CHANGELOG.md#2026-11-10-cpu-vectors)
+- **2026-11-10 (fourth)** — [FPU rounding, exceptions and intermediate captures belong to each CPU](CHANGELOG.md#2026-11-10-fpu-context)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E
 
@@ -463,6 +474,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-14 (eighth)** — [Three debts paid: the 400K spindle servo travels in save states (v16), the cable bits are atomic, and a real guest traverses an unplug](CHANGELOG.md#2026-09-14-three-small-debts)
 - **2026-10-08** — [ATA snapshots resume the actual transfer and disk timeline; CUE files describe one disc across multiple sources](CHANGELOG.md#2026-10-08-storage-state-cue)
 - **2026-10-09 (eleventh)** — [Typed device snapshots on every board close order 3: read from members, never through the bus](CHANGELOG.md#2026-10-09-debugger-devices)
+- **2026-11-09 (sixth)** — [040 save states preserve dirty data and stale instructions without pushing cache lines](CHANGELOG.md#2026-11-09-cache040-state)
 
 ## Machine bring-ups
 
@@ -585,6 +597,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-10-25** — [The push that repairs red CI names the run it repairs](CHANGELOG.md#2026-10-25-ci-fix-trailer)
 - **2026-11-06 (later)** — [CLAUDE.md's size ceiling follows the evidence-grades section: five days of red CI had one cause](CHANGELOG.md#2026-11-06-claude-md-budget)
 - **2026-11-09** — [CI failed because the x86 gate registry was not regenerated after a common gate was added](CHANGELOG.md#2026-11-09-x64-status-registry)
+- **2026-11-10 (second)** — [An interpreter build omits the acceleration seam without forking CPU execution](CHANGELOG.md#2026-11-10-moira-interp-build)
 
 ## Tests, gates and measurement
 
@@ -795,4 +808,11 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-06 (ninth)** — [The fork gets its host-side contract: POM68K_SURFACE.md says what the core exposes and what a host owes it](CHANGELOG.md#2026-11-06-moira-surface)
 - **2026-11-08** — [The core says what each model executes; the unbound PACK 4 escape hatch is gone](CHANGELOG.md#2026-11-08-core-dead-code)
 - **2026-11-08 (second)** — [Every WinUAE citation in the core now says `[D] … @ Hatari e77819f7`; it had been citing two revisions without knowing it](CHANGELOG.md#2026-11-08-core-grades)
+- **2026-11-09 (eighth)** — [Failed 040 CAS/CAS2 issue their terminal write and expose write-only bus faults](CHANGELOG.md#2026-11-09-cas-terminal-write)
+- **2026-11-09 (ninth)** — [MOVE16 owns its fault descriptor, and successful pushes restore the logical operand context](CHANGELOG.md#2026-11-09-move16-fault-context)
+- **2026-11-09 (seventeenth)** — [040 ATCs have sixteen four-way sets, and fast-path hits commit their replacement effects](CHANGELOG.md#2026-11-09-atc040-sets-access-phase)
+- **2026-11-09 (seventh)** — [MOVES and locked operands push dirty data before bypass, and CAS2 checks write permission](CHANGELOG.md#2026-11-09-implicit-nc-coherency)
+- **2026-11-09 (sixteenth)** — [Guest RTE restores MOVEM continuation, without repeated memory indirection](CHANGELOG.md#2026-11-09-movem-cm-continuation)
+- **2026-11-09 (tenth)** — [Read fills keep logical descriptors, suppress unused-beat faults and defer dirty pushes](CHANGELOG.md#2026-11-09-read-fill-faults)
+- **2026-11-10 (third)** — [Plain 020 bus faults consume software-completed data cycles after RTE](CHANGELOG.md#2026-11-10-rte020-completion)
 

@@ -1,0 +1,107 @@
+{
+  "version": 1,
+  "oracle": "WinUAE via Hatari e77819f7; oracle/uae local strict-FPU adapter",
+  "models": {
+    "030": {
+      "file": "030.json.gz",
+      "recipes": [
+        {
+          "family": "core",
+          "mmu": "off",
+          "n": 24,
+          "steps": 1,
+          "seed": 2026111300
+        },
+        {
+          "family": "mmu",
+          "mmu": "identity",
+          "n": 24,
+          "steps": 1,
+          "seed": 2026111301
+        },
+        {
+          "family": "fault",
+          "mmu": "identity",
+          "n": 24,
+          "steps": 1,
+          "seed": 2026111302
+        },
+        {
+          "family": "fpu",
+          "mmu": "off",
+          "n": 24,
+          "steps": 1,
+          "seed": 2026111303
+        },
+        {
+          "family": "fpu2",
+          "mmu": "off",
+          "n": 16,
+          "steps": 2,
+          "seed": 2026111304
+        }
+      ],
+      "sha256": "f8a0d8f411de8773100bb5c45511e8d52b011f7dbc55fa533c8603c5724d3ba9",
+      "bytes": 17922607,
+      "vectors": 112
+    },
+    "040": {
+      "file": "040.json.gz",
+      "recipes": [
+        {
+          "family": "core",
+          "mmu": "off",
+          "n": 24,
+          "steps": 1,
+          "seed": 2026111400
+        },
+        {
+          "family": "mmu",
+          "mmu": "identity",
+          "n": 24,
+          "steps": 1,
+          "seed": 2026111401
+        },
+        {
+          "family": "fault",
+          "mmu": "identity",
+          "n": 24,
+          "steps": 1,
+          "seed": 2026111402
+        },
+        {
+          "family": "fpu",
+          "mmu": "off",
+          "n": 24,
+          "steps": 1,
+          "seed": 2026111403
+        },
+        {
+          "family": "fpu2",
+          "mmu": "off",
+          "n": 16,
+          "steps": 2,
+          "seed": 2026111404
+        },
+        {
+          "family": "mmu",
+          "mmu": "identity",
+          "n": 16,
+          "steps": 1,
+          "seed": 2026111405,
+          "page": "8k"
+        },
+        {
+          "family": "fpuh",
+          "mmu": "off",
+          "n": 16,
+          "steps": 3,
+          "seed": 2026111406
+        }
+      ],
+      "sha256": "d840c0c36735f9c456736bdd49e6ce8e557ea10f7da1958933d358c471929522",
+      "bytes": 25023533,
+      "vectors": 144
+    }
+  }
+}

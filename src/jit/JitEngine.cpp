@@ -139,12 +139,12 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily,
     // The window measured a real win (42 -> 37.6 s on the loading phase)
     // until the ATC-eviction hook (pomJitAtcEvict) made it bit-exact, and
     // bit-exactness is exactly what killed it: a TLB entry may not outlive
-    // the ATC entry it derives from, so the window's coverage is capped at
-    // the ATC's 32 pages — and under Mac OS VM the eviction/refill churn
-    // costs more than the remaining hits save (73 s: WORSE than no window).
-    // The x86-64 backend keeps its inline TLB (same cap, but it replaces a
-    // C++ call chain, not a hot MRU probe), and invariant 3 gets its
-    // interpreter back: byte-identical to the pre-JIT baseline.
+    // the ATC entry it derives from. That measurement used the old 32-entry
+    // ATC: under Mac OS VM its eviction/refill churn cost more than the
+    // surviving hits saved (73 s). The current 64-entry, four-way model
+    // needs a new measurement before changing this default. The native
+    // backends retain their inline TLB; every ATC-backed hit now debits the
+    // access-driven replacement phase at instruction commit.
     if (config_.dataWindow) {
         cpu_.pomJitDtlbFillFn = &Engine::fillDtlbThunk;
         cpu_.pomJitDtlbFillCtx = this;
@@ -977,6 +977,14 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
         const uint32_t observedNextPc = cpu_.getPC();
         const uint16_t terminalIrd = cpu_.getIRD();
         const uint16_t terminalIrc = cpu_.getIRC();
+        const auto describeObserved = [&](Instr& in) {
+            in.memory = describeMemory(op, guestFamily_ == kGuest68030);
+            in.semantics = describeInstruction(op);
+            in.iplPolls = iplPolls;
+            in.fetchWords040 = uint16_t(timing.fetchWords040);
+            in.iplPollMask = iplPollMask;
+            in.iplPollPosValid = iplPollPosValid;
+        };
 
         if (terminator) {
             ir.instrs.push_back(Instr{ at, op, uint16_t(words), kind,
@@ -985,12 +993,7 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
                                        fetchWords,
                                        observedNextPc, terminalIrd, terminalIrc,
                                        true });
-            ir.instrs.back().memory =
-                describeMemory(op, guestFamily_ == kGuest68030);
-            ir.instrs.back().semantics = describeInstruction(op);
-            ir.instrs.back().iplPolls = iplPolls;
-            ir.instrs.back().iplPollMask = iplPollMask;
-            ir.instrs.back().iplPollPosValid = iplPollPosValid;
+            describeObserved(ir.instrs.back());
             at += words * 2;
             why = EndReason::ControlFlow;
             break;
@@ -1006,12 +1009,7 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
                                        postExceptionCycles, fetchWords,
                                        observedNextPc,
                                        terminalIrd, terminalIrc, true });
-            ir.instrs.back().memory =
-                describeMemory(op, guestFamily_ == kGuest68030);
-            ir.instrs.back().semantics = describeInstruction(op);
-            ir.instrs.back().iplPolls = iplPolls;
-            ir.instrs.back().iplPollMask = iplPollMask;
-            ir.instrs.back().iplPollPosValid = iplPollPosValid;
+            describeObserved(ir.instrs.back());
             why = EndReason::Discontinuity;
             break;
         }
@@ -1022,12 +1020,7 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
                                    fetchWords,
                                    observedNextPc, terminalIrd, terminalIrc,
                                    true });
-        ir.instrs.back().memory =
-            describeMemory(op, guestFamily_ == kGuest68030);
-        ir.instrs.back().semantics = describeInstruction(op);
-        ir.instrs.back().iplPolls = iplPolls;
-        ir.instrs.back().iplPollMask = iplPollMask;
-        ir.instrs.back().iplPollPosValid = iplPollPosValid;
+        describeObserved(ir.instrs.back());
         at = next;
 
         if (versionedShift) { why = EndReason::LengthLimit; break; }
@@ -1285,7 +1278,8 @@ uint8_t* Engine::fillDtlb(uint32_t addr, int write) {
     // hit by user code — and nothing needs flushing on an RTE.
     e.tag = moira::Moira::pomJitDataTag(addr, super);
     e.host = host;
-    e.codeMask = mask;
+    e.codeMask = uint16_t(mask);
+    e.atc040 = cpu_.pomJitAtcBacked040(addr, true, super);
     stats_.add(host ? stats_.dtlbFills : stats_.dtlbRefused);
     return host;
 }

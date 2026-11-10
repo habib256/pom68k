@@ -105,7 +105,7 @@ struct BackendCaps {
     // BSR.W) — the coupling is deliberate: an admission default must never
     // outrun the alignment on the ISA that runs it. Both native backends
     // declare it since 2026-08-22 (x64 in the morning, a64 the same
-    // afternoon — pom68kA64Read/Write replaced the guardIcacheHits replay
+    // afternoon — pom68kJitRead/Write replaced the guardIcacheHits replay
     // with the bias); `threaded` does not, and does not need to: it
     // replays through Moira's own handlers, which charge at fetch time.
     bool accessClockBias = false;

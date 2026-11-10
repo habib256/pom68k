@@ -153,7 +153,9 @@ Moira::isValidExtMMU(Instr I, Mode M, u16 op, u32 ext) const
 u32
 Moira::mmuRead32(u32 addr) const
 {
-    return u32(read16(addr)) << 16 | read16(addr + 2);
+    // POM68K: sequence host words; a first-half abort cannot read the second.
+    const u32 hi = read16(addr);
+    return hi << 16 | read16(addr + 2);
 }
 
 void
@@ -486,6 +488,7 @@ Moira::mmuFetchWord(u32 addr)
     // bypassed, but an unmapped fetch must still be extBusError()-able
     mmuAccAddr = addr; mmuAccSsw = 0x0020; mmuAccFc = fc; mmuAccWrite = false;
 
+#if MOIRA_ENABLE_JIT
     // POM68K JIT code window, 030 flavor (2026-07-28). ONE hook site covers
     // every instruction-stream fetch — mmuExecuteStart's ird/irc AND the
     // readExt 030 branch all come through here. Placed AFTER the icache
@@ -496,6 +499,8 @@ Moira::mmuFetchWord(u32 addr)
     if (const u8 *p; pomJitFetch(addr, 2, p)) {
         return u16(u16(p[0]) << 8 | p[1]);
     }
+
+#endif
 
     if (reg.tc & 0x80000000) {
 
@@ -574,6 +579,7 @@ Moira::mmuExecuteStart()
     mmuRmw = false;
     mmuOpcodeV = 0xFFFFFFFF;
 
+#if MOIRA_ENABLE_JIT
     // POM68K JIT code window, 030 flavour (B.2 slice 4) — the shape
     // mmu040InstrStart already uses below. Placed AFTER the POLL_IPL and the
     // per-instruction MMU resets above, which feed execMmuBusError and may
@@ -609,6 +615,8 @@ Moira::mmuExecuteStart()
             return true;
         }
     }
+
+#endif
 
     try {
 
@@ -1055,8 +1063,10 @@ Moira::mmuPageFault(u32 addr, bool read, u32 sswFlags, u8 fc)
 
     if (fc & 1) {                               // data cycle
 
-        mmuSsw = 0x0300;                        // DF | DF << 1
-        if (!(mmuState[1] & 0x0100)) {          // not the last write
+        // [B] MC68020UM-1992 §6.2.1: bit 9 is reserved, not a DF mirror.
+        // POM68K: retain the oracle-private marker only on the 030 path.
+        mmuSsw = mmuPlain020() ? 0x0100 : 0x0300;
+        if (!mmuPlain020() && !(mmuState[1] & 0x0100)) {          // not the last write
 
             for (int i = 0; i < 2; i++) {
 
@@ -1086,7 +1096,7 @@ Moira::mmuPageFault(u32 addr, bool read, u32 sswFlags, u8 fc)
 
     if (read) mmuSsw |= 0x0040;                 // RW
     mmuSsw |= u16(sswFlags) | fc;
-    if (mmuRmw) mmuSsw |= 0x0080;               // RM
+    if (mmuRmw && (!mmuPlain020() || (fc & 1))) mmuSsw |= 0x0080; // RM: data cycle
 
     mmuFaultAddr = addr;
     mmuWb3Data = mmuDataBuffer;
@@ -1197,6 +1207,7 @@ Moira::mmuRead(u32 addr)
     // fresh seeds under POM68K_DATA_WINDOW=1.
     // (The size guard is a safety net, not a live case: Quad/Extended FPU
     // operands are assembled from Long reads and never reach this funnel.)
+#if MOIRA_ENABLE_JIT
     if constexpr (S == Byte || S == Word || S == Long) {
         constexpr u32 alignMask = S == Byte ? 0u : S == Word ? 1u : 3u;
         if (!(addr & alignMask) && pomJitData030Ok()) {
@@ -1224,6 +1235,8 @@ Moira::mmuRead(u32 addr)
             pomJitData030Refusals++;
         }
     }
+
+#endif
 
     const u8 fc = readFC();
     const u32 rm = (mmuRmw && (fc & 1)) ? 0x0080 : 0;
@@ -1351,6 +1364,7 @@ Moira::mmuWrite(u32 addr, u32 val)
     // level-0 page has no room for the per-slice mask, so this window keeps
     // the older, coarser whole-page rule that generated code has since
     // replaced (Moira.cpp § pomJitDataSlow).
+#if MOIRA_ENABLE_JIT
     if constexpr (S == Byte || S == Word || S == Long) {
         constexpr u32 alignMask = S == Byte ? 0u : S == Word ? 1u : 3u;
         if (!(addr & alignMask) && pomJitData030Ok()) {
@@ -1377,6 +1391,8 @@ Moira::mmuWrite(u32 addr, u32 val)
             pomJitData030Refusals++;
         }
     }
+
+#endif
 
     const u8 fc = readFC();
     const u32 rm = (mmuRmw && (fc & 1)) ? 0x0080 : 0;
@@ -1675,6 +1691,7 @@ Moira::execPFlush40(u16 opcode)
     AVAILABILITY(Core::C68020)
 
     // [B] MC68040UM-1993 §3.7.2: PFLUSH variants.
+    // [B] M68000PRM-1992 PFLUSH, pp. 6-35/6-36: DFC selects FC2.
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K Q2/Q8: PFLUSHN/PFLUSH/PFLUSHAN/PFLUSHA (MC68040UM-1993 § 3.7.2),
     // supervisor-only (WinUAE cpuemu_31 op_f500: Exception 8 first).
@@ -1685,10 +1702,10 @@ Moira::execPFlush40(u16 opcode)
     const u8 an = _____________xxx(opcode);
     switch (mode) {
     case 0:                                         // PFLUSHN (An)
-        mmu040AtcFlushPage(readA(an), true);
+        mmu040AtcFlushPage(readA(an), true, (reg.dfc & 4) != 0);
         break;
     case 1:                                         // PFLUSH (An)
-        mmu040AtcFlushPage(readA(an), false);
+        mmu040AtcFlushPage(readA(an), false, (reg.dfc & 4) != 0);
         break;
     case 2:                                         // PFLUSHAN
         mmu040AtcFlushNonGlobal();
@@ -1992,7 +2009,9 @@ Moira::execPTest40(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    // [B] MC68040UM-1993 §3.7.3: PTEST; missing ATC side effects below.
+    // [B] MC68040UM-1993 §3.7.3: PTEST table search and ATC effects.
+    // [B] M68000PRM-1992 PTEST, pp. 6-70/6-71:
+    // flush/refill the ATC selected by DFC, including negative entries.
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K Q3: PTESTR/PTESTW (MC68040UM-1993 § 3.7.3; WinUAE mmu_op_real,
     // PTEST branch), supervisor-only. DFC selects the address space
@@ -2000,8 +2019,8 @@ Moira::execPTest40(u16 opcode)
     // when a PTESTW hits a write-protected TTR), otherwise the walk's
     // page descriptor lands in MMUSR040 (0 when invalid; WinUAE
     // mmu_fill_atc status = phys | G|Ux|S|CM|M|W|R).
-    // [F] Hardware PTEST flushes/refills its ATC entry; this fork does not.
-    // Settled by: the ATC side-effect gate in TODO, Justesse 68040.
+    // The PRM selects one I/D ATC; WinUAE's mmu_flush_atc flushes both.
+    // The manual takes precedence (mmu040_atc_test).
     SUPERVISOR_MODE_ONLY
 
     int n = _____________xxx(opcode);
@@ -2010,15 +2029,30 @@ Moira::execPTest40(u16 opcode)
     bool super = (reg.dfc & 4) != 0;
     bool data = (reg.dfc & 3) != 2;
 
+    mmu040AtcFlushPage(addr, false, super, data ? 1 : 0);
     int ttr = mmu040MatchTTR(addr, super, data);
     if (ttr) {
         reg.mmusr040 = (ttr == 2 && write) ? 0x800     // MMU_MMUSR_B
                                            : 0x003;    // MMU_MMUSR_T | R
     } else {
-        u32 status = mmu040Walk<C>(addr, super, write);
+        u32 status = 0;
+        bool busError = false;
+        // A descriptor transfer error reports B without raising the
+        // access's format-$7 exception or disturbing its fault stamp.
+        mmuInTableSearch = true;
+        try {
+            status = mmu040Walk<C>(addr, super, write);
+        } catch (MmuTableSearchBusError &) {
+            busError = true;
+        } catch (...) {
+            mmuInTableSearch = false;
+            throw;
+        }
+        mmuInTableSearch = false;
         u32 maski = mmu040PageMaskI();
-        reg.mmusr040 = (status & maski)
+        reg.mmusr040 = busError ? 0x800 : (status & maski)
                      | (status & 0x7F7);               // G|Ux|S|CM|M|W|R
+        if (mmu040AtcArmed) mmu040AtcFill(data, addr, status, super);
     }
 
     prefetch<C, POLL>();
@@ -2041,9 +2075,8 @@ void
 Moira::mmu040AtcFlushAll()
 {
     pomJitMapMoved();                 // POM68K JIT: every cached mapping dies
-    for (auto &e : mmu040AtcI) { e.valid = false; e.mru = false; }
-    for (auto &e : mmu040AtcD) { e.valid = false; e.mru = false; }
-    mmu040AtcMruI = mmu040AtcMruD = 0;
+    for (auto &e : mmu040AtcI) e.valid = false;
+    for (auto &e : mmu040AtcD) e.valid = false;
     mmu040AtcLastI[0] = mmu040AtcLastI[1] = 0;
     mmu040AtcLastD[0] = mmu040AtcLastD[1] = 0;
 }
@@ -2059,7 +2092,7 @@ Moira::mmu040AtcFlushNonGlobal()
 }
 
 void
-Moira::mmu040AtcFlushPage(u32 addr, bool nonGlobalOnly)
+Moira::mmu040AtcFlushPage(u32 addr, bool nonGlobalOnly, bool super, int space)
 {
     pomJitMapMoved();                 // POM68K JIT
     const u32 imask = mmu040PageMaskI();
@@ -2067,44 +2100,105 @@ Moira::mmu040AtcFlushPage(u32 addr, bool nonGlobalOnly)
     auto flush = [&](Mmu040AtcEntry* arr) {
         for (int i = 0; i < MMU040_ATC_ENTRIES; i++) {
             auto &e = arr[i];
-            if (!e.valid || (e.logical & imask) != addr) continue;
+            if (!e.valid || e.supervisor != super || (e.logical & imask) != addr) continue;
             if (nonGlobalOnly && (e.status & 0x400)) continue;
             e.valid = false;
         }
     };
-    flush(mmu040AtcI);
-    flush(mmu040AtcD);
+    if (space != 1) flush(mmu040AtcI);
+    if (space != 0) flush(mmu040AtcD);
+}
+
+#if MOIRA_ENABLE_JIT
+bool
+Moira::pomJitAtcBacked040(u32 addr, bool data, bool super) const
+{
+    return cpuModel >= Model::M68EC040 && mmu040Enabled() &&
+           !mmu040MatchTTR(addr, super, data);
+}
+
+// POM68K: exact native accesses are speculative until the instruction owns
+// their result. Keep their ATC mutations and debits atomic with that commit;
+// a refused native attempt must not choose the following access's victim.
+void
+Moira::pomJitAtcReplayBegin040(PomJitAtcReplay040& replay, u32 addr,
+                              bool data, unsigned access) noexcept
+{
+    if (cpuModel < Model::M68EC040) return;
+    const auto capture = [&](bool side) {
+        const u32 bit = 1u << unsigned(side);
+        if (replay.active & bit) return;
+        auto* dst = replay.opaque + unsigned(side) * PomJitAtcReplay040::SnapshotBytes;
+        const auto* entries = side ? mmu040AtcD : mmu040AtcI;
+        constexpr auto bytes = sizeof(mmu040AtcD);
+        std::memcpy(dst, entries, bytes);
+        const u32 count = side ? mmu040AtcAccessD : mmu040AtcAccessI;
+        std::memcpy(dst + bytes, &count, sizeof(count));
+        std::memcpy(dst + bytes + sizeof(count),
+                    side ? mmu040AtcLastD : mmu040AtcLastI, 2);
+        replay.active |= bit;
+    };
+    if (replay.fetches) {
+        capture(false);
+        mmu040AtcAccessI += replay.fetches;
+        replay.fetches = 0;
+    }
+    u32 completed = 0;
+    for (unsigned i = 0; i < access && i < PomJitAtcReplay040::Accesses; ++i) {
+        completed += (replay.routes >> (i * 8)) & 0xFF;
+        replay.routes &= ~(u32(0xFF) << (i * 8));
+    }
+    if (completed) {
+        capture(true);
+        mmu040AtcAccessD += completed;
+    }
+    if (access < PomJitAtcReplay040::Accesses)
+        replay.routes &= ~(u32(0xFF) << (access * 8)); // the exact accessor owns this one
+    if (pomJitAtcBacked040(addr, data, bool(reg.sr.s))) capture(data);
 }
 
 void
-Moira::mmu040AtcTouch(Mmu040AtcEntry* arr, int& mruCount, int i)
+Moira::pomJitAtcReplayAbort040(PomJitAtcReplay040& replay) noexcept
 {
-    auto &e = arr[i];
-    if (e.mru) return;
-    e.mru = true;
-    if (++mruCount >= MMU040_ATC_ENTRIES) {
-        for (int j = 0; j < MMU040_ATC_ENTRIES; j++) arr[j].mru = false;
-        e.mru = true;
-        mruCount = 1;
+    for (bool side : {false, true}) {
+        if (!(replay.active & (1u << unsigned(side)))) continue;
+        const auto* src = replay.opaque + unsigned(side) * PomJitAtcReplay040::SnapshotBytes;
+        auto* entries = side ? mmu040AtcD : mmu040AtcI;
+        constexpr auto bytes = sizeof(mmu040AtcD);
+        std::memcpy(entries, src, bytes);
+        auto& count = side ? mmu040AtcAccessD : mmu040AtcAccessI;
+        std::memcpy(&count, src + bytes, sizeof(count));
+        std::memcpy(side ? mmu040AtcLastD : mmu040AtcLastI,
+                    src + bytes + sizeof(count), 2);
     }
+    // A completed thunk may have published a derived mapping before a
+    // later operand refused. Restoring only the entries could retain that
+    // now-unbacked publication; invalidation is conservative and monotonic.
+    if (replay.active) pomJitMapMoved();
+    replay.active = replay.fetches = replay.routes = 0;
 }
+
+#endif
 
 int
 Moira::mmu040AtcLookup(bool data, u32 addr, bool write, bool super)
 {
+    ++(data ? mmu040AtcAccessD : mmu040AtcAccessI);
     Mmu040AtcEntry* arr = data ? mmu040AtcD : mmu040AtcI;
-    int& mruCount = data ? mmu040AtcMruD : mmu040AtcMruI;
     i8* last = data ? mmu040AtcLastD : mmu040AtcLastI;
     const u32 imask = mmu040PageMaskI();
     const u32 maddr = addr & imask;
+    const unsigned set = mmu040AtcSet(addr);
 
     {
         auto &e = arr[last[write]];
-        if (e.valid && e.supervisor == super && (e.logical & imask) == maddr) {
-            // Write hit on an unmodified, unprotected page must re-walk
-            // so the table search sets M (030 ATC precedent).
-            if (!write || (e.status & 0x10) || (e.status & 4)) {
-                mmu040AtcTouch(arr, mruCount, last[write]);
+        if (unsigned(last[write]) >= set && unsigned(last[write]) < set + MMU040_ATC_WAYS &&
+            e.valid && e.supervisor == super && (e.logical & imask) == maddr) {
+            // [B] MC68040UM-1993 §§3.3/3.5: decide R/W/S permission
+            // before re-walking an otherwise permitted M=0 write.
+            // A repaired descriptor cannot revoke a cached denial.
+            if (!write || !(e.status & 1) || (e.status & 0x10) ||
+                (e.status & 4) || (!super && (e.status & 0x80))) {
                 return last[write];
             }
             e.valid = false;
@@ -2112,11 +2206,11 @@ Moira::mmu040AtcLookup(bool data, u32 addr, bool write, bool super)
         }
     }
 
-    for (int i = 0; i < MMU040_ATC_ENTRIES; i++) {
+    for (unsigned i = set; i < set + MMU040_ATC_WAYS; i++) {
         auto &e = arr[i];
         if (!e.valid || e.supervisor != super || (e.logical & imask) != maddr) continue;
-        if (!write || (e.status & 0x10) || (e.status & 4)) {
-            mmu040AtcTouch(arr, mruCount, i);
+        if (!write || !(e.status & 1) || (e.status & 0x10) ||
+            (e.status & 4) || (!super && (e.status & 0x80))) {
             last[write] = i8(i);
             return i;
         }
@@ -2151,17 +2245,18 @@ Moira::mmu040AtcFill(bool data, u32 addr, u32 status, bool super)
         s.n[data ? 1 : 0][(status >> 5) & 3]++;
     }
     Mmu040AtcEntry* arr = data ? mmu040AtcD : mmu040AtcI;
-    int& mruCount = data ? mmu040AtcMruD : mmu040AtcMruI;
     i8* last = data ? mmu040AtcLastD : mmu040AtcLastI;
     const u32 imask = mmu040PageMaskI();
 
-    int i;
-    for (i = 0; i < MMU040_ATC_ENTRIES; i++) if (!arr[i].valid) break;
-    if (i == MMU040_ATC_ENTRIES) {
-        for (i = 0; i < MMU040_ATC_ENTRIES; i++) if (!arr[i].mru) break;
-    }
-    if (i >= MMU040_ATC_ENTRIES) i = 0;
-    mmu040AtcTouch(arr, mruCount, i);
+    const unsigned set = mmu040AtcSet(addr);
+    unsigned i;
+    for (i = set; i < set + MMU040_ATC_WAYS; i++) if (!arr[i].valid) break;
+    if (i == set + MMU040_ATC_WAYS)
+        i = set + ((data ? mmu040AtcAccessD : mmu040AtcAccessI) & 3);
+    // [B] MC68040UM-1993 §3.3: the original access retries after fill.
+    // [F] Installation/retry debits after victim selection. The exact clock
+    // edge and PTEST phase are unknown. Settled by: real 040 traces.
+    ++(data ? mmu040AtcAccessD : mmu040AtcAccessI);
 
     auto &e = arr[i];
     // POM68K J3b (Moira.h § pomJitAtcEvict): whatever the JIT derived from
@@ -2201,6 +2296,7 @@ Moira::mmu040InstrStart()
     mmuFixupReg[0] = mmuFixupReg[1] = 0;
     mmu040CcrSave = u8(getCCR());
 
+#if MOIRA_ENABLE_JIT
     // POM68K JIT code window (Moira.h § PomJitWindow). Placed AFTER the
     // POLL_IPL above and AFTER the eight per-instruction MMU resets — those
     // feed execMmu040BusError's restart/last-write dichotomy and may never
@@ -2213,18 +2309,20 @@ Moira::mmu040InstrStart()
     if (const u8 *p; pomJitFetch(reg.pc, 4, p)) {
         queue.ird = u16(u16(p[0]) << 8 | p[1]);
         queue.irc = u16(u16(p[2]) << 8 | p[3]);
-        // Leave behind exactly the in-flight access context the two skipped
-        // mmu040Read<C,Word> calls would have left. Only an EXTERNAL bus
-        // error reads it back (extBusError040), and only MOVE16 relies on
-        // inheriting it rather than setting its own — but a divergence
-        // there would be a differently-shaped fault frame under the JIT
-        // than under the interpreter, which invariant 1 does not allow.
-        pomJitStampAccess(reg.pc + 2);
+        // Keep the fetch descriptor of the two skipped mmu040Read calls.
+        // Data accessors, including MOVE16, replace it with their own
+        // logical access context before reaching translation or the bus.
+        mmu040StampFetch(reg.pc + 2);
         return true;
     }
 
+#endif
+
     try {
 
+#if MOIRA_ENABLE_JIT
+        if (pomJitTimingProbe) pomJitTiming.fetchWords040 += 2;
+#endif
         queue.ird = mmu040FetchWord<C>(reg.pc);
         queue.irc = mmu040FetchWord<C>(reg.pc + 2);
 
@@ -2237,6 +2335,7 @@ Moira::mmu040InstrStart()
     return true;
 }
 
+#if MOIRA_ENABLE_JIT
 void
 Moira::pomInterpArm(u32 pc)
 {
@@ -2382,15 +2481,18 @@ Moira::pomJitProbeCode(u32 logical, bool super,
     // mmu040AtcLookup(): that one updates the pseudo-LRU, and a probe has
     // no business reordering the cache the instruction stream is using.
     // O(1) first, same memo trick as the 030 branch above.
+    const unsigned set = mmu040AtcSet(logical);
     {
         const Mmu040AtcEntry &e = mmu040AtcI[mmu040AtcLastI[0]];
-        if (e.valid && e.supervisor == super && (e.logical & maski) == mmuPageBase) {
+        if (unsigned(mmu040AtcLastI[0]) >= set && unsigned(mmu040AtcLastI[0]) < set + MMU040_ATC_WAYS &&
+            e.valid && e.supervisor == super && (e.logical & maski) == mmuPageBase) {
             if (!(e.status & 1)) return false;
             if (!super && (e.status & 0x80)) return false;
             return finish(e.physical | (logical & ~maski));
         }
     }
-    for (const Mmu040AtcEntry &e : mmu040AtcI) {
+    for (unsigned i = set; i < set + MMU040_ATC_WAYS; ++i) {
+        const Mmu040AtcEntry &e = mmu040AtcI[i];
         if (!e.valid || e.supervisor != super || (e.logical & maski) != mmuPageBase) continue;
         if (!(e.status & 1)) return false;                  // invalid descriptor
         if (!super && (e.status & 0x80)) return false;      // supervisor-only page
@@ -2412,7 +2514,7 @@ Moira::pomJitProbeData(u32 logical, bool super, bool write,
     //
     // Everything mmu040Translate would do that a probe may not do is a
     // refusal here instead: no page-table walk (mmu040Walk writes the U/M
-    // descriptor bits back through mmuWrite32), no ATC pseudo-LRU update,
+    // descriptor bits back through mmuWrite32), no ATC replacement-state update,
     // and no fault. A refusal costs nothing but a bail-out to the
     // interpreter, which then does the real thing.
 
@@ -2498,7 +2600,9 @@ Moira::pomJitProbeData(u32 logical, bool super, bool write,
     if (!mmu040Enabled()) { phys = logical; return true; }
     if (!mmu040AtcArmed) return false;      // POM68K_MMU040_WALK differential mode
 
-    for (const Mmu040AtcEntry &e : mmu040AtcD) {
+    const unsigned set = mmu040AtcSet(logical);
+    for (unsigned i = set; i < set + MMU040_ATC_WAYS; ++i) {
+        const Mmu040AtcEntry &e = mmu040AtcD[i];
         if (!e.valid || e.supervisor != super || (e.logical & maski) != pageBase) continue;
         if (!(e.status & 1)) return false;                  // invalid descriptor
         if (!super && (e.status & 0x80)) return false;      // supervisor-only page
@@ -2527,7 +2631,7 @@ Moira::pomJitCache040Publish(u32 logical, int bytes, bool write)
         unsigned(logical & 15) > 16u - unsigned(bytes)) return;
 
     // The exact access immediately preceding this call has filled/hit the
-    // data ATC. Re-probe it without touching pseudo-LRU or guest descriptors;
+    // data ATC. Re-probe without changing replacement state or guest descriptors;
     // this is association only, never an access in its own right.
     u32 phys = 0, pageBase = 0, pageLen = 0;
     if (!pomJitProbeData(logical, bool(reg.sr.s), write,
@@ -2535,23 +2639,18 @@ Moira::pomJitCache040Publish(u32 logical, int bytes, bool write)
     (void)pageBase; (void)pageLen;
     if (unsigned(phys & 15) > 16u - unsigned(bytes)) return;
 
-    // A native cache-line hit bypasses mmu040AtcLookup. Record the entry the
-    // completed exact access just selected so generated code can prove that
-    // bypass would be a no-op for BOTH pieces of replacement state: last[]
-    // and the entry's MRU bit. If either later differs, replaying the exact
-    // access performs the required touch/global-MRU reset before republishing.
-    // Transparent and MMU-disabled translations have no ATC side effect.
+    // Keep the resident entry identity for FC2 diagnostics and publish the
+    // provenance used to debit the ATC counter at native retirement.
     u8 atcIndex = 0xFF;
-    const bool *atcMru = nullptr;
     if (!mmu040MatchTTR(logical, bool(reg.sr.s), true) && mmu040Enabled()) {
         const int idx = int(mmu040AtcLastD[write ? 1 : 0]);
-        if (idx < 0 || idx >= MMU040_ATC_ENTRIES) return;
+        const unsigned set = mmu040AtcSet(logical);
+        if (idx < int(set) || idx >= int(set + MMU040_ATC_WAYS)) return;
         const Mmu040AtcEntry &atc = mmu040AtcD[idx];
         if (!atc.valid || atc.supervisor != bool(reg.sr.s) ||
             (atc.logical & mmu040PageMaskI()) !=
                           (logical & mmu040PageMaskI())) return;
         atcIndex = u8(idx);
-        atcMru = &atc.mru;
     }
 
     Cache040::Line *line = pomCache040D.lookup(phys);
@@ -2564,8 +2663,8 @@ Moira::pomJitCache040Publish(u32 logical, int bytes, bool write)
         e.physicalTag = line->tag;
         e.generation = pomJitCache040Gen;
         e.atcIndex = atcIndex;
+        e.atc040 = atcIndex != 0xFF;
         e.line = line;
-        e.atcMru = atcMru;
     };
     publish(pomJitCache040R.e[slot]);
 
@@ -2612,11 +2711,13 @@ Moira::pomJitLayout() const
     l.cache040R = at(&pomJitCache040R.e[0]);
     l.cache040W = at(&pomJitCache040W.e[0]);
     l.cache040Gen = at(&pomJitCache040Gen);
-    l.cache040AtcLastD = at(&mmu040AtcLastD[0]);
     l.cache040Hits = at(&pomCache040D.hits);
     l.cache040NativeReadHits = at(&pomJitCache040NativeReadHits);
     l.cache040NativeWriteHits = at(&pomJitCache040NativeWriteHits);
     l.cache040Live = pomCache040Active();
+    l.atcWindow040 = at(&pomJitWindow.atc040);
+    l.atcAccessI040 = at(&mmu040AtcAccessI);
+    l.atcAccessD040 = at(&mmu040AtcAccessD);
     l.movemArmed = at(&mmu040MovemArmed);
     l.cacr = at(&reg.cacr);
     l.icTag = at(&pomIcache.tag[0]);       l.icValid = at(&pomIcache.valid[0]);
@@ -2722,7 +2823,7 @@ Moira::pomJitReadProg(u32 addr, u16 &out) noexcept
     }
 }
 
-// Complete the non-restartable half of a native cache-active 68040 JSR.
+// Complete the non-restartable half of a native 68040 JSR.
 // Generated code may compute the EA (and, for a future full-format
 // admission, perform its pointer read) while the instruction is pristine.
 // From the first stack mutation onward this helper owns the transaction so
@@ -2762,6 +2863,8 @@ Moira::pomJitJsr040(u32 instructionPc, u32 returnAddress, u32 target,
         return false;
     }
 }
+
+#endif
 
 int
 Moira::mmu040MatchTTR(u32 addr, bool super, bool data, u32 *cm) const
@@ -2838,24 +2941,75 @@ Moira::pomCache040Touch(bool data, u32 pa, bool write, int cm, int szCode)
     // byte/word/long read/write transfers include RMW and MOVES accesses,
     // independently of descriptor CM. §4.3.2 also specifies serialization
     // for locked accesses; serialization alone was not the cache-inhibit proof.
-    if ((data && mmu040Lrmw) || mmu040Moves >= 0) pomCache040Enabled = false;
+    // POM68K: inhibit this access, not the cache controller. An enabled
+    // D-cache must still push/invalidate a matching line before bypassing it
+    // (MC68040UM-1993 §§4.3.2/7.4.5). Clearing Enabled skipped that step.
+    if ((data && mmu040Lrmw) || mmu040Moves >= 0)
+        pomCache040Cm = Cache040::CM_NC;
+}
+
+namespace {
+// POM68K: cache-bus probes defer frame construction until the controller
+// can distinguish a fill abort from a physical push and its pending store.
+constexpr int kCache040ReadFillProbe = -1, kCache040PushProbe = -2;
+struct Cache040ReadFillBusError {};
+struct Cache040PushBusError {};
 }
 
 void
 Moira::pomCache040Writeback(u32 base, const Cache040::Line &line)
 {
-    for (int lw = 0; lw < 4; lw++) {
-        if (!(line.dirty & (1u << lw))) continue;
-        const int o = 4 * lw;
-        const u32 a = base + u32(o);
-        mmu040AccAddr = a; mmu040AccVal = u32(line.data[o]) << 24 |
-            u32(line.data[o + 1]) << 16 | u32(line.data[o + 2]) << 8 |
-            line.data[o + 3];
-        mmu040AccSz = 2; mmu040AccWrite = true; mmu040AccData = true;
-        write16(a, u16(mmu040AccVal >> 16));
-        write16(a + 2, u16(mmu040AccVal));
-        if (pomCache040Timing.pushLong > 0) sync(pomCache040Timing.pushLong);
+    // [B] MC68040UM-1993 §8.4.6.4: only a push fault uses a physical FA;
+    // the operand that follows a successful push still has its own logical
+    // address, size and direction. POM68K: scope the temporary bus stamp.
+    const u32 savedAddress = mmu040AccAddr, savedValue = mmu040AccVal;
+    const int savedSize = mmu040AccSz;
+    const bool savedWrite = mmu040AccWrite, savedData = mmu040AccData;
+    // [B] MC68040UM-1993 §4.6.2: two or more dirty longwords require
+    // a whole-line push; one dirty longword uses a longword transfer.
+    assert(line.dirty);
+    const bool fullLine = (line.dirty & (line.dirty - 1)) != 0;
+    const int first = fullLine ? 0 : (line.dirty & 1) ? 0 : (line.dirty & 2) ? 1 : (line.dirty & 4) ? 2 : 3;
+    try {
+        for (int lw = first; lw < (fullLine ? 4 : first + 1); lw++) {
+            const int o = 4 * lw;
+            const u32 a = base + u32(o);
+            const u32 value = u32(line.data[o]) << 24 | u32(line.data[o + 1]) << 16 |
+                              u32(line.data[o + 2]) << 8 | line.data[o + 3];
+            mmu040AccAddr = a; mmu040AccVal = value;
+            mmu040AccSz = kCache040PushProbe; mmu040AccWrite = true; mmu040AccData = true;
+            write16(a, u16(value >> 16)); write16(a + 2, u16(value));
+            if (pomCache040Timing.pushLong > 0) sync(pomCache040Timing.pushLong);
+        }
+    } catch (const Cache040PushBusError&) {
+        mmu040AccSz = savedSize;
+        const bool super = mmu040Moves >= 0 ? (mmu040Moves & 4) != 0 : bool(reg.sr.s);
+        const int fc = (super ? 4 : 0) | (savedData ? 1 : 2);
+        try {
+            // Preserve the caller's restart/continuation and pending WB2/3
+            // policy before replacing only the faulted bus transaction.
+            mmu040Fault<Core::C68020>(savedAddress, savedValue, fc, savedWrite, savedSize, false);
+        } catch (const MmuBusError&) {
+            // [B] MC68040UM-1993 §§8.4.6.2/8.4.6.4-8.4.6.6, Table 8-6:
+            // push = write, TM/TT=0, physical FA=WB1A, no WB1 valid bit,
+            // and all four PD words, even for a single-longword push.
+            // Keep continuation/LK, not the caller's RW/ATC/MA/size/space.
+            // POM68K: WB3Address remains the independent logical store.
+            mmu040Ssw = u16((mmu040Ssw & 0xF200) | (fullLine ? 0x60 : 0));
+            mmu040FaultAddr = base + 4 * u32(first);
+            for (int lw = 0; lw < 4; lw++) {
+                const int o = 4 * lw;
+                mmu040Move16[lw] = u32(line.data[o]) << 24 | u32(line.data[o + 1]) << 16 |
+                                   u32(line.data[o + 2]) << 8 | line.data[o + 3];
+            }
+            throw;
+        }
+    } catch (...) {
+        mmu040AccSz = savedSize;
+        throw;
     }
+    mmu040AccAddr = savedAddress; mmu040AccVal = savedValue;
+    mmu040AccSz = savedSize; mmu040AccWrite = savedWrite; mmu040AccData = savedData;
 }
 
 void
@@ -2868,7 +3022,8 @@ Moira::pomCache040Writeback(u32 base, const Cache040::Evicted &line)
 }
 
 Cache040::Line *
-Moira::pomCache040Fill(Cache040 &cache, u32 pa)
+Moira::pomCache040Fill(Cache040 &cache, u32 pa, int readBytes,
+                      Cache040::Line *partial)
 {
     const bool data = &cache == &pomCache040D;
     if (Cache040::Line *hit = cache.lookup(pa)) {
@@ -2880,35 +3035,86 @@ Moira::pomCache040Fill(Cache040 &cache, u32 pa)
     Cache040::Evicted evicted;
     Cache040::Line *line = cache.allocate(pa, &evicted);
     const u32 base = pa & ~u32(15);
-    try {
-        if (evicted.valid && evicted.dirty)
-            pomCache040Writeback(evicted.base, evicted);
-
-        // A real line read begins with the requested longword and wraps
-        // inside the 16-byte line. This matters for a /BERR in a later beat.
-        const int first = int((pa >> 2) & 3);
-        for (int beat = 0; beat < 4; beat++) {
-            const int lw = (first + beat) & 3;
-            const int o = 4 * lw;
-            const u32 a = base + u32(o);
-            mmu040AccAddr = a; mmu040AccVal = 0;
-            mmu040AccSz = 2; mmu040AccWrite = false; mmu040AccData = data;
-            const u16 hi = read16(a);
-            const u16 lo = read16(a + 2);
-            line->data[o] = u8(hi >> 8); line->data[o + 1] = u8(hi);
-            line->data[o + 2] = u8(lo >> 8); line->data[o + 3] = u8(lo);
-        }
-        if (pomCache040Timing.lineFill > 0) sync(pomCache040Timing.lineFill);
-        return line;
-    } catch (...) {
-        // A failed fill never leaves a partial new line. The 040 restores a
-        // dirty victim from its push buffer; an old clean victim stays gone.
+    const int originalSize = mmu040AccSz;
+    const int first = int((pa >> 2) & 3);
+    const int last = readBytes ? int(((pa & 15) + readBytes - 1) >> 2) : first;
+    bool rolledBack = false, readComplete = false;
+    auto rollback = [&] {
+        if (rolledBack) return;
+        rolledBack = true;
         cache.invalidateLine(base);
         if (evicted.valid && evicted.dirty) {
             Cache040::Line *old = cache.allocate(evicted.base);
             old->dirty = evicted.dirty;
             for (int i = 0; i < 16; i++) old->data[i] = evicted.data[i];
         }
+    };
+    try {
+        for (int beat = 0; beat < 4; beat++) {
+            const int lw = (first + beat) & 3;
+            const int o = 4 * lw;
+            const u32 a = base + u32(o);
+            u16 hi, lo;
+            // [B] MC68040UM-1993 §§4.6.1/7.6.1: abort an unused read
+            // beat without an architectural exception. §§8.4.6.2/
+            // 8.4.6.4 retain the original size and logical initial FA.
+            // POM68K: probe before touching frame, continuation or pending
+            // write state; a successful fill never replaces the caller stamp.
+            mmu040AccSz = kCache040ReadFillProbe;
+            try {
+                hi = read16(a); lo = read16(a + 2);
+            } catch (const Cache040ReadFillBusError&) {
+                mmu040AccSz = originalSize;
+                if (readBytes) {
+                    assert(partial);
+                    *partial = *line; partial->valid = false;
+                }
+                rollback();
+                if (!readBytes || (lw >= first && lw <= last)) {
+                    const bool super = mmu040Moves >= 0 ? (mmu040Moves & 4) != 0 : bool(reg.sr.s);
+                    const int fc = (super ? 4 : 0) | (data ? 1 : 2);
+                    try {
+                        mmu040Fault<Core::C68020>(mmu040AccAddr, 0, fc, false, originalSize, false);
+                    } catch (const MmuBusError&) {
+                        if (!readBytes) {
+                            // [B] MC68040UM-1993 §8.4.6/Table 8-6: a
+                            // read error has no WB1/WB2; WB3 may hold an
+                            // outstanding store, with register-aligned data.
+                            // [F] The synchronous write-miss model puts its
+                            // pending store in WB3 and conservatively faults
+                            // every failed allocation beat. Exact stage and
+                            // unused-beat delivery need a real 040 capture.
+                            // Settled by: write-miss beat faults on silicon.
+                            // Gate: cache040_test, software WB3/RTE completion.
+                            mmu040Wb3Status = u16(0x80 | (mmu040Ssw & 0x7F));
+                            const u32 mask = originalSize == 0 ? 0xFF : originalSize == 1 ? 0xFFFF : ~u32(0);
+                            mmu040Wb3Data = mmu040FullVal & mask;
+                        }
+                        throw;
+                    }
+                }
+                if (pomCache040Timing.lineFill > 0) sync(pomCache040Timing.lineFill);
+                return partial; // requested bytes survive in the caller's line buffer
+            } catch (...) {
+                mmu040AccSz = originalSize;
+                throw;
+            }
+            mmu040AccSz = originalSize;
+            line->data[o] = u8(hi >> 8); line->data[o + 1] = u8(hi);
+            line->data[o + 2] = u8(lo >> 8); line->data[o + 3] = u8(lo);
+        }
+        // [B] MC68040UM-1993 §4.6.2: a replacement read completes
+        // before the saved dirty victim is pushed. An aborted read must
+        // restore that victim without prematurely writing it to RAM.
+        readComplete = true;
+        if (evicted.valid && evicted.dirty)
+            pomCache040Writeback(evicted.base, evicted);
+        if (pomCache040Timing.lineFill > 0) sync(pomCache040Timing.lineFill);
+        return line;
+    } catch (...) {
+        // [B] MC68040UM-1993 §7.6.1: a failed replacement read restores
+        // its dirty victim; a failed push keeps the successfully read line.
+        if (!readComplete) rollback();
         throw;
     }
 }
@@ -2946,9 +3152,10 @@ Moira::pomCache040ReadValue(u32 pa, bool data, int bytes)
     int done = 0;
     while (done < bytes) {
         const u32 a = pa + u32(done);
-        Cache040::Line *line = pomCache040Fill(cache, a);
         const int off = int(a & 15);
         const int chunk = std::min(bytes - done, 16 - off);
+        Cache040::Line partial;
+        Cache040::Line *line = pomCache040Fill(cache, a, chunk, &partial);
         for (int i = 0; i < chunk; i++) result = result << 8 | line->data[off + i];
         done += chunk;
     }
@@ -2985,7 +3192,7 @@ Moira::pomCache040WriteValue(u32 pa, u32 val, bool data, int bytes)
             cache.hits++;
             if (pomCache040Timing.hit > 0) sync(pomCache040Timing.hit);
         } else if (copyback) {
-            line = pomCache040Fill(cache, a);
+            line = pomCache040Fill(cache, a, 0);
         }
 
         const int off = int(a & 15);
@@ -3116,13 +3323,18 @@ Moira::mmu040Walk(u32 addr, bool super, bool write)
     desc = mmuRead32(descAddr);
     if (!(desc & 2)) return 0;                          // invalid root
     wp |= desc;
-    if (!(desc & 8)) mmuWrite32(descAddr, desc | 8);    // U
+    u32 previousAddress = descAddr, previous = desc;
 
     descAddr = (desc & 0xFFFFFE00) | ((addr >> 16) & 0x1FC);
     desc = mmuRead32(descAddr);
+    // [B] MC68040UM-1993 Figure 3-10: a scheduled table-descriptor U
+    // write occurs after the next descriptor has been read successfully.
+    // [D] WinUAE cpummu.c:695-742 @ Hatari e77819f7 writes U eagerly.
+    // POM68K: a failed next read must leave the prior history untouched.
+    if (!(previous & 8)) mmuWrite32(previousAddress, previous | 8);
     if (!(desc & 2)) return 0;                          // invalid pointer
     wp |= desc;
-    if (!(desc & 8)) mmuWrite32(descAddr, desc | 8);
+    previousAddress = descAddr; previous = desc;
 
     if (reg.tc040 & 0x4000) {                           // 8K pages
         descAddr = (desc & 0xFFFFFF80) + ((addr >> 11) & 0x7C);
@@ -3130,6 +3342,7 @@ Moira::mmu040Walk(u32 addr, bool super, bool write)
         descAddr = (desc & 0xFFFFFF00) + ((addr >> 10) & 0xFC);
     }
     desc = mmuRead32(descAddr);
+    if (!(previous & 8)) mmuWrite32(previousAddress, previous | 8);
     if ((desc & 3) == 2) {                              // indirect (once)
         descAddr = desc & 0xFFFFFFFC;
         desc = mmuRead32(descAddr);
@@ -3165,7 +3378,7 @@ Moira::mmu040TranslateHot(u32 addr, u32 val, bool super, bool data,
     //   - MMU off: identity;
     //   - the last-hit probe of mmu040AtcLookup, with its rule that a
     //     write to a page neither modified nor protected re-walks, then
-    //     the permission test of mmu040Translate. mmu040AtcTouch runs only
+    //     the permission test of mmu040Translate. The counter advances only
     //     once the access is known to succeed here — on every other
     //     outcome the slow path below starts from an untouched state.
     // 16.6 % + 9.9 % + 9.1 % of the 68040 interpreter were the three
@@ -3182,14 +3395,16 @@ Moira::mmu040TranslateHot(u32 addr, u32 val, bool super, bool data,
             const u32 imask = mmu040PageMaskI();
             Mmu040AtcEntry *arr = data ? mmu040AtcD : mmu040AtcI;
             const int idx = (data ? mmu040AtcLastD : mmu040AtcLastI)[write];
+            const unsigned set = mmu040AtcSet(addr);
             const Mmu040AtcEntry &e = arr[idx];
             const u32 status = e.status;
-            if (e.valid && e.supervisor == super &&
+            if (idx >= int(set) && idx < int(set + MMU040_ATC_WAYS) &&
+                e.valid && e.supervisor == super &&
                 (e.logical & imask) == (addr & imask) &&
                 (!write || (status & 0x10) || (status & 4)) &&
                 !((write && (status & 4)) || (!super && (status & 0x80)) ||
                   !(status & 1))) {
-                mmu040AtcTouch(arr, data ? mmu040AtcMruD : mmu040AtcMruI, idx);
+                ++(data ? mmu040AtcAccessD : mmu040AtcAccessI);
                 return e.physical | (addr & ~imask);
             }
         }
@@ -3214,13 +3429,13 @@ Moira::mmu040BusRead(u32 pa, bool data, int bytes)
 template <Core C> u16
 Moira::mmu040FetchWord(u32 addr)
 {
-    // The stamp is the one mmu040Read leaves (pomJitStampAccess says so
+    // The stamp is the one mmu040Read leaves (mmu040StampFetch says so
     // for the fetch window): an external /BERR on the bus read below, or a
     // fault in the translation, must find it in place.
     const u32 pageMask = ~mmu040PageMaskI();
     if (!(flags & State::CHECK_WP) && !pomCache040On && mmu040Moves < 0 &&
         (addr & pageMask) != pageMask) [[likely]] {
-        pomJitStampAccess(addr);
+        mmu040StampFetch(addr);
         const u32 pa = mmu040TranslateHot<C>(addr, 0, bool(reg.sr.s), false,
                                              false, 1);
         return u16(read16(pa & addrMask<C>()));
@@ -3292,8 +3507,28 @@ Moira::mmu040Translate(u32 addr, u32 val, bool super, bool data,
         }
     }
 
-    status = mmu040Walk<C>(addr, super, asWrite);
+    // [B] MC68040UM-1993 §3.5 and §8.4.6.2: a descriptor-cycle /BERR
+    // creates a nonresident ATC entry and faults the original access.
+    // POM68K: unwind before building the frame, with the caller's unchanged
+    // logical address/value/size/FC, not the descriptor read/write cycle.
+    mmuInTableSearch = true;
+    try {
+        status = mmu040Walk<C>(addr, super, asWrite);
+    } catch (const MmuTableSearchBusError&) {
+        mmuInTableSearch = false;
+        if (mmu040AtcArmed) mmu040AtcFill(data, addr, 0, super);
+        mmu040Fault<C>(addr, val, fc, asWrite, szCode);
+        throw; // mmu040Fault always throws
+    } catch (...) {
+        mmuInTableSearch = false;
+        throw;
+    }
+    mmuInTableSearch = false;
 
+    // [B] MC68040UM-1993 §3.5: create the ATC entry, then retry access
+    // through its cached R/W/S attributes, including a failed translation.
+    // POM68K: publishing after validation lost cold validity/protection faults.
+    if (mmu040AtcArmed) mmu040AtcFill(data, addr, status, super);
     if ((asWrite && (status & 4)) || (!super && (status & 0x80)) ||
         !(status & 1)) {
         // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
@@ -3301,7 +3536,6 @@ Moira::mmu040Translate(u32 addr, u32 val, bool super, bool data,
         // write = true through mmu_get_user_*; SSW.LK strips RW anyway)
         mmu040Fault<C>(addr, val, fc, asWrite, szCode);
     }
-    if (mmu040AtcArmed) mmu040AtcFill(data, addr, status, super);
     const u32 wpa = (status & maski) | (addr & ~maski);
     if (pomCache040On)
         pomCache040Touch(data, wpa, asWrite, int((status >> 5) & 3), szCode);
@@ -3366,12 +3600,18 @@ Moira::mmu040Fault(u32 addr, u32 val, int fc, bool write, int szCode,
     u32 fa = addr;
     if (!mmu040AccFirst) {                              // split, later part
         fa = mmu040AccBase;                             // misalignednotfirst
-        ssw |= 0x0800;                                  // MA
+        // [B] MC68040UM-1993 §§8.4.6.2/8.4.6.4: FA stays initial for
+        // every fault, but MA marks only a second-page ATC fault.
+        // [D] WinUAE cpummu.c:989-997 @ Hatari e77819f7 instead sets
+        // MA on every later-fragment exception. The primary rule wins.
+        // POM68K: keep physical /BERR distinct from translation faults.
+        if (atc) ssw |= 0x0800;                          // MA
     }
     if (write && mmu040AccSplit) mmu040Wb3Data = mmu040FullVal;
 
     mmu040Ssw = ssw;
     mmu040FaultAddr = fa;
+    mmu040Wb3Address = fa;
 
     throw MmuBusError();
 }
@@ -3387,6 +3627,7 @@ Moira::mmu040Read(u32 addr, bool data)
                               !data);
     }
 
+#if MOIRA_ENABLE_JIT
     // JIT trace: one architectural data access, whatever its internal
     // page/alignment split. Its completion count positions any later
     // POLL_IPL (PomJitTiming.iplPollPositions); no poll fires inside
@@ -3408,6 +3649,8 @@ Moira::mmu040Read(u32 addr, bool data)
                         u32(p[2]) << 8 | p[3];
         }
     }
+
+#endif
 
     const bool super = mmu040Moves >= 0 ? (mmu040Moves & 4) != 0
                                         : bool(reg.sr.s);
@@ -3478,6 +3721,7 @@ Moira::mmu040Write(u32 addr, u32 val, bool data)
                               !data);
     }
 
+#if MOIRA_ENABLE_JIT
     // JIT trace: see mmu040Read — one data access per call.
     if (data && pomJitTimingProbe) [[unlikely]] pomJitTiming.dataAccesses++;
 
@@ -3501,9 +3745,12 @@ Moira::mmu040Write(u32 addr, u32 val, bool data)
         }
     }
 
+#endif
+
     const bool super = mmu040Moves >= 0 ? (mmu040Moves & 4) != 0
                                         : bool(reg.sr.s);
     const u32 pageMask = ~mmu040PageMaskI();
+#if MOIRA_ENABLE_JIT
     const auto publishJitLine = [&] {
         // Generated AArch64 stores conservatively replay a first cache miss
         // through this exact instruction path. Publish that successful
@@ -3513,6 +3760,8 @@ Moira::mmu040Write(u32 addr, u32 val, bool data)
             pomJitCache040Publish(addr, S == Byte ? 1 : S == Word ? 2 : 4,
                                   true);
     };
+
+#endif
 
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Default last-write marking (gencpu gen_set_fault_pc): the store an
@@ -3542,7 +3791,9 @@ Moira::mmu040Write(u32 addr, u32 val, bool data)
 
         u32 pa = mmu040TranslateHot<C>(addr, val, super, data, true, 0);
         mmu040BusWrite(pa & addrMask<C>(), val, data, 1);
+#if MOIRA_ENABLE_JIT
         publishJitLine();
+#endif
         return;
     }
 
@@ -3555,12 +3806,16 @@ Moira::mmu040Write(u32 addr, u32 val, bool data)
             mmu040AccFirst = false;
             u32 lo = mmu040TranslateHot<C>(addr + 1, val, super, data, true, 1);
             mmu040BusWrite(lo & addrMask<C>(), val, data, 1);
+#if MOIRA_ENABLE_JIT
             publishJitLine();
+#endif
             return;
         }
         u32 pa = mmu040TranslateHot<C>(addr, val, super, data, true, 1);
         mmu040BusWrite(pa & addrMask<C>(), val, data, 2);
+#if MOIRA_ENABLE_JIT
         publishJitLine();
+#endif
         return;
     }
 
@@ -3574,7 +3829,9 @@ Moira::mmu040Write(u32 addr, u32 val, bool data)
                 mmu040AccFirst = false;
                 u32 lo = mmu040TranslateHot<C>(addr + 2, val, super, data, true, 2);
                 mmu040BusWrite(lo & addrMask<C>(), val, data, 2);
+#if MOIRA_ENABLE_JIT
                 publishJitLine();
+#endif
                 return;
             }
             for (int i = 0; i < 4; i++) {
@@ -3583,12 +3840,16 @@ Moira::mmu040Write(u32 addr, u32 val, bool data)
                 mmu040BusWrite(pa & addrMask<C>(), b, data, 1);
                 mmu040AccFirst = false;
             }
+#if MOIRA_ENABLE_JIT
             publishJitLine();
+#endif
             return;
         }
         u32 pa = mmu040TranslateHot<C>(addr, val, super, data, true, 2);
         mmu040BusWrite(pa & addrMask<C>(), val, data, 4);
+#if MOIRA_ENABLE_JIT
         publishJitLine();
+#endif
         return;
     }
 }
@@ -3602,9 +3863,15 @@ Moira::mmu040GetMove16(u32 addr)
     const bool super = reg.sr.s;
     u32 a = addr & ~u32(15);
 
+    // [B] MC68040UM-1993 §§8.4.6.2/8.4.6.4: SIZE=line, TT=MOVE16,
+    // data FC and the initial logical line, not the current physical beat.
+    // POM68K: never inherit an opcode/window stamp for a data transfer.
+    mmu040EffAddr = a;
     mmu040AccBase = a;
     mmu040AccFirst = true;
     mmu040AccSplit = false;
+    mmu040AccAddr = a; mmu040AccVal = 0; mmu040AccSz = 3;
+    mmu040AccWrite = false; mmu040AccData = true;
 
     u32 pa = mmu040Translate<C>(a, 0, super, true, false, 3);
     for (int i = 0; i < 4; i++) {
@@ -3620,9 +3887,15 @@ Moira::mmu040PutMove16(u32 addr)
     const bool super = reg.sr.s;
     u32 a = addr & ~u32(15);
 
+    // [B] MC68040UM-1993 §§8.4.6.2/8.4.6.4: a MOVE16 write fault
+    // identifies the logical destination line. POM68K: the existing WB2
+    // capture also needs that destination, not a stale effective address.
+    mmu040EffAddr = a;
     mmu040AccBase = a;
     mmu040AccFirst = true;
     mmu040AccSplit = false;
+    mmu040AccAddr = a; mmu040AccVal = mmu040Move16[0]; mmu040AccSz = 3;
+    mmu040AccWrite = true; mmu040AccData = true;
 
     u32 pa = mmu040Translate<C>(a, mmu040Move16[0], super, true, true, 3);
     for (int i = 0; i < 4; i++) {
@@ -3635,6 +3908,16 @@ Moira::mmu040PutMove16(u32 addr)
 void
 Moira::extBusError040()
 {
+    // [B] M68000PRM-1992 PTEST, p. 6-71: a probe reports MMUSR.B.
+    // [B] MC68040UM-1993 §8.4.6.2: an ordinary descriptor error faults the
+    // original access with ATC. Each caller owns its side-effect-free unwind.
+    if (mmuInTableSearch) throw MmuTableSearchBusError{};
+
+    // POM68K: a read-fill beat is not necessarily demanded. Its controller
+    // catches this private signal before any architectural fault is built.
+    if (mmu040AccSz == kCache040ReadFillProbe) throw Cache040ReadFillBusError{};
+    if (mmu040AccSz == kCache040PushProbe) throw Cache040PushBusError{};
+
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // External /BERR (unmapped I/O): the machine calls this from inside
     // a bus callback; the captured access context builds the same
@@ -3674,8 +3957,16 @@ Moira::execMmu040BusError()
     //     single the FPU stores out. Settled by: a capture of the format $7
     //     frame of a faulting FMOVE.X FPn,(An)+ on a real 68040.
     // Gate: moira_rules_test (FMOVE to a faulting page), fpu corpus replay.
+    // [D] WinUAE cpuemu_31.c op_0188/op_01c8 @ Hatari e77819f7:
+    // MOVEP stores also keep mmu_restart=true on every byte, including the
+    // final one. The handler/RTE must return to the unfinished MOVEP.
+    // [F] The generic format-$7 diagram in MC68040UM-1993 §8.4 gives a
+    // next-instruction PC, without specifying a partial MOVEP sequence.
+    // Settled by: a real 68040 capture of a faulting MOVEP.W/.L store.
+    // Gate: moira_rules_test (byte faults, data window, cache and RTE).
     u32 framePc;
-    if (mmu040LastWrite && (queue.ird & 0xFE00) != 0xF200) {
+    if (mmu040LastWrite && (queue.ird & 0xFE00) != 0xF200 &&
+        (queue.ird & 0xF1B8) != 0x0188) {
         framePc = mmu040LastWritePc;
         mmu040LastWrite = false;
     } else {
@@ -3703,16 +3994,19 @@ Moira::execMmu040BusError()
 
     u32 newpc = read<C, AddrSpace::DATA, Long>(reg.vbr + 4 * 2);
 
+    // [B] MC68040UM-1993 §8.4.6.4/Table 8-6: only a physical push
+    // has write + TM/TT=0. Its WB1A equals FA; WB3A stays logical.
+    const bool pushFault = (mmu040Ssw & 0x011F) == 0;
     // Format $7 frame (Exception_build_stack_frame case 0x7)
     push<C, Long>(mmu040Move16[3]);         // PD3
     push<C, Long>(mmu040Move16[2]);         // PD2
     push<C, Long>(mmu040Move16[1]);         // PD1
     push<C, Long>(mmu040Move16[0]);         // WB1D/PD0
-    push<C, Long>(0);                       // WB1A
+    push<C, Long>(pushFault ? mmu040FaultAddr : 0); // WB1A
     push<C, Long>(0);                       // WB2D
     push<C, Long>(mmu040Wb2Address);        // WB2A
     push<C, Long>(mmu040Wb3Data);           // WB3D
-    push<C, Long>(mmu040FaultAddr);         // WB3A
+    push<C, Long>(mmu040Wb3Address);        // WB3A
     push<C, Long>(mmu040FaultAddr);         // FA
     push<C, Word>(0);
     push<C, Word>(mmu040Wb2Status);

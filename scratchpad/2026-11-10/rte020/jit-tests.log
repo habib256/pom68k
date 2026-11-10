@@ -1,0 +1,42 @@
+Test project /Users/mercure/src/pom68k/build
+      Start  67: docs_test
+ 1/12 Test  #67: docs_test .............................   Passed    1.42 sec
+      Start  68: config_test
+ 2/12 Test  #68: config_test ...........................   Passed    0.25 sec
+      Start  69: store_inventory_test
+ 3/12 Test  #69: store_inventory_test ..................   Passed    0.08 sec
+      Start 386: jit_restart_write_030_test
+ 4/12 Test #386: jit_restart_write_030_test ............   Passed    1.74 sec
+      Start 437: jit_copyback_write_040_test
+ 5/12 Test #437: jit_copyback_write_040_test ...........   Passed    0.74 sec
+      Start 438: jit_copyback_write_040_control_test
+ 6/12 Test #438: jit_copyback_write_040_control_test ...   Passed    0.08 sec
+      Start 439: jit_copyback_bsr_040_test
+ 7/12 Test #439: jit_copyback_bsr_040_test .............   Passed    0.06 sec
+      Start 440: jit_copyback_pair_040_test
+ 8/12 Test #440: jit_copyback_pair_040_test ............   Passed    0.06 sec
+      Start 441: jit_copyback_pair_040_control_test
+ 9/12 Test #441: jit_copyback_pair_040_control_test ....   Passed    0.06 sec
+      Start 442: jit_store_guard_a64_test
+10/12 Test #442: jit_store_guard_a64_test ..............   Passed    0.51 sec
+      Start 468: jit_backend_test
+11/12 Test #468: jit_backend_test ......................   Passed    0.48 sec
+      Start 469: jit_backend_parity_test
+12/12 Test #469: jit_backend_parity_test ...............   Passed    0.45 sec
+
+100% tests passed out of 12
+
+Label Time Summary:
+asset-none          =   5.94 sec*proc (12 tests)
+host-a64            =   0.51 sec*proc (1 test)
+host-any            =   4.43 sec*proc (6 tests)
+host-native         =   1.00 sec*proc (5 tests)
+jit                 =   4.18 sec*proc (9 tests)
+jit-fast            =   3.09 sec*proc (7 tests)
+scope-engine        =   4.18 sec*proc (9 tests)
+scope-repository    =   1.75 sec*proc (3 tests)
+smoke               =   0.48 sec*proc (1 test)
+tier-daily          =   5.94 sec*proc (12 tests)
+unit                =   5.94 sec*proc (12 tests)
+
+Total Test time (real) =   6.01 sec

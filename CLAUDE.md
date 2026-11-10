@@ -134,8 +134,8 @@ Focused research notes under `docs/`:
   architectural state and timing at the boundary its gate claims.
 - **HLE fallback is never silent.** Devices report whether firmware LLE or a
   fallback is active; strict LLE mode refuses a mixed-provenance session.
-- **Save and load share one visitor.** Pointers/callbacks are rebound, caches
-  are flushed, and disk payloads remain host-owned.
+- **Save and load share one visitor.** Rebind pointers/callbacks, flush derived
+  caches, restore architectural 040 cache bytes, and keep disk payloads host-owned.
 - **Reference media remain immutable.** Repository fixtures under `hdv/ref/`
   are read-only; writable GUI sessions use `hdv/work/` clones.
 - **One concern per owner.** Extend a focused class/module instead of growing

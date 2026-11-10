@@ -1,0 +1,14 @@
+[sst68030] dir=/Users/mercure/src/pom68k/tests/data/sst68030 files=12 cycles=off(advisory) mmu=full
+  core_identity    :     69/69     OK
+  core_off         :    160/160    OK
+  core_tt          :     56/56     OK
+  fault_identity   :     70/70     OK
+  fault_tt         :     35/35     OK
+  fpu_identity     :    731/732    OK (+1 known)
+  fpu_off          :   1097/1099   OK (+2 known)
+  fpu_tt           :    210/211    OK (+1 known)
+  mmu_identity     :     69/69     OK
+  mmu_off          :    210/210    OK
+  random_identity  :    121/121    OK
+  random_off       :    250/250    OK
+[sst68030] OK: 3078/3082 across 12 file(s), 4 known divergence(s), 0 mmu-skipped

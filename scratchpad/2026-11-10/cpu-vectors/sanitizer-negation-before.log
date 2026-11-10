@@ -1,0 +1,300 @@
+UpdateCTestConfiguration  from :/Users/mercure/src/pom68k/build-cpu-sanitize/DartConfiguration.tcl
+Test project /Users/mercure/src/pom68k/build-cpu-sanitize
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 75
+    Start  75: sst68030
+
+75: Test command: /Users/mercure/src/pom68k/build-cpu-sanitize/sst68030 "/Users/mercure/src/pom68k/tests/data/sst68030" "--known" "/Users/mercure/src/pom68k/tests/sst68030.known"
+75: Working Directory: /Users/mercure/src/pom68k/build-cpu-sanitize
+75: Test timeout computed to be: 600
+75: /Users/mercure/src/pom68k/extern/softfloat/softfloat.c:1628:20: runtime error: negation of -2147483648 cannot be represented in type 'int32_t' (aka 'int'); cast to an unsigned type to negate this value to itself
+75: ==42495==WARNING: external symbolizer didn't start up correctly!
+75: ==42495==WARNING: Can't read from symbolizer at fd 4
+75: ==42495==WARNING: atos failed to symbolize address "0x101736b80"
+75: ==42495==WARNING: Can't read from symbolizer at fd 4
+75: ==42495==WARNING: atos failed to symbolize address "0x1014efbec"
+75: ==42495==WARNING: Can't read from symbolizer at fd 4
+75: ==42495==WARNING: atos failed to symbolize address "0x1014ecd10"
+75: ==42495==WARNING: Can't read from symbolizer at fd 4
+75: ==42495==WARNING: atos failed to symbolize address "0x100c41554"
+75: ==42495==WARNING: Can't read from symbolizer at fd 4
+75: ==42495==WARNING: atos failed to symbolize address "0x100968730"
+75: ==42495==WARNING: Can't read from symbolizer at fd 4
+75: ==42495==WARNING: atos failed to symbolize address "0x198e68d78"
+75:     #0 0x000101736b80 in int32_to_floatx80+0x74 (/Users/mercure/src/pom68k/build-cpu-sanitize/sst68030:arm64+0x100dd2b80)
+75:     #1 0x0001014efbec in int moira::Moira::fpuGetSource<(moira::Core)2, (moira::Mode)2>(unsigned short, unsigned short, moira::FpuExtended&, unsigned int&)+0x570 (/Users/mercure/src/pom68k/build-cpu-sanitize/sst68030:arm64+0x100b8bbec)
+75:     #2 0x0001014ecd10 in void moira::Moira::execFGeneric<(moira::Core)2, (moira::Instr)149, (moira::Mode)2, 0>(unsigned short)+0x39c (/Users/mercure/src/pom68k/build-cpu-sanitize/sst68030:arm64+0x100b88d10)
+75:     #3 0x000100c41554 in moira::Moira::execute()+0x614 (/Users/mercure/src/pom68k/build-cpu-sanitize/sst68030:arm64+0x1002dd554)
+75:     #4 0x000100968730 in main+0x31f8 (/Users/mercure/src/pom68k/build-cpu-sanitize/sst68030:arm64+0x100004730)
+75:     #5 0x000198e68d78 in start+0x19f8 (/usr/lib/dyld:arm64e+0x31d78)
+75: 
+75: SUMMARY: UndefinedBehaviorSanitizer: undefined-behavior /Users/mercure/src/pom68k/extern/softfloat/softfloat.c:1628:20 
+75: [sst68030] dir=/Users/mercure/src/pom68k/tests/data/sst68030 files=12 cycles=off(advisory) mmu=full
+75:   core_identity    :     69/69     OK
+75:   core_off         :    160/160    OK
+75:   core_tt          :     56/56     OK
+75:   fault_identity   :     70/70     OK
+75:   fault_tt         :     35/35     OK
+75:   fpu_identity     :    731/732    OK (+1 known)
+1/8 Test  #75: sst68030 .........................Subprocess aborted***Exception:  11.19 sec
+test 76
+    Start  76: sst68040
+
+76: Test command: /Users/mercure/src/pom68k/build-cpu-sanitize/sst68040 "/Users/mercure/src/pom68k/tests/data/sst68040"
+76: Working Directory: /Users/mercure/src/pom68k/build-cpu-sanitize
+76: Test timeout computed to be: 600
+76: [sst68040] dir=/Users/mercure/src/pom68k/tests/data/sst68040 files=11 cycles=off(advisory) mmu=full
+76:   core_identity    :    600/600    OK
+76:   core_off         :    800/800    OK
+76:   core_tt          :    600/600    OK
+76:   fault_identity   :    600/600    OK
+76:   fault_tt         :    600/600    OK
+76:   mmu_identity     :    600/600    OK
+76:   mmu_off          :    600/600    OK
+76:   mmu_tt           :    600/600    OK
+76:   random_identity  :    600/600    OK
+76:   random_off       :    800/800    OK
+76:   random_tt        :    800/800    OK
+76: [sst68040] OK: 7200/7200 across 11 file(s), 0 mmu-skipped
+2/8 Test  #76: sst68040 .........................   Passed   33.93 sec
+test 444
+    Start 444: cpu_vectors030_test
+
+444: Test command: /usr/bin/python3 "/Users/mercure/src/pom68k/tools/cpu_vectors.py" "replay" "--model" "030" "--runner" "/Users/mercure/src/pom68k/build-cpu-sanitize/sst68030" "--emulator" ""
+444: Working Directory: /Users/mercure/src/pom68k/build-cpu-sanitize
+444: Test timeout computed to be: 180
+444: [sst68030] dir=/Users/mercure/.hermes/cache/scratch/pom68k-cpu-vectors-5g6dr31_ files=1 cycles=off(advisory) mmu=full
+444:   public           :    112/112    OK
+444: [sst68030] OK: 112/112 across 1 file(s), 0 mmu-skipped
+444: cpu_vectors: 030 executed 112 pinned vectors; no soft skip
+3/8 Test #444: cpu_vectors030_test ..............   Passed    4.55 sec
+test 445
+    Start 445: cpu_vectors040_test
+
+445: Test command: /usr/bin/python3 "/Users/mercure/src/pom68k/tools/cpu_vectors.py" "replay" "--model" "040" "--runner" "/Users/mercure/src/pom68k/build-cpu-sanitize/sst68040" "--emulator" ""
+445: Working Directory: /Users/mercure/src/pom68k/build-cpu-sanitize
+445: Test timeout computed to be: 180
+445: [sst68040] dir=/Users/mercure/.hermes/cache/scratch/pom68k-cpu-vectors-7iom5rd0 files=1 cycles=off(advisory) mmu=full
+445:   public           :    144/144    OK
+445: [sst68040] OK: 144/144 across 1 file(s), 0 mmu-skipped
+445: cpu_vectors: 040 executed 144 pinned vectors; no soft skip
+4/8 Test #445: cpu_vectors040_test ..............   Passed    1.91 sec
+test 446
+    Start 446: cpu_vectors_contract_test
+
+446: Test command: /usr/bin/python3 "/Users/mercure/src/pom68k/tests/cpu_vectors_contract_test.py"
+446: Working Directory: /Users/mercure/src/pom68k/build-cpu-sanitize
+446: Test timeout computed to be: 30
+446: .......
+446: ----------------------------------------------------------------------
+446: Ran 7 tests in 0.020s
+446: 
+446: OK
+5/8 Test #446: cpu_vectors_contract_test ........   Passed    0.16 sec
+test 447
+    Start 447: softfloat_shift_test
+
+447: Test command: /Users/mercure/src/pom68k/build-cpu-sanitize/softfloat_shift_test
+447: Working Directory: /Users/mercure/src/pom68k/build-cpu-sanitize
+447: Test timeout computed to be: 600
+447: softfloat_shift_test: 1040 shifts, 0 failures
+6/8 Test #447: softfloat_shift_test .............   Passed    0.36 sec
+test 458
+    Start 458: fpu_context_test
+
+458: Test command: /Users/mercure/src/pom68k/build-cpu-sanitize/fpu_context_test
+458: Working Directory: /Users/mercure/src/pom68k/build-cpu-sanitize
+458: Test timeout computed to be: 600
+458: PASS all seven intermediate-result getters belong to their status context
+458: PASS the overflow context retains its own exception flags
+458: model=5 output=0 FP=3fff0000:80000100:00000000/3fff0000:80000100:00000000 FPSR=00000208/00000208
+458: PASS the nested CPU executed during the operand callback
+458: PASS nested execution preserves the outer CPU's precision, rounding and exception flags
+458: model=5 output=1 FP=3fff0000:c0000000:00000000/3fff0000:c0000000:00000000 FPSR=00000208/00000208
+458: PASS the nested CPU executed during the operand callback
+458: PASS nested execution preserves the outer CPU's precision, rounding and exception flags
+458: PASS two host threads retain separate rounding and flags for 1024 instructions
+458: model=8 output=0 FP=3fff0000:80000100:00000000/3fff0000:80000100:00000000 FPSR=00000208/00000208
+458: PASS the nested CPU executed during the operand callback
+458: PASS nested execution preserves the outer CPU's precision, rounding and exception flags
+458: model=8 output=1 FP=3fff0000:c0000000:00000000/3fff0000:c0000000:00000000 FPSR=00000208/00000208
+458: PASS the nested CPU executed during the operand callback
+458: PASS nested execution preserves the outer CPU's precision, rounding and exception flags
+458: PASS two host threads retain separate rounding and flags for 1024 instructions
+458: fpu_context_test: 0 failure(s)
+7/8 Test #458: fpu_context_test .................   Passed    0.68 sec
+test 462
+    Start 462: moira_state_test
+
+462: Test command: /Users/mercure/src/pom68k/build-cpu-sanitize/moira_state_test
+462: Working Directory: /Users/mercure/src/pom68k/build-cpu-sanitize
+462: Test timeout computed to be: 600
+462:   ok: 68882: save at handler boundary with format-$9 continuation
+462:   ok: CPU archive consumed exactly
+462:   ok: 68882: restored SQRT(4) completes with FP0 = 2
+462:   ok: 68882: restored FSAVE/FRESTORE/RTE matches uninterrupted state and RAM
+462:   ok: 68030: operand fault reaches format-$B handler
+462:   ok: 68030: save between RTE and the retried instruction
+462:   ok: CPU archive consumed exactly
+462:   ok: 68030: restored retry consumes stacked data without another bus read
+462:   ok: 68030: restored DF-cleared retry matches uninterrupted state and RAM
+462:   ok: 68030: PMOVE leaves the old instruction stream live at a boundary
+462:   ok: CPU archive consumed exactly
+462:   ok: 68030: restored pipe executes captured MOVEQ #1, not patched #7
+462:   ok: 68030: restored pipe matches uninterrupted CPU
+462:   ok: 68040: FINT trap reaches boundary before FSAVE UNIMP
+462:   ok: CPU archive consumed exactly
+462:   ok: 68040: expected FSAVE frame header
+462:   ok: 68040: restored UNIMP micro-state gives identical FSAVE payload
+462:   ok: 68040: datatype trap reaches boundary before FSAVE BUSY
+462:   ok: CPU archive consumed exactly
+462:   ok: 68040: expected FSAVE frame header
+462:   ok: 68040: restored BUSY micro-state gives identical FSAVE payload
+462:   ok: host: debugger requests do not enter the archive
+462:   ok: CPU archive consumed exactly
+462:   ok: host: load preserves live debugger requests and model
+462:   ok: host: explicitly armed MOVEM restart latch round-trips
+462:   ok: host: inactive MOVEM scratch EA does not affect the archive
+462:   ok: CPU archive consumed exactly
+462:   ok: host: inactive saved latch clears an armed destination
+462:   ok: 040: partial MOVEM produces CM in its access-error frame
+462:   ok: 040: continued MOVEM can fault again with the original EA
+462:   ok: 040: save between guest RTE and the continued MOVEM
+462:   ok: CPU archive consumed exactly
+462:   ok: 040: restored continuation uses the original EA and completes all transfers
+462:   ok: 040: guest-produced MOVEM continuation round-trips without new archive fields
+462:   ok: 040: partial MOVEM produces CM in its access-error frame
+462:   ok: 040: continued MOVEM can fault again with the original EA
+462:   ok: 040: save between guest RTE and the continued MOVEM
+462:   ok: CPU archive consumed exactly
+462:   ok: 040: restored continuation uses the original EA and completes all transfers
+462:   ok: 040: guest-produced MOVEM continuation round-trips without new archive fields
+462:   ok: 040: partial MOVEM produces CM in its access-error frame
+462:   ok: 040: continued MOVEM can fault again with the original EA
+462:   ok: 040: save between guest RTE and the continued MOVEM
+462:   ok: CPU archive consumed exactly
+462:   ok: 040: restored continuation uses the original EA and completes all transfers
+462:   ok: 040: guest-produced MOVEM continuation round-trips without new archive fields
+462:   ok: 040 cache: seed clean way
+462:   ok: 040 cache: dirty two longwords
+462:   ok: 040 cache: fill conflicting dirty way
+462:   ok: 040 cache: fill conflicting dirty way
+462:   ok: 040 cache: fill conflicting dirty way
+462:   ok: 040 cache: nonzero replacement phase, dirty data absent from RAM
+462:   ok: 040 cache: saving neither pushes data nor advances the clock
+462:   ok: 040 cache: fresh CPU consumes archive and re-saves identical bytes
+462:   ok: 040 cache: runtime mode and replacement phase round-trip
+462:   ok: 040 cache: restored lines do not revive a previous JIT window
+462:   ok: 040 cache: stale instruction bytes survive newer backing RAM
+462:   ok: 040 cache: restored copyback bytes remain newer than RAM
+462:   ok: 040 cache: replacement after restore
+462:   ok: 040 cache: restored dirty victim writes back identically
+462:   ok: 040 cache: seed clean way
+462:   ok: 040 cache: dirty two longwords
+462:   ok: 040 cache: fill conflicting dirty way
+462:   ok: 040 cache: fill conflicting dirty way
+462:   ok: 040 cache: fill conflicting dirty way
+462:   ok: 040 cache: nonzero replacement phase, dirty data absent from RAM
+462:   ok: 040 cache: saving neither pushes data nor advances the clock
+462:   ok: 040 cache: fresh CPU consumes archive and re-saves identical bytes
+462:   ok: 040 cache: runtime mode and replacement phase round-trip
+462:   ok: 040 cache: restored lines do not revive a previous JIT window
+462:   ok: 040 cache: stale instruction bytes survive newer backing RAM
+462:   ok: 040 cache: restored copyback bytes remain newer than RAM
+462:   ok: 040 cache: replacement after restore
+462:   ok: 040 cache: restored dirty victim writes back identically
+462:   ok: 040 cache: seed clean way
+462:   ok: 040 cache: dirty two longwords
+462:   ok: 040 cache: fill conflicting dirty way
+462:   ok: 040 cache: fill conflicting dirty way
+462:   ok: 040 cache: fill conflicting dirty way
+462:   ok: 040 cache: nonzero replacement phase, dirty data absent from RAM
+462:   ok: 040 cache: saving neither pushes data nor advances the clock
+462:   ok: 040 cache: fresh CPU consumes archive and re-saves identical bytes
+462:   ok: 040 cache: runtime mode and replacement phase round-trip
+462:   ok: 040 cache: restored lines do not revive a previous JIT window
+462:   ok: 040 cache: stale instruction bytes survive newer backing RAM
+462:   ok: 040 cache: restored copyback bytes remain newer than RAM
+462:   ok: 040 cache: replacement after restore
+462:   ok: 040 cache: restored dirty victim writes back identically
+462:   ok: 040 cache: seed clean way
+462:   ok: 040 cache: dirty two longwords
+462:   ok: 040 cache: fill conflicting dirty way
+462:   ok: 040 cache: fill conflicting dirty way
+462:   ok: 040 cache: fill conflicting dirty way
+462:   ok: 040 cache: nonzero replacement phase, dirty data absent from RAM
+462:   ok: 040 cache: saving neither pushes data nor advances the clock
+462:   ok: 040 cache: fresh CPU consumes archive and re-saves identical bytes
+462:   ok: 040 cache: runtime mode and replacement phase round-trip
+462:   ok: 040 cache: restored lines do not revive a previous JIT window
+462:   ok: 040 cache: stale instruction bytes survive newer backing RAM
+462:   ok: 040 cache: restored copyback bytes remain newer than RAM
+462:   ok: 040 cache: replacement after restore
+462:   ok: 040 cache: restored dirty victim writes back identically
+462:   ok: 040 cache: seed clean way
+462:   ok: 040 cache: dirty two longwords
+462:   ok: 040 cache: fill conflicting dirty way
+462:   ok: 040 cache: fill conflicting dirty way
+462:   ok: 040 cache: fill conflicting dirty way
+462:   ok: 040 cache: nonzero replacement phase, dirty data absent from RAM
+462:   ok: 040 cache: saving neither pushes data nor advances the clock
+462:   ok: 040 cache: fresh CPU consumes archive and re-saves identical bytes
+462:   ok: 040 cache: runtime mode and replacement phase round-trip
+462:   ok: 040 cache: restored lines do not revive a previous JIT window
+462:   ok: 040 cache: stale instruction bytes survive newer backing RAM
+462:   ok: 040 cache: restored copyback bytes remain newer than RAM
+462:   ok: 040 cache: replacement after restore
+462:   ok: 040 cache: restored dirty victim writes back identically
+462:   ok: 040 cache: seed clean way
+462:   ok: 040 cache: dirty two longwords
+462:   ok: 040 cache: fill conflicting dirty way
+462:   ok: 040 cache: fill conflicting dirty way
+462:   ok: 040 cache: fill conflicting dirty way
+462:   ok: 040 cache: nonzero replacement phase, dirty data absent from RAM
+462:   ok: 040 cache: saving neither pushes data nor advances the clock
+462:   ok: 040 cache: fresh CPU consumes archive and re-saves identical bytes
+462:   ok: 040 cache: runtime mode and replacement phase round-trip
+462:   ok: 040 cache: restored lines do not revive a previous JIT window
+462:   ok: 040 cache: stale instruction bytes survive newer backing RAM
+462:   ok: 040 cache: restored copyback bytes remain newer than RAM
+462:   ok: 040 cache: replacement after restore
+462:   ok: 040 cache: restored dirty victim writes back identically
+462:   ok: 040 cache: invalid bytes and diagnostic counters are omitted
+462:   ok: CPU archive consumed exactly
+462:   ok: 040 cache: loading an invalid slot clears target garbage
+462: moira_state_test: 0 failure(s)
+8/8 Test #462: moira_state_test .................   Passed    0.89 sec
+
+The following tests passed:
+	sst68040
+	cpu_vectors030_test
+	cpu_vectors040_test
+	cpu_vectors_contract_test
+	softfloat_shift_test
+	fpu_context_test
+	moira_state_test
+
+88% tests passed, 1 tests failed out of 8
+
+Label Time Summary:
+asset-none         =   8.54 sec*proc (6 tests)
+asset-optional     =  45.12 sec*proc (2 tests)
+cpu-vectors        =   6.98 sec*proc (4 tests)
+host-any           =  53.66 sec*proc (8 tests)
+scope-component    =  53.66 sec*proc (8 tests)
+tier-daily         =   8.54 sec*proc (6 tests)
+tier-full          =  45.12 sec*proc (2 tests)
+unit               =  53.66 sec*proc (8 tests)
+
+Total Test time (real) =  53.72 sec
+
+The following tests FAILED:
+	 75 - sst68030 (Subprocess aborted)                     asset-optional host-any scope-component tier-full unit
+Errors while running CTest
+Output from these tests are in: /Users/mercure/src/pom68k/build-cpu-sanitize/Testing/Temporary/LastTest.log
+Use "--rerun-failed --output-on-failure" to re-run the failed cases verbosely.

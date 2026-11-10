@@ -1,0 +1,10 @@
+Command: nm -m build/extern/softfloat/libsoftfloat68k.a
+Writable __data/__bss/__common symbols: 0
+Three C objects rebuilt with context-bearing softfloat.h.
+0000000000000734 (__TEXT,__text) external _getFloatInternalFloatx80
+00000000000007d8 (__TEXT,__text) external _getFloatInternalGRS
+0000000000000240 (__TEXT,__text) external _getFloatInternalOverflow
+00000000000002e4 (__TEXT,__text) external _getFloatInternalRoundedAll
+0000000000000588 (__TEXT,__text) external _getFloatInternalRoundedSome
+0000000000000290 (__TEXT,__text) external _getFloatInternalUnderflow
+00000000000007bc (__TEXT,__text) external _getFloatInternalUnrounded

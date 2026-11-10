@@ -336,7 +336,7 @@ static inline void
 /*----------------------------------------------------------------------------
 | Shifts the 128-bit value formed by concatenating `a0' and `a1' left by the
 | number of bits given in `count'.  Any bits shifted off are lost.  The value
-| of `count' must be less than 64.  The result is broken into two 64-bit
+| of `count' must be between 0 and 64.  The result is broken into two 64-bit
 | pieces which are stored at the locations pointed to by `z0Ptr' and `z1Ptr'.
 *----------------------------------------------------------------------------*/
 
@@ -344,6 +344,14 @@ static inline void
  shortShift128Left(
      uint64_t a0, uint64_t a1, int count, uint64_t *z0Ptr, uint64_t *z1Ptr)
 {
+
+    /* POM68K: all-zero normalization can request 64; a C shift by 64 is UB.
+       Keep the full-width result explicit (softfloat_primitives_test). */
+    if ( count == 64 ) {
+        *z0Ptr = a1;
+        *z1Ptr = 0;
+        return;
+    }
 
     *z1Ptr = a1<<count;
     *z0Ptr =

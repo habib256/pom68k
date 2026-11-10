@@ -1,0 +1,332 @@
+Start testing: Nov 10 12:15 +04
+----------------------------------------------------------
+75/559 Testing: sst68030
+75/559 Test: sst68030
+Command: "/Users/mercure/src/pom68k/build-cpu-sanitize/sst68030" "/Users/mercure/src/pom68k/tests/data/sst68030" "--known" "/Users/mercure/src/pom68k/tests/sst68030.known"
+Directory: /Users/mercure/src/pom68k/build-cpu-sanitize
+"sst68030" start time: Nov 10 12:15 +04
+Output:
+----------------------------------------------------------
+[sst68030] dir=/Users/mercure/src/pom68k/tests/data/sst68030 files=12 cycles=off(advisory) mmu=full
+  core_identity    :     69/69     OK
+  core_off         :    160/160    OK
+  core_tt          :     56/56     OK
+  fault_identity   :     70/70     OK
+  fault_tt         :     35/35     OK
+  fpu_identity     :    731/732    OK (+1 known)
+  fpu_off          :   1097/1099   OK (+2 known)
+  fpu_tt           :    210/211    OK (+1 known)
+  mmu_identity     :     69/69     OK
+  mmu_off          :    210/210    OK
+  random_identity  :    121/121    OK
+  random_off       :    250/250    OK
+[sst68030] OK: 3078/3082 across 12 file(s), 4 known divergence(s), 0 mmu-skipped
+<end of output>
+Test time =  14.63 sec
+----------------------------------------------------------
+Test Passed.
+"sst68030" end time: Nov 10 12:15 +04
+"sst68030" time elapsed: 00:00:14
+----------------------------------------------------------
+
+76/559 Testing: sst68040
+76/559 Test: sst68040
+Command: "/Users/mercure/src/pom68k/build-cpu-sanitize/sst68040" "/Users/mercure/src/pom68k/tests/data/sst68040"
+Directory: /Users/mercure/src/pom68k/build-cpu-sanitize
+"sst68040" start time: Nov 10 12:15 +04
+Output:
+----------------------------------------------------------
+[sst68040] dir=/Users/mercure/src/pom68k/tests/data/sst68040 files=11 cycles=off(advisory) mmu=full
+  core_identity    :    600/600    OK
+  core_off         :    800/800    OK
+  core_tt          :    600/600    OK
+  fault_identity   :    600/600    OK
+  fault_tt         :    600/600    OK
+  mmu_identity     :    600/600    OK
+  mmu_off          :    600/600    OK
+  mmu_tt           :    600/600    OK
+  random_identity  :    600/600    OK
+  random_off       :    800/800    OK
+  random_tt        :    800/800    OK
+[sst68040] OK: 7200/7200 across 11 file(s), 0 mmu-skipped
+<end of output>
+Test time =  38.46 sec
+----------------------------------------------------------
+Test Passed.
+"sst68040" end time: Nov 10 12:16 +04
+"sst68040" time elapsed: 00:00:38
+----------------------------------------------------------
+
+444/559 Testing: cpu_vectors030_test
+444/559 Test: cpu_vectors030_test
+Command: "/usr/bin/python3" "/Users/mercure/src/pom68k/tools/cpu_vectors.py" "replay" "--model" "030" "--runner" "/Users/mercure/src/pom68k/build-cpu-sanitize/sst68030" "--emulator" ""
+Directory: /Users/mercure/src/pom68k/build-cpu-sanitize
+"cpu_vectors030_test" start time: Nov 10 12:16 +04
+Output:
+----------------------------------------------------------
+[sst68030] dir=/Users/mercure/.hermes/cache/scratch/pom68k-cpu-vectors-zbkt864s files=1 cycles=off(advisory) mmu=full
+  public           :    112/112    OK
+[sst68030] OK: 112/112 across 1 file(s), 0 mmu-skipped
+cpu_vectors: 030 executed 112 pinned vectors; no soft skip
+<end of output>
+Test time =   2.52 sec
+----------------------------------------------------------
+Test Passed.
+"cpu_vectors030_test" end time: Nov 10 12:16 +04
+"cpu_vectors030_test" time elapsed: 00:00:02
+----------------------------------------------------------
+
+445/559 Testing: cpu_vectors040_test
+445/559 Test: cpu_vectors040_test
+Command: "/usr/bin/python3" "/Users/mercure/src/pom68k/tools/cpu_vectors.py" "replay" "--model" "040" "--runner" "/Users/mercure/src/pom68k/build-cpu-sanitize/sst68040" "--emulator" ""
+Directory: /Users/mercure/src/pom68k/build-cpu-sanitize
+"cpu_vectors040_test" start time: Nov 10 12:16 +04
+Output:
+----------------------------------------------------------
+[sst68040] dir=/Users/mercure/.hermes/cache/scratch/pom68k-cpu-vectors-atshqd2j files=1 cycles=off(advisory) mmu=full
+  public           :    144/144    OK
+[sst68040] OK: 144/144 across 1 file(s), 0 mmu-skipped
+cpu_vectors: 040 executed 144 pinned vectors; no soft skip
+<end of output>
+Test time =   3.45 sec
+----------------------------------------------------------
+Test Passed.
+"cpu_vectors040_test" end time: Nov 10 12:16 +04
+"cpu_vectors040_test" time elapsed: 00:00:03
+----------------------------------------------------------
+
+446/559 Testing: cpu_vectors_contract_test
+446/559 Test: cpu_vectors_contract_test
+Command: "/usr/bin/python3" "/Users/mercure/src/pom68k/tests/cpu_vectors_contract_test.py"
+Directory: /Users/mercure/src/pom68k/build-cpu-sanitize
+"cpu_vectors_contract_test" start time: Nov 10 12:16 +04
+Output:
+----------------------------------------------------------
+.......
+----------------------------------------------------------------------
+Ran 7 tests in 0.033s
+
+OK
+<end of output>
+Test time =   0.30 sec
+----------------------------------------------------------
+Test Passed.
+"cpu_vectors_contract_test" end time: Nov 10 12:16 +04
+"cpu_vectors_contract_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+447/559 Testing: softfloat_primitives_test
+447/559 Test: softfloat_primitives_test
+Command: "/Users/mercure/src/pom68k/build-cpu-sanitize/softfloat_primitives_test"
+Directory: /Users/mercure/src/pom68k/build-cpu-sanitize
+"softfloat_primitives_test" start time: Nov 10 12:16 +04
+Output:
+----------------------------------------------------------
+softfloat_primitives_test: 1040 shifts, 5 conversions, 0 failures
+<end of output>
+Test time =   0.38 sec
+----------------------------------------------------------
+Test Passed.
+"softfloat_primitives_test" end time: Nov 10 12:16 +04
+"softfloat_primitives_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+458/559 Testing: fpu_context_test
+458/559 Test: fpu_context_test
+Command: "/Users/mercure/src/pom68k/build-cpu-sanitize/fpu_context_test"
+Directory: /Users/mercure/src/pom68k/build-cpu-sanitize
+"fpu_context_test" start time: Nov 10 12:16 +04
+Output:
+----------------------------------------------------------
+PASS all seven intermediate-result getters belong to their status context
+PASS the overflow context retains its own exception flags
+model=5 output=0 FP=3fff0000:80000100:00000000/3fff0000:80000100:00000000 FPSR=00000208/00000208
+PASS the nested CPU executed during the operand callback
+PASS nested execution preserves the outer CPU's precision, rounding and exception flags
+model=5 output=1 FP=3fff0000:c0000000:00000000/3fff0000:c0000000:00000000 FPSR=00000208/00000208
+PASS the nested CPU executed during the operand callback
+PASS nested execution preserves the outer CPU's precision, rounding and exception flags
+PASS two host threads retain separate rounding and flags for 1024 instructions
+model=8 output=0 FP=3fff0000:80000100:00000000/3fff0000:80000100:00000000 FPSR=00000208/00000208
+PASS the nested CPU executed during the operand callback
+PASS nested execution preserves the outer CPU's precision, rounding and exception flags
+model=8 output=1 FP=3fff0000:c0000000:00000000/3fff0000:c0000000:00000000 FPSR=00000208/00000208
+PASS the nested CPU executed during the operand callback
+PASS nested execution preserves the outer CPU's precision, rounding and exception flags
+PASS two host threads retain separate rounding and flags for 1024 instructions
+fpu_context_test: 0 failure(s)
+<end of output>
+Test time =   0.94 sec
+----------------------------------------------------------
+Test Passed.
+"fpu_context_test" end time: Nov 10 12:16 +04
+"fpu_context_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+462/559 Testing: moira_state_test
+462/559 Test: moira_state_test
+Command: "/Users/mercure/src/pom68k/build-cpu-sanitize/moira_state_test"
+Directory: /Users/mercure/src/pom68k/build-cpu-sanitize
+"moira_state_test" start time: Nov 10 12:16 +04
+Output:
+----------------------------------------------------------
+  ok: 68882: save at handler boundary with format-$9 continuation
+  ok: CPU archive consumed exactly
+  ok: 68882: restored SQRT(4) completes with FP0 = 2
+  ok: 68882: restored FSAVE/FRESTORE/RTE matches uninterrupted state and RAM
+  ok: 68030: operand fault reaches format-$B handler
+  ok: 68030: save between RTE and the retried instruction
+  ok: CPU archive consumed exactly
+  ok: 68030: restored retry consumes stacked data without another bus read
+  ok: 68030: restored DF-cleared retry matches uninterrupted state and RAM
+  ok: 68030: PMOVE leaves the old instruction stream live at a boundary
+  ok: CPU archive consumed exactly
+  ok: 68030: restored pipe executes captured MOVEQ #1, not patched #7
+  ok: 68030: restored pipe matches uninterrupted CPU
+  ok: 68040: FINT trap reaches boundary before FSAVE UNIMP
+  ok: CPU archive consumed exactly
+  ok: 68040: expected FSAVE frame header
+  ok: 68040: restored UNIMP micro-state gives identical FSAVE payload
+  ok: 68040: datatype trap reaches boundary before FSAVE BUSY
+  ok: CPU archive consumed exactly
+  ok: 68040: expected FSAVE frame header
+  ok: 68040: restored BUSY micro-state gives identical FSAVE payload
+  ok: host: debugger requests do not enter the archive
+  ok: CPU archive consumed exactly
+  ok: host: load preserves live debugger requests and model
+  ok: host: explicitly armed MOVEM restart latch round-trips
+  ok: host: inactive MOVEM scratch EA does not affect the archive
+  ok: CPU archive consumed exactly
+  ok: host: inactive saved latch clears an armed destination
+  ok: 040: partial MOVEM produces CM in its access-error frame
+  ok: 040: continued MOVEM can fault again with the original EA
+  ok: 040: save between guest RTE and the continued MOVEM
+  ok: CPU archive consumed exactly
+  ok: 040: restored continuation uses the original EA and completes all transfers
+  ok: 040: guest-produced MOVEM continuation round-trips without new archive fields
+  ok: 040: partial MOVEM produces CM in its access-error frame
+  ok: 040: continued MOVEM can fault again with the original EA
+  ok: 040: save between guest RTE and the continued MOVEM
+  ok: CPU archive consumed exactly
+  ok: 040: restored continuation uses the original EA and completes all transfers
+  ok: 040: guest-produced MOVEM continuation round-trips without new archive fields
+  ok: 040: partial MOVEM produces CM in its access-error frame
+  ok: 040: continued MOVEM can fault again with the original EA
+  ok: 040: save between guest RTE and the continued MOVEM
+  ok: CPU archive consumed exactly
+  ok: 040: restored continuation uses the original EA and completes all transfers
+  ok: 040: guest-produced MOVEM continuation round-trips without new archive fields
+  ok: 040 cache: seed clean way
+  ok: 040 cache: dirty two longwords
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: nonzero replacement phase, dirty data absent from RAM
+  ok: 040 cache: saving neither pushes data nor advances the clock
+  ok: 040 cache: fresh CPU consumes archive and re-saves identical bytes
+  ok: 040 cache: runtime mode and replacement phase round-trip
+  ok: 040 cache: restored lines do not revive a previous JIT window
+  ok: 040 cache: stale instruction bytes survive newer backing RAM
+  ok: 040 cache: restored copyback bytes remain newer than RAM
+  ok: 040 cache: replacement after restore
+  ok: 040 cache: restored dirty victim writes back identically
+  ok: 040 cache: seed clean way
+  ok: 040 cache: dirty two longwords
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: nonzero replacement phase, dirty data absent from RAM
+  ok: 040 cache: saving neither pushes data nor advances the clock
+  ok: 040 cache: fresh CPU consumes archive and re-saves identical bytes
+  ok: 040 cache: runtime mode and replacement phase round-trip
+  ok: 040 cache: restored lines do not revive a previous JIT window
+  ok: 040 cache: stale instruction bytes survive newer backing RAM
+  ok: 040 cache: restored copyback bytes remain newer than RAM
+  ok: 040 cache: replacement after restore
+  ok: 040 cache: restored dirty victim writes back identically
+  ok: 040 cache: seed clean way
+  ok: 040 cache: dirty two longwords
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: nonzero replacement phase, dirty data absent from RAM
+  ok: 040 cache: saving neither pushes data nor advances the clock
+  ok: 040 cache: fresh CPU consumes archive and re-saves identical bytes
+  ok: 040 cache: runtime mode and replacement phase round-trip
+  ok: 040 cache: restored lines do not revive a previous JIT window
+  ok: 040 cache: stale instruction bytes survive newer backing RAM
+  ok: 040 cache: restored copyback bytes remain newer than RAM
+  ok: 040 cache: replacement after restore
+  ok: 040 cache: restored dirty victim writes back identically
+  ok: 040 cache: seed clean way
+  ok: 040 cache: dirty two longwords
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: nonzero replacement phase, dirty data absent from RAM
+  ok: 040 cache: saving neither pushes data nor advances the clock
+  ok: 040 cache: fresh CPU consumes archive and re-saves identical bytes
+  ok: 040 cache: runtime mode and replacement phase round-trip
+  ok: 040 cache: restored lines do not revive a previous JIT window
+  ok: 040 cache: stale instruction bytes survive newer backing RAM
+  ok: 040 cache: restored copyback bytes remain newer than RAM
+  ok: 040 cache: replacement after restore
+  ok: 040 cache: restored dirty victim writes back identically
+  ok: 040 cache: seed clean way
+  ok: 040 cache: dirty two longwords
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: nonzero replacement phase, dirty data absent from RAM
+  ok: 040 cache: saving neither pushes data nor advances the clock
+  ok: 040 cache: fresh CPU consumes archive and re-saves identical bytes
+  ok: 040 cache: runtime mode and replacement phase round-trip
+  ok: 040 cache: restored lines do not revive a previous JIT window
+  ok: 040 cache: stale instruction bytes survive newer backing RAM
+  ok: 040 cache: restored copyback bytes remain newer than RAM
+  ok: 040 cache: replacement after restore
+  ok: 040 cache: restored dirty victim writes back identically
+  ok: 040 cache: seed clean way
+  ok: 040 cache: dirty two longwords
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: nonzero replacement phase, dirty data absent from RAM
+  ok: 040 cache: saving neither pushes data nor advances the clock
+  ok: 040 cache: fresh CPU consumes archive and re-saves identical bytes
+  ok: 040 cache: runtime mode and replacement phase round-trip
+  ok: 040 cache: restored lines do not revive a previous JIT window
+  ok: 040 cache: stale instruction bytes survive newer backing RAM
+  ok: 040 cache: restored copyback bytes remain newer than RAM
+  ok: 040 cache: replacement after restore
+  ok: 040 cache: restored dirty victim writes back identically
+  ok: 040 cache: invalid bytes and diagnostic counters are omitted
+  ok: CPU archive consumed exactly
+  ok: 040 cache: loading an invalid slot clears target garbage
+moira_state_test: 0 failure(s)
+<end of output>
+Test time =   1.25 sec
+----------------------------------------------------------
+Test Passed.
+"moira_state_test" end time: Nov 10 12:16 +04
+"moira_state_test" time elapsed: 00:00:01
+----------------------------------------------------------
+
+End testing: Nov 10 12:16 +04
+
+asset-none =   8.85 sec*proc
+
+asset-optional =  53.09 sec*proc
+
+cpu-vectors =   6.65 sec*proc
+
+host-any =  61.94 sec*proc
+
+scope-component =  61.94 sec*proc
+
+tier-daily =   8.85 sec*proc
+
+tier-full =  53.09 sec*proc
+
+unit =  61.94 sec*proc
+

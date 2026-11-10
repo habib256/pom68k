@@ -1,15 +1,16 @@
-// Cache-active 68040 JSR commit tail. The helper owns the first stack
+// 68040 JSR commit tail. The helper owns the first stack
 // mutation, target I-cache access and any resulting format-$7 exception.
 void emitJsr040Transaction(Asm& a, const Layout& L, const BlockIr& ir,
                            const Instr& in, uint16_t op,
                            const ControlFlowPlan& control, unsigned opCost,
                            int fault, int epilogue, bool paced, int batch,
-                           uint32_t linkMask)
+                           uint32_t linkMask, const MemoryAccessPlan& push)
 {
     a.strX(21, 0, L.clock);
     if (icacheCountersLive(L)) spillIcacheCounters(a, L);
     spillQueueLive(a, L);
     spillPackedCcr(a, L);
+    prepareAtcThunk040(a, L, push.index, 5);
     a.movW(4, op);
     a.ldrW(3, 1, 48);                         // Frame::saveV = target
     a.movW(2, control.returnAddress);

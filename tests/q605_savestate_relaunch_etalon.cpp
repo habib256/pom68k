@@ -14,8 +14,9 @@
 // callback into A's object graph rather than B's, a cache not flushed on the
 // fresh instance, or a host-backed SCSI disk whose in-snapshot deltas never
 // reached B's freshly attached image. The invariant this pins: "save and
-// load share one visitor; pointers/callbacks are rebound, caches flushed,
-// and disk payloads remain host-owned" (CLAUDE.md).
+// load share one visitor; pointers/callbacks are rebound, derived caches
+// flushed, architectural 040 cache bytes restored, and disk payloads remain
+// host-owned" (DEV.md §1.4).
 //
 // Soft-skips without the FF7439EE ROM + hdv/MacOS-8.1-boot.vhd.
 

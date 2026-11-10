@@ -36,6 +36,20 @@ oracle/
                       JSON emitters, loop.sh
 ```
 
+## Public vectors and CI
+
+`tests/cpu_vectors/` ships 256 oracle-generated vectors with recipes and
+uncompressed SHA-256 identities. The root `cpu-vectors` tier always replays
+them, including from clean CI and ASan/UBSan checkouts. It rejects missing
+data and successful soft-skips. They supplement the large optional corpora;
+they do not replace a hardware reference or claim 030/040 cycle accuracy.
+
+The Linux CI job builds this separate oracle project, runs both
+`oracle_uae_smoke` and `oracle_uae_smoke040`, then regenerates the small corpus
+without changing its pins. See `tests/cpu_vectors/README.md` for the same
+local recipe. Runtime replay uses the SST harnesses and needs no oracle
+library, NumPy, ROM or disk image.
+
 ## Rulings taken against a manual
 
 Kept as known exceptions: the project applies the evidence grades to an
@@ -54,9 +68,13 @@ existing ruling only when doing so turns no gate red (maintainer's decision,
 
 The reverse case, opened 2026-11-07 by the first differential run of the
 integrated 68040 FPU. Each line is a class of vectors on which the fork keeps
-its own answer; they are listed by name in `tests/sst68040_fpu.known` and
-`tests/sst68030_fpuraw.known`, and the two gates fail if one of them starts
-passing or disappears (`tests/SstKnown.h`).
+its own answer. D25-D29 have named vectors in `tests/sst68040_fpu.known`
+and `tests/sst68030_fpuraw.known`; their gates reject a listed case that
+starts passing or disappears (`tests/SstKnown.h`). D31 is instead a bus
+transfer that a RAM-only vector cannot observe; D32 distinguishes external
+data/fill errors from ATC faults; D34 restricts MOVEM saved-EA reuse to
+indexed/PC-relative modes; D33 holds deferred U history against
+eager writes. `cache040_test` supplies their host-bus witnesses.
 
 | Ruling | Fork (kept) | Oracle | Why it is kept | Settled by |
 |---|---|---|---|---|
@@ -65,6 +83,10 @@ passing or disappears (`tests/SstKnown.h`).
 | **D27** | FMOVE(M) control registers to a PC-relative destination: Line-F at once | Line-F after evaluating the EA, so a memory-indirect one marks a page Used (or faults in the walk) | three vectors; the instruction does not exist either way | — |
 | **D28** | FBcc / FDBcc taken to an odd address: address error inside the branch, as for Bcc | Sets the PC and raises nothing, then or later | the manual: a fetch from an odd address is an address error. The oracle's FPU branches simply lack the test its integer branches have | — (the oracle has no frame to compare) |
 | **D29** | EA fields $3D-$3F on a 68030: the coprocessor decides — register-to-register runs, a memory form clears the status byte then takes a Line-F | Plain Line-F from the opcode table | on a 68030 the main processor validates an EA only when the coprocessor asks for it; nothing at hand states it for these fields. 63 vectors | `$F23D $0000` (FMOVE FP0,FP0 with EA field $3D) on a real 68030 + 68882 |
+| **D31** | Failed 040 CAS2 writes only its second read operand | No failed-comparison write (`gencpu.c i_CAS2` @ Hatari e77819f7) | MC68040UM-1993 §7.4.5 explicitly requires this terminal transfer; held by `cache040_test` bus traces and write-only /BERR | manual settles the transfer; precise CAS2 fault register/PC ordering still needs a real 040 capture |
+| **D32** | A later-fragment physical 040 data/fill /BERR retains the initial logical FA with MA clear; second-page ATC faults set MA | `cpummu.c misalignednotfirst:989–997` @ Hatari e77819f7 unconditionally sets MA | MC68040UM-1993 §§8.4.6.2/8.4.6.4 independently define MA and initial FA; `cache040_test` holds 8 592 cases, 2 016 pre-fix frame failures | primary-manual ruling; no new corpus exception or oracle payload |
+| **D33** | Root/pointer U writes follow the next successful descriptor read | `cpummu.c:695–742` @ Hatari e77819f7 writes U before fetching the next descriptor | MC68040UM-1993 Figure 3-10 (PDF p. 60) explicitly schedules the delayed write; `cache040_test --descriptor-faults` pins traces and partial history | primary-manual/source-reading ruling; no oracle patch or corpus exception |
+| **D34** | MOVEM with CM reuses stacked EA only for indexed/PC-relative modes | `gencpu.c start_mmu040_movem` @ Hatari e77819f7 reuses it for all modes | MC68040UM-1993 §8.4.6.2 lists modes 110 and 111/010–011; §8.4.6.7 repeats the operand prefix. Bare-core, state and JIT continuation witnesses | primary-manual/source-reading ruling; no patched oracle or corpus exception |
 
 D23b — FRESTORE of a 68040 frame accepted by a 68882 — left this table on
 2026-11-07: the acceptance was WinUAE's permissive setting, not the

@@ -618,7 +618,7 @@ if(POM68K_WARNINGS AND NOT MSVC)
     get_property(pom68k_targets DIRECTORY . PROPERTY BUILDSYSTEM_TARGETS)
     foreach(pom68k_target IN LISTS pom68k_targets)
         get_target_property(pom68k_target_type ${pom68k_target} TYPE)
-        if(pom68k_target STREQUAL "moira"
+        if(pom68k_target MATCHES "^moira(_interp)?$"
            OR pom68k_target_type STREQUAL "INTERFACE_LIBRARY"
            OR pom68k_target_type STREQUAL "UTILITY")
             continue()
