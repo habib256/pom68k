@@ -7,10 +7,15 @@
 thread_local const Instr* gAtcInstruction040 = nullptr;
 thread_local bool gAtcContext040 = false;
 thread_local uint8_t gAtcRoutes040 = 0;
+// A branch path's own stream-access count (branchFetchWords040); -1 = the
+// traced fetchWords040.
+thread_local int gFetchPath040 = -1;
 constexpr uint32_t kAtcFrame040 = uint32_t(offsetof(Frame, atc));
 constexpr uint32_t kAtcFetch040 = kAtcFrame040 + uint32_t(offsetof(AtcReplay040, fetches));
 constexpr uint32_t kAtcRoutes040 = kAtcFrame040 + uint32_t(offsetof(AtcReplay040, routes));
 constexpr uint32_t kAtcAccess040 = kAtcFrame040 + uint32_t(offsetof(AtcReplay040, access));
+constexpr uint32_t kAtcCacheFetches040 = kAtcFrame040 + uint32_t(offsetof(AtcReplay040, cacheFetches));
+constexpr uint32_t kAtcCacheSaved040 = kAtcFrame040 + uint32_t(offsetof(AtcReplay040, cacheSaved));
 
 void initAtcContext040(Asm& a, const Layout& L) {
     if (L.is030) return;
@@ -21,6 +26,13 @@ void initAtcContext040(Asm& a, const Layout& L) {
         a.movW(13, gAtcInstruction040->fetchWords040);
         a.mulW(12, 12, 13);
         a.strW(12, 1, kAtcFetch040);
+    }
+    // MC68040UM-1993 §4.1: the I-cache stream count waits here too, so an
+    // exact thunk commits it before its own I-side accesses.
+    if (L.cache040Live) {
+        a.movW(12, gAtcInstruction040->fetchWords040 & 3);
+        a.strW(12, 1, kAtcCacheFetches040);
+        a.strB(31, 1, kAtcCacheSaved040);
     }
     gAtcContext040 = true;
 }
@@ -68,10 +80,46 @@ void prepareAtcThunk040(Asm& a, const Layout& L, unsigned access,
     a.address(argument, 1, kAtcFrame040);
 }
 
+constexpr uint32_t kCacheRotD = uint32_t(offsetof(Frame, cacheRotD));
+
+// MC68040UM-1993 §4.1: add w12 to a cache's two-bit replacement counter
+// (Moira::pomCache040{I,D}.rot). Clobbers w13.
+void addCacheRot040(Asm& a, uint32_t rot) {
+    a.ldrB(13, 0, rot);
+    a.addW(13, 13, 12);
+    a.movW(12, 3); a.andW(13, 13, 12);
+    a.strB(13, 0, rot);
+}
+
+// The deferred D-cache delta of the cache-only probes, once their hits are
+// published (commitReplayableMemory, the atomic MOVE cache pair).
+void commitDeferredCacheRot040(Asm& a, const Layout& L) {
+    a.ldrW(12, 1, kCacheRotD);
+    addCacheRot040(a, L.cache040DRot);
+}
+
 void commitAtcInstruction040(Asm& a, const Layout& L) {
     if (L.is030) return;
+    // Natively executed code bypasses the I-cache reads Moira counts, one
+    // per fetched word (Moira::pomJitFetch, MoiraCache040.h).
+    const unsigned fetchWords = gFetchPath040 >= 0
+        ? unsigned(gFetchPath040) : gAtcInstruction040->fetchWords040;
+    if (L.cache040Live) {
+        if (!gAtcContext040) {
+            if (fetchWords & 3) {
+                a.movW(12, fetchWords & 3);
+                addCacheRot040(a, L.cache040IRot);
+            }
+        } else {
+            // What no exact thunk committed yet (pomJitAtcReplayBegin040).
+            a.ldrW(12, 1, kAtcCacheFetches040);
+            addCacheRot040(a, L.cache040IRot);
+            a.strW(31, 1, kAtcCacheFetches040);
+            a.strB(31, 1, kAtcCacheSaved040);
+        }
+    }
     if (!gAtcContext040) {
-        const auto count = gAtcInstruction040->fetchWords040;
+        const auto count = fetchWords;
         if (!count) return;
         const int identity = a.label();
         a.ldrB(12, 0, L.atcWindow040); a.cbzW(12, identity);

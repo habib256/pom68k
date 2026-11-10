@@ -522,6 +522,7 @@ void testDataPath() {
     // Four more tags in the same set evict the original way-0 line.
     for (int i = 1; i <= 4; i++) {
         put32(A + 0x400u * uint32_t(i), 0x01010101u * uint32_t(i));
+        if (i == 4) c.pomCache040Data().rot = 0;  // pin way 0; the counter has its own cell
         check(c.pomJitReadData(A + 0x400u * uint32_t(i), 4, value),
               "same-set fill succeeds");
     }
@@ -1138,6 +1139,7 @@ void testReadFillFaults() {
                 check(cpu.pomJitWriteData(0x9000, 4, 0xD1D2D3D4) &&
                       cpu.pomJitWriteData(0x9008, 4, 0xE1E2E3E4), "read fill: dirty victim remains outside RAM");
         }
+        cpu.pomCache040Data().rot = 0;  // pin the victim; the §4.1 counter has its own cell
         cpu.setDTT0(paged ? 0x0000C040 : 0x0000C000); // stack stays uncached/WT
         cpu.setISP(0x70000); cpu.setUSP(0x60000); cpu.setSR(uint16_t((super ? 0x2000 : 0) | 0x1F));
         cpu.setA(0, address); cpu.setD(0, 0xABCD0000);
@@ -1259,6 +1261,7 @@ void testWriteAllocateFaults() {
                 check(cpu.pomJitWriteData(0x9000, 4, 0xD1D2D3D4) &&
                       cpu.pomJitWriteData(0x9008, 4, 0xE1E2E3E4), "write fill: dirty victim");
         }
+        cpu.pomCache040Data().rot = 0;  // pin the victim; the §4.1 counter has its own cell
         cpu.setDTT0(paged ? 0x0000C040 : 0x0000C020);
         cpu.setISP(0x70000); cpu.setUSP(0x60000); cpu.setSR(uint16_t((super ? 0x2000 : 0) | 0x1F));
         cpu.setA(0, address + (mode == 2 ? bytes : 0)); cpu.setD(0, value);
@@ -1400,6 +1403,7 @@ void testPushFaults() {
             pd[lw] = uint32_t(resident->data[o]) << 24 | uint32_t(resident->data[o + 1]) << 16 |
                      uint32_t(resident->data[o + 2]) << 8 | resident->data[o + 3];
         }
+        cpu.pomCache040Data().rot = 0;  // pin the victim; the §4.1 counter has its own cell
         if (mapping) {
             cpu.setDTT0(0x0000C040);
             cpu.put32(0x4400, 0x8019 | ((kind == 4) ? 0x20 : kind >= 5 ? 0x40 : 0));
@@ -1952,6 +1956,55 @@ void testDisabledDataCache() {
     }
 }
 
+// [B] MC68040UM-1993 §4.1: the data cache's two-bit replacement counter
+// advances for each half-line accessed during reads, each full line accessed
+// during copyback writes and each bus transfer of a write-through write; a
+// miss with four valid lines replaces the line it points to (MoiraCache040.h,
+// POM68K_VENDOR.md row 85). Each step's delta is 1..3, so rot mod 4 pins it.
+void testReplacementCounter() {
+    std::printf("part 5 — access-counted replacement (MC68040UM-1993 §4.1)\n");
+    Cpu c;
+    c.setCACR(0x80000000);                    // DE
+    c.setDTT0(0x4000C020);                    // $40xxxxxx copyback
+    c.setDTT1(0x5000C000);                    // $50xxxxxx write-through
+    auto& dc = c.pomCache040Data();
+    struct Step { bool write; uint32_t addr; int bytes; unsigned delta; const char* what; };
+    static const Step steps[] = {
+        { false, 0x40008000, 4, 1, "read long inside one half-line: +1" },
+        { false, 0x40008006, 4, 2, "read long across two half-lines: +2" },
+        { false, 0x4000800F, 2, 2, "read word across two lines: +2" },
+        { true,  0x40008000, 4, 1, "copyback write inside one line: +1" },
+        { true,  0x4000800E, 4, 2, "copyback write across two lines: +2" },
+        { true,  0x50008000, 4, 1, "write-through aligned long, one transfer: +1" },
+        { true,  0x50008001, 4, 3, "write-through long at +1, byte/word/byte: +3" },
+        { true,  0x50008003, 2, 2, "write-through word at +3, two bytes: +2" },
+        { false, 0x50008000, 4, 1, "write-through page read: +1" },
+    };
+    for (const auto& k : steps) {
+        const unsigned before = dc.rot;
+        uint32_t value = 0;
+        const bool ok = k.write ? c.pomJitWriteData(k.addr, k.bytes, 0x5A5A5A5A)
+                                : c.pomJitReadData(k.addr, k.bytes, value);
+        check(ok && dc.rot == ((before + k.delta) & 3), k.what);
+    }
+
+    // Victim choice: a full set replaces the way rot points to, then the
+    // missing access counts. Ways 0-3 hold $40009000 + n*$400 (set 0).
+    Cpu v;
+    v.setCACR(0x80000000);
+    v.setDTT0(0x4000C020);
+    auto& vc = v.pomCache040Data();
+    uint32_t value = 0;
+    for (uint32_t way = 0; way < 4; way++)
+        v.pomJitReadData(0x40009000 + way * 0x400, 4, value);
+    vc.rot = 2;
+    check(v.pomJitReadData(0x4000A000, 4, value) &&
+          vc.lookup(0x4000A000) && !vc.lookup(0x40009800) &&
+          vc.lookup(0x40009000) && vc.lookup(0x40009400) && vc.lookup(0x40009C00) &&
+          vc.rot == 3,
+          "a full set replaces the way rot points to; the miss then counts");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1978,6 +2031,7 @@ int main(int argc, char** argv) {
     testPageSplitFaults();
     testDescriptorFaults();
     testInstructionFillFaults();
+    testReplacementCounter();
     std::printf(gFails ? "FAILED (%d)\n" : "PASSED\n", gFails);
     return gFails ? 1 : 0;
 }

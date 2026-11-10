@@ -254,11 +254,15 @@ void cache040State(moira::Model model, unsigned disabled) {
     check(direct.pomJitReadData(0x4400, 4, a) &&
           loaded.pomJitReadData(0x4400, 4, b) && a == 0x112233A1 && b == a,
           "040 cache: restored copyback bytes remain newer than RAM");
-    // With rot=1, the next collision writes the two dirty longwords at
-    // $4400 to RAM. Losing either data or replacement phase changes it.
+    // The read above was a D-cache access (MC68040UM-1993 §4.1), so the
+    // restored rot=1 is now 2: the next collision replaces way 2, the dirty
+    // line at $4800, and writes its longword to RAM. Losing either the data
+    // or the replacement phase changes which line is written back.
+    check(direct.pomCache040Data().rot == 2 && loaded.pomCache040Data().rot == 2,
+          "040 cache: the read hit advanced the restored replacement phase");
     check(direct.pomJitWriteData(0x5408, 4, 0xCAFEBABE) &&
           loaded.pomJitWriteData(0x5408, 4, 0xCAFEBABE), "040 cache: replacement after restore");
-    check(direct.word(0x4402) == 0x33A1 && loaded.word(0x4404) == 0xB266 &&
+    check(direct.word(0x4808) == 0xA0B0 && direct.word(0x480A) == 0xC002 &&
           direct.mem == loaded.mem && save(direct) == save(loaded),
           "040 cache: restored dirty victim writes back identically");
 }

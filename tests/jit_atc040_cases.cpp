@@ -88,6 +88,8 @@ public:
     void start(bool page8k, bool cache, unsigned cm, bool super) {
         reset(); hole = ~0u; faults = 0;
         pomCache040Inst().invalidateAll(); pomCache040Data().invalidateAll();
+        // Training runs advance the §4.1 counters; CINV does not reset them.
+        pomCache040Inst().rot = 0; pomCache040Data().rot = 0;
         setITT0(0x0000C040); setDTT0(0x0000C040);
         setITT1(0); setDTT1(0);
         // A cache-active NC instruction page cannot arm the production
@@ -157,7 +159,13 @@ bool same(const Cpu& a, const Cpu& b) {
           a.getUSP() == b.getUSP() && a.getISP() == b.getISP() && a.getMSP() == b.getMSP();
     ok &= a.pomJitAtcAccesses040(false) == b.pomJitAtcAccesses040(false) &&
           a.pomJitAtcAccesses040(true) == b.pomJitAtcAccesses040(true) && a.ram == b.ram;
+    // MC68040UM-1993 §4.1 replacement counters: every path that serves a
+    // cache access natively must count it (POM68K_VENDOR.md row 85).
+    ok &= a.pomCache040Inst().rot == b.pomCache040Inst().rot &&
+          a.pomCache040Data().rot == b.pomCache040Data().rot;
     if (!ok) {
+        std::printf("      cache rot I=%u/%u D=%u/%u\n", a.pomCache040Inst().rot,
+                    b.pomCache040Inst().rot, a.pomCache040Data().rot, b.pomCache040Data().rot);
         std::printf("      PC=%08X/%08X clock=%lld/%lld SR=%04X/%04X I=%u/%u D=%u/%u queue=%04X:%04X/%04X:%04X\n",
             a.getPC0(), b.getPC0(), (long long)a.getClock(), (long long)b.getClock(), a.getSR(), b.getSR(),
             a.pomJitAtcAccesses040(false), b.pomJitAtcAccesses040(false),

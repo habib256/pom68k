@@ -1578,6 +1578,19 @@ inline bool memoryBitfieldFitsLongword(uint16_t ext) {
 
 // Bytes spanned by a memory field with an immediate offset and width, from
 // its base byte (offset/8): 1..5. Zero when either is taken from a register.
+// 68040 instruction-stream accesses of one path of a conditional branch, as
+// Moira performs them: the opcode and lookahead (2), each extension word
+// readExt consumes, and program-space reads (the Bcc.L displacement peek,
+// the expired DBcc's pc+2 read). Each is one I-cache access (MC68040UM-1993
+// §4.1) and, under translation, one I-ATC access. The tracer observes only
+// the path it took, so native code commits the path it actually runs.
+inline unsigned branchFetchWords040(bool always, unsigned words, bool taken) {
+    if (always) return 2u + (words == 3 ? 1u : 0u);            // execBra
+    if (taken) return 2u + (words == 3 ? 2u : 0u);             // execBcc
+    return 2u + (words - 1u) + (words == 3 ? 1u : 0u);
+}
+inline unsigned dbccFetchWords040(bool expired) { return expired ? 3u : 2u; }
+
 inline unsigned memoryBitfieldStaticSpan(uint16_t ext) {
     if (ext & 0x0820) return 0;
     const unsigned offset = (ext >> 6) & 7;

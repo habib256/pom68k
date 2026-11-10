@@ -962,6 +962,8 @@ public:
         // tag, ATC epoch/replacement state, physical tag and live cache line;
         // write hits use the stronger W publication and update dirty state.
         u32 cache040R, cache040W, cache040Gen, cache040Hits;
+        // [B] MC68040UM-1993 §4.1: the two caches' replacement counters (u8).
+        u32 cache040IRot, cache040DRot;
         u32 atcAccessI040, atcAccessD040, atcWindow040;
         u32 cache040NativeReadHits, cache040NativeWriteHits;
         bool cache040Live;
@@ -1038,6 +1040,9 @@ private:
         // architecturally stale line or skip a required fill.
         if (!pomJitCache040Match(addr, n)) return false;
         if (w.atc040) mmu040AtcAccessI += n / 2;
+        // The bypassed I-cache reads still count (one per fetched word, as
+        // mmu040FetchWord's pomCache040ReadValue does; MoiraCache040.h).
+        if (pomCache040Active()) pomCache040I.count(n / 2);
         if (cpuModel >= Model::M68EC040 && pomJitTimingProbe)
             pomJitTiming.fetchWords040 += n / 2;
         p = w.host + (addr - w.base);
@@ -1642,13 +1647,21 @@ public:
         return pomCache040On && cpuModel >= Model::M68EC040;
     }
 #if MOIRA_ENABLE_JIT
+    // The engine's residency proof for a native block. It must stay inside
+    // the armed window: pomJitCache040Match reads the window's host bytes.
     bool pomCache040CodeMatches(u32 addr, u32 bytes) const {
+        const PomJitWindow &w = pomJitWindow;
+        if (!pomCache040Active()) return true;
+        if (!w.armed || u32(addr - w.base) > w.len ||
+            bytes > w.len - u32(addr - w.base)) return false;
         return pomJitCache040Match(addr, bytes);
     }
 #endif
 
     Cache040 &pomCache040Data() { return pomCache040D; }
     Cache040 &pomCache040Inst() { return pomCache040I; }
+    const Cache040 &pomCache040Data() const { return pomCache040D; }
+    const Cache040 &pomCache040Inst() const { return pomCache040I; }
 
     struct PomCache040Timing {
         i32 hit = 0;             // internal hit: no external bus tenure
@@ -2464,9 +2477,16 @@ public:
             sizeof(Mmu040AtcEntry) * MMU040_ATC_ENTRIES + sizeof(u32) + 2;
         u32 active, fetches, routes, access;
         alignas(8) u8 opaque[SnapshotBytes * 2];
+        // [B] MC68040UM-1993 §4.1: I-cache accesses count. The instruction's
+        // staged stream words are committed before the first exact thunk,
+        // like `fetches`; cacheRot holds the pre-commit counter while
+        // cacheSaved is set.
+        u32 cacheFetches;
+        u8 cacheRot, cacheSaved;
         // Do not initialize opaque bytes: most blocks never call an exact
         // thunk, and their private ATC snapshots are captured lazily.
-        PomJitAtcReplay040() noexcept : active(0), fetches(0), routes(0), access(0) {}
+        PomJitAtcReplay040() noexcept : active(0), fetches(0), routes(0), access(0),
+                                        cacheFetches(0), cacheRot(0), cacheSaved(0) {}
     };
     void pomJitAtcReplayBegin040(PomJitAtcReplay040& replay, u32 addr,
                                  bool data, unsigned access) noexcept;

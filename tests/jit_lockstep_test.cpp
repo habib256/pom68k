@@ -323,7 +323,50 @@ int main(int argc, char** argv) {
             mj = memJit.lockstepDebug();
             hiddenSame = same(cr, cj) && same(mr, mj);
         }
-        if (same(r, j) && bad == 0xFFFFFFFF && hiddenSame) continue;
+        // POM68K_JIT_LOCKSTEP_CACHE=1: compare every valid line's tag and
+        // dirty mask too — the diagnostic that finds where cache contents
+        // part (a later hit/miss shows only as a clock difference).
+        static const bool cacheCompare = std::getenv("POM68K_JIT_LOCKSTEP_CACHE") != nullptr;
+        if (cacheCompare) {
+            for (int side = 0; side < 2; ++side) {
+                const auto& cr = side ? cpuRef.pomCache040Data() : cpuRef.pomCache040Inst();
+                const auto& cj = side ? cpuJit.pomCache040Data() : cpuJit.pomCache040Inst();
+                for (int st = 0; st < moira::Cache040::SETS; ++st)
+                    for (int w = 0; w < moira::Cache040::WAYS; ++w) {
+                        const auto& lr = cr.sets[st][w];
+                        const auto& lj = cj.sets[st][w];
+                        if (lr.valid != lj.valid || (lr.valid && (lr.tag != lj.tag || lr.dirty != lj.dirty))) {
+                            std::printf("[jit_lockstep] %s-cache set %d way %d differs at step %ld: "
+                                        "interp v=%d tag=$%05X/jit v=%d tag=$%05X (rot %u/%u) pc=$%08X\n",
+                                        side ? "D" : "I", st, w, i, lr.valid, lr.tag, lj.valid, lj.tag,
+                                        cr.rot, cj.rot, cpuRef.getPC());
+                            for (int k = 0; k < moira::Cache040::WAYS; ++k)
+                                std::printf("    way %d: interp v=%d tag=$%05X | jit v=%d tag=$%05X\n", k,
+                                            cr.sets[st][k].valid, cr.sets[st][k].tag,
+                                            cj.sets[st][k].valid, cj.sets[st][k].tag);
+                            std::printf("    trail (jit):");
+                            for (int t = 0; t < kTrail; t++) {
+                                const Step& q = trail[(trailAt + t) % kTrail];
+                                if (q.pc) std::printf(" $%08X", q.pc);
+                            }
+                            std::printf("\n");
+                            std::exit(3);
+                        }
+                    }
+            }
+        }
+        // MC68040UM-1993 §4.1 replacement counters: architectural cache
+        // state that decides later victims (POM68K_VENDOR.md row 85).
+        const bool rotSame =
+            cpuRef.pomCache040Inst().rot == cpuJit.pomCache040Inst().rot &&
+            cpuRef.pomCache040Data().rot == cpuJit.pomCache040Data().rot;
+        if (same(r, j) && bad == 0xFFFFFFFF && hiddenSame && rotSame) continue;
+        if (!rotSame)
+            std::printf("[jit_lockstep] cache replacement counters differ: I %u/%u D %u/%u "
+                        "(interp/jit) at interp pc=$%08X\n",
+                        cpuRef.pomCache040Inst().rot, cpuJit.pomCache040Inst().rot,
+                        cpuRef.pomCache040Data().rot, cpuJit.pomCache040Data().rot,
+                        cpuRef.getPC());
         if (!hiddenSame) {
             std::printf("[jit_lockstep] first hidden CPU/device divergence\n");
             printHiddenDiff(cr, cj, mr, mj);

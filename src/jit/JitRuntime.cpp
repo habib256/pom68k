@@ -14,7 +14,10 @@ extern "C" int pom68kJitJsr040(moira::Moira* cpu, uint32_t instructionPc,
     if (replay) cpu->pomJitAtcReplayBegin040(*replay, cpu->getSP() - 4, true, replay->access);
     const int ok = cpu->pomJitJsr040(instructionPc, returnAddress, target,
                                     uint16_t(opcode)) ? 1 : 0;
-    if (replay) replay->active = replay->fetches = replay->routes = 0;
+    if (replay) {
+        replay->active = replay->fetches = replay->routes = 0;
+        replay->cacheSaved = 0;     // the JSR retired: keep the committed count
+    }
     return ok;
 }
 

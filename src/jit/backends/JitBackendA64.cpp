@@ -104,6 +104,9 @@ struct Frame {
     PeriphDue periphDue;
     uint64_t progHost;      // +192 a proven push pointer across the JSR target read
     AtcReplay040 atc;
+    // MC68040UM-1993 §4.1 D-cache counter delta of a cache-only probe whose
+    // hit is published later (replayable reads, atomic cache pairs).
+    uint32_t cacheRotD;
 };
 static_assert(MemoryContract::MaxAccesses == AtcReplay040::Accesses);
 static_assert(offsetof(Frame, linkTable) == 64);
@@ -1574,6 +1577,25 @@ void memProbe(Asm& a, const Layout& L, bool super, int bytes, bool write,
         // Cache040::hits is diagnostic state, but keep it exact: this path
         // is emitted only for an instruction's sole guest access, so no
         // later speculative probe can force a replay after the increment.
+        // MC68040UM-1993 §4.1: a read counts the half-lines it touches, a
+        // copyback write hit its one line. A cache-only probe whose hit is
+        // published later stages the delta (stored by the read, added by the
+        // pair's write) for commitDeferredCacheRot040.
+        if (cacheWrite) {
+            a.movW(12, 1);
+        } else {
+            a.ubfxW(12, 9, 0, 3);
+            a.addImmW(12, 12, unsigned(bytes - 1));
+            a.lsrW(12, 12, 3);
+            a.addImmW(12, 12, 1);
+        }
+        if (countCacheHit) {
+            addCacheRot040(a, L.cache040DRot);
+        } else if (cacheWrite) {
+            a.ldrW(13, 1, kCacheRotD); a.addW(12, 12, 13); a.strW(12, 1, kCacheRotD);
+        } else {
+            a.strW(12, 1, kCacheRotD);
+        }
         if (countCacheHit) {
             a.ldrX(12, 0, L.cache040Hits);
             a.addImmX(12, 12, 1);
@@ -1786,6 +1808,7 @@ void commitReplayableMemory(Asm& a, const Layout& L, const Ea& ea, int bits,
     commitEaBeforeAccess(a, L, ea, bits, access);
     commitEaAfterAccess(a, L, ea, bits, access);
     if (!L.cache040Live) return;
+    commitDeferredCacheRot040(a, L);
     a.ldrX(12, 0, L.cache040Hits);
     a.addImmX(12, 12, 1);
     a.strX(12, 0, L.cache040Hits);
@@ -2226,6 +2249,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 // Publish both diagnostic hits only after both proofs. If
                 // the W probe misses, exact replay owns the source hit and
                 // these counters must not be double-incremented.
+                commitDeferredCacheRot040(a, L);
                 a.ldrX(12, 0, L.cache040Hits);
                 a.addImmX(12, 12, 2); a.strX(12, 0, L.cache040Hits);
                 if (cache040LineReadStatsEnabled()) {
@@ -4483,15 +4507,19 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
         if (bccWord) chargeIcacheExtraWord(a, L, ir, in.pc + 4);
         commitBoundary(a, L, fall);
         commitQueue(a, L, op, fallIrc);
+        gFetchPath040 = int(branchFetchWords040(cc == 0, in.words, false));
         chargeAndRetire(a, L, unsigned(fallCycles), paced, batch, in.pc,
                         uint32_t(in.words) + 1, ir.super);
+        gFetchPath040 = -1;
         leaveTo(a, ir, fall, linkMask, epilogue);
 
         a.bind(taken);
         commitBoundary(a, L, target);
         commitQueue(a, L, op, takenIrc);
+        gFetchPath040 = int(branchFetchWords040(cc == 0, in.words, true));
         chargeAndRetire(a, L, unsigned(takenCycles), paced, batch, in.pc,
                         uint32_t(in.words) + 1, ir.super);
+        gFetchPath040 = -1;
         const int ti = findTarget(ir, target);
         if (ti >= 0) a.b(entries[size_t(ti)]);
         else leaveTo(a, ir, target, linkMask, epilogue);
@@ -4517,8 +4545,10 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
 
         commitBoundary(a, L, target);
         commitQueue(a, L, op, in.extensionWord(0));
+        gFetchPath040 = int(dbccFetchWords040(false));
         chargeAndRetire(a, L, 6, paced, batch, in.pc,
                         uint32_t(in.words) + 1, ir.super);
+        gFetchPath040 = -1;
         { const int ti = findTarget(ir, target);
           if (ti >= 0) a.b(entries[size_t(ti)]);
           else leaveTo(a, ir, target, linkMask, epilogue); }
@@ -4526,15 +4556,19 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
         a.bind(expired);
         commitBoundary(a, L, fall);
         commitQueue(a, L, op, in.extensionWord(0));
+        gFetchPath040 = int(dbccFetchWords040(true));
         chargeAndRetire(a, L, 10, paced, batch, in.pc,
                         uint32_t(in.words) + 1, ir.super);
+        gFetchPath040 = -1;
         leaveTo(a, ir, fall, linkMask, epilogue);
 
         a.bind(condTrue);
         commitBoundary(a, L, fall);
         commitQueue(a, L, op, in.extensionWord(0));
+        gFetchPath040 = int(dbccFetchWords040(false));
         chargeAndRetire(a, L, 6, paced, batch, in.pc,
                         uint32_t(in.words) + 1, ir.super);
+        gFetchPath040 = -1;
         leaveTo(a, ir, fall, linkMask, epilogue);
         return true;
     }

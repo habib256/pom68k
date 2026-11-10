@@ -2128,6 +2128,14 @@ Moira::pomJitAtcReplayBegin040(PomJitAtcReplay040& replay, u32 addr,
                               bool data, unsigned access) noexcept
 {
     if (cpuModel < Model::M68EC040) return;
+    // The thunk's own accesses may fill the I-cache (a JSR target, a
+    // program-space read): Moira counted this instruction's stream words
+    // before them, so commit the staged count first (MoiraCache040.h).
+    if (replay.cacheFetches) {
+        if (!replay.cacheSaved) { replay.cacheRot = pomCache040I.rot; replay.cacheSaved = 1; }
+        pomCache040I.count(replay.cacheFetches);
+        replay.cacheFetches = 0;
+    }
     const auto capture = [&](bool side) {
         const u32 bit = 1u << unsigned(side);
         if (replay.active & bit) return;
@@ -2179,6 +2187,9 @@ Moira::pomJitAtcReplayAbort040(PomJitAtcReplay040& replay) noexcept
     // now-unbacked publication; invalidation is conservative and monotonic.
     if (replay.active) pomJitMapMoved();
     replay.active = replay.fetches = replay.routes = 0;
+    // The replayed instruction counts its own stream words again in Moira.
+    if (replay.cacheSaved) pomCache040I.rot = replay.cacheRot;
+    replay.cacheSaved = 0; replay.cacheFetches = 0;
 }
 
 #endif
@@ -2715,6 +2726,8 @@ Moira::pomJitLayout() const
     l.cache040W = at(&pomJitCache040W.e[0]);
     l.cache040Gen = at(&pomJitCache040Gen);
     l.cache040Hits = at(&pomCache040D.hits);
+    l.cache040IRot = at(&pomCache040I.rot);
+    l.cache040DRot = at(&pomCache040D.rot);
     l.cache040NativeReadHits = at(&pomJitCache040NativeReadHits);
     l.cache040NativeWriteHits = at(&pomJitCache040NativeWriteHits);
     l.cache040Live = pomCache040Active();
@@ -3158,7 +3171,14 @@ Moira::pomCache040ReadValue(u32 pa, bool data, int bytes)
         const int off = int(a & 15);
         const int chunk = std::min(bytes - done, 16 - off);
         Cache040::Line partial;
-        Cache040::Line *line = pomCache040Fill(cache, a, chunk, &partial);
+        // [B] MC68040UM-1993 §4.1: one count per half-line read (I and D).
+        // A miss is an access too: it counts after selecting its victim,
+        // whether or not its fill completes.
+        const unsigned halves = Cache040::halfLines(u32(off), chunk);
+        Cache040::Line *line;
+        try { line = pomCache040Fill(cache, a, chunk, &partial); }
+        catch (...) { cache.count(halves); throw; }
+        cache.count(halves);
         for (int i = 0; i < chunk; i++) result = result << 8 | line->data[off + i];
         done += chunk;
     }
@@ -3195,11 +3215,16 @@ Moira::pomCache040WriteValue(u32 pa, u32 val, bool data, int bytes)
             cache.hits++;
             if (pomCache040Timing.hit > 0) sync(pomCache040Timing.hit);
         } else if (copyback) {
-            line = pomCache040Fill(cache, a, 0);
+            // [B] MC68040UM-1993 §4.1: the copyback line access counts even
+            // if its fill aborts.
+            try { line = pomCache040Fill(cache, a, 0); }
+            catch (...) { cache.count(1); throw; }
         }
 
         const int off = int(a & 15);
         const int chunk = std::min(bytes - done, 16 - off);
+        // [B] MC68040UM-1993 §4.1: one count per line written in copyback.
+        if (copyback) cache.count(1);
         if (line) {
             for (int i = 0; i < chunk; i++)
                 line->data[off + i] = u8(val >> (8 * (bytes - done - i - 1)));
@@ -3212,6 +3237,8 @@ Moira::pomCache040WriteValue(u32 pa, u32 val, bool data, int bytes)
     }
 
     if (!copyback) {
+        // [B] MC68040UM-1993 §4.1: one count per write-through bus transfer.
+        cache.count(Cache040::transfers(pa, bytes));
         if (bytes == 1) write8(pa, u8(val));
         else if (bytes == 2) write16(pa, u16(val));
         else { write16(pa, u16(val >> 16)); write16(pa + 2, u16(val)); }
