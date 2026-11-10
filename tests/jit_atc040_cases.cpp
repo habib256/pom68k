@@ -139,11 +139,13 @@ private:
     }
     void write8(moira::u32 a, moira::u8 v) const override {
         auto& c = *const_cast<Cpu*>(this); a &= Mask; fault(a);
-        if (guard) guard->note(a, 1); c.ram[a] = v;
+        if (guard) guard->note(a, 1);
+        c.ram[a] = v;
     }
     void write16(moira::u32 a, moira::u16 v) const override {
         auto& c = *const_cast<Cpu*>(this); a &= Mask; fault(a);
-        if (guard) guard->note(a, 2); c.ram[a] = uint8_t(v >> 8); c.ram[(a + 1) & Mask] = uint8_t(v);
+        if (guard) guard->note(a, 2);
+        c.ram[a] = uint8_t(v >> 8); c.ram[(a + 1) & Mask] = uint8_t(v);
     }
 };
 
@@ -173,6 +175,7 @@ bool same(const Cpu& a, const Cpu& b) {
 bool run(const jit::ResolvedConfig& base, moira::Model model, bool page8k,
          unsigned profile, bool super, unsigned strategy, bool packed) {
     auto config = base; config.backend = strategy == 1 ? "threaded" : "auto";
+    if (strategy == 1) config.requireNative = false;   // deliberate threaded arm
     config.packedCcr = packed; config.cache040LineReadStats = true;
     config.dataWindow = true; config.dataWindowExplicit = true;
     auto ref = std::make_unique<Cpu>(config, model), target = std::make_unique<Cpu>(config, model);
@@ -272,6 +275,7 @@ bool replacementCase(const jit::ResolvedConfig& base, moira::Model model, bool p
                      bool cache, bool super, bool data, unsigned strategy,
                      unsigned form, unsigned accesses) {
     auto config = base; config.backend = strategy == 1 ? "threaded" : "auto";
+    if (strategy == 1) config.requireNative = false;   // deliberate threaded arm
     config.dataWindow = true; config.dataWindowExplicit = true;
     config.cache040LineReadStats = true;
     // Plain RAM, no peripheral deadlines: exercise the optional cache-active
@@ -415,6 +419,7 @@ bool replacementCase(const jit::ResolvedConfig& base, moira::Model model, bool p
 bool transitionCase(const jit::ResolvedConfig& base, moira::Model model, bool page8k,
                     bool cache, bool super, unsigned strategy, bool packed) {
     auto config = base; config.backend = strategy == 1 ? "threaded" : "auto";
+    if (strategy == 1) config.requireNative = false;   // deliberate threaded arm
     config.maxBlockInstrs = 1; config.packedCcr = packed;
     config.dataWindow = true; config.dataWindowExplicit = true;
     config.cache040LineReadStats = true;

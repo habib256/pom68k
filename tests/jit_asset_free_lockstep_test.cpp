@@ -1383,7 +1383,9 @@ bool runFaultLockstep(FaultProgram p) {
 // then repeat using the handler's current An and consume the latch.
 bool runMovemContinuation(bool threaded, bool packedCcr) {
     jit::ResolvedConfig config = injectedJitConfig();
-    if (threaded) config.backend = "threaded";
+    // The threaded replay is the case's subject: CI's
+    // POM68K_JIT_REQUIRE_NATIVE guards the native arms, not this one.
+    if (threaded) { config.backend = "threaded"; config.requireNative = false; }
     config.packedCcr = packedCcr;
     const auto refOwner = std::make_unique<SyntheticCpu>(config);
     const auto nativeOwner = std::make_unique<SyntheticCpu>(config);
