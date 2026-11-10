@@ -17,9 +17,9 @@ towards upstream had quietly expired while the file still read as if a rebase
 were the plan.
 
 What forced it, measured on this tree rather than remembered (re-measured
-2026-11-10 with rows 79–83 (memory bit fields touch only their bytes,
-MOVES fixup slot, MOVEM extension log, JMP odd-target PC, FScc buffer);
-before that 2026-11-10 with rows 76–78 (compile-time acceleration seam, plain-020
+2026-11-10 with rows 79–84 (memory bit fields touch only their bytes,
+MOVES fixup slot, MOVEM extension log, JMP odd-target PC, FScc and ADD/SUB
+buffers); before that 2026-11-10 with rows 76–78 (compile-time acceleration seam, plain-020
 RTE completion and instance-owned FPU arithmetic); before that
 2026-11-09 with rows 60 to 75: ATC operations, MOVEP fault restart,
 data-bearing cache snapshots, implicit-NC coherency, failed-CAS terminal
@@ -45,7 +45,7 @@ pair):
 | distinct `pom*` extension identifiers | **107** (63 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
 | `POM68K`-marked lines | **525** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **16 of 26** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **83** | this file |
+| patch groups in the inventory below | **84** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h`, `MoiraState.h` | — |
 
 Seventy-eight patch groups, two of which (the JIT seam, row 22, and the ATC
@@ -236,9 +236,10 @@ gate in the last column of each row.
 | 80 | **68030 MOVES memory-to-register (An)± fixup in the second slot** — the pending fixup moves to `mmuFixupReg[1]`, so a format-$B frame carries it in the wb3 status byte ($34) | `MoiraExec_cpp.h` | WinUAE's generator emits the destination EA of both MOVES directions, so the read direction's fixup is `mmufixup[1]`; the fork put it in wb2 ($36). Internal words the manual leaves undefined: [D] `gencpu.c` i_MOVES @ Hatari e77819f7, [F] a real 68030's frame. The restore walks both slots, so only the frame byte changes. Found by a fresh sweep (`fuzz030.py --family core --mmu identity --strict-fpu --n 1000 --seed 9117`, #575) | `moira_rules_test` (MOVES fixup slot), `sst68030*` |
 | 81 | **68030 MOVEM to memory logs its EA extension words** — `execMovemRgEa` turns access logging off after `computeEA`, not before | `MoiraExec_cpp.h` | WinUAE fetches the mask and every EA extension word through the logged `get_iword_mmu030c_state` and leaves only the transfers unlogged ([D] `cpuemu_34.c` op_48e8_34_ff @ Hatari e77819f7); the fork stopped logging before the d16 fetch, so a format-$B frame reported idx/idx_done $11 instead of $22 — at even and odd addresses alike, though the sweep that found it (seeds 802 #139, 803 #635, 9123 #401) only met odd ones. The RTE retry replays the extra logged word | `moira_rules_test` (MOVEM extension log: frame and retry, even and odd), `sst68030*` |
 | 82 | **68030 JMP to an odd target: indexed modes stack the running pc + 2** — `execJmp` applies the 68040 rule of the same oracle mechanism to the 68030 | `MoiraExec_cpp.h` | the oracle's indexed EA (`get_disp_ea_020_mmu030`) advances the pc per extension word before the address error, so it stacks PC+6 for JMP (d8,An,Xn), PC+8 for (bd.W,An,Xn); plain modes stay PC+2. [D] WinUAE @ Hatari e77819f7; [F] MC68030UM-1989 §8.1.3/§8.2 leave this PC unstated and the oracle's two rules read as its bookkeeping (abs.L and (bd.W,An,Xn) are both six bytes). Reproducer "random/off seed=807 #681" | `moira_rules_test` (JMP odd-target PC), `sst68030*` |
-| 83 | **68030 FScc stacks its pending byte unsigned** — new `MMU_ZEXT` write flag; FScc's memory store uses it, so the 030 data buffer (wb3_data) holds $000000FF, not $FFFFFFFF | `MoiraTypes.h`, `MoiraExecMMU_cpp.h`, `MoiraExecFPU_cpp.h` | the integer core sign-extends byte and word operands into the buffer because gencpu passes them signed; fpp.c's `fpuop_scc` passes `cc ? 0xff : 0x00` as an unsigned int, while its FMOVE .B/.W stores keep signed casts ([D] fpp.c @ Hatari e77819f7; the buffer contents are internal, [F] silicon). The last 60 000-sweep leftover ("fpu/identity seed=811 #1003") and the listed open defect `fpuraw/identity seed=722 #1890` | `moira_rules_test` (FScc write buffer), `sst68030_fpuraw` (194 known) |
+| 83 | **68030 FScc stacks its pending byte unsigned** — new `MMU_RAWBUF` write flag (named `MMU_ZEXT` until row 84); FScc's memory store uses it, so the 030 data buffer (wb3_data) holds $000000FF, not $FFFFFFFF | `MoiraTypes.h`, `MoiraExecMMU_cpp.h`, `MoiraExecFPU_cpp.h` | the integer core sign-extends byte and word operands into the buffer because gencpu passes them signed; fpp.c's `fpuop_scc` passes `cc ? 0xff : 0x00` as an unsigned int, while its FMOVE .B/.W stores keep signed casts ([D] fpp.c @ Hatari e77819f7; the buffer contents are internal, [F] silicon). The last 60 000-sweep leftover ("fpu/identity seed=811 #1003") and the listed open defect `fpuraw/identity seed=722 #1890` | `moira_rules_test` (FScc write buffer), `sst68030_fpuraw` (194 known) |
+| 84 | **68030 ADD/SUB to memory stack their unmasked result** — `execAddRgEa`, `execAddiEa` and `execAddqEa` store with `MMU_RAWBUF`, so a faulting store's data output buffer is the 32-bit `addsub` result | `MoiraExec_cpp.h`, `MoiraExecMMU_cpp.h`, `MoiraTypes.h` | gencpu's flag_add/flag_sub form `uae_u32 newv = (uN)dst ± (uN)src` and pass it to the store unmasked ([D] @ Hatari e77819f7; internal, [F] silicon); the fork re-sign-extended the operand-sized value. Closes the eleven SUB/SUBI vectors of `tests/sst68030_rmw.known` (now empty); a fresh rmw sweep (seeds 9301-9302, 6 000 vectors) passes, including 12 ADD faults whose raw and sign-extended buffers differ | `moira_rules_test` (ADD/SUB write buffer), `sst68030_rmw` |
 
-Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54, 56, 59-75 and 79-83 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
+Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54, 56, 59-75 and 79-84 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
 when nothing arms them); rows 48 and 55 are performance alone, with no architectural effect. Row 58 is evidence documentation only. The ten files carrying no `POM68K` marker at all —
 `MoiraDasm.h`, `MoiraDasmFPU_cpp.h`, `MoiraDasmMMU_cpp.h`, `StrWriter*` (2), `MoiraDebugger.h`, `MoiraMacros.h`,
 `MoiraALU.h`, `MoiraExceptions.h`, `MoiraInit.h` — are where an upstream fix can

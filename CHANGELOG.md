@@ -271,6 +271,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### CPU cores, MMU/FPU, and the WinUAE oracle
 
+- **What does a faulting 68030 ADD/SUB to memory stack as its pending write?** → [The unmasked 32-bit result](#2026-11-10-addsub-buffer)
 - **Why did a faulting 68030 FScc stack $FFFFFFFF as its pending byte?** → [FScc's byte is unsigned](#2026-11-10-fscc-buffer)
 - **Which PC does a 68030 stack when JMP lands on an odd address?** → [Indexed modes stack the running pc + 2](#2026-11-10-jmp-odd-pc)
 - **Why did a faulting 68030 MOVEM.L report one logged access where the oracle reports two?** → [MOVEM logs its EA extension words](#2026-11-10-movem-extension-log)
@@ -559,6 +560,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-10 (eleventh)** — [A faulting 68030 ADD/SUB to memory stacks its unmasked result; `sst68030_rmw` has no known list](#2026-11-10-addsub-buffer)
 - **2026-11-10 (tenth)** — [A faulting 68030 FScc stacks its byte unsigned; the 60 000-vector sweep is clean](#2026-11-10-fscc-buffer)
 - **2026-11-10 (ninth)** — [A 68030 JMP to an odd target stacks the 68040's PC rule](#2026-11-10-jmp-odd-pc)
 - **2026-11-10 (eighth)** — [A faulting 68030 MOVEM to memory logs its EA extension words](#2026-11-10-movem-extension-log)
@@ -1313,6 +1315,32 @@ Newest first.
 
 ---
 
+<a id="2026-11-10-addsub-buffer"></a>
+## 2026-11-10 (eleventh) — A faulting 68030 ADD/SUB to memory stacks its unmasked result; `sst68030_rmw` has no known list
+
+`tests/sst68030_rmw.known` carried eleven SUB/SUBI vectors as an open
+defect. Their format-$A data output buffer held the operand-sized result
+sign-extended here and the unmasked 32-bit difference in the oracle
+(`$FFFFFF4B` for `$10 - $C5`). WinUAE's flag_add/flag_sub form
+`uae_u32 newv = (uN)dst ± (uN)src` and pass it to the store as is. The
+fork's `addsub` already returns that value; `mmuWrite` re-sign-extended it.
+
+The FScc flag of the previous entry became `MMU_RAWBUF` (the buffer holds the
+value as the caller passes it). ADD/SUB/ADDI/SUBI/ADDQ/SUBQ to memory use it
+(`POM68K_VENDOR.md` row 84). The buffer is internal ([D]; [F] for silicon),
+and the bus store is unchanged. All eleven vectors pass and the known list is
+empty: `sst68030_rmw` 6 000 / 6 000. ADD follows the same generator form, and
+no pinned vector held it. A fresh rmw sweep (seeds 9301–9302, 6 000 vectors)
+passes 6 000 / 6 000, including 12 ADD faults whose raw and sign-extended
+buffers differ. Gate: `moira_rules_test` "68030 ADD/SUB write buffer" (one
+SUB, two ADD; with the flag ignored all three fail, and so does FScc). The
+rig gained a write-only /BERR hole for it.
+
+Tiers: `asset-none` 152/152, the 24 CPU gates (every SST corpus,
+`cpu_vectors*`, `moira_*`), `m030` with the ROMs and system media 141/141.
+
+---
+
 <a id="2026-11-10-fscc-buffer"></a>
 ## 2026-11-10 (tenth) — A faulting 68030 FScc stacks its byte unsigned; the 60 000-vector sweep is clean
 
@@ -1326,8 +1354,8 @@ generated: `fpp.c` `fpuop_scc` passes `cc ? 0xff : 0x00` as an unsigned
 int (its FMOVE .B/.W stores keep signed casts). The buffer contents are
 internal ([D]; [F] for silicon).
 
-A new `MMU_ZEXT` write flag keeps the operand unsigned; FScc's memory store
-uses it (`POM68K_VENDOR.md` row 83). The same defect was listed as an open
+A new write flag (`MMU_ZEXT`, renamed `MMU_RAWBUF` in the next entry) keeps
+the operand unsigned; FScc's memory store uses it (`POM68K_VENDOR.md` row 83). The same defect was listed as an open
 item in `tests/sst68030_fpuraw.known` (`fpuraw/identity seed=722 #1890`),
 which now passes and leaves the list (194 known, all rulings). Gate:
 `moira_rules_test` "68030 FScc write buffer" ($FFFFFFFF with the flag

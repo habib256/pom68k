@@ -1334,9 +1334,11 @@ Moira::mmuWrite(u32 addr, u32 val)
         // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // gencpu passes byte/word operands through signed variables, so
         // the pending-write buffer (wb3_data in fault frames) holds the
-        // sign-extended value. MMU_ZEXT: fpp.c's FScc passes `cc ? 0xff :
-        // 0x00` as an unsigned int (fpuop_scc), so its buffer is $000000FF.
-        mmuDataBuffer = (F & MMU_ZEXT) ? u32(CLIP<S>(val)) : u32(SEXT<S>(val));
+        // sign-extended value. MMU_RAWBUF: the caller passes what the oracle
+        // passes — fpp.c's FScc `cc ? 0xff : 0x00` (unsigned int, $000000FF)
+        // and gencpu's ADD/SUB `uae_u32 newv = (uN)dst ± (uN)src`, the
+        // unmasked 32-bit sum or difference.
+        mmuDataBuffer = (F & MMU_RAWBUF) ? val : u32(SEXT<S>(val));
     }
 
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.

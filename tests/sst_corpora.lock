@@ -48,8 +48,8 @@
 #   vectors: identity seed 1201, tt seed 1202:
 #         oracle/fuzz/fuzz030.py --a liboracle_uae.so --family rmw --mmu M
 #         --strict-fpu --n 3000 --seed S --out rmw_M.json
-#   Replayed with `sst68030 --known tests/sst68030_rmw.known` (11 vectors:
-#   the data output buffer of a faulting SUB/SUBI).
+#   Replayed with `sst68030 --known tests/sst68030_rmw.known` (empty since
+#   2026-11-10: the SUB/SUBI data output buffer is unmasked, row 84).
 # sst68040 — generated here by oracle/fuzz (gen040.py, fuzz040.py) against the
 #   same oracle in 68040 mode, 68LC040 (no FPU). 7 200 vectors.
 # sst68040_8k — the same, with 8 KB pages (TC.P = 1), generated 2026-11-06.

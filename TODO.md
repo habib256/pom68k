@@ -40,9 +40,10 @@ une optimisation côté hôte POM68K ne rapproche pas de NeoST.
   prêts à exporter.** Corpus différentiels verts contre WinUAE strict,
   premier oracle FPU 68040, D23b/D24 tranchées par le manuel — mais :
   1. les restes nommés ne sont pas corrigés (D25–D29, six octets de
-     frame IDLE 68882, DOB SUB/SUBI) ; les champs de bits mémoire ne
-     touchent plus que leurs octets depuis le 2026-11-10 (`CHANGELOG`,
-     sixième) ;
+     frame IDLE 68882) ; depuis le 2026-11-10 (`CHANGELOG`, sixième à
+     onzième), les champs de bits mémoire ne touchent plus que leurs
+     octets, les restes 030 du balayage de 60 000 vecteurs sont réglés et
+     `sst68030_rmw` n'a plus de liste de divergences ;
   2. le JIT n'a jamais tourné hors d'un Macintosh : fenêtres de fetch et
      de données, garde d'écriture dans le code traduit reposent sur
      `codeSpan`/`jitGuard_` fournis par nos cartes ; le contrat de
@@ -328,13 +329,6 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
 - [ ] **Généraliser le report du pipe de préfetch.** `mmuCapturePipe`
   capture quatre mots après PMOVE TC/CRP/SRP seulement, pour un idiome de
   la ROM LC II ; PFLUSH, une écriture de TT ou une cible de saut n'ont rien.
-- [ ] **Stocker le résultat non masqué dans le tampon de sortie d'une
-  frame $A de SUB/SUBI.** Onze vecteurs de `sst68030_rmw`
-  (`tests/sst68030_rmw.known`) : après un SUB ou SUBI vers la mémoire dont
-  l'écriture faute, le fork range dans le « data output buffer » le
-  résultat masqué à la taille de l'opérande, l'oracle la différence sur
-  32 bits — c'est la variable `newv` de gencpu (soustraction non signée),
-  sans effet sur ce que le RTE réécrit : valeur faible.
 - [ ] **Trancher les champs EA $3D-$3F sur 68030 (D29).** Le fork laisse le
   coprocesseur décider (un registre-à-registre s'exécute, une forme
   mémoire efface l'octet d'état puis prend un Line-F) ; la table d'opcodes

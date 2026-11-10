@@ -397,7 +397,10 @@ Moira::execAddRgEa(u16 opcode)
     // carry chain ran that way. [D] SingleStepTests/680x0 v1 transactions
     // (ADD.l, SUB.l to memory); `sst68000 --transactions`.
     pomLastWrite030<C>();   // POM68K: the store below ends the instruction
-    writeM<C, M, S, C == Core::C68000 ? REVERSE : 0>(ea, result);
+    // [D] WinUAE gencpu flag_add/flag_sub @ Hatari e77819f7: the stored
+    // value is `uae_u32 newv = (uN)dst ± (uN)src`, so a faulting 68030 store
+    // stacks the unmasked 32-bit result (addsub returns it) as wb3_data.
+    writeM<C, M, S, (C == Core::C68000 ? REVERSE : 0) | MMU_RAWBUF>(ea, result);
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -518,8 +521,9 @@ Moira::execAddiEa(u16 opcode)
     result = addsub<C, I, S>(src, data);
     prefetch<C>();
 
-    // POM68K: low word first on the 68000 (see execAddRgEa).
-    writeOp<C, M, S, POLL | (C == Core::C68000 ? REVERSE : 0)>(dst, ea, result);
+    // POM68K: low word first on the 68000 (see execAddRgEa). MMU_RAWBUF:
+    // the unmasked result is the 68030 write buffer (see execAddRgEa).
+    writeOp<C, M, S, POLL | (C == Core::C68000 ? REVERSE : 0) | MMU_RAWBUF>(dst, ea, result);
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -596,8 +600,9 @@ Moira::execAddqEa(u16 opcode)
     result = addsub<C, I, S>(src, data);
     prefetch<C, POLL>();
 
-    // POM68K: low word first on the 68000 (see execAddRgEa).
-    writeOp<C, M, S, C == Core::C68000 ? REVERSE : 0>(dst, ea, result);
+    // POM68K: low word first on the 68000 (see execAddRgEa). MMU_RAWBUF:
+    // the unmasked result is the 68030 write buffer (see execAddRgEa).
+    writeOp<C, M, S, (C == Core::C68000 ? REVERSE : 0) | MMU_RAWBUF>(dst, ea, result);
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l

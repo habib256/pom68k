@@ -69,6 +69,7 @@ public:
 
     // Cell 2: the board asserts /BERR on kHole.
     bool holeArmed = false;
+    bool holeWritesOnly = false;        // the hole answers reads, faults writes
     uint32_t holeAt = kHole;
     mutable unsigned holeTrips = 0;
     bool recordMovem = false;
@@ -115,14 +116,14 @@ private:
 
     moira::u8 read8(moira::u32 a) const override {
         traceAccess('b', a);
-        if (hole(a)) berr(a, false);
+        if (hole(a) && !holeWritesOnly) berr(a, false);
         events += 'r';
         return mem[a & 0xfffff];
     }
     moira::u16 read16(moira::u32 a) const override {
         observeMovem(a, false);
         traceAccess('w', a);
-        if (hole(a)) berr(a, false);
+        if (hole(a) && !holeWritesOnly) berr(a, false);
         return moira::u16((mem[a & 0xfffff] << 8) | mem[(a + 1) & 0xfffff]);
     }
     void write8(moira::u32 a, moira::u8 v) const override {
@@ -1280,6 +1281,39 @@ void fsccWriteBuffer030()
           "frame %08X (want $000000FF)", c.getPC0(), format, buffer);
 }
 
+void aluWriteBuffer030()
+{
+    // A byte ADD/SUB to memory whose store takes /BERR on a 68030 stacks the
+    // unmasked 32-bit result as its pending write ($18, format $A: the store
+    // is the last write). [D] WinUAE gencpu flag_add/flag_sub @ Hatari
+    // e77819f7: `uae_u32 newv = (uae_u8)dst ± (uae_u8)src`. The fork stacked
+    // the byte sign-extended (POM68K_VENDOR.md row 84; the eleven vectors that
+    // were listed in tests/sst68030_rmw.known).
+    static const struct { uint16_t opcode; uint8_t memory; uint32_t d1; uint32_t want;
+                          const char* what; } cases[] = {
+        { 0x9310, 0x10, 0xc5, 0xffffff4b, "SUB.B D1,(A0) $10-$C5" },
+        { 0xd310, 0x7f, 0x01, 0x00000080, "ADD.B D1,(A0) $7F+$01" },
+        { 0xd310, 0xff, 0xff, 0x000001fe, "ADD.B D1,(A0) $FF+$FF" },
+    };
+    for (const auto& k : cases) {
+        TestCpu c(moira::Model::M68030);
+        p32(c, 2 * 4, kHandler);
+        p16(c, kHandler, kNop);
+        stage(c, k.opcode, 0);
+        c.mem[kHole] = k.memory;
+        c.setA(0, kHole);
+        c.setD(1, k.d1);
+        c.holeArmed = true;
+        c.holeWritesOnly = true;
+        const bool contained = executeContained(c);
+        const uint32_t sp = c.getSP();
+        CHECK(contained && c.getPC0() == kHandler && (g16(c, sp + 6) & 0xfff) == 8 &&
+              g32(c, sp + 0x18) == k.want,
+              "68030 %s /BERR on the store: PC0=%08X format %04X, pending write %08X "
+              "(want %08X)", k.what, c.getPC0(), g16(c, sp + 6), g32(c, sp + 0x18), k.want);
+    }
+}
+
 void tableSearchBusError030()
 {
     constexpr uint32_t kTc  = 0x80000000u | 0xCu << 20 | 0xAu << 12 | 0xAu << 8;
@@ -1357,6 +1391,7 @@ int main(int argc, char** argv)
     movemExtensionLog030();
     jmpOddTargetPc030();
     fsccWriteBuffer030();
+    aluWriteBuffer030();
     ec030UsesPlain020Path();
 
     if (failures) {
@@ -1369,7 +1404,7 @@ int main(int argc, char** argv)
                 "shapes, five-bit FBcc predicate, 68040 FPU store fault, 68040 TTR "
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
-                "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68EC030 plain-020 path with a 68030 "
+                "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68EC030 plain-020 path with a 68030 "
                 "MMU/cache control\n");
     return 0;
 }

@@ -2132,7 +2132,7 @@ Moira::execFScc(u16 opcode)
         // an unsigned int, so a faulting 68030 store stacks wb3_data $000000FF
         // where the integer core's signed operands stack $FFFFFFFF
         // ("fpu/identity seed=811 #1003"; POM68K_VENDOR.md row 83).
-        writeM<C, M, Byte, MMU_ZEXT>(ea, cc ? 0xff : 0x00);
+        writeM<C, M, Byte, MMU_RAWBUF>(ea, cc ? 0xff : 0x00);
         if constexpr (M == Mode::PI) writeA(n, ea + (n == 7 ? 2 : 1));
     }
 
