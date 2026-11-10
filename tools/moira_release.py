@@ -174,8 +174,11 @@ def include_closure(files):
     return missing
 
 
-def upstream_patch(upstream, files):
-    """Unified diff of extern/moira/Moira against upstream's Moira/."""
+def upstream_patch(upstream, files, mtime):
+    """Unified diff of extern/moira/Moira against upstream's Moira/.
+
+    diff writes each file's mtime into its header: both trees are stamped with
+    the commit time and rendered in UTC, so the patch is byte-reproducible."""
     head = subprocess.run(["git", "-C", str(upstream), "rev-parse", "HEAD"],
                           capture_output=True, text=True)
     if head.returncode != 0 or head.stdout.strip() != UPSTREAM_PIN:
@@ -187,8 +190,10 @@ def upstream_patch(upstream, files):
             if name.startswith("extern/moira/Moira/"):
                 (fork / name[len("extern/moira/Moira/"):]).write_bytes(data)
         shutil.copytree(Path(upstream) / "Moira", Path(work) / "a" / "Moira")
+        for f in Path(work).rglob("*"):
+            os.utime(f, (mtime, mtime))
         diff = subprocess.run(["diff", "-ruN", "a/Moira", "b/Moira"], cwd=work,
-                              capture_output=True)
+                              capture_output=True, env={**os.environ, "TZ": "UTC"})
     if diff.returncode not in (0, 1):
         raise SystemExit(diff.stderr.decode())
     return diff.stdout
@@ -293,7 +298,7 @@ def main():
     date = git("show", "-s", "--format=%cs", rev).strip()
     name = f"moira-pom68k-{date.replace('-', '')}-{rev[:8]}"
 
-    patch = upstream_patch(args.upstream, files) if args.upstream else None
+    patch = upstream_patch(args.upstream, files, stamp) if args.upstream else None
     if patch is not None:
         files["patches/moira-vs-upstream.patch"] = (patch, False)
     files["RELEASE.txt"] = (release_note(name, rev, date, files, patch), False)
