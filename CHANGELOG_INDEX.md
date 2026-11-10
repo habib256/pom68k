@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 753 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 754 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 23 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 42 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 157 |
+| [Cross-cutting](#cross-cutting) | 158 |
 
 ---
 
@@ -814,5 +814,6 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-09 (seventh)** — [MOVES and locked operands push dirty data before bypass, and CAS2 checks write permission](CHANGELOG.md#2026-11-09-implicit-nc-coherency)
 - **2026-11-09 (sixteenth)** — [Guest RTE restores MOVEM continuation, without repeated memory indirection](CHANGELOG.md#2026-11-09-movem-cm-continuation)
 - **2026-11-09 (tenth)** — [Read fills keep logical descriptors, suppress unused-beat faults and defer dirty pushes](CHANGELOG.md#2026-11-09-read-fill-faults)
+- **2026-11-10 (sixth)** — [Memory bit fields touch only their bytes and read before they write](CHANGELOG.md#2026-11-10-bitfield-bytes)
 - **2026-11-10 (third)** — [Plain 020 bus faults consume software-completed data cycles after RTE](CHANGELOG.md#2026-11-10-rte020-completion)
 

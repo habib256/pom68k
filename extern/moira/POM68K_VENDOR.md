@@ -17,7 +17,8 @@ towards upstream had quietly expired while the file still read as if a rebase
 were the plan.
 
 What forced it, measured on this tree rather than remembered (re-measured
-2026-11-10 with rows 76–78 (compile-time acceleration seam, plain-020
+2026-11-10 with row 79 (memory bit fields touch only their bytes); before
+that 2026-11-10 with rows 76–78 (compile-time acceleration seam, plain-020
 RTE completion and instance-owned FPU arithmetic); before that
 2026-11-09 with rows 60 to 75: ATC operations, MOVEP fault restart,
 data-bearing cache snapshots, implicit-NC coherency, failed-CAS terminal
@@ -41,9 +42,9 @@ pair):
 | | | how to re-measure |
 |---|---|---|
 | distinct `pom*` extension identifiers | **107** (63 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **523** | `grep -rn POM68K Moira/ \| wc -l` |
+| `POM68K`-marked lines | **524** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **16 of 26** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **78** | this file |
+| patch groups in the inventory below | **79** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h`, `MoiraState.h` | — |
 
 Seventy-eight patch groups, two of which (the JIT seam, row 22, and the ATC
@@ -230,8 +231,9 @@ gate in the last column of each row.
 | 76 | **Compile-time acceleration seam** — `MOIRA_ENABLE_JIT=0` removes fetch/data windows, native publications, probes, layout and timing instrumentation; the shared interpreter dispatch and architectural cache/MMU paths remain | `MoiraConfig.h`, `Moira.h`, `Moira.cpp`, `MoiraDataflow_cpp.h`, `MoiraExecMMU_cpp.h`, `MoiraState.h` | an interpreter host must not require JIT storage or branches; the compatibility default stays enabled | `moira_interp_test` compares state/cycles/bus/RAM across builds; `moira_interp_berr030_test`, `moira_interp_fpu_sanity`, `moira_interp_fpu040_test`, `moira_interp_callm_rtm_test` reuse CPU proofs without JIT |
 | 77 | **Plain 020/EC020 RTE software completion** — seed restart scratch state before prefetch, restore CCR/EA on a data fault, consume cleared-DF reads/writes and second-half longwords without repeating the faulted cycle, carry the existing latch through snapshots, preserve original PCs across nested/redirected frames and cancel it on reset | `Moira.h`, `Moira.cpp`, `MoiraDataflow_cpp.h`, `MoiraExec_cpp.h`, `MoiraExecMMU_cpp.h`, `MoiraExceptions_cpp.h` | MC68020UM-1992 §§6.2.1–6.2.3 define DF and right-justified buffers; bit 9 is reserved. The plain model keeps its format-$B restart representation; internal silicon state, prior accesses and DF-cleared RMW remain unproved | `berr020_test`, `moira_interp_berr020_test` (404 sequences each), base corpora and Mac II/LC boots |
 | 78 | **Per-instance SoftFloat context** — move rounding, exception flags, conversions and intermediate-result captures out of process globals; opaque ownership keeps C types out of the public header | `Moira.h`, `Moira.cpp`, `MoiraExecFPU_cpp.h`, `extern/softfloat/softfloat.c/.h` | FPCR rearming alone does not protect a suspended operand callback or parallel CPUs. Existing pending/FSAVE state remains the archived boundary image; arithmetic formulas and the oracle copy stay unchanged | `fpu_context_test`, `moira_interp_fpu_context_test`, `moira_state_test`, FPU corpora |
+| 79 | **Memory bit fields touch only the bytes they span, reads before writes** — `execBitFieldEa` reads 1, 2, 2+1, 4 or 4+1 bytes (byte, word, word+byte, long, long+byte), finishes both reads before the first write and writes the same shape back | `MoiraExec_cpp.h` | the longword-always access read and rewrote up to three bytes outside the field — a spurious ATC fault, /BERR or device access past a page or register end, and the wrong SSW size in a fault frame (seed 405 #174/#281 of `fuzz040.py --family random --mmu identity --page 8k`) — and wrote the first four bytes before reading the fifth, so a fault on that read left them written and the restarted BFCHG inverted them twice. [B] MC68030UM-1989 §11.6.14: one operand cycle below five bytes, two at five; [D] WinUAE `get_bitfield`/`put_bitfield` and `i_BF*` @ Hatari e77819f7 for the decomposition; [F] the three-byte field, one operand cycle with SIZ = 3 in the manual, a word and a byte here and in the oracle. Valid for the 68020, 68030 and 68040. The JIT contract publishes the narrower shapes as longword proof spans (plain RAM only, no exact thunk or cache token, `src/jit/JitIr.h`) and the five-byte RMW as read4/read1/write4/write1; a three-byte field counts its 040 data-ATC route twice | `moira_rules_test` (bus traces on 020/030/LC040, /BERR on the fifth byte), `jit_backend_test`, `jit_asset_free_lockstep_test` (three-byte ATC counts), `sst68040`, `sst68030` |
 
-Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54, 56 and 59-75 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
+Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54, 56, 59-75 and 79 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
 when nothing arms them); rows 48 and 55 are performance alone, with no architectural effect. Row 58 is evidence documentation only. The ten files carrying no `POM68K` marker at all —
 `MoiraDasm.h`, `MoiraDasmFPU_cpp.h`, `MoiraDasmMMU_cpp.h`, `StrWriter*` (2), `MoiraDebugger.h`, `MoiraMacros.h`,
 `MoiraALU.h`, `MoiraExceptions.h`, `MoiraInit.h` — are where an upstream fix can

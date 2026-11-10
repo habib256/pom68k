@@ -3496,6 +3496,11 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 watchRefusal(L, ir, in, "bitfield-memory:cache-tail");
                 return false;
             }
+            // Moira issues a word and a byte for a three-byte field: the
+            // data-ATC route of each direction then counts twice (below).
+            const unsigned staticSpan = memoryBitfieldStaticSpan(ext);
+            const bool threeByteAtRuntime =
+                staticSpan == 0 && memoryBitfieldMaySpanThreeBytes(ext);
             MemoryAccessPlan read = memory.access(
                 MemoryDirection::Read, MemoryOperand::Operand, 4,
                 sem.eaMode, sem.eaReg);
@@ -3518,14 +3523,21 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 (!readOnly && !possibleTail &&
                  !memoryRmwAccessPair(read, write)) ||
                 (!readOnly && possibleTail &&
-                 !memoryRmwTailAccessSequence(read, write, tail,
+                 !memoryRmwTailAccessSequence(read, tail, write,
                                               tailWrite)) ||
                 (readOnly && possibleTail && !tail.valid()) ||
                 !memory.complete()) {
                 watchRefusal(L, ir, in, "bitfield-memory:contract");
                 return false;
             }
-            if (readOnly && !possibleTail) {
+            // A proof span loads/stores a longword where Moira touches fewer
+            // bytes. Under a live 040 D-cache those extra bytes would
+            // allocate lines and set dirty longwords Moira leaves alone.
+            if (L.cache040Live && (read.proofSpan || write.proofSpan)) {
+                watchRefusal(L, ir, in, "bitfield-memory:cache-span");
+                return false;
+            }
+            if (readOnly && !possibleTail && !read.proofSpan) {
                 MemoryAccessPlan timedRead = read;
                 if (!admitSoleReadTiming(L, in, timedRead,
                                          opcodeCycles,
@@ -3604,6 +3616,36 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 }
             }
 
+            // A three-byte field is Moira's word + byte in each direction:
+            // its proved longword recorded one data-ATC access per slot.
+            if (!L.is030 && (staticSpan == 3 || threeByteAtRuntime)) {
+                const uint8_t mask =
+                    uint8_t(read.mask() | (readOnly ? 0 : write.mask()));
+                const int single = a.label();
+                if (threeByteAtRuntime) {
+                    // 17 <= (rawOffset & 7) + width <= 24. w10/w11/x14 are
+                    // live; w16/w17 are rebuilt just below.
+                    if (ext & 0x0800)
+                        loadGuestRegister(a, L, 16, false, (ext >> 6) & 7);
+                    else
+                        a.movW(16, (ext >> 6) & 31);
+                    a.movW(12, 7); a.andW(16, 16, 12);
+                    if (ext & 0x0020)
+                        loadGuestRegister(a, L, 17, false, ext & 7);
+                    else
+                        a.movW(17, ext & 31);
+                    a.subImmW(17, 17, 1);
+                    a.movW(13, 31); a.andW(17, 17, 13);
+                    a.addImmW(17, 17, 1);
+                    a.addW(12, 16, 17);
+                    a.subImmW(12, 12, 17);
+                    a.movW(13, 7); a.cmpW(12, 13);
+                    a.bCond(Asm::HI, single);
+                }
+                doubleAtcRoute040(a, L, mask);
+                a.bind(single);
+            }
+
             // A DTLB fill may call C++, so rebuild all extension-derived
             // temporaries after the access rather than carrying caller-saved
             // host registers across it.
@@ -3671,11 +3713,10 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             a.ldrX(14, 1, 120);
             storeGuest(a, 32, 9);
             if (possibleTail) {
-                // The longword is stored first. Only the runtime-crossing
-                // arm then mutates the already-proved tail byte. On plain
-                // RAM the reordered read4/read1/write4/write1 accesses are
-                // effect-equivalent to Moira's architectural sequence and
-                // introduce no late failure point.
+                // Both reads are done; the longword is stored, then only the
+                // runtime-crossing arm mutates the already-proved tail byte:
+                // Moira's read4/read1/write4/write1 order, with no late
+                // failure point on proved plain RAM.
                 if (ext & 0x0800)
                     loadGuestRegister(a, L, 16, false, (ext >> 6) & 7);
                 else

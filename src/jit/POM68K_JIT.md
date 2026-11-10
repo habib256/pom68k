@@ -162,7 +162,7 @@ what it does and does not drive today:
 The per-opcode question is **not** a block boundary: `Backend::canEmit()` is
 an encoding-only answer — consulted by the opcode census
 (`POM68K_JIT_HISTO`), by `jit_backend_test`, and by `A64Backend::compile()`
-as the dispatch test in front of `emitRegInstr` (`JitBackendA64.cpp:4724-4726`;
+as the dispatch test in front of `emitRegInstr` (`JitBackendA64.cpp:4765-4767`;
 the x64 emitters carry their own switch and never call it). The coverage
 floor is a separate thing and is not built on it: `compile()` counts what
 the emitter actually produced and refuses a block below
@@ -1382,7 +1382,7 @@ do not affect an injected session.
 | `POM68K_JIT_PROFIT_SCORE` | `0`; 68030 per-backend | native compile gate; 0 disables it. Unset on a 68030, the native backend's `caps().profitScore68030` applies instead (64 on a64, 0 on x64 — `JitEngine.cpp` constructor), and an explicit value overrides that. Otherwise a recorded block must satisfy `visits × potentially native instructions >= score` in addition to `POM68K_JIT_HOT`. This lets long/native loops compile before short single-pass blocks; it is a measurement knob until repeated 1 000/3 000/6 000-frame ABBA evidence earns a default |
 | `POM68K_JIT_RESTART_BASE` | per-backend | admission (030): the restartable-write family on the split BASE cost instead of the traced total. Its historical coarse-budget divergence was the peripheral-phase class, CLOSED 2026-08-21 by the access-thunk clock bias (JIT_BRINGUP § C.4nonies). **Default follows the backend's `caps().accessClockBias` declaration — ON under x64 since 2026-08-22 (−4.3 % alone, −8.0 % with BSR.W at 6000 frames, fp identical) and under a64 since the same afternoon (its thunks carry the bias, replacing the `guardIcacheHits` replay); `threaded` declares none and needs none**; an explicit 0/1 wins either way. Both emitters consult it since the evening of 2026-08-22 (a64 had the total-cost rule hard-wired, refusing every push traced on an i-cache miss — native share 49 → 71 % at 30 000 frames once wired). `jit_lockstep_030_x64_alignment_test` / `jit_lockstep_030_a64_alignment_test` pin both admissions at 120k; `jit_backend_test` pins the declaration coupling |
 | `POM68K_JIT_BSRW` | per-backend | admission for BSR.W (`$6100`) into the armed-charge exemption. Charge proved correct (`fetchWords=2`); its step-16 097 divergence was the same peripheral-phase class, closed by the same fix. Same per-backend default and same gates as `POM68K_JIT_RESTART_BASE` (−2.3 % alone at 6000 frames) |
-| `POM68K_JIT_030_MEMBF` | `1` | admission (030): memory bitfields through `(An)`/`d16(An)` on both native generators; explicit `0` is the attribution/veto arm. Sole reads use the exact-thunk timing contract; possible fifth-byte reads preflight both mappings before either load and branch around the tail at run time. Mutating forms consume read4/write4 when tailless or the shared read4/write4/read1/write1 maximum-path contract when crossing; both writable mappings are proved before access zero. MMIO/fault tails replay in Moira, preserving the partial longword and format-$B frame. A mispriced form refuses. Promoted for reads on 2026-08-31 and for crossing writes on 2026-09-01 after native A64+x64 tail/no-tail, MMIO and fault oracles; the explicit alignment gates remain. Earlier stakes: SimCity `E9D0`/`EFD1`; promotion witness: Speedometer `E9D4` |
+| `POM68K_JIT_030_MEMBF` | `1` | admission (030): memory bitfields through `(An)`/`d16(An)` on both native generators; explicit `0` is the attribution/veto arm. Sole reads use the exact-thunk timing contract; possible fifth-byte reads preflight both mappings before either load and branch around the tail at run time. Mutating forms consume a longword RMW pair when tailless or the shared read4/read1/write4/write1 maximum-path contract when crossing; both writable mappings are proved before access zero. MMIO/fault tails replay in Moira, which touches only the field's bytes and reads before it writes (2026-11-10). A field narrower than four bytes is a longword proof span: plain RAM only, no exact thunk, refused under a live 040 D-cache; a three-byte one counts its 040 data-ATC route twice. A mispriced form refuses. Promoted for reads on 2026-08-31 and for crossing writes on 2026-09-01 after native A64+x64 tail/no-tail, MMIO and fault oracles; the explicit alignment gates remain. Earlier stakes: SimCity `E9D0`/`EFD1`; promotion witness: Speedometer `E9D4` |
 | `POM68K_JIT_FPU_MEMBER` | `1` | the FPU general window `$F200-$F23F` is a block member replayed exactly by Moira (§ 4, `Kind::Fpu`); explicit `0` is the attribution/veto arm in which every F-line form ends the block before it, as before 2026-09-06. Conformance: `jit_asset_free_lockstep_test` (both arms; straight, enabled FDIV/0 vector 50, detached-FPU 68LC040 format $4), the 030/040 machine locksteps and Speedometer's four families at identical fingerprints on A64, `threaded` and the interpreter. Measured on the isolated Speedometer direct-FPU phase, § 3.5bis |
 | `POM68K_JIT_030_CACR_FLUSH` | per board | Three-valued since 2026-08-19 (68030 wrappers). **Unset = the board's own answer**: retired on V8, VASP, RBV, MSC and Sonora, whose `kJitStoreInventoryComplete` claims are held by `store_inventory_test`. Pb030, IIfx and `Cpu020` have no such claim and retain the CACR flush (`TODO.md` § Moteur › JIT justesse). `1` forces the hint ON (historically −21.8 % of generator wall clock, `docs/JIT_BRINGUP.md` § C.4bis); `0` forces it OFF. A board that grows a bus master withdraws its inventory claim and returns to the flush. Compare fingerprints on both sides before pricing an override |
 | `POM68K_JIT_DISPATCH_RING` | `0` | diagnosis: record the engine's last 8192 dispatch decisions (path, pc, clock, target, exit, instructions) in a ring the 030 lockstep dumps on divergence. The 2026-08-19 uncharge hole was invisible in every end state and named by this ring in one run |
@@ -1460,14 +1460,16 @@ preflight before the read, on 040 and 030 by default. Read-only bitfields
 that may reach a fifth byte publish read4+read1 under `PreflightAll`; both
 generators prove the two mappings before access zero and branch around the
 tail probe when the runtime field fits one longword. Since 2026-09-01 the
-crossing WRITE form publishes Moira's maximum read4/write4/read1/write1
-shape, `lastWrite = 3`. Its four-slot `PreflightAll` proof deliberately mints
+crossing WRITE form publishes Moira's maximum four-access shape,
+`lastWrite = 3`; since 2026-11-10 its order is read4/read1/write4/write1,
+Moira's, and a field Moira reads as one, two or three bytes is published as
+a longword proof span (`MemoryAccess::proofSpan`) that never receives an
+exact thunk or a cache token. Its four-slot `PreflightAll` proof deliberately mints
 neither exact-thunk nor cache tokens. A64 and x64 prove the long and tail
 writable mappings before either read, retain both host pointers and branch
-around the runtime no-tail arm. On proved plain RAM, their reordered direct
-accesses are effect-equivalent; an MMIO, faulting or live-040-cache mapping
-refuses before access zero and pristine Moira preserves the architectural
-partial-write/fault sequence exactly. `POM68K_JIT_030_MEMBF=0` vetoes the 030
+around the runtime no-tail arm. On proved plain RAM their direct accesses
+are effect-equivalent; an MMIO, faulting or live-040-cache mapping refuses
+before access zero and Moira performs the architectural sequence exactly. `POM68K_JIT_030_MEMBF=0` vetoes the 030
 admission for attribution. This makes a widening reviewable in one
 place: change the contract or planner, then make the pure IR assertions and
 the generated A64/x64 gate agree.

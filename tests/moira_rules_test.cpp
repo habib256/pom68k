@@ -80,8 +80,21 @@ public:
     mutable std::string events;
     mutable int faults = 0;
     mutable moira::u32 faultAddr = 0;
+    // Cell "bit field memory accesses": every data callback inside
+    // [busBase, busBase + 16), as <kind><offset>: b/w a byte/word read,
+    // B/W a byte/word write (a longword is two word callbacks).
+    bool traceBus = false;
+    uint32_t busBase = 0;
+    mutable std::string bus;
 
 private:
+    void traceAccess(char kind, moira::u32 a) const {
+        if (!traceBus || a < busBase || a >= busBase + 16) return;
+        if (!bus.empty()) bus += ' ';
+        bus += kind;
+        bus += std::to_string(a - busBase);
+    }
+
     moira::Model model_;
 
     // The board's /BERR, through the entry point of the model's core.
@@ -101,22 +114,26 @@ private:
     }
 
     moira::u8 read8(moira::u32 a) const override {
+        traceAccess('b', a);
         if (hole(a)) berr(a, false);
         events += 'r';
         return mem[a & 0xfffff];
     }
     moira::u16 read16(moira::u32 a) const override {
         observeMovem(a, false);
+        traceAccess('w', a);
         if (hole(a)) berr(a, false);
         return moira::u16((mem[a & 0xfffff] << 8) | mem[(a + 1) & 0xfffff]);
     }
     void write8(moira::u32 a, moira::u8 v) const override {
+        traceAccess('B', a);
         if (hole(a)) berr(a, true);
         events += 'w';
         const_cast<TestCpu*>(this)->mem[a & 0xfffff] = v;
     }
     void write16(moira::u32 a, moira::u16 v) const override {
         observeMovem(a, true);
+        traceAccess('W', a);
         if (hole(a)) berr(a, true);
         auto& m = const_cast<TestCpu*>(this)->mem;
         m[a & 0xfffff] = moira::u8(v >> 8); m[(a + 1) & 0xfffff] = moira::u8(v);
@@ -903,6 +920,85 @@ void clrReadsOnlyOn68000()
     }
 }
 
+void bitfieldMemoryAccesses()
+{
+    // A memory bit field reads only the bytes it spans — 1, 2, 2+1, 4 or
+    // 4+1 — finishes every read before its first write, and writes back the
+    // same shape. [B] MC68030UM-1989 §11.6.14: one operand cycle below five
+    // bytes, two at five. [D] WinUAE get_bitfield/put_bitfield @ Hatari
+    // e77819f7 for the byte decomposition (POM68K_VENDOR.md, row 79). The
+    // longword-always core read and rewrote bytes outside the field and
+    // wrote the first four bytes before reading the fifth.
+    constexpr uint32_t kField = 0x3000;
+    struct Case {
+        uint16_t opcode, ext; const char* what; const char* want;
+        uint8_t before[5], after[5]; uint32_t d1;
+    };
+    static const Case cases[] = {
+        { 0xe9d0, 0x1008, "BFEXTU (A0){0:8},D1", "b0",
+          {0xa5}, {0xa5}, 0xa5 },
+        { 0xe9d0, 0x1108, "BFEXTU (A0){4:8},D1", "w0",
+          {0x12, 0x34}, {0x12, 0x34}, 0x23 },
+        { 0xe9d0, 0x1110, "BFEXTU (A0){4:16},D1", "w0 b2",
+          {0x12, 0x34, 0x56}, {0x12, 0x34, 0x56}, 0x2345 },
+        { 0xe9d0, 0x1000, "BFEXTU (A0){0:32},D1", "w0 w2",
+          {1, 2, 3, 4}, {1, 2, 3, 4}, 0x01020304 },
+        { 0xe9d0, 0x1040, "BFEXTU (A0){1:32},D1", "w0 w2 b4",
+          {0x80, 0, 0, 0, 0x80}, {0x80, 0, 0, 0, 0x80}, 0x00000001 },
+        { 0xead0, 0x00de, "BFCHG (A0){3:30}", "w0 w2 b4 W0 W2 B4",
+          {0}, {0x1f, 0xff, 0xff, 0xff, 0x80}, 0 },
+        { 0xefd0, 0x1304, "BFINS D1,(A0){12:4}", "b1 B1",
+          {0xff, 0xff, 0xff}, {0xff, 0xfa, 0xff}, 0xa },
+    };
+    static const struct { moira::Model model; const char* name; } models[] = {
+        { moira::Model::M68020, "68020" }, { moira::Model::M68030, "68030" },
+        { moira::Model::M68LC040, "68LC040" },
+    };
+    for (const auto& m : models) {
+        for (const Case& k : cases) {
+            TestCpu c(m.model);
+            stage(c, k.opcode, 0);
+            p16(c, kCode + 2, k.ext);
+            c.setIRC(k.ext);
+            for (unsigned i = 0; i < 8; i++) c.mem[kField + i] = i < 5 ? k.before[i] : 0;
+            c.setA(0, kField);
+            const bool readsD1 = (k.opcode & 0xffc0) == 0xefc0;
+            c.setD(1, readsD1 ? k.d1 : 0xdeadbeef);
+            c.traceBus = true; c.busBase = kField;
+            c.execute();
+            bool memoryOk = true;
+            for (unsigned i = 0; i < 5; i++) memoryOk &= c.mem[kField + i] == k.after[i];
+            const bool extracts = (k.opcode & 0xffc0) == 0xe9c0;
+            CHECK(c.bus == k.want && memoryOk && c.getPC0() == kCode + 4 &&
+                  (!extracts || c.getD(1) == k.d1),
+                  "%s %s: bus \"%s\" (want \"%s\"), memory %s, D1 %08X, PC0 %08X",
+                  m.name, k.what, c.bus.c_str(), k.want,
+                  memoryOk ? "ok" : "wrong", c.getD(1), c.getPC0());
+        }
+
+        // The fifth byte answers /BERR: nothing may have been written.
+        TestCpu c(m.model);
+        p32(c, 2 * 4, kHandler);
+        p16(c, kHandler, kNop);
+        stage(c, 0xead0, 0);                        // BFCHG (A0){4:32}
+        p16(c, kCode + 2, 0x0100);
+        c.setIRC(0x0100);
+        const uint32_t base = kHole - 4;
+        for (unsigned i = 0; i < 4; i++) c.mem[base + i] = uint8_t(0x11 * (i + 1));
+        c.setA(0, base);
+        c.holeArmed = true;
+        c.traceBus = true; c.busBase = base;
+        const bool contained = executeContained(c);
+        bool unchanged = true;
+        for (unsigned i = 0; i < 4; i++) unchanged &= c.mem[base + i] == uint8_t(0x11 * (i + 1));
+        CHECK(contained && c.holeTrips == 1 && unchanged &&
+              c.bus.find_first_of("BW") == std::string::npos,
+              "%s BFCHG (A0){4:32} with /BERR on the fifth byte: bus \"%s\", "
+              "first four bytes %s, %u trip(s)", m.name, c.bus.c_str(),
+              unchanged ? "unchanged" : "WRITTEN", c.holeTrips);
+    }
+}
+
 void ptestFlagsInvalidAtTheLimit()
 {
     // PTESTR #5,(A0),#1 with the level-1 descriptor invalid (DT = 0): the
@@ -1117,6 +1213,7 @@ int main(int argc, char** argv)
     ordinaryStoreStillAdvances040();
     ttrTableFollowsRegisters();
     clrReadsOnlyOn68000();
+    bitfieldMemoryAccesses();
     ptestFlagsInvalidAtTheLimit();
     fpuIgnoredOn68000And68010();
     tableSearchBusError030();
@@ -1130,7 +1227,7 @@ int main(int argc, char** argv)
                 "68000 external /BERR, host hooks, DIVx.L operand fault, "
                 "68040 CHK2/CMP2 flags, 68040 FPU trap priority, 68LC040 F-line "
                 "shapes, five-bit FBcc predicate, 68040 FPU store fault, 68040 TTR "
-                "table, CLR without its read from the 68020 up, PTEST at its level "
+                "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68EC030 plain-020 path with a 68030 "
                 "MMU/cache control\n");

@@ -39,9 +39,10 @@ une optimisation côté hôte POM68K ne rapproche pas de NeoST.
 - **Les additions 68030/68040 et le JIT sont prouvés dans POM68K, pas
   prêts à exporter.** Corpus différentiels verts contre WinUAE strict,
   premier oracle FPU 68040, D23b/D24 tranchées par le manuel — mais :
-  1. les restes nommés ne sont pas corrigés (D25–D29, champs de bits
-     mémoire qui lisent toujours un long — cœur et JIT, avec l'hôte
-     AArch64 —, six octets de frame IDLE 68882, DOB SUB/SUBI) ;
+  1. les restes nommés ne sont pas corrigés (D25–D29, six octets de
+     frame IDLE 68882, DOB SUB/SUBI) ; les champs de bits mémoire ne
+     touchent plus que leurs octets depuis le 2026-11-10 (`CHANGELOG`,
+     sixième) ;
   2. le JIT n'a jamais tourné hors d'un Macintosh : fenêtres de fetch et
      de données, garde d'écriture dans le code traduit reposent sur
      `codeSpan`/`jitGuard_` fournis par nos cartes ; le contrat de
@@ -306,20 +307,12 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   Revenir à $2 fait tomber dix vecteurs épinglés de `sst68030` : à faire
   avec le mécanisme de divergences assumées de › Socle, ou sur *une frame
   empilée par un vrai 68030*.
-- [ ] **Faire toucher aux champs de bits mémoire les seuls octets qu'ils
-  couvrent.** `execBitFieldEa` lit et réécrit toujours un long (plus un
-  octet au-delà de 32 bits) ; l'oracle (`get_bitfield`/`put_bitfield`)
-  accède à 1, 2, 3, 4 ou 5 octets selon l'étendue du champ. Visible dans
-  la taille du SSW d'une faute — dix vecteurs reproductibles :
-  `fuzz040.py --family random --mmu identity --page 8k --seed 405
-  --n 400`, #174 et #281, et huit autres dans le balayage du 2026-11-07
-  (`oracle/fuzz/disputes/NOTES.md`, graines 828, 845, 846) — et, plus
-  grave, en fautes ou en accès de
-  périphérique en trop quand le long déborde d'une page ou d'un registre.
-  Vaut pour 68020, 68030 et 68040. Le contrat mémoire de l'IR du JIT
-  (`JitIr.h` : « Memory bitfields always begin with a longword access »)
-  et les deux émetteurs suivent le même long : à changer ensemble, donc
-  avec une session AArch64.
+- [ ] **Relever le cycle d'opérande d'un champ de bits de trois octets.**
+  Le MC68030UM-1989 § 11.6.14 compte un seul cycle d'opérande sous cinq
+  octets et le bus 020/030 a un SIZ de trois octets ; le cœur et l'oracle
+  émettent un mot puis un octet (grade F au site, `execBitFieldEa`). Le JIT
+  compte deux accès ATC 040 pour suivre le cœur. *Bloqué : capture de bus de
+  `BFEXTU (An){0:24}` sur un vrai 68030 ou 68040.*
 - [ ] **Modéliser les fautes de préfetch différées, 030 et 040.** Limite
   documentée : `irc` est lu à pc+2 dès le début de l'instruction, donc une
   instruction d'un mot dans le dernier mot d'une page peut fauter là où le
@@ -345,6 +338,11 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   une cible impaire, quatrième reste du balayage, est devenu la décision
   D28 : le fork garde l'erreur d'adresse, comme pour Bcc et comme le
   manuel ; l'oracle n'en lève jamais.)
+  Un cinquième, trouvé par le balayage neuf du 2026-11-10 et présent
+  avant le correctif des champs de bits : `MOVES.L (A4)+,D0` (`$0E9C
+  $0000`) dont l'accès faute — un octet de la frame diffère
+  (`fuzz030.py --family core --mmu identity --strict-fpu --n 1000 --seed
+  9117`, #575, RAM `$17D8` : `$00` contre `$54`).
 - [ ] **Stocker le résultat non masqué dans le tampon de sortie d'une
   frame $A de SUB/SUBI.** Onze vecteurs de `sst68030_rmw`
   (`tests/sst68030_rmw.known`) : après un SUB ou SUBI vers la mémoire dont

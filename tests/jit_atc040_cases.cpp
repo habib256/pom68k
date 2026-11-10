@@ -62,6 +62,12 @@ public:
             emit(0x4CEA); emit(12); emit(16);// MOVEM.L 16(A2),D2-D3
             emit(0xEAD2); emit(0x01C0); // BFCHG (A2){7:32}, four accesses
             emit(0xE8D2); emit(8);      // BFTST (A2){0:8}, no tail
+            // Three-byte fields: Moira's word + byte in each direction, two
+            // data-ATC accesses each that a longword proof must still count.
+            emit(0x7C10);               // MOVEQ #16,D6
+            emit(0xE9D2); emit(0x5110); // BFEXTU (A2){4:16},D5
+            emit(0xEFD2); emit(0x5094); // BFINS D5,(A2){2:20}
+            emit(0xEAD2); emit(0x0126); // BFCHG (A2){4:D6}, three bytes at run time
             emit(0x4DE8); emit(4);      // LEA 4(A0),A6
             emit(0x2836); emit(0x0151); // MOVE.L ([A6]),D4, index suppressed
             emit(0x4EB5); emit(0x0151); // JSR ([A5]), native on A64

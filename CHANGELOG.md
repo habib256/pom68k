@@ -271,6 +271,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### CPU cores, MMU/FPU, and the WinUAE oracle
 
+- **Why did a memory bit field read a whole longword, and could a faulting fifth byte make BFCHG invert twice?** → [Bit fields touch only their bytes](#2026-11-10-bitfield-bytes)
 - **Does a clean CI checkout execute any oracle CPU vector?** → [Public, reproducible CPU vectors](#2026-11-10-cpu-vectors)
 - **Can an FPU context be shared if every instruction rearms FPCR?** → [Nested and parallel CPUs keep their own arithmetic context](#2026-11-10-fpu-context)
 - **Why did a plain 68020 repeat a data cycle whose handler cleared DF?** → [The 020/EC020 retry context](#2026-11-10-rte020-completion)
@@ -554,6 +555,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-10 (sixth)** — [Memory bit fields touch only their bytes and read before they write](#2026-11-10-bitfield-bytes)
 - **2026-11-10 (fifth)** — [A clean checkout executes 256 reproducible CPU vectors](#2026-11-10-cpu-vectors)
 - **2026-11-10 (fourth)** — [FPU rounding, exceptions and intermediate captures belong to each CPU](#2026-11-10-fpu-context)
 - **2026-11-10 (third)** — [Plain 020 software-completed bus faults survive RTE and restore](#2026-11-10-rte020-completion)
@@ -1300,6 +1302,75 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-11-10-bitfield-bytes"></a>
+## 2026-11-10 (sixth) — Memory bit fields touch only their bytes and read before they write
+
+`execBitFieldEa` read and rewrote a whole longword for every memory field,
+then a fifth byte when the field crossed bit 31. Two defects followed, on
+the 68020, 68030 and 68040 alike:
+
+- up to three bytes outside the field were read and written back — a
+  spurious ATC fault, /BERR or device access past a page or register end,
+  and the wrong SSW size in a fault frame (`fuzz040.py --family random
+  --mmu identity --page 8k --seed 405`, #174 and #281);
+- the first four bytes were written **before** the fifth was read. A fault
+  on that read left them modified, and the restarted BFCHG inverted them a
+  second time.
+
+The core now reads 1, 2, 2+1, 4 or 4+1 bytes (byte, word, word+byte, long,
+long+byte), finishes both reads before the first write, and writes the same
+shape back. Evidence: [B] MC68030UM-1989 §11.6.14 (one operand cycle below
+five bytes, two at five; locator added to `tests/core_manuals.lock` after
+reading PDF page 589); [D] WinUAE `get_bitfield`/`put_bitfield` and `i_BF*`
+@ Hatari e77819f7 for the decomposition; [F] the three-byte field, one
+operand cycle with SIZ = 3 in the manual against a word and a byte in the
+oracle and here, now an open `TODO.md` item settled by a bus capture.
+`POM68K_VENDOR.md` row 79.
+
+The JIT contract followed. A field Moira now reads as one, two or three
+bytes is published as a longword **proof span**
+(`MemoryAccess::proofSpan`): valid only on proved plain RAM, where the wider
+load/store is effect-equivalent, never given an exact/MMIO thunk or a live
+040 cache token, and refused by both generators under a live D-cache (dirty
+longwords and line allocation would differ). Before this change a
+read-only tailless field could take the exact thunk and issue a 32-bit
+device read where Moira now issues a byte. Statically four- and five-byte
+fields remain exact; the crossing write is published in Moira's
+read4/read1/write4/write1 order. A three-byte field is two data-ATC accesses
+per direction in Moira (`mmu040AtcLookup` counts each), so both generators
+double the recorded route, statically or after a runtime test.
+
+Gates:
+
+- `moira_rules_test` gains bus traces for seven field shapes on the 68020,
+  68030 and 68LC040, plus a /BERR on the fifth byte that must leave the
+  first four untouched. On the previous core every shape and the fault case
+  fail ("w0 w2" for a one-byte field; "first four bytes WRITTEN").
+- `jit_atc040_cases` (inside `jit_asset_free_lockstep_test`) runs static
+  and runtime three-byte BFEXTU/BFINS/BFCHG under translation: 432 cases.
+  With the route doubling disabled, the native case fails at checkpoint 55
+  on A64 and on x64 (Rosetta build `build-x64-proof`).
+- `jit_backend_test` pins the published shapes, proof-span flags and the
+  span helpers.
+
+Replays, all executed, none soft-skipped: `sst68030` 3 078/3 082 (the four
+listed), `sst68040` 7 200/7 200, and the nine optional corpora regenerated
+from their recipes — `sst68030_solo` 5 592/5 592, `_fpuraw` 5 805/6 000,
+`_fpu2` 6 000/6 000, `_rmw` 5 989/6 000, `sst68040_8k` 4 000/4 000,
+`_fline` 4 500/4 500, `_fpu` 7 456/7 500, `_fpu2` 6 000/6 000, `_fpuh`
+5 988/6 000, each with its unchanged known list. Eight match
+`tests/sst_corpora.lock`; the three regenerated `sst68040_fpuh` files differ
+from their pins by 30 to 268 bytes (regenerated here with NumPy; the cause
+was not investigated), so that replay is a regression run, not the pinned
+claim. A fresh sweep of 24 000 vectors (core,
+fault and random families, identity and tt, seeds 9101–9124): 68040
+12 000/12 000 (two bit-field failures on the previous core); 68030
+11 996/12 000, the same four failures before and after the change — MOVEM.L
+to an odd address, FBcc to an odd target (D28), and a new `MOVES.L (A4)+`
+frame byte, now named in `TODO.md`.
 
 ---
 

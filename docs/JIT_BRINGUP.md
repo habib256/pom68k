@@ -405,7 +405,7 @@ reset block.
    this**. Two fields are immediately guest-visible: `mmuCcrSave` is what a
    bus-error frame stacks, and `mmuRmw` left true from an earlier locked
    access sends every subsequent translation down the RMW path. `mmuRmw` is
-   now cleared in the a64 block prologue (`JitBackendA64.cpp:4646`) — once
+   now cleared in the a64 block prologue (`JitBackendA64.cpp:4687`) — once
    per linked chain, since `TAS` and `CAS` are its only setters and both are
    `Kind::Unsafe`. It was measured and it was **not** the cause of any
    divergence; the hole is real and the rest of the block is still open.

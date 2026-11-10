@@ -27,6 +27,19 @@ void Emitter::recordAtcRoute040(AtcRoute route, Reg entry, bool cache) {
         if (route.mask & (1u << i)) a_.movMR(Sz::B, F(kFAtcRoutes040 + int32_t(i)), R9);
 }
 
+// Moira splits a three-byte memory bit field into a word and a byte: two
+// data-ATC accesses per direction where the longword proof span recorded
+// one (Moira::mmu040AtcLookup counts every access). Clobbers R9 only.
+void Emitter::doubleAtcRoute040(uint8_t mask) {
+    if (L_.is030 || !(atcRoutes040_ & mask)) return;
+    for (unsigned i = 0; i < AtcReplay040::Accesses; ++i)
+        if (mask & (1u << i)) {
+            a_.movzx(Sz::B, R9, F(kFAtcRoutes040 + int32_t(i)));
+            a_.aluRR(Asm::Op::ADD, Sz::L, R9, R9);
+            a_.movMR(Sz::B, F(kFAtcRoutes040 + int32_t(i)), R9);
+        }
+}
+
 void Emitter::prepareAtcThunk040(unsigned access, Reg argument) {
     if (L_.is030) { a_.movRI64(argument, 0); return; }
     a_.movMI(Sz::L, F(kFAtcAccess040), int32_t(access));

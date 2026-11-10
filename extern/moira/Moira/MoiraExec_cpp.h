@@ -1335,27 +1335,84 @@ Moira::execBitFieldEa(u16 opcode)
     auto mask = u32(baseMask >> 32);
     auto mask8 = u8(baseMask >> 24);
 
-    u32 data = readM<C, M, S>(ea);
+    // POM68K: a memory field touches only the bytes it spans, and every read
+    // precedes the first write.
+    // [B] MC68030UM-1989 §11.6.14 (bit field timing table and its note): a
+    //     field spanning fewer than five bytes takes one operand cycle, a
+    //     five-byte field two, in each direction.
+    // [D] WinUAE get_bitfield/put_bitfield (newcpu_common.c) and the i_BF*
+    //     generator (gencpu.c) @ Hatari e77819f7: 1, 2, 2+1, 4 or 4+1 bytes,
+    //     both reads before either write; BFINS reads too.
+    // [F] A three-byte field: the manual counts one operand cycle and the
+    //     68020/68030 bus has a three-byte SIZ; the oracle and this core issue
+    //     a word and a byte. Settled by: a bus capture of BFEXTU (An){0:24}.
+    // The previous longword-always access read and rewrote bytes outside the
+    // field (a spurious fault or device access past a page or register end)
+    // and wrote the longword before reading the fifth byte, so a fault on
+    // that read made the restarted BFCHG toggle the first four bytes twice.
+    // Gates: moira_rules_test (bit field access trace), sst68040 seed 405.
+    const int span = (offset + width + 7) >> 3;
+    u32 data;               // the spanned bytes, left-aligned in a longword
+    u32 tail = 0;           // the fifth byte of a five-byte field
+    switch (span) {
+        case 1:
+            data = readM<C, M, Byte>(ea) << 24;
+            break;
+        case 2:
+            data = readM<C, M, Word>(ea) << 16;
+            break;
+        case 3:
+            data = readM<C, M, Word>(ea) << 16;
+            data |= readM<C, M, Byte>(ea + 2) << 8;
+            break;
+        case 4:
+            data = readM<C, M, Long>(ea);
+            break;
+        default:
+            data = readM<C, M, Long>(ea);
+            tail = readM<C, M, Byte>(ea + 4);
+            break;
+    }
+    auto writeField = [&](u32 value, u32 tailValue) {
+        switch (span) {
+            case 1:
+                writeM<C, M, Byte>(ea, value >> 24);
+                break;
+            case 2:
+                writeM<C, M, Word>(ea, value >> 16);
+                break;
+            case 3:
+                writeM<C, M, Word>(ea, value >> 16);
+                writeM<C, M, Byte>(ea + 2, (value >> 8) & 0xFF);
+                break;
+            case 4:
+                writeM<C, M, Long>(ea, value);
+                break;
+            default:
+                writeM<C, M, Long>(ea, value);
+                writeM<C, M, Byte>(ea + 4, tailValue & 0xFF);
+                break;
+        }
+    };
 
     switch (I) {
 
         case Instr::BFCHG:
         case Instr::BFCLR:
         case Instr::BFSET:
-
+        {
             result = bitfield<I>(data, offset, width, mask);
-            writeM<C, M, S>(ea, result);
 
-            if((width + offset) > 32) {
+            u32 tailResult = tail;
+            if (span == 5) {
 
-                data = readM<C, M, Byte>(ea + 4);
+                if constexpr (I == Instr::BFCHG) tailResult = tail ^ mask8;
+                if constexpr (I == Instr::BFCLR) tailResult = tail & ~mask8;
+                if constexpr (I == Instr::BFSET) tailResult = tail | mask8;
 
-                if constexpr (I == Instr::BFCHG) writeM<C, M, Byte>(ea + 4, data ^ mask8);
-                if constexpr (I == Instr::BFCLR) writeM<C, M, Byte>(ea + 4, data & ~mask8);
-                if constexpr (I == Instr::BFSET) writeM<C, M, Byte>(ea + 4, data | mask8);
-
-                reg.sr.z &= ZERO<Byte>(data & mask8);
+                reg.sr.z &= ZERO<Byte>(tail & mask8);
             }
+            writeField(result, tailResult);
 
             //           00  10  20        00  10  20        00  10  20
             //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -1365,14 +1422,14 @@ Moira::execBitFieldEa(u16 opcode)
             CYCLES_AW   ( 0,  0,  0,        0,  0,  0,        0,  0, 24)
             CYCLES_AL   ( 0,  0,  0,        0,  0,  0,        0,  0, 24)
             break;
-
+        }
         case Instr::BFEXTS:
         case Instr::BFEXTU:
 
             data = CLIP<Long>(data << offset);
 
-            if((offset + width) > 32) {
-                data |= (readM<C, M, Byte>(ea + 4) << offset) >> 8;
+            if (span == 5) {
+                data |= (tail << offset) >> 8;
             }
 
             result = bitfield<I>(data, offset, width, mask);
@@ -1393,9 +1450,9 @@ Moira::execBitFieldEa(u16 opcode)
 
             data = CLIP<Long>(data << offset);
 
-            if((offset + width) > 32) {
+            if (span == 5) {
 
-                data |= (readM<C, M, Byte>(ea + 4) << offset) >> 8;
+                data |= (tail << offset) >> 8;
             }
 
             result = bitfield<I>(data, oldOffset, width, mask);
@@ -1422,15 +1479,14 @@ Moira::execBitFieldEa(u16 opcode)
             reg.sr.v = 0;
             reg.sr.c = 0;
 
-            writeM<C, M, S>(ea, (data & ~mask) | insert >> offset);
+            u32 tailResult = tail;
+            if (span == 5) {
 
-            if((width + offset) > 32) {
-
-                data = readM<C, M, Byte>(ea + 4);
                 u8 insert8 = u8(readD(dn) << (8 - ((width + offset) - 32)));
-                writeM<C, M, Byte>(ea + 4, (data & ~mask8) | insert8);
+                tailResult = (tail & ~mask8) | insert8;
                 reg.sr.z &= ZERO<Byte>(insert8);
             }
+            writeField((data & ~mask) | insert >> offset, tailResult);
 
             //           00  10  20        00  10  20        00  10  20
             //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -1445,10 +1501,9 @@ Moira::execBitFieldEa(u16 opcode)
 
             (void)bitfield<I>(data, offset, width, mask);
 
-            if((width + offset) > 32) {
+            if (span == 5) {
 
-                u8 data2 = u8(readM<C, M, Byte>(ea + 4));
-                reg.sr.z &= ZERO<Byte>(data2 & mask8);
+                reg.sr.z &= ZERO<Byte>(tail & mask8);
             }
 
             //           00  10  20        00  10  20        00  10  20
