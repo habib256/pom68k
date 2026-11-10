@@ -11,9 +11,16 @@
 // The struct owns replacement, tags, data and dirty state. It deliberately
 // owns neither a bus nor a clock: Moira supplies line-fill/writeback callbacks
 // so bus errors, MMU restart state and machine timing remain in one place.
-// [F] The fork increments rot on replacement only; the manual increments
-// the counter on cache accesses too. Settled by: an access-counted
-// replacement gate or a hardware replacement trace.
+// [B] MC68040UM-1993 §4.1: each cache's two-bit counter "is incremented for
+// each access to the cache" — per half-line accessed in the instruction
+// cache; in the data cache per half-line accessed during reads, per full
+// line accessed during copyback writes and per bus transfer of a
+// write-through write — and a miss with four valid lines replaces the line
+// it points to. The callers count (count()); allocate() only reads rot.
+// [F] Whether the missing access is counted before or after it selects its
+// victim (here: after), and the fork's instruction-fetch granularity (one
+// half-line access per fetched word). Settled by: a hardware replacement
+// trace (TODO.md § Moteur › Justesse 68040).
 
 #pragma once
 
@@ -65,6 +72,29 @@ struct Cache040 {
         }
     }
 
+    // [B] MC68040UM-1993 §4.1: n accesses advance the replacement counter.
+    void count(unsigned n) { rot = u8((rot + n) & 3); }
+
+    // Half-lines (8 bytes) touched by an access of `bytes` starting at
+    // line offset `off`; the access does not cross the line.
+    static unsigned halfLines(u32 off, int bytes) {
+        return unsigned(((off + u32(bytes) - 1) >> 3) - (off >> 3) + 1);
+    }
+
+    // [B] MC68040UM-1993 §7.3: a misaligned noncached operand becomes a
+    // sequence of aligned transfers; a write-through write counts each one.
+    // [F] The greedy long/word/byte split (a long at +1: byte, word, byte).
+    // Settled by: a bus trace of a misaligned write-through store.
+    static unsigned transfers(u32 pa, int bytes) {
+        unsigned n = 0;
+        while (bytes > 0) {
+            const int size = (pa & 3) == 0 && bytes >= 4 ? 4
+                           : (pa & 1) == 0 && bytes >= 2 ? 2 : 1;
+            pa += u32(size); bytes -= size; n++;
+        }
+        return n;
+    }
+
     static int setOf(u32 pa) { return int((pa >> 4) & 63); }
     static u32 tagOf(u32 pa) { return pa >> 10; }
 
@@ -92,7 +122,7 @@ struct Cache040 {
         Line* s = sets[set];
         int w;
         for (w = 0; w < WAYS; w++) if (!s[w].valid) break;
-        if (w == WAYS) { w = rot & 3; rot = u8((rot + 1) & 3); }
+        if (w == WAYS) w = rot & 3;
 
         if (evicted) {
             evicted->valid = s[w].valid;
@@ -135,7 +165,12 @@ struct Cache040 {
             for (u64 a = lo & ~u64(3); a <= hi; a += 4)
                 lw |= u8(1 << ((a >> 2) & 3));
             touchLine(u32(la), write, cm, lw);
+            // [B] MC68040UM-1993 §4.1: counted as pomCache040ReadValue and
+            // pomCache040WriteValue count.
+            if (!write) count(halfLines(u32(lo & 15), int(hi - lo + 1)));
+            else if (cm == CM_COPYBACK) count(1);
         }
+        if (write && cm == CM_WRITETHROUGH) count(transfers(pa, bytes));
     }
 
     // [B] M68000PRM-1992 CINV: invalidate selected physical lines/pages.

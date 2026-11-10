@@ -65,7 +65,7 @@ Consequences, stated plainly:
 |---|---|---|
 | CINV/CPUSH | `MoiraExec_cpp.h` (`execCinv/execCpush`) | push dirty bytes to physical memory and invalidate the selected line/page/cache |
 | CACR | `Cpu040::didChangeCACR` (`src/Cpu040.cpp`) | bit 15/11 drive the **throughput** i-cache overlay + JIT flushAll; **since M1** DE/IE also gate the tag model (read at touch time, no hook needed) |
-| CM bits | `Moira::Mmu040AtcEntry::status` (`Moira.h:2494-2500` — "WP\|G\|S\|CM\|M\|R…") | descriptor CM bits ride into every ATC entry already — the probe and M2 read them from there, no new walk work |
+| CM bits | `Moira::Mmu040AtcEntry::status` (`Moira.h:2514-2520` — "WP\|G\|S\|CM\|M\|R…") | descriptor CM bits ride into every ATC entry already — the probe and M2 read them from there, no new walk work |
 | TTR cache fields | `mmu040MatchTTR` | TTR CM bits reachable the same way |
 | JIT contract | `pomJitFetch`, `pomJitProbeCode/Data`, `pomJitData` | page-to-host-RAM data windows are refused; validated sole reads and write-authorized copyback hits may use the resident physical D-cache line; native writes publish the exact dirty-longword mask; every fetched byte and a native block's whole embedded range require resident byte-for-byte I-cache identity; native links return to that guard between blocks |
 | Snoop hook | `pomSnoop040Read/Write` | alternate-master read supply, invalidate and write-sink/MI behaviour; callable even while DC is disabled |
@@ -574,3 +574,40 @@ The existing pending-store and restart model is preserved, including its
 hardware-capture limitations. Descriptor LOCK/RMW waveforms remain separate.
 No new CPU/snapshot field, history order, cache replacement rule, corpus
 exception or native admission is involved.
+
+## Access-counted replacement (2026-11-10)
+
+MC68040UM-1993 §4.1 increments each cache's two-bit counter "for each access
+to the cache": per half-line accessed in the instruction cache; in the data
+cache per half-line accessed during reads, per full line accessed during
+copyback writes and per bus transfer of a write-through write. The fork had
+advanced it on replacement only. Now `Cache040::allocate` reads `rot` and the
+callers count. `pomCache040ReadValue` counts half-lines for I and D,
+`pomCache040WriteValue` counts copyback lines or write-through transfers (§7.3
+aligned split), and a miss counts after selecting its victim, even when its
+fill aborts. `Cache040::touch` counts the same way.
+
+Three paths serve cache accesses without those functions and count them
+explicitly. The interpreter's fetch window counts one I access per fetched
+word, the granularity of `mmu040FetchWord`. Native code adds each retired
+instruction's `fetchWords040` to the I counter. Native line hits add their
+D delta: half-lines for a read, one for a copyback write. Cache-only probes
+whose hits are published later stage the delta in the native frame.
+
+Three more rules keep native code exact. A conditional branch commits the
+stream words of the path it runs (`branchFetchWords040`,
+`dbccFetchWords040`). An instruction with exact thunks stages its count in
+`PomJitAtcReplay040::cacheFetches`, so a thunk's own I-side access (a JSR
+target, a program-space read) sees it first, and a replay restores it. A
+block's residency proof includes the lookahead word after its last
+instruction.
+
+Gates: `cache040_test` part 5 pins each rule's delta and the victim choice.
+`jit_atc040_cases` compares both counters between the bare interpreter and
+the window, threaded and native strategies (A64 and x64). Disabling either
+native count fails it. The real-boot `jit_lockstep_a64_coarse_test` compares
+both counters at every checkpoint (`POM68K_JIT_LOCKSTEP_CACHE=1` adds every
+line). Fill and push fault cases pin `rot` before the access
+under test, so their victim stays way 0. Open [F] questions: the victim/count
+order, word-granular instruction fetch and the greedy transfer split. A
+hardware replacement trace would settle all three.

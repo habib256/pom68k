@@ -170,12 +170,18 @@ struct Frame {
     uint32_t  runtimeWrite;                        // +160
     uint32_t  pad3;                                // +164
     AtcReplay040 atc;
+    // MC68040UM-1993 §4.1 D-cache counter delta of a cache-only probe whose
+    // hit is published later (replayable reads, atomic cache pairs).
+    uint32_t  cacheRotD;
 };
 static_assert(MemoryContract::MaxAccesses == AtcReplay040::Accesses);
 constexpr int32_t kFAtc040 = int32_t(offsetof(Frame, atc));
 constexpr int32_t kFAtcFetch040 = kFAtc040 + int32_t(offsetof(AtcReplay040, fetches));
 constexpr int32_t kFAtcRoutes040 = kFAtc040 + int32_t(offsetof(AtcReplay040, routes));
 constexpr int32_t kFAtcAccess040 = kFAtc040 + int32_t(offsetof(AtcReplay040, access));
+constexpr int32_t kFAtcCacheFetches040 = kFAtc040 + int32_t(offsetof(AtcReplay040, cacheFetches));
+constexpr int32_t kFAtcCacheSaved040 = kFAtc040 + int32_t(offsetof(AtcReplay040, cacheSaved));
+constexpr int32_t kFCacheRotD = int32_t(offsetof(Frame, cacheRotD));
 constexpr int32_t kFClockTarget = 0, kFInstrs = 8, kFExit = 12;
 constexpr int32_t kFDtlbSelf = 16, kFDtlbFill = 24, kFGuard = 32;
 constexpr int32_t kFScratch = 40, kFSaveA = 44, kFSaveV = 48;
@@ -396,6 +402,7 @@ private:
     uint8_t atcRoutes040_ = 0;
     void beginAtcInstruction040(size_t i);
     void recordAtcRoute040(AtcRoute route, Reg entry, bool cache);
+    void commitDeferredCacheRot040();
     void doubleAtcRoute040(uint8_t mask);
     void prepareAtcThunk040(unsigned access, Reg argument);
     void commitAtcInstruction040();
@@ -449,6 +456,14 @@ private:
     void call(void* fn);
     void loadPackedCcr();
     void spillPackedCcr();
+    // A branch path's own stream-access count (branchFetchWords040); -1 =
+    // the traced fetchWords040.
+    int fetchPath040_ = -1;
+    void retirePath(unsigned fetchWords) {
+        fetchPath040_ = int(fetchWords);
+        retire();
+        fetchPath040_ = -1;
+    }
     void retire(bool nativeAtc = true) {
         if (nativeAtc) commitAtcInstruction040();
         a_.aluRI(Asm::Op::ADD, packedCcr_ ? Sz::Q : Sz::L, kCnt,
@@ -1811,6 +1826,27 @@ void Emitter::memProbe(Reg addr, int bytes, bool write, Label& miss, AtcRoute ro
                  mem(RSI, int32_t(offsetof(moira::Cache040::Line, tag))));
         a_.jcc(Cc::NE, cacheMiss);
 
+        // MC68040UM-1993 §4.1: a read counts the half-lines it touches, a
+        // copyback write hit its one line (R8). A cache-only probe whose hit
+        // is published later stages the delta (stored by the read, added by
+        // the pair's write) for commitDeferredCacheRot040.
+        if (cacheWrite) {
+            a_.movRI(R8, 1);
+        } else {
+            a_.movRR(Sz::L, R8, RDX);
+            a_.aluRI(Asm::Op::AND, Sz::L, R8, 7);
+            if (n > 1) a_.aluRI(Asm::Op::ADD, Sz::L, R8, n - 1);
+            a_.shiftRI(Sz::L, R8, 5, 3);
+            a_.aluRI(Asm::Op::ADD, Sz::L, R8, 1);
+        }
+        if (countCacheHit) {
+            a_.aluMR(Asm::Op::ADD, Sz::B, at(L_.cache040DRot), R8);
+            a_.aluMI(Asm::Op::AND, Sz::B, at(L_.cache040DRot), 3);
+        } else if (cacheWrite) {
+            a_.aluMR(Asm::Op::ADD, Sz::L, F(kFCacheRotD), R8);
+        } else {
+            a_.movMR(Sz::L, F(kFCacheRotD), R8);
+        }
         // Only sole-access instructions enter this path, so the diagnostic
         // hit count cannot become speculative and then be replayed.
         if (countCacheHit) {
@@ -2073,6 +2109,7 @@ void Emitter::commitReplayableMemory(const Ea& ea, int szIdx,
                                      const MemoryAccessPlan& access) {
     commitEa(ea, szIdx, access);
     if (!L_.cache040Live) return;
+    commitDeferredCacheRot040();
     a_.aluMI(Asm::Op::ADD, Sz::Q, at(L_.cache040Hits), 1);
     if (cache040LineReadStatsEnabled())
         a_.aluMI(Asm::Op::ADD, Sz::Q, at(L_.cache040NativeReadHits), 1);
@@ -2479,6 +2516,7 @@ bool Emitter::emitMove(size_t i, int szIdx) {
         a_.bind(writeHit);
         a_.movRR(Sz::Q, R11, RSI);
 
+        commitDeferredCacheRot040();
         a_.aluMI(Asm::Op::ADD, Sz::Q, at(L_.cache040Hits), 2);
         if (cache040LineReadStatsEnabled()) {
             a_.aluMI(Asm::Op::ADD, Sz::Q, at(L_.cache040NativeReadHits), 1);
@@ -4503,7 +4541,7 @@ bool Emitter::emitBranch(size_t i) {
     a_.movMI(Sz::L, at(L_.pc0), int32_t(target));
     commitQueue(op, takenIrc);
     chargeCycles(takenCycles);
-    retire();
+    retirePath(branchFetchWords040(always, in.words, true));
     loopTo_ = targetIdx;
     if (targetIdx >= 0) {
         a_.jmp(*entry_[size_t(targetIdx)]);   // the loop stays in host code
@@ -4520,7 +4558,7 @@ bool Emitter::emitBranch(size_t i) {
         a_.movMI(Sz::L, at(L_.pc0), int32_t(fall));
         commitQueue(op, fallIrcQ);
         chargeCycles(fallCycles);
-        retire();
+        retirePath(branchFetchWords040(always, in.words, false));
         leaveTo(fall);
     }
     return true;
@@ -4602,7 +4640,7 @@ bool Emitter::emitDbcc(size_t i) {
     a_.movMI(Sz::L, at(L_.pc0), int32_t(target));
     commitQueue(op, ircAfter);
     chargeCycles(6);
-    retire();
+    retirePath(dbccFetchWords040(false));
     loopTo_ = targetIdx;
     if (targetIdx >= 0) a_.jmp(*entry_[size_t(targetIdx)]);
     else                leaveTo(target);
@@ -4612,7 +4650,7 @@ bool Emitter::emitDbcc(size_t i) {
     a_.movMI(Sz::L, at(L_.pc0), int32_t(fall));
     commitQueue(op, ircAfter);
     chargeCycles(10);
-    retire();
+    retirePath(dbccFetchWords040(true));
     leaveTo(fall);
 
     if (cc != 1) {                       // condition true: no decrement, 6
@@ -4621,7 +4659,7 @@ bool Emitter::emitDbcc(size_t i) {
         a_.movMI(Sz::L, at(L_.pc0), int32_t(fall));
         commitQueue(op, ircAfter);
         chargeCycles(6);
-        retire();
+        retirePath(dbccFetchWords040(false));
         leaveTo(fall);
     }
     return true;

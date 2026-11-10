@@ -15,6 +15,13 @@
 namespace jit {
 
 namespace {
+// Bytes a native block's execution reads through the 68040 I-cache in
+// Moira: its embedded code plus the lookahead word after the last
+// instruction (mmu040InstrStart's irc, or the final readExt's refill).
+uint32_t residentCodeBytes(const BlockIr& ir) {
+    return uint32_t(ir.code.size() * 2 + 2);
+}
+
 // The code window must always be able to serve BOTH words mmu040InstrStart
 // fetches (ird at pc, irc at pc+2) or neither of them — see the seam in
 // extern/moira/Moira/MoiraExecMMU_cpp.h. Four bytes is therefore the
@@ -1443,7 +1450,7 @@ void Engine::executeUntil(int64_t clockTarget) {
                 if (cpu_.pomCache040Active()) ctx_.linkMask = 0;
                 const bool cacheReady = !cpu_.pomCache040Active() ||
                     cpu_.pomCache040CodeMatches(
-                        b.ir.entryPc, uint32_t(b.ir.code.size() * 2));
+                        b.ir.entryPc, residentCodeBytes(b.ir));
                 // POM68K_JIT_DENY_FROM/_TO (hex): refuse to COMPILE any
                 // block whose entry pc falls in [from, to). A bisection
                 // instrument, not a mode: the 2026-08-19 retained-cache
@@ -1526,10 +1533,11 @@ void Engine::executeUntil(int64_t clockTarget) {
 
         // The block may span several I-cache lines. armWindow guarded the
         // entry line; validate the whole embedded byte stream before native
-        // execution. The window path refills any missing line naturally.
+        // execution — plus the lookahead word after the last instruction,
+        // which Moira fetches through the I-cache too (an RTS ending a line
+        // fills the next one). The window path refills any missing line.
         if (cpu_.pomCache040Active() &&
-            !cpu_.pomCache040CodeMatches(
-                b.ir.entryPc, uint32_t(b.ir.code.size() * 2))) {
+            !cpu_.pomCache040CodeMatches(b.ir.entryPc, residentCodeBytes(b.ir))) {
             const uint64_t before = stats_.windowInstrs.load(
                 std::memory_order_relaxed);
             runWindow(clockTarget);

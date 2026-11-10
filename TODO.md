@@ -403,10 +403,13 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   ne décrit pas cette séquence périphérique ; la reprise actuelle est un
   choix de modèle grade D, pas une preuve de silicium (`CHANGELOG`
   2026-11-09, cinquième). *Bloqué : capture d'un vrai 68040/68LC040.*
-- [ ] **Cadencer le remplacement du cache 040 sur les accès.** Le compteur
-  de `Cache040::allocate` avance au remplacement seulement ; MC68040UM-1993
-  § 4.1 le fait aussi avancer aux accès au cache. Une séquence de hits puis
-  conflit doit exposer la victime choisie avant de changer la politique.
+- [ ] **Rendre `sst68040_fpuh` reproductible depuis l'arbre.** Ses trois
+  fichiers régénérés le 2026-11-10 selon la recette de
+  `tests/sst_corpora.lock` ne retrouvent pas les empreintes épinglées, ni
+  avec NumPy ni sans (`fpuh_off` : 54 380 200 et 54 380 191 octets contre
+  54 380 267 épinglés) ; le rejeu reste vert avec ses 12 divergences
+  connues. Trouver ce qui a changé depuis l'épinglage (générateur, oracle,
+  branche `engine/next`), puis régénérer ou corriger la recette.
 - [ ] **Trancher les erreurs tardives de write-allocate 040.** Distinguer
   les portions demandées des battements inutiles, puis terminer une
   écriture dont le remplissage avorte sans exception, sans perdre les

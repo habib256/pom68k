@@ -271,6 +271,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### CPU cores, MMU/FPU, and the WinUAE oracle
 
+- **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 - **What does a faulting 68030 ADD/SUB to memory stack as its pending write?** → [The unmasked 32-bit result](#2026-11-10-addsub-buffer)
 - **Why did a faulting 68030 FScc stack $FFFFFFFF as its pending byte?** → [FScc's byte is unsigned](#2026-11-10-fscc-buffer)
 - **Which PC does a 68030 stack when JMP lands on an odd address?** → [Indexed modes stack the running pc + 2](#2026-11-10-jmp-odd-pc)
@@ -560,6 +561,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-10 (twelfth)** — [The 68040 cache replacement counter advances on accesses, through every path](#2026-11-10-cache040-counter)
 - **2026-11-10 (eleventh)** — [A faulting 68030 ADD/SUB to memory stacks its unmasked result; `sst68030_rmw` has no known list](#2026-11-10-addsub-buffer)
 - **2026-11-10 (tenth)** — [A faulting 68030 FScc stacks its byte unsigned; the 60 000-vector sweep is clean](#2026-11-10-fscc-buffer)
 - **2026-11-10 (ninth)** — [A 68030 JMP to an odd target stacks the 68040's PC rule](#2026-11-10-jmp-odd-pc)
@@ -1312,6 +1314,73 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-11-10-cache040-counter"></a>
+## 2026-11-10 (twelfth) — The 68040 cache replacement counter advances on accesses, through every path
+
+The optional cache model (`POM68K_040_DCACHE`) advanced each cache's two-bit
+replacement counter only when it replaced a line. MC68040UM-1993 §4.1
+increments it "for each access to the cache". In the instruction cache that
+means each half-line accessed. In the data cache it means each half-line
+read, each full line written in copyback mode and each bus transfer of a
+write-through write. A miss with four valid lines replaces the line the
+counter points to.
+
+The interpreter now counts accesses (`POM68K_VENDOR.md` row 85). A miss
+counts after selecting its victim, and it counts even when its fill aborts.
+A first version counted only completed fills; then the exception's vector
+read, in the same set, chose the restored dirty victim and pushed it, which
+`cache040_test` caught. Three paths bypass the counting functions and now
+count explicitly:
+- the interpreter's fetch window: one I access per word;
+- native code: each retired instruction's `fetchWords040`;
+- native line hits: the read's half-lines or the copyback write's line,
+  staged in the frame for cache-only probes that publish their hit later.
+
+Gates: `cache040_test` part 5 (nine per-rule deltas and the victim choice).
+`jit_atc040_cases` now compares both counters between the bare interpreter
+and the window, threaded and native strategies: 432 + 1 152 cases on A64 and
+on x64 (Rosetta). With the native I count disabled 64 + 64 cases fail; with
+the D count disabled, 48 + 64. The rig resets both counters in `start()`,
+since a training run advances them. `moira_state_test` now expects the
+restored phase to move with a read hit (rot 2, victim `$4800`). The fill and
+push fault cases pin `rot` before the access under test.
+
+The real Quadra 605 boot found what the synthetic rig had not. The
+`jit_lockstep_a64_coarse_test` gate has the D-cache model on, and it diverged
+first at step 7 576, then at 2 316 273. The lockstep now compares both
+counters at every checkpoint, and `POM68K_JIT_LOCKSTEP_CACHE=1` compares
+every line's tag and dirty mask. Together with a temporary fill trace, that
+located three native gaps:
+
+1. A conditional branch's stream words depend on its path. A not-taken
+   `Bcc.W` consumes its displacement and fetches one more word, a `Bcc.L`
+   peeks its second word in program space, an expired `DBcc` reads pc+2.
+   Native code committed the count of the path the tracer took.
+   `branchFetchWords040` / `dbccFetchWords040` now give each path its own
+   count, for the I-cache counter and for the I-ATC counter alike. The I-ATC
+   count had the same latent defect under translation.
+2. A thunk's own I-side access ran before the instruction's stream words
+   were counted. `JSR (A1)` fills its target line inside
+   `pom68kJitJsr040`, so the victim was chosen two counts early. The count
+   is now staged in `PomJitAtcReplay040::cacheFetches`, as the ATC `fetches`
+   already were, committed by `pomJitAtcReplayBegin040` before the first
+   exact thunk, and restored when the instruction replays.
+3. A block's I-cache residency proof covered its code bytes but not the
+   lookahead word Moira fetches after the last instruction: an `RTS` ending
+   a line fills the next one. The proof now includes that word, and
+   `pomCache040CodeMatches` stays inside the armed window; it read the
+   window's host bytes without a bound.
+
+The gate then ran 5 000 000 steps identical, with full line comparison.
+
+Tiers: `asset-none` 152/152; `jit-fast` 8/8 under `POM68K_JIT_REQUIRE_NATIVE`;
+the CPU gates; `m040|jit` with the ROMs and system media 142/142. The x64
+leg (Rosetta) passes `jit_asset_free_lockstep_test`, `cache040_test`,
+`moira_state_test` and `jit_backend_test`. The touched targets build
+warning-free under `-Werror`.
 
 ---
 

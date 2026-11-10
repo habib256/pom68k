@@ -132,6 +132,7 @@ POM68K_JIT_HOT	product	gate:jit_backend_test
 POM68K_JIT_ICACHE_EMIT	chantier	expiry:docs/JIT_BRINGUP.md#68030-icache-attribution
 POM68K_JIT_LINKS	product	gate:jit_backend_test
 POM68K_JIT_LOCKSTEP_BUDGET	test	owner:tests/jit_lockstep_030_test.cpp
+POM68K_JIT_LOCKSTEP_CACHE	test	owner:tests/jit_lockstep_test.cpp
 POM68K_JIT_LOCKSTEP_FINE_AT	test	owner:tests/jit_lockstep_030_test.cpp
 POM68K_JIT_LOCKSTEP_FINE_BUDGET	test	owner:tests/jit_lockstep_030_test.cpp
 POM68K_JIT_LOCKSTEP_FULL_RAM_AT	test	owner:tests/jit_lockstep_030_test.cpp
