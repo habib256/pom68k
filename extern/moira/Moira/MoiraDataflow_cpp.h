@@ -50,7 +50,7 @@ Moira::computeEA(u32 n) {
                 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                 // POM68K Q3: the 68040 restores (An)± on non-last-write
                 // faults too (WinUAE cpu_restore_fixup)
-                if ((cpuModel == Model::M68030 || cpuModel >= Model::M68EC040)
+                if ((mmuPlain020() || cpuModel == Model::M68030 || cpuModel >= Model::M68EC040)
                     && (F & MMU_NOFIXUP) == 0) [[unlikely]]
                     mmuArmFixup<S>(int(n), false);
             }
@@ -64,7 +64,7 @@ Moira::computeEA(u32 n) {
             // POM68K O4 slice 3: see case 3
             if constexpr (C == Core::C68020) {
                 // POM68K Q3: see case 3
-                if ((cpuModel == Model::M68030 || cpuModel >= Model::M68EC040)
+                if ((mmuPlain020() || cpuModel == Model::M68030 || cpuModel >= Model::M68EC040)
                     && (F & MMU_NOFIXUP) == 0) [[unlikely]]
                     mmuArmFixup<S>(int(n), true);
             }
@@ -247,6 +247,17 @@ Moira::computeEAfull(u32 an)
     auto ow = outerDispWords(ext);
     if (ow == 1) od = SEXT<Word>(readExt<C, Word>());
     if (ow == 2) od = readExt<C, Long>();
+
+    // [B] MC68040UM-1993 §§8.4.6.2/8.4.6.7: a continued indexed
+    // MOVEM uses the stacked EA, without repeating memory indirection.
+    // POM68K: consume its extensions, but never re-read the pointer.
+    if constexpr (C == Core::C68020 && (F & MMU_NOFIXUP) &&
+                  (M == Mode::IX || M == Mode::IXPC)) {
+        if (cpuModel >= Model::M68EC040 && mmu040MovemArmed) {
+            cp += penaltyCycles<C, M, S>(ext);
+            return mmu040MovemEa;
+        }
+    }
 
     // Wipe out an if base register is present
     if (bs) an = 0;
@@ -565,6 +576,16 @@ Moira::read(u32 addr)
                               AS == AddrSpace::PROG);
     }
 
+    // [B] MC68020UM-1992 §6.2.2: a DF-cleared data cycle is complete.
+    // POM68K: consume the software result before any physical bus callback.
+    if constexpr (C == Core::C68020 && AS == AddrSpace::DATA) {
+        constexpr u32 firstOffset = (S == Long && (F & REVERSE)) ? 2 : 0;
+        if (mmuSubstitutePlain020(addr + firstOffset, false)) {
+            if (F & POLL) POLL_IPL;
+            return CLIP<S>(mmuRteSubstData);
+        }
+    }
+
     // POM68K Phase C (Mac LC/Mac II, 2026-07-24): record the in-flight
     // sub-access on the PLAIN 68020/EC020 path too, so a device raising
     // /BERR (extBusError) stacks a $B frame with the RIGHT fault address.
@@ -609,7 +630,11 @@ Moira::read(u32 addr)
             SYNC(4);
             if (F & POLL) POLL_IPL;
             if constexpr (kPlain020) { mmuAccAddr = addr; mmuAccSsw = 0x20; }
-            result |= read16(addr & addrMask<C>()) << 16;
+            if constexpr (kPlain020 && AS == AddrSpace::DATA) {
+                if (mmuSubstitutePlain020(addr, false))
+                    result |= u32(u16(mmuRteSubstData)) << 16;
+                else result |= read16(addr & addrMask<C>()) << 16;
+            } else result |= read16(addr & addrMask<C>()) << 16;
             SYNC(2);
 
         } else {
@@ -618,7 +643,11 @@ Moira::read(u32 addr)
             SYNC(4);
             if (F & POLL) POLL_IPL;
             if constexpr (kPlain020) { mmuAccAddr = addr + 2; mmuAccSsw = 0x20; }
-            result |= read16((addr + 2) & addrMask<C>());
+            if constexpr (kPlain020 && AS == AddrSpace::DATA) {
+                if (mmuSubstitutePlain020(addr + 2, false))
+                    result |= u16(mmuRteSubstData);
+                else result |= read16((addr + 2) & addrMask<C>());
+            } else result |= read16((addr + 2) & addrMask<C>());
             SYNC(2);
         }
     }
@@ -670,9 +699,21 @@ Moira::write(u32 addr, u32 val)
                               AS == AddrSpace::PROG);
     }
 
+    // [B] MC68020UM-1992 §6.2.2: a DF-cleared data cycle is complete.
+    // POM68K: consume the software result before any physical bus callback.
+    if constexpr (C == Core::C68020 && AS == AddrSpace::DATA) {
+        constexpr u32 firstOffset = (S == Long && (F & REVERSE)) ? 2 : 0;
+        if (mmuSubstitutePlain020(addr + firstOffset, true)) {
+            if (F & POLL) POLL_IPL;
+            return;
+        }
+    }
+
     // POM68K Phase C: in-flight sub-access recording on the plain
     // 68020/EC020 path — see the read<> counterpart above.
     constexpr bool kPlain020 = (C == Core::C68020);
+
+    if constexpr (kPlain020) mmuDataBuffer = val;
 
     if constexpr (S == Byte) {
 
@@ -709,7 +750,11 @@ Moira::write(u32 addr, u32 val)
             SYNC(4);
             if (F & POLL) POLL_IPL;
             if constexpr (kPlain020) { mmuAccAddr = addr; mmuAccSsw = 0x20; }
-            write16(addr & addrMask<C>(), u16(val >> 16));
+            if constexpr (kPlain020 && AS == AddrSpace::DATA) {
+                mmuDataBuffer = u16(val >> 16);
+                if (!mmuSubstitutePlain020(addr, true))
+                    write16(addr & addrMask<C>(), u16(val >> 16));
+            } else write16(addr & addrMask<C>(), u16(val >> 16));
             SYNC(2);
 
         } else {
@@ -718,7 +763,11 @@ Moira::write(u32 addr, u32 val)
             SYNC(4);
             if (F & POLL) POLL_IPL;
             if constexpr (kPlain020) { mmuAccAddr = addr + 2; mmuAccSsw = 0x20; }
-            write16((addr + 2) & addrMask<C>(), u16(val & 0xFFFF));
+            if constexpr (kPlain020 && AS == AddrSpace::DATA) {
+                mmuDataBuffer = u16(val);
+                if (!mmuSubstitutePlain020(addr + 2, true))
+                    write16((addr + 2) & addrMask<C>(), u16(val & 0xFFFF));
+            } else write16((addr + 2) & addrMask<C>(), u16(val & 0xFFFF));
             SYNC(2);
         }
     }
@@ -875,6 +924,7 @@ Moira::prefetch()
     }
 
     queue.ird = queue.irc;
+#if MOIRA_ENABLE_JIT
     // POM68K JIT code window, 020 flavor (Moira.h § pomJitFetch020); the
     // cycle-exact 68000/68010 cores take the pomJitFetch000 flavor instead,
     // which reproduces read<>'s SYNCs and bus model. Either way pomJitFetch
@@ -892,6 +942,8 @@ Moira::prefetch()
             return;
         }
     }
+#endif
+
     queue.irc = (u16)read<C, AddrSpace::PROG, Word, F>(reg.pc + 2);
     pomSetRB<C>(queue.irc);  // POM68K: 68010-only
 }
@@ -911,7 +963,8 @@ Moira::fullPrefetch()
 
     assert(!misaligned<C>(reg.pc));
 
-    if constexpr (C == Core::C68020) {           // POM68K 020 window
+#if MOIRA_ENABLE_JIT
+    if constexpr (C == Core::C68020) {           // POM68K instruction window
         if (u16 w; pomJitFetch020<false>(reg.pc, w)) {
             queue.irc = w;
             if (delay) SYNC(delay);
@@ -926,6 +979,7 @@ Moira::fullPrefetch()
             return;
         }
     }
+#endif
     queue.irc = (u16)read<C, AddrSpace::PROG, Word>(reg.pc);
     if (delay) SYNC(delay);
     prefetch<C, F>();
@@ -961,14 +1015,19 @@ Moira::readExt()
         // translation at consumption time (WinUAE next_iword_mmu040)
         if (cpuModel >= Model::M68EC040) [[unlikely]] {
             reg.pc += 2;
+#if MOIRA_ENABLE_JIT
             // POM68K JIT code window — the second and by far the busiest
             // fetch site: every extension word past the lookahead
             // (immediates, abs.l, 68020 extended EAs) comes through here.
             if (const u8 *p; pomJitFetch(reg.pc, 2, p)) {
                 queue.irc = u16(u16(p[0]) << 8 | p[1]);
-                pomJitStampAccess(reg.pc);
+                mmu040StampFetch(reg.pc);
                 return;
             }
+            if (pomJitTimingProbe)
+                ++pomJitTiming.fetchWords040;
+#endif
+
             queue.irc = mmu040FetchWord<C>(reg.pc);
             return;
         }
@@ -977,7 +1036,8 @@ Moira::readExt()
     assert(!misaligned<C>(reg.pc));
 
     reg.pc += 2;
-    if constexpr (C == Core::C68020) {           // POM68K 020 window
+#if MOIRA_ENABLE_JIT
+    if constexpr (C == Core::C68020) {           // POM68K instruction window
         if (u16 w; pomJitFetch020<false>(reg.pc, w)) {
             queue.irc = w;
             return;
@@ -988,6 +1048,7 @@ Moira::readExt()
             return;
         }
     }
+#endif
     queue.irc = (u16)read<C, AddrSpace::PROG, Word>(reg.pc);
 }
 

@@ -224,7 +224,7 @@ uint64_t catchCmd(pom68k::dbg::Session& s, Command::Kind k, uint8_t vector,
 
 // The recursive program for step over/out, at $3200.
 constexpr uint32_t kRec = 0x3200, kRecCall = 0x3202, kRecAfter = 0x3206,
-                   kSub = 0x320C, kSubCmp = 0x320E, kSubRecurse = 0x3216,
+                   kSubCmp = 0x320E, kSubRecurse = 0x3216,
                    kSubRts = 0x321A;
 const std::vector<uint8_t> kRecursive = {
     0x70, 0x00,                          // $3200 MOVEQ #0,D0

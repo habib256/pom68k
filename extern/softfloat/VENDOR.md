@@ -20,11 +20,11 @@ WinUAE-core oracle vendor tree, itself vendored from Hatari commit
 SoftFloat-2a). The `oracle/` copy is test-time only and must never be
 included at build time — this `extern/` copy is the one Moira links.
 
-**Rationale**: this is the *same softfloat family the primary oracle
-(WinUAE) executes*. Project policy says the oracle wins disputes, so using
-its exact arithmetic gives numerical convergence with the differential
-corpus *by construction* (identical rounding, NaN propagation, denormal
-and transcendental behaviour).
+**Rationale**: retaining the oracle's arithmetic family makes differential
+comparison useful without introducing a second host floating-point backend.
+This is grade-D evidence, not an accuracy proof by construction. Primary
+manuals and hardware measurements take precedence when they disagree; the
+oracle copy remains independent and test-time only.
 
 ## License
 
@@ -41,6 +41,22 @@ lib target `softfloat68k`).
    (only used for `write_log`/`_T` when `DECIMAL_LOG=1`, which is off) and
    `"softfloat/softfloat-specialize.h"` flattened.
 3. `CMakeLists.txt` + this file added.
+4. `softfloat.c/.h` — the eight `floatx80_internal_*` intermediate-result
+   globals now belong to `float_status`. `getFloatInternal*` and
+   `getRoundedFloatInternal` take that context explicitly; arithmetic
+   algorithms are unchanged. This is a local C API/struct ABI change: rebuild
+   clients with this header, initialize the mode/precision before arithmetic,
+   and use independent status objects for concurrent operations. Moira owns
+   one context per CPU. `fpu_context_test` holds nested CPU execution, all
+   seven result getters and parallel rounding/exception state. The oracle
+   source tree was not changed.
+5. `softfloat-macros.h`, `softfloat.c` — ASan/UBSan corpus replay exposed
+   a 64-bit C shift with count 64 during zero-significand normalization,
+   then signed negation of `INT32_MIN` in `int32_to_floatx80`. The wide
+   shift now handles count 64 explicitly; integer magnitude uses unsigned
+   subtraction. `softfloat_primitives_test` holds 1,040 wide shifts and five
+   exact integer conversions, including the signed minimum. The original
+   oracle copy remains unchanged.
 
 ## Trim list
 

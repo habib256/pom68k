@@ -29,6 +29,7 @@ namespace jit {
 namespace {
 
 using Layout = moira::Moira::PomJitLayout;
+using AtcReplay040 = moira::Moira::PomJitAtcReplay040;
 
 // Code is allocated in independently owned arenas. A full arena no longer
 // forces the Engine to discard and recompile every live block; Compiled
@@ -60,7 +61,6 @@ static_assert(offsetof(moira::Moira::PomJitCache040Entry, physicalTag) == 4);
 static_assert(offsetof(moira::Moira::PomJitCache040Entry, generation) == 8);
 static_assert(offsetof(moira::Moira::PomJitCache040Entry, atcIndex) == 12);
 static_assert(offsetof(moira::Moira::PomJitCache040Entry, line) == 16);
-static_assert(offsetof(moira::Moira::PomJitCache040Entry, atcMru) == 24);
 static_assert(offsetof(moira::Cache040::Line, tag) == 0);
 static_assert(offsetof(moira::Cache040::Line, valid) == 4);
 static_assert(offsetof(moira::Cache040::Line, dirty) == 5);
@@ -68,56 +68,6 @@ static_assert(offsetof(moira::Cache040::Line, data) == 6);
 
 extern "C" void pom68kA64Sync(moira::Moira* cpu, uint32_t cycles) noexcept {
     cpu->pomJitSync(int(cycles));
-}
-extern "C" int pom68kA64Step(moira::Moira* cpu) noexcept {
-    if (!cpu->pomJitCovers(cpu->getPC()) || !cpu->pomJitIdle()) return -1;
-    return cpu->pomJitExecOne() ? 1 : 0;
-}
-// The exact data thunks. `pcWords` (fetchWords << 32 | pc, 0 when the
-// block emits no i-cache charge) is the peripheral-phase access-clock
-// alignment of JIT_BRINGUP § C.4nonies, ported from pom68kJitRead/Write
-// (2026-08-22): an I/O access forces a peripheral flush at the access
-// clock, and the interpreter reaches the same access with the 030 fetch
-// penalty already charged while generated code charges on the success path
-// after the body. Bias the clock by the read-only peek for the access alone
-// — success or fault, the bias is gone before anything else runs, so the
-// success-path charge and the fault re-run both stay exactly as they were.
-// Until this port the backend closed the same class with
-// `guardIcacheHits`, a runtime replay of every thunk-capable instruction
-// whose fetch could still miss; the bias keeps those instructions native.
-extern "C" int pom68kA64Read(moira::Moira* cpu, uint32_t addr,
-                              uint32_t bytes, uint32_t* out,
-                              uint64_t pcWords) noexcept {
-    const moira::i64 bias = pcWords
-        ? cpu->pomJitIcachePeekPenalty(uint32_t(pcWords), int(pcWords >> 32))
-        : 0;
-    if (bias) cpu->pomJitBiasClock(bias);
-    const int ok = cpu->pomJitReadData(addr, int(bytes), *out) ? 1 : 0;
-    if (bias) cpu->pomJitBiasClock(-bias);
-    return ok;
-}
-extern "C" int pom68kA64Write(moira::Moira* cpu, uint32_t addr,
-                               uint32_t bytes, uint32_t value,
-                               uint64_t pcWords) noexcept {
-    const moira::i64 bias = pcWords
-        ? cpu->pomJitIcachePeekPenalty(uint32_t(pcWords), int(pcWords >> 32))
-        : 0;
-    if (bias) cpu->pomJitBiasClock(bias);
-    const int ok = cpu->pomJitWriteData(addr, int(bytes), value) ? 1 : 0;
-    if (bias) cpu->pomJitBiasClock(-bias);
-    return ok;
-}
-
-// JSR/JMP's target-word read (Moira::pomJitReadProg): what the interpreted
-// control transfer leaves in irc. The 030 has an explicit mode-5 path; a
-// 040 full-indirect target needs the same runtime program-space read. 1 =
-// `*out` holds the word, 0 = the untouched instruction must be replayed.
-extern "C" int pom68kA64ReadProg(moira::Moira* cpu, uint32_t addr,
-                                 uint32_t* out) noexcept {
-    uint16_t w = 0;
-    const int ok = cpu->pomJitReadProg(addr, w) ? 1 : 0;
-    *out = w;
-    return ok;
 }
 
 struct Frame {
@@ -153,7 +103,9 @@ struct Frame {
     uint32_t runtimeWrite;
     PeriphDue periphDue;
     uint64_t progHost;      // +192 a proven push pointer across the JSR target read
+    AtcReplay040 atc;
 };
+static_assert(MemoryContract::MaxAccesses == AtcReplay040::Accesses);
 static_assert(offsetof(Frame, linkTable) == 64);
 static_assert(offsetof(Frame, progHost) == 192);
 static_assert(offsetof(Frame, slowStaticHisto) == 80);
@@ -193,7 +145,7 @@ thread_local int gCachedGuest[2] = {-1, -1};
 thread_local LinkCellLookup gLinkCellLookup = nullptr;
 thread_local void* gLinkCellSelf = nullptr;
 // The access-thunk clock-alignment operand of the instruction being
-// emitted (see pom68kA64Read): its traced fetch stream, packed for the
+// emitted (see pom68kJitRead): its traced fetch stream, packed for the
 // thunk's read-only peek. The compile loop sets it per instruction and
 // memLoadGuest/memStoreGuest hand it to the thunk as the fifth argument. 0
 // — no bias — whenever the block emits no i-cache charge or the IR carries
@@ -564,6 +516,8 @@ private:
     std::vector<Fix> fixes_;
     std::vector<LiteralFix> literals_;
 };
+
+#include "JitBackendA64Atc040.inl"
 
 void loadQueueLive(Asm& a, const Layout& L, unsigned scratch = 10);
 void spillQueueLive(Asm& a, const Layout& L, unsigned scratch = 12);
@@ -1477,7 +1431,7 @@ void commitQueue(Asm& a, const Layout& L, uint16_t ird, uint16_t irc,
 void guardCodeSlices(Asm& a, unsigned entry, unsigned pageOff, int bytes,
                      int miss) {
     const int clear = a.label();
-    a.ldrW(12, entry, 4);                // PomJitDtlbEntry::codeMask
+    a.ldrH(12, entry, 4);                // PomJitDtlbEntry::codeMask
     a.cbzW(12, clear);
     for (int end = 0; end < (bytes > 1 ? 2 : 1); end++) {
         if (end) a.addImmW(10, pageOff, unsigned(bytes - 1));
@@ -1566,7 +1520,7 @@ void observeRuntimeAddress(Asm& a, const Layout& L, uint16_t opcode) {
 // Translate guest address w9. On success x14 is the host byte pointer; a
 // refused mapping or cross-page access transfers to the untouched slow path.
 void memProbe(Asm& a, const Layout& L, bool super, int bytes, bool write,
-              int miss, bool cacheRead = false, int cacheWriteHit = -1,
+              int miss, AtcRoute route, bool cacheRead = false, int cacheWriteHit = -1,
               bool cacheOnly = false, bool countCacheHit = true) {
     const int fill = a.label(), have = a.label(), done = a.label();
     const int crossMiss = gRuntimeReasonHisto ? a.label() : miss;
@@ -1604,21 +1558,9 @@ void memProbe(Asm& a, const Layout& L, bool super, int bytes, bool write,
         a.ldrW(13, 0, L.cache040Gen);
         a.cmpW(12, 13); a.bCond(Asm::NE, cacheMiss);
 
-        // The interpreter touches the data ATC even when the D-cache line
-        // itself hits. Bypassing that lookup is exact only while its memo
-        // already selects this entry and its pseudo-LRU bit is already set.
-        // 0xFF denotes identity translation, which has no ATC state.
-        const int atcExact = a.label();
-        a.ldrB(12, 14, 12);
-        a.movW(13, 0xFF);
-        a.cmpW(12, 13); a.bCond(Asm::EQ, atcExact);
-        a.address(11, 0, L.cache040AtcLastD);
-        a.ldrB(13, 11, cacheWrite ? 1 : 0);
-        a.cmpW(12, 13); a.bCond(Asm::NE, cacheMiss);
-        a.ldrX(11, 14, 24);
-        a.ldrB(13, 11, 0);
-        a.cbzW(13, cacheMiss);
-        a.bind(atcExact);
+        // The retired access advances the ATC counter even on a D-cache
+        // hit. No replacement state depends on the last-hit lookup memo.
+        recordAtcRoute040(a, L, route, 14, true);
 
         // The cache way is stable, its contents are not: validate both the
         // valid bit and physical tag before exposing its big-endian bytes.
@@ -1673,6 +1615,8 @@ void memProbe(Asm& a, const Layout& L, bool super, int bytes, bool write,
     // Read codeMask before x14 stops being the entry pointer and becomes
     // the host pointer. This is the arm64 half of the 256-byte write guard.
     if (write) guardCodeSlices(a, 14, 13, bytes, maskMiss);
+    recordAtcRoute040(a, L, route, 14, false);
+    a.ubfxW(13, 9, 0, 12);
     a.ldrX(14, 14, 8);
     a.cbzX(14, nonPlainMiss);
     a.addX(14, 14, 13);
@@ -1707,6 +1651,12 @@ void memProbe(Asm& a, const Layout& L, bool super, int bytes, bool write,
         a.address(15, 0, L.dtlbW);
         a.addX(15, 15, 10);
         guardCodeSlices(a, 15, 13, bytes, maskMiss);
+    }
+    if (!L.is030 && route.mask) {
+        a.ubfxW(10, 9, 12, 8); a.lslX(10, 10, 4);
+        a.address(15, 0, write ? L.dtlbW : L.dtlbR); a.addX(15, 15, 10);
+        recordAtcRoute040(a, L, route, 15, false);
+        a.ubfxW(13, 9, 0, 12);
     }
     a.addX(14, 14, 13);
 
@@ -1764,7 +1714,7 @@ void memLoadGuest(Asm& a, const Layout& L, bool super, int bits, unsigned rd,
     // CAS and turn this ordinary read into a locked, cache-bypassing one.
     const bool exactAccess = access.exactThunk && !L.cache040Live;
     if (!exactAccess) {
-        memProbe(a, L, super, bits / 8, false, slow, cacheRead);
+        memProbe(a, L, super, bits / 8, false, slow, AtcRoute(access), cacheRead);
         if (ea) commitEaBeforeAccess(a, L, *ea, bits, access);
         loadGuest(a, bits, rd);
         return;
@@ -1772,7 +1722,7 @@ void memLoadGuest(Asm& a, const Layout& L, bool super, int bits, unsigned rd,
 
     const int miss = a.label(), done = a.label();
     if (!access.exactRequired) {
-        memProbe(a, L, super, bits / 8, false, miss, cacheRead);
+        memProbe(a, L, super, bits / 8, false, miss, AtcRoute(access), cacheRead);
         if (ea) commitEaBeforeAccess(a, L, *ea, bits, access);
         loadGuest(a, bits, rd);
         a.b(done);
@@ -1781,6 +1731,7 @@ void memLoadGuest(Asm& a, const Layout& L, bool super, int bits, unsigned rd,
     a.bind(miss);
     a.strX(21, 1, 96);                 // failed thunk must leave no cycle debt
     a.strX(21, 0, L.clock);             // a device read may advance time
+    prepareAtcThunk040(a, L, access.index, 5);
     a.address(3, 1, 72);                // Frame::value
     a.movRegW(1, 9);                    // guest address
     a.movW(2, unsigned(bits / 8));
@@ -1788,7 +1739,7 @@ void memLoadGuest(Asm& a, const Layout& L, bool super, int bits, unsigned rd,
     if (icacheCountersLive(L)) spillIcacheCounters(a, L);
     spillQueueLive(a, L);
     a.movX(4, gAccessPcWords);          // access-clock alignment operand
-    a.movX(16, uint64_t(uintptr_t(&pom68kA64Read)));
+    a.movX(16, uint64_t(uintptr_t(&pom68kJitRead)));
     spillPackedCcr(a, L);
     a.blr(16);
     a.movRegW(14, 0);
@@ -1821,11 +1772,11 @@ bool loadReplayableMemory(Asm& a, const Layout& L, bool super, const Ea& ea,
         return false;
     addrOf(a, L, ea, bits);
     if (L.cache040Live)
-        memProbe(a, L, super, bits / 8, false, slow,
+        memProbe(a, L, super, bits / 8, false, slow, AtcRoute(access),
                  /*cacheRead=*/true, /*cacheWriteHit=*/-1,
                  /*cacheOnly=*/true, /*countCacheHit=*/false);
     else
-        memProbe(a, L, super, bits / 8, false, slow);
+        memProbe(a, L, super, bits / 8, false, slow, AtcRoute(access));
     loadGuest(a, bits, rd);
     return true;
 }
@@ -1943,7 +1894,7 @@ void memStoreGuest(Asm& a, const Layout& L, bool super, int bits, unsigned rs,
         }
         const int cacheHit = cacheWrite ? a.label() : -1;
         const int done = cacheWrite ? a.label() : -1;
-        memProbe(a, L, super, bits / 8, true, slow, false, cacheHit);
+        memProbe(a, L, super, bits / 8, true, slow, AtcRoute(access), false, cacheHit);
         if (ea) commitEaBeforeAccess(a, L, *ea, bits, access);
         a.ldrW(rs, 1, 72);
         storeGuest(a, bits, rs);
@@ -1963,7 +1914,7 @@ void memStoreGuest(Asm& a, const Layout& L, bool super, int bits, unsigned rs,
     if (access.exactRequired) {
         a.b(miss);
     } else {
-        memProbe(a, L, super, bits / 8, true, miss);
+        memProbe(a, L, super, bits / 8, true, miss, AtcRoute(access));
         if (ea) commitEaBeforeAccess(a, L, *ea, bits, access);
         a.ldrW(rs, 1, 72);
         storeGuest(a, bits, rs);
@@ -1973,6 +1924,7 @@ void memStoreGuest(Asm& a, const Layout& L, bool super, int bits, unsigned rs,
     a.bind(miss);
     a.strX(21, 1, 96);
     a.strX(21, 0, L.clock);
+    prepareAtcThunk040(a, L, access.index, 5);
     a.ldrW(3, 1, 72);
     a.movRegW(1, 9);
     a.movW(2, unsigned(bits / 8));
@@ -1980,7 +1932,7 @@ void memStoreGuest(Asm& a, const Layout& L, bool super, int bits, unsigned rs,
     if (icacheCountersLive(L)) spillIcacheCounters(a, L);
     spillQueueLive(a, L);
     a.movX(4, gAccessPcWords);          // access-clock alignment operand
-    a.movX(16, uint64_t(uintptr_t(&pom68kA64Write)));
+    a.movX(16, uint64_t(uintptr_t(&pom68kJitWrite)));
     spillPackedCcr(a, L);
     a.blr(16);
     a.movRegW(14, 0);
@@ -2082,10 +2034,10 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             return false;
 
         addrOf(a, L, src, bits);
-        memProbe(a, L, ir.super, bits / 8, false, slow);
+        memProbe(a, L, ir.super, bits / 8, false, slow, AtcRoute(srcRead));
         a.strX(14, 1, 120);                 // source host pointer
         addrOf(a, L, dst, bits);
-        memProbe(a, L, ir.super, bits / 8, false, slow);
+        memProbe(a, L, ir.super, bits / 8, false, slow, AtcRoute(dstRead));
         a.strX(14, 1, 96);                  // destination host pointer
 
         commitEaBeforeAccess(a, L, src, bits, srcRead);
@@ -2230,7 +2182,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             const unsigned step = src.reg == 7 && bits == 8
                 ? 2u : unsigned(bits / 8);
             loadGuestRegister(a, L, 9, true, unsigned(src.reg));
-            memProbe(a, L, ir.super, bits / 8, false, slow);
+            memProbe(a, L, ir.super, bits / 8, false, slow, AtcRoute(srcAccess));
             a.strX(14, 1, 120);
             loadGuestRegister(a, L, 9, true, unsigned(src.reg));
             a.addImmW(9, 9, step);
@@ -2238,7 +2190,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 a.movW(10, uint32_t(dst.value));
                 a.addW(9, 9, 10);
             }
-            memProbe(a, L, ir.super, bits / 8, true, slow);
+            memProbe(a, L, ir.super, bits / 8, true, slow, AtcRoute(dstAccess));
             a.strX(14, 1, 96);
 
             a.ldrX(14, 1, 120); loadGuest(a, bits, 11);
@@ -2261,12 +2213,12 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             if (cachePair) {
                 if (!srcAccess.cache || !dstAccess.cache) return false;
                 addrOf(a, L, src, bits);
-                memProbe(a, L, ir.super, 4, false, slow, true, -1,
+                memProbe(a, L, ir.super, 4, false, slow, AtcRoute(srcAccess), true, -1,
                          true, false);
                 a.strX(14, 1, 120);                  // source line bytes
                 addrOf(a, L, dst, bits);
                 const int writeHit = a.label();
-                memProbe(a, L, ir.super, 4, true, slow, false, writeHit,
+                memProbe(a, L, ir.super, 4, true, slow, AtcRoute(dstAccess), false, writeHit,
                          true, false);
                 a.b(slow);                           // cache-only success branches
                 a.bind(writeHit);
@@ -2307,7 +2259,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 // device FIFO has been popped it must never be replayed just
                 // because the destination translation was unavailable.
                 addrOf(a, L, dst, bits);
-                memProbe(a, L, ir.super, bits / 8, true, slow);
+                memProbe(a, L, ir.super, bits / 8, true, slow, AtcRoute(dstAccess));
                 a.strX(14, 1, 120);              // proved destination bytes
 
                 addrOf(a, L, src, bits);
@@ -2332,10 +2284,10 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             // untouched replay incremented An a second time. Probe both
             // mappings first and only then expose either EA side effect.
             addrOf(a, L, src, bits);
-            memProbe(a, L, ir.super, bits / 8, false, slow);
+            memProbe(a, L, ir.super, bits / 8, false, slow, AtcRoute(srcAccess));
             a.strX(14, 1, 120);            // source host pointer
             addrOf(a, L, dst, bits);
-            memProbe(a, L, ir.super, bits / 8, true, slow);
+            memProbe(a, L, ir.super, bits / 8, true, slow, AtcRoute(dstAccess));
             a.strX(14, 1, 96);             // destination host pointer
 
             commitEaBeforeAccess(a, L, src, bits, srcAccess);
@@ -2376,7 +2328,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 srcAccess.cache = false;
             }
             addrOfFullIndirectPointer(a, L, src);
-            memProbe(a, L, ir.super, 4, false, slow);
+            memProbe(a, L, ir.super, 4, false, slow, AtcRoute(pointerAccess));
             loadGuest(a, 32, 10);
             finishFullIndirect(a, L, src, 10);
             memLoadGuest(a, L, ir.super, bits, 11, slow, srcAccess);
@@ -2425,7 +2377,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 // PI is native only for a direct, faultless RAM mapping.
                 // Probe before publishing CCR, PC/queue or the An update so
                 // MMIO and /BERR reach Moira with a pristine entry boundary.
-                memProbe(a, L, ir.super, bits / 8, true, slow);
+                memProbe(a, L, ir.super, bits / 8, true, slow, AtcRoute(dstAccess));
                 commitEaBeforeAccess(a, L, dst, bits, dstAccess);
                 a.ldrW(11, 1, 72);
                 emitLogicFlags(a, L, 11, bits);
@@ -2490,7 +2442,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 if (action == 0)
                     memLoadGuest(a, L, ir.super, bits, 11, slow, read, &dst);
                 else {
-                    memProbe(a, L, ir.super, bits / 8, true, slow);
+                    memProbe(a, L, ir.super, bits / 8, true, slow, AtcRoute(read, write));
                     commitEaBeforeAccess(a, L, dst, bits, read);
                     loadGuest(a, bits, 11);
                 }
@@ -2580,7 +2532,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             if (kind == AluOperation::Cmp)
                 memLoadGuest(a, L, ir.super, bits, 9, slow, read, &dst);
             else {
-                memProbe(a, L, ir.super, bits / 8, true, slow);
+                memProbe(a, L, ir.super, bits / 8, true, slow, AtcRoute(read, write));
                 commitEaBeforeAccess(a, L, dst, bits, read);
                 loadGuest(a, bits, 9);
             }
@@ -2687,7 +2639,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         if (dst.memory) {
             if (slow < 0) return false;
             addrOf(a, L, dst, bits);
-            memProbe(a, L, ir.super, bits / 8, true, slow);
+            memProbe(a, L, ir.super, bits / 8, true, slow, AtcRoute(read, write));
             commitEaBeforeAccess(a, L, dst, bits, read);
             loadGuest(a, bits, 9);
         } else {
@@ -2822,7 +2774,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                     in.memory.order != MemoryOrder::Sequential)
                     return false;
                 addrOfFullIndirectPointer(a, L, src);
-                memProbe(a, L, ir.super, 4, false, slow);
+                memProbe(a, L, ir.super, 4, false, slow, AtcRoute(pointerRead));
                 loadGuest(a, 32, 10);
                 finishFullIndirect(a, L, src, 10);
                 memLoadGuest(a, L, ir.super, bits, 10, slow, read);
@@ -2863,7 +2815,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
         if (!memoryRmwAccessPair(read, write) || !memory.complete())
             return false;
         addrOf(a, L, dst, bits);
-        memProbe(a, L, ir.super, bits / 8, true, slow);
+        memProbe(a, L, ir.super, bits / 8, true, slow, AtcRoute(read, write));
         commitEaBeforeAccess(a, L, dst, bits, read);
         loadGuest(a, bits, 9);
         loadSized(a, L, 10, false, dn, bits);
@@ -3044,7 +2996,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 a.ldrW(9, 0, L.a + unsigned(ea.reg) * 4);
                 a.movW(10, unsigned(n * bytes)); a.subW(9, 9, 10);
                 a.strW(9, 1, 44);
-                memProbe(a, L, ir.super, n * bytes, true, slow);
+                memProbe(a, L, ir.super, n * bytes, true, slow, AtcRoute(span, unsigned(n)));
                 a.ldrW(10, 0, L.a + unsigned(ea.reg) * 4);
                 int j = 0;
                 for (int b = 0; b < 16; b++) {
@@ -3058,7 +3010,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             }
 
             addrOf(a, L, ea, bits); a.strW(9, 1, 44);
-            memProbe(a, L, ir.super, n * bytes, !toRegs, slow);
+            memProbe(a, L, ir.super, n * bytes, !toRegs, slow, AtcRoute(span, unsigned(n)));
             int j = 0;
             for (int b = 0; b < 16; b++) {
                 if (!(mask & (1u << b))) continue;
@@ -3187,7 +3139,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             if (slow < 0) return false;
             if (indirectTst) {
                 addrOfFullIndirectPointer(a, L, ea);
-                memProbe(a, L, ir.super, 4, false, slow);
+                memProbe(a, L, ir.super, 4, false, slow, AtcRoute(pointerRead));
                 loadGuest(a, 32, 10);
                 finishFullIndirect(a, L, ea, 10);
                 memLoadGuest(a, L, ir.super, bits, 9, slow, read);
@@ -3196,7 +3148,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 if (tst)
                     memLoadGuest(a, L, ir.super, bits, 9, slow, read, &ea);
                 else if (sem.operation != SemanticOp::Clear) {
-                    memProbe(a, L, ir.super, bits / 8, true, slow);
+                    memProbe(a, L, ir.super, bits / 8, true, slow, AtcRoute(read, write));
                     commitEaBeforeAccess(a, L, ea, bits, read);
                     loadGuest(a, bits, 9);
                 }
@@ -3599,7 +3551,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 // Save both the host pointer and the original longword:
                 // flag construction uses w14 for the bit offset and the
                 // insertion path needs the pristine destination afterwards.
-                memProbe(a, L, ir.super, 4, true, slow);
+                memProbe(a, L, ir.super, 4, true, slow, AtcRoute(read, write));
                 commitEaBeforeAccess(a, L, src, 32, read);
                 loadGuest(a, 32, 11);
                 a.strX(14, 1, 120);
@@ -3623,7 +3575,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 a.addImmW(17, 17, 1);
                 a.strW(17, 1, 76);                // normalized width
 
-                memProbe(a, L, ir.super, 4, !readOnly, slow);
+                memProbe(a, L, ir.super, 4, !readOnly, slow, readOnly ? AtcRoute(read) : AtcRoute(read, write));
                 a.strX(14, 1, 120);               // first host pointer
 
                 const int noTail = a.label(), haveData = a.label();
@@ -3635,7 +3587,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 a.bCond(Asm::LS, noTail);
 
                 a.ldrW(9, 1, 44); a.addImmW(9, 9, 4);
-                memProbe(a, L, ir.super, 1, !readOnly, slow);
+                memProbe(a, L, ir.super, 1, !readOnly, slow, readOnly ? AtcRoute(tail) : AtcRoute(tail, tailWrite));
                 if (!readOnly) a.strX(14, 1, 96); // tail host pointer
                 loadGuest(a, 8, 10);
                 a.ldrX(14, 1, 120); loadGuest(a, 32, 11);
@@ -3981,6 +3933,7 @@ void commitQueue(Asm& a, const Layout&, uint16_t ird, uint16_t irc,
 void chargeAndRetire(Asm& a, const Layout& L, unsigned cycles,
                      bool paced, int batch, uint32_t,
                      uint32_t, bool) {
+    commitAtcInstruction040(a, L);
     if (paced) {
         // Cpu040::sync's batching decision, inlined. The guest clock stays
         // canonical in Moira memory, so cold calls and linked blocks need no
@@ -4179,11 +4132,12 @@ void leaveToDynamic(Asm& a, const Layout& L, const BlockIr& ir,
 void readProgWord(Asm& a, const Layout& L, int slow) {
     a.strX(21, 1, 96);
     a.strX(21, 0, L.clock);
+    prepareAtcThunk040(a, L, AtcReplay040::Accesses, 3);
     a.address(2, 1, 72);                // out = Frame::value
     a.movRegW(1, 9);                    // target address
     if (icacheCountersLive(L)) spillIcacheCounters(a, L);
     spillQueueLive(a, L);
-    a.movX(16, uint64_t(uintptr_t(&pom68kA64ReadProg)));
+    a.movX(16, uint64_t(uintptr_t(&pom68kJitReadProg)));
     spillPackedCcr(a, L);
     a.blr(16);
     a.movRegW(14, 0);
@@ -4326,11 +4280,11 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
                 // plain mappings first so a stack refusal can never replay a
                 // device read, then perform the architectural order once.
                 a.strW(9, 1, 40);                  // pointer guest address
-                memProbe(a, L, ir.super, 4, false, slow);
+                memProbe(a, L, ir.super, 4, false, slow, AtcRoute(pointerRead));
                 a.strX(14, 1, 120);                // pointer host address
                 a.ldrW(9, 0, L.a + 7 * 4); a.subImmW(9, 9, 4);
                 a.strW(9, 1, 44);                  // new A7
-                memProbe(a, L, ir.super, 4, true, slow);
+                memProbe(a, L, ir.super, 4, true, slow, AtcRoute(write));
                 a.strX(14, 1, 192);                // stack host address
                 a.ldrX(14, 1, 120); loadGuest(a, 32, 11);
                 finishFullIndirect(a, L, ea, 11);
@@ -4340,13 +4294,15 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
         }
         a.strW(9, 1, 48);                           // target (Frame::saveV)
         a.ubfxW(9, 9, 0, 1); a.cbnzW(9, slow);
-        if (jsr && !L.is030 && L.cache040Live) {
+        // The 040 target-word read owns an I-ATC access even with caches
+        // disabled. Use the ordered push/read transaction in both modes.
+        if (jsr && !L.is030 && (L.cache040Live || !fullIndirect)) {
             if (fullIndirect) {
                 watchRefusal(L, ir, in, "jsr:cache040-full-indirect");
                 return false;
             }
             emitJsr040Transaction(a, L, ir, in, op, control, opCost,
-                                  fault, epilogue, paced, batch, linkMask);
+                                  fault, epilogue, paced, batch, linkMask, write);
             return true;
         }
         if (fullIndirect && jsr) {
@@ -4392,7 +4348,7 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
             if (!fullIndirect) {
                 a.ldrW(9, 0, L.a + 7 * 4); a.subImmW(9, 9, 4);
                 a.strW(9, 1, 44);                       // the new A7
-                memProbe(a, L, ir.super, 4, true, slow); // x14 = proven host
+                memProbe(a, L, ir.super, 4, true, slow, AtcRoute(write)); // x14 = proven host
                 a.strX(14, 1, 192);                     // Frame::progHost
                 a.ldrW(9, 1, 48);
                 // Moira pushes before reading the first target word. Reordering
@@ -4583,7 +4539,7 @@ public:
         // 6,000-frame budget beats threaded with the same fingerprint.
         c.autoFamilies = kGuest68040 | kGuest68030;
         c.profitScore68030 = 64;
-        // pom68kA64Read/Write carry the § C.4nonies access-clock bias since
+        // pom68kJitRead/Write carry the § C.4nonies access-clock bias since
         // 2026-08-22 (ported from x64, replacing the guardIcacheHits
         // replay) — the declaration that turns the restart-base and BSR.W
         // admission DEFAULTS on for this backend too, on the a64 120k
@@ -4800,7 +4756,7 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
         // A successful exact MMIO thunk may call Cpu030::stall/catchUp from
         // inside the operand access, and post-success charging would
         // present that access to peripherals the fetch penalty too early.
-        // The thunks align the clock themselves (pom68kA64Read/Write, the
+        // The thunks align the clock themselves (pom68kJitRead/Write, the
         // § C.4nonies bias) from this operand; until 2026-08-22 the same
         // class was closed by `guardIcacheHits`, which replayed the whole
         // instruction through Moira unless the block-local shadow proved a
@@ -4808,6 +4764,10 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
         gAccessPcWords = icache && in.fetchWords
             ? (uint64_t(in.fetchWords) << 32) | in.pc : 0;
         const Asm::Mark mark = a.mark();
+        if (!L.is030 && !in.fetchWords040) {
+            a.ldrB(12, 0, L.atcWindow040); a.cbnzW(12, slowRuntime[i]);
+        }
+        beginAtcInstruction040(a, L, in);
         // mmu040InstrStart's simple POLL_IPL is already satisfied here.
         // setIPL() raises CHECK_IRQ whenever the pin changes, and guards()
         // exits before this instruction if any control flag is set. The
@@ -4825,6 +4785,10 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
         } else if (canEmit(in.opcode)) {
             native = emitRegInstr(a, L, ir, in, slowRuntime[i],
                                   emittedCycles);
+        }
+        if (native && !L.is030 && gAtcRoutes040 != memoryContractMask(in.memory)) {
+            watchRefusal(L, ir, in, "ATC access routing incomplete");
+            native = false;
         }
         if (!native) {
             // An emitter is allowed to discover a length/cycle mismatch
@@ -4935,7 +4899,9 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
         a.strX(21, 0, L.clock);
         if (icache) spillIcacheCounters(a, L);
         spillQueueLive(a, L);
-        a.movX(16, uint64_t(uintptr_t(&pom68kA64Step)));
+        if (L.is030) a.movX(1, 0);
+        else a.address(1, 1, kAtcFrame040);
+        a.movX(16, uint64_t(uintptr_t(&pom68kJitStep)));
         spillPackedCcr(a, L);
         a.blr(16);
         a.movRegW(14, 0);                 // preserve helper result
@@ -5098,6 +5064,7 @@ RunResult A64Backend::run(Compiled* c, Context& ctx) {
     f.slowInstrs = 0;
     using Fn = void (*)(moira::Moira*, Frame*);
     reinterpret_cast<Fn>(static_cast<A64Compiled*>(c)->entry)(ctx.cpu, &f);
+    if (f.atc.active) ctx.cpu->pomJitAtcReplayAbort040(f.atc);
     return RunResult{f.instrs, f.slowInstrs, Exit(f.exit)};
 }
 

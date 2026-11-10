@@ -196,22 +196,6 @@ enum {
 	float_flag_decimal =   0x80
 };
 
-/*----------------------------------------------------------------------------
- | Variables for storing sign, exponent and significand of overflowed or 
- | underflowed extended double-precision floating-point value.
- | Variables for storing sign, exponent and significand of internal extended 
- | double-precision floating-point value for external use.
- *----------------------------------------------------------------------------*/
-
-extern flag floatx80_internal_sign;
-extern int32_t floatx80_internal_exp;
-extern uint64_t floatx80_internal_sig;
-extern int32_t floatx80_internal_exp0;
-extern uint64_t floatx80_internal_sig0;
-extern uint64_t floatx80_internal_sig1;
-extern int8_t floatx80_internal_precision;
-extern int8_t floatx80_internal_mode;
-
 typedef struct float_status {
     signed char float_detect_tininess;
     signed char float_rounding_mode;
@@ -224,19 +208,28 @@ typedef struct float_status {
     flag default_nan_mode;
     flag snan_bit_is_one;
 	flag floatx80_special_flags;
+    /* POM68K: per-context intermediate result, read by getFloatInternal*. */
+    flag floatx80_internal_sign;
+    int32_t floatx80_internal_exp;
+    uint64_t floatx80_internal_sig;
+    int32_t floatx80_internal_exp0;
+    uint64_t floatx80_internal_sig0;
+    uint64_t floatx80_internal_sig1;
+    int8_t floatx80_internal_precision;
+    int8_t floatx80_internal_mode;
 } float_status;
 
 /*----------------------------------------------------------------------------
  | Function for getting sign, exponent and significand of extended
  | double-precision floating-point intermediate result for external use.
  *----------------------------------------------------------------------------*/
-floatx80 getFloatInternalOverflow( void );
-floatx80 getFloatInternalUnderflow( void );
-floatx80 getFloatInternalRoundedAll( void );
-floatx80 getFloatInternalRoundedSome( void );
-floatx80 getFloatInternalUnrounded( void );
-floatx80 getFloatInternalFloatx80( void );
-uint64_t getFloatInternalGRS( void );
+floatx80 getFloatInternalOverflow( const float_status *status );
+floatx80 getFloatInternalUnderflow( const float_status *status );
+floatx80 getFloatInternalRoundedAll( const float_status *status );
+floatx80 getFloatInternalRoundedSome( const float_status *status );
+floatx80 getFloatInternalUnrounded( const float_status *status );
+floatx80 getFloatInternalFloatx80( const float_status *status );
+uint64_t getFloatInternalGRS( const float_status *status );
 
 static inline void set_float_detect_tininess(int val, float_status *status)
 {
@@ -423,7 +416,7 @@ flag floatx80_lt( floatx80, floatx80, float_status *status);
 #ifdef SOFTFLOAT_68K
 // functions are in softfloat.c
 floatx80 roundSaveFloatx80Internal( int8_t roundingPrecision, flag zSign, int32_t zExp, uint64_t zSig0, uint64_t zSig1, float_status *status );
-void getRoundedFloatInternal( int8_t roundingPrecision, flag *pzSign, int32_t *pzExp, uint64_t *pzSig );
+void getRoundedFloatInternal( int8_t roundingPrecision, flag *pzSign, int32_t *pzExp, uint64_t *pzSig, const float_status *status );
 floatx80 roundSigAndPackFloatx80( int8_t roundingPrecision, flag zSign, int32_t zExp, uint64_t zSig0, uint64_t zSig1, float_status *status );
 floatx80 floatx80_move( floatx80 a, float_status *status );
 floatx80 floatx80_abs( floatx80 a, float_status *status );

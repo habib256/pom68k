@@ -27,6 +27,7 @@
 #include "LleSession.h"
 #include "SaveState.h"
 #include "SaveStateMachines.h"
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <cstdio>
@@ -210,6 +211,82 @@ void testFamily(const char* family, const std::vector<uint8_t>& rom) {
         cpuchunk::explain(i, cpuPayloadStart(direct), n);
     }
 }
+
+template<class Rig>
+void testCopybackSnapshot(const char* family, const std::vector<uint8_t>& rom, int engine) {
+    auto source = std::make_unique<Rig>(rom);
+    auto target = std::make_unique<Rig>(rom);
+    source->cpu.setEngine(engine); target->cpu.setEngine(engine);
+    source->cpu.runCycles(4000); target->cpu.runCycles(6000);
+    auto seed = [&](Rig& rig, uint32_t value) {
+        rig.cpu.setPomCache040(true);
+        rig.cpu.setCACR(0x80008000);
+        rig.cpu.setDTT0(0x0000C020);       // RAM is copyback
+        for (unsigned i = 0; i < 4; ++i) rig.mem.write8(0x4000 + i, 0x11);
+        check(rig.cpu.pomJitWriteData(0x4000, 4, value), family, "cache: create dirty RAM line");
+    };
+    seed(*source, 0xA1B2C3D4);
+    const auto sourceClock = source->cpu.getClock();
+    const Blob snapshot = saveOf(*source);
+    check(source->mem.peek8(0x4000) == 0x11 &&
+          source->cpu.getClock() == sourceClock &&
+          source->cpu.pomCache040Data().lookup(0x4000)->dirty,
+          family, "cache: save leaves dirty data, RAM and guest time unchanged");
+
+    // The target already ran with cacheless compiled blocks. Restoring
+    // cache-active state must discard those mappings and restore the mode.
+    std::string err;
+    check(pom68k::load(target->mem, target->cpu, Rig::kKind,
+                       snapshot.data(), snapshot.size(), err), family,
+          "cache: load active cache into a cacheless target");
+    check(target->cpu.pomCache040Armed() && target->mem.peek8(0x4000) == 0x11,
+          family, "cache: mode restored while backing RAM remains stale");
+    check(saveOf(*target) == snapshot, family, "cache: exact container re-save");
+    uint32_t value = 0;
+    check(target->cpu.pomJitReadData(0x4000, 4, value) && value == 0xA1B2C3D4,
+          family, "cache: guest reads restored copyback data");
+    source->cpu.pomJitReadData(0x4000, 4, value); // symmetric exact access
+    source->cpu.runCycles(12000); target->cpu.runCycles(12000);
+    check(saveOf(*source) == saveOf(*target), family,
+          engine ? "cache: JIT execution after restore is deterministic"
+                 : "cache: interpreter execution after restore is deterministic");
+
+    seed(*target, 0xDEADBEEF);
+    const Blob before = saveOf(*target);
+    Blob broken;
+    broken.insert(broken.end(), snapshot.begin(), snapshot.begin() + sizeof sav::kMagic);
+    const uint8_t* cursor = snapshot.data() + sizeof sav::kMagic;
+    sav::ChunkView cv;
+    while (sav::nextChunk(cursor, snapshot.data() + snapshot.size(), cv)) {
+        char tag[4]; std::copy(cv.tag, cv.tag + 4, tag);
+        sav::Chunk chunk(broken, tag);
+        sav::Writer writer(broken);
+        // Force rejection after the machine and nearly all CPU fields
+        // have been applied, so rollback has to recover live dirty lines.
+        writer.bytes(cv.data, cv.is("CPU ") ? cv.len - 1 : cv.len);
+    }
+    check(!pom68k::load(target->mem, target->cpu, Rig::kKind,
+                        broken.data(), broken.size(), err) && saveOf(*target) == before,
+          family, "cache: corrupt CPU payload rolls back the full container");
+    check(target->cpu.pomJitReadData(0x4000, 4, value) && value == 0xDEADBEEF &&
+          target->mem.peek8(0x4000) == 0x11,
+          family, "cache: failed load retains dirty target bytes outside RAM");
+
+    Blob old = snapshot;
+    cursor = old.data() + sizeof sav::kMagic;
+    while (sav::nextChunk(cursor, old.data() + old.size(), cv)) {
+        if (!cv.is("HEAD")) continue;
+        const auto offset = size_t(cv.data - old.data());
+        old[offset] = 29; old[offset + 1] = old[offset + 2] = old[offset + 3] = 0;
+        break;
+    }
+    const Blob beforeOld = saveOf(*target);
+    check(!pom68k::load(target->mem, target->cpu, Rig::kKind,
+                        old.data(), old.size(), err) &&
+          err.find("save state version 29") != std::string::npos &&
+          saveOf(*target) == beforeOld,
+          family, "cache: v29 refused before mutating the target");
+}
 }  // namespace
 
 int main() {
@@ -221,6 +298,13 @@ int main() {
     testFamily<Q700Rig>("q700", rom);
     testFamily<Q900Rig>("q900", rom);
     testFamily<Q630Rig>("q630", rom);
+    for (int engine : {0, 1}) {
+        testCopybackSnapshot<Q605Rig>("q605", rom, engine);
+        testCopybackSnapshot<CentrisRig>("centris", rom, engine);
+        testCopybackSnapshot<Q700Rig>("q700", rom, engine);
+        testCopybackSnapshot<Q900Rig>("q900", rom, engine);
+        testCopybackSnapshot<Q630Rig>("q630", rom, engine);
+    }
 
     // Product-conformance stamp: a strict qualified state reloads, an HLE
     // state is explicitly refused, and the CPU engine cannot be switched

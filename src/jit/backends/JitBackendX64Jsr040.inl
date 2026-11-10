@@ -1,8 +1,9 @@
-// Cache-active 68040 JSR commit tail. Unlike ordinary access thunks, a zero
+// 68040 JSR commit tail. Unlike ordinary access thunks, a zero
 // result has already processed the post-push fault and takes Exit::Fault.
 void Emitter::emitJsr040Transaction(size_t i, uint16_t op, unsigned opCost,
                                     bool constant,
-                                    const ControlFlowPlan& control)
+                                    const ControlFlowPlan& control,
+                                    const MemoryAccessPlan& push)
 {
     const Instr& in = ir_.instrs[i];
     spillClock();
@@ -11,6 +12,8 @@ void Emitter::emitJsr040Transaction(size_t i, uint16_t op, unsigned opCost,
     a_.movRI(RDX, control.returnAddress);
     a_.movRM(Sz::L, RCX, F(kFValue));
     a_.movRI(R8, op);
+    atcRoutes040_ |= push.mask();
+    prepareAtcThunk040(push.index, R9);
     call(reinterpret_cast<void*>(&pom68kJitJsr040));
     fillClock();
     a_.testRR(Sz::L, RAX, RAX);

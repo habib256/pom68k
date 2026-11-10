@@ -1,0 +1,291 @@
+--- before/extern/moira/Moira/Moira.cpp
++++ after/extern/moira/Moira/Moira.cpp
+@@ -278,6 +278,7 @@
+     mmuFixupReg[0] = mmuFixupReg[1] = 0;
+     mmuLogging = false;
+     mmuRmw = false;
++    mmuRteSubstArmed = false;            // reset cancels a pending RTE retry
+     mmuPipeCnt = 0;                     // POM68K O6: prefetch-pipe carry
+ 
+     // [B] MC68881UM-1989 §10.2 and §6.4.2.1: FPCP reset state.
+--- before/extern/moira/Moira/Moira.h
++++ after/extern/moira/Moira/Moira.h
+@@ -2137,6 +2137,32 @@
+     u32 mmuRteSubstData {};     // stacked data input buffer
+     u32 mmuRteSubstPc {};       // stacked PC (the faulting instruction)
+ 
++    // POM68K: the MMU-less 020 shares the restart model, but has no
++    // per-instruction translated-fetch loop to seed its scratch state.
++    // [F] Internal 020 frame words use the fork's replay model, not a
++    // silicon microstate image. Settled by: real 020 fault/RTE captures.
++    bool mmuPlain020() const {
++        return cpuModel == Model::M68EC020 || cpuModel == Model::M68020;
++    }
++    void mmuPreparePlain020(u16 opcode) {
++        if (!mmuPlain020()) return;
++        mmuState[0] = mmuState[1] = mmuState[2] = 0;
++        mmuIdx = mmuIdxDone = 0;
++        mmuAd[0] = 0;
++        mmuFixupReg[0] = mmuFixupReg[1] = 0;
++        mmuCcrSave = getCCR();
++        mmuOpcodeV = opcode;
++        mmuLastWritePc = reg.pc0; // start PC, before prefetch moves pc0
++        mmuRmw = false;
++    }
++    bool mmuSubstitutePlain020(u32 addr, bool write) {
++        if (!mmuPlain020() || !mmuRteSubstArmed ||
++            mmuRteSubstWrite != write || mmuRteSubstAddr != addr ||
++            mmuRteSubstPc != mmuLastWritePc) return false;
++        mmuRteSubstArmed = false;
++        return true;
++    }
++
+     // Fault capture, valid while a MmuBusError unwinds (mmu030_page_fault)
+     u32 mmuFaultAddr {};
+     u16 mmuSsw {};
+--- before/extern/moira/Moira/MoiraDataflow_cpp.h
++++ after/extern/moira/Moira/MoiraDataflow_cpp.h
+@@ -50,7 +50,7 @@
+                 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+                 // POM68K Q3: the 68040 restores (An)± on non-last-write
+                 // faults too (WinUAE cpu_restore_fixup)
+-                if ((cpuModel == Model::M68030 || cpuModel >= Model::M68EC040)
++                if ((mmuPlain020() || cpuModel == Model::M68030 || cpuModel >= Model::M68EC040)
+                     && (F & MMU_NOFIXUP) == 0) [[unlikely]]
+                     mmuArmFixup<S>(int(n), false);
+             }
+@@ -64,7 +64,7 @@
+             // POM68K O4 slice 3: see case 3
+             if constexpr (C == Core::C68020) {
+                 // POM68K Q3: see case 3
+-                if ((cpuModel == Model::M68030 || cpuModel >= Model::M68EC040)
++                if ((mmuPlain020() || cpuModel == Model::M68030 || cpuModel >= Model::M68EC040)
+                     && (F & MMU_NOFIXUP) == 0) [[unlikely]]
+                     mmuArmFixup<S>(int(n), true);
+             }
+@@ -576,6 +576,16 @@
+                               AS == AddrSpace::PROG);
+     }
+ 
++    // [B] MC68020UM-1992 §6.2.2: a DF-cleared data cycle is complete.
++    // POM68K: consume the software result before any physical bus callback.
++    if constexpr (C == Core::C68020 && AS == AddrSpace::DATA) {
++        constexpr u32 firstOffset = (S == Long && (F & REVERSE)) ? 2 : 0;
++        if (mmuSubstitutePlain020(addr + firstOffset, false)) {
++            if (F & POLL) POLL_IPL;
++            return CLIP<S>(mmuRteSubstData);
++        }
++    }
++
+     // POM68K Phase C (Mac LC/Mac II, 2026-07-24): record the in-flight
+     // sub-access on the PLAIN 68020/EC020 path too, so a device raising
+     // /BERR (extBusError) stacks a $B frame with the RIGHT fault address.
+@@ -620,7 +630,11 @@
+             SYNC(4);
+             if (F & POLL) POLL_IPL;
+             if constexpr (kPlain020) { mmuAccAddr = addr; mmuAccSsw = 0x20; }
+-            result |= read16(addr & addrMask<C>()) << 16;
++            if constexpr (kPlain020 && AS == AddrSpace::DATA) {
++                if (mmuSubstitutePlain020(addr, false))
++                    result |= u32(u16(mmuRteSubstData)) << 16;
++                else result |= read16(addr & addrMask<C>()) << 16;
++            } else result |= read16(addr & addrMask<C>()) << 16;
+             SYNC(2);
+ 
+         } else {
+@@ -629,7 +643,11 @@
+             SYNC(4);
+             if (F & POLL) POLL_IPL;
+             if constexpr (kPlain020) { mmuAccAddr = addr + 2; mmuAccSsw = 0x20; }
+-            result |= read16((addr + 2) & addrMask<C>());
++            if constexpr (kPlain020 && AS == AddrSpace::DATA) {
++                if (mmuSubstitutePlain020(addr + 2, false))
++                    result |= u16(mmuRteSubstData);
++                else result |= read16((addr + 2) & addrMask<C>());
++            } else result |= read16((addr + 2) & addrMask<C>());
+             SYNC(2);
+         }
+     }
+@@ -681,9 +699,21 @@
+                               AS == AddrSpace::PROG);
+     }
+ 
++    // [B] MC68020UM-1992 §6.2.2: a DF-cleared data cycle is complete.
++    // POM68K: consume the software result before any physical bus callback.
++    if constexpr (C == Core::C68020 && AS == AddrSpace::DATA) {
++        constexpr u32 firstOffset = (S == Long && (F & REVERSE)) ? 2 : 0;
++        if (mmuSubstitutePlain020(addr + firstOffset, true)) {
++            if (F & POLL) POLL_IPL;
++            return;
++        }
++    }
++
+     // POM68K Phase C: in-flight sub-access recording on the plain
+     // 68020/EC020 path — see the read<> counterpart above.
+     constexpr bool kPlain020 = (C == Core::C68020);
++
++    if constexpr (kPlain020) mmuDataBuffer = val;
+ 
+     if constexpr (S == Byte) {
+ 
+@@ -720,7 +750,11 @@
+             SYNC(4);
+             if (F & POLL) POLL_IPL;
+             if constexpr (kPlain020) { mmuAccAddr = addr; mmuAccSsw = 0x20; }
+-            write16(addr & addrMask<C>(), u16(val >> 16));
++            if constexpr (kPlain020 && AS == AddrSpace::DATA) {
++                mmuDataBuffer = u16(val >> 16);
++                if (!mmuSubstitutePlain020(addr, true))
++                    write16(addr & addrMask<C>(), u16(val >> 16));
++            } else write16(addr & addrMask<C>(), u16(val >> 16));
+             SYNC(2);
+ 
+         } else {
+@@ -729,7 +763,11 @@
+             SYNC(4);
+             if (F & POLL) POLL_IPL;
+             if constexpr (kPlain020) { mmuAccAddr = addr + 2; mmuAccSsw = 0x20; }
+-            write16((addr + 2) & addrMask<C>(), u16(val & 0xFFFF));
++            if constexpr (kPlain020 && AS == AddrSpace::DATA) {
++                mmuDataBuffer = u16(val);
++                if (!mmuSubstitutePlain020(addr + 2, true))
++                    write16((addr + 2) & addrMask<C>(), u16(val & 0xFFFF));
++            } else write16((addr + 2) & addrMask<C>(), u16(val & 0xFFFF));
+             SYNC(2);
+         }
+     }
+--- before/extern/moira/Moira/MoiraExceptions_cpp.h
++++ after/extern/moira/Moira/MoiraExceptions_cpp.h
+@@ -476,12 +476,22 @@
+ 
+     u32 currpc;
+ 
+-    // POM68K Phase C: on the plain 68020/EC020 core (no mode-5 loop) the
+-    // mmuOpcodeV/mmuState/mmuCcrSave/fixup latches are stale — restoring
+-    // them would corrupt live registers. Stack a $B frame at pc0 as-is.
++    // POM68K: AVAILABILITY seeds plain-020 restart state before the
++    // handler can prefetch and advance pc0. Roll back the replay's CCR/EA
++    // adjustments before exposing the exception handler; no 030 private
++    // fixup encoding is needed in this model's frame.
+     const bool mode5 = (cpuModel == Model::M68030);
+ 
+-    if (!mode5) {
++    if (mmuPlain020()) {
++
++        currpc = mmuLastWritePc;
++        if (mmuSsw & 1) {
++            setCCR(u8(mmuCcrSave));
++            for (int i = 0; i < 2; ++i)
++                if (mmuFixupReg[i]) reg.a[mmuFixupReg[i] & 7] = mmuFixupVal[i];
++        }
++
++    } else if (!mode5) {
+ 
+         currpc = reg.pc0;
+ 
+@@ -519,6 +529,10 @@
+     if (mode5 && (mmuState[1] & 0x0100)) {      // stale latch on plain core
+         writeStackFrameShortBusFault<C>(status, currpc);
+     } else {
++        // POM68K: retain the original PC in each plain-020 frame's private
++        // internal words, including nested faults. A handler that redirects
++        // the stacked PC must not lend its completed cycle to a new opcode.
++        if (mmuPlain020()) mmuDispStore[0] = currpc;
+         writeStackFrameLongBusFault<C>(status, currpc);
+     }
+ 
+--- before/extern/moira/Moira/MoiraExecMMU_cpp.h
++++ after/extern/moira/Moira/MoiraExecMMU_cpp.h
+@@ -1063,8 +1063,10 @@
+ 
+     if (fc & 1) {                               // data cycle
+ 
+-        mmuSsw = 0x0300;                        // DF | DF << 1
+-        if (!(mmuState[1] & 0x0100)) {          // not the last write
++        // [B] MC68020UM-1992 §6.2.1: bit 9 is reserved, not a DF mirror.
++        // POM68K: retain the oracle-private marker only on the 030 path.
++        mmuSsw = mmuPlain020() ? 0x0100 : 0x0300;
++        if (!mmuPlain020() && !(mmuState[1] & 0x0100)) {          // not the last write
+ 
+             for (int i = 0; i < 2; i++) {
+ 
+@@ -1094,7 +1096,7 @@
+ 
+     if (read) mmuSsw |= 0x0040;                 // RW
+     mmuSsw |= u16(sswFlags) | fc;
+-    if (mmuRmw) mmuSsw |= 0x0080;               // RM
++    if (mmuRmw && (!mmuPlain020() || (fc & 1))) mmuSsw |= 0x0080; // RM: data cycle
+ 
+     mmuFaultAddr = addr;
+     mmuWb3Data = mmuDataBuffer;
+--- before/extern/moira/Moira/MoiraExec_cpp.h
++++ after/extern/moira/Moira/MoiraExec_cpp.h
+@@ -8,7 +8,7 @@
+ #define AVAILABILITY(core) \
+ if constexpr ((core) == Core::C68010) { static_assert(C != Core::C68000); } \
+ if constexpr ((core) == Core::C68020) { static_assert(C != Core::C68000 && C != Core::C68010); } \
+-if constexpr (C == Core::C68020) cp = 0; \
++if constexpr (C == Core::C68020) { cp = 0; mmuPreparePlain020(opcode); } \
+ if constexpr (MOIRA_WILL_EXECUTE) willExecute(__func__, I, M, S, opcode);
+ 
+ #define FINALIZE \
+@@ -1698,7 +1698,7 @@
+     // POM68K O4 slice 3: CAS drives a locked read-modify-write cycle on
+     // the 68030 (SSW RM bit, RWM-only TT matching, write-probed ATC)
+     if constexpr (C == Core::C68020) {
+-        if (cpuModel == Model::M68030) [[unlikely]] mmuRmw = true;
++        if (mmuPlain020() || cpuModel == Model::M68030) [[unlikely]] mmuRmw = true;
+         // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+         // POM68K Q3: 68040 locked RMW — reads translate as writes and
+         // faults carry SSW.LK (WinUAE uae_mmu_get_lrmw)
+@@ -1776,6 +1776,11 @@
+ 
+     u32 ea1 = reg.r[rn1];
+     u32 ea2 = reg.r[rn2];
++    // [B] MC68020UM-1992 §6.2.2: CAS2 faults are RMW, not single-cycle
++    // software completions. POM68K: exclude them from the 020 data latch.
++    if constexpr (C == Core::C68020) {
++        if (mmuPlain020()) mmuRmw = true;
++    }
+     // [B] MC68040UM-1993 §7.4.5: CAS2 operands are locked, implicitly
+     // noncacheable, and resolve matching dirty data before the read.
+     // POM68K: use the same write-permission/SSW/cache path as TAS/CAS.
+@@ -6367,8 +6372,9 @@
+                     // Data output buffer
+                     (void)pop<C, Long>();
+ 
+-                    // Internal registers
+-                    (void)pop<C, Long>();
++                    // POM68K: the plain 020 saves its original instruction
++                    // PC here; the 030 retains its existing EA scratch word.
++                    u32 replayPc020 = pop<C, Long>();
+                     (void)pop<C, Long>();
+ 
+                     // Stage B address
+@@ -6395,10 +6401,14 @@
+                     // Moira.h; WinUAE m68k_do_rte_mmu030, RM excluded —
+                     // WinUAE treats RMW+cleared-DF as instruction done,
+                     // which Moira's restart model cannot express).
++                    // [B] MC68020UM-1992 §6.2.1 and §6.2.2: DF clear
++                    // completes a data cycle; bit 9 is reserved on the 020.
++                    // POM68K: its data FC qualifies the one-shot retry,
++                    // without the oracle-private marker used by the 030.
+                     if constexpr (C == Core::C68020) {
+-                        if (cpuModel == Model::M68030
+-                            && (ssw & 0x0200) && !(ssw & 0x0100)
+-                            && !(ssw & 0x0080)) {
++                        if (((cpuModel == Model::M68030 && (ssw & 0x0200)) ||
++                             (mmuPlain020() && (ssw & 1) && newpc == replayPc020)) &&
++                            !(ssw & 0x0100) && !(ssw & 0x0080)) {
+                             mmuRteSubstArmed = true;
+                             mmuRteSubstWrite = !(ssw & 0x0040);
+                             mmuRteSubstAddr = faultAddr;
+@@ -6889,7 +6899,7 @@
+ 
+         // POM68K O4 slice 3: TAS = locked RMW cycle on the 68030
+         if constexpr (C == Core::C68020) {
+-            if (cpuModel == Model::M68030) [[unlikely]] mmuRmw = true;
++            if (mmuPlain020() || cpuModel == Model::M68030) [[unlikely]] mmuRmw = true;
+             // POM68K Q3: 68040 locked RMW (see CAS)
+             if (cpuModel >= Model::M68EC040) [[unlikely]] mmu040Lrmw = true;
+         }

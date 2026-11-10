@@ -1,0 +1,20 @@
+Standalone interpreter seam, 2026-11-10, AArch64 macOS.
+
+MOIRA_ENABLE_JIT=0 is propagated publicly by the moira_interp CMake target.
+Do not mix the two CPU class layouts. sizeof(Moira): 64368 bare, 89248 full.
+
+Registered proof: ctest --test-dir build -L interp-only --output-on-failure
+moira_interp_test compares separate full/bare executables over 17 sequences.
+Its five absence static_asserts fail against the pre-change headers.
+
+Bare corpus executables use the unchanged tests/sst68000.cpp, sst68030.cpp,
+sst68040.cpp, compiled with -std=c++20 -O2 -DNDEBUG -DMOIRA_ENABLE_JIT=0,
+Moira/softfloat includes and only libmoira_interp.a + libsoftfloat68k.a.
+Corpus directories are the corresponding build/CMakeCache.txt POM68K_SST*
+paths. The 68030 invocation uses --known tests/sst68030.known.
+No soft skip; the four 030 known divergences are retained.
+
+nm -C build/libmoira_interp.a contains no pomJit, PomJit or pomInterp symbols.
+The full asset-free JIT tier, core cache/MMU/rules/state gates, both FPU gates,
+berr030_test, callm_rtm_test, docs_test, core_grades_test and file-size gate pass.
+These are correctness checks, not performance measurements.

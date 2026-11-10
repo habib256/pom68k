@@ -33,6 +33,96 @@ Oracle in service: **WinUAE** (`oracle/uae`, hatari e77819f7
 `cpummu030.c` + gencpu). Retired: **Musashi** (MAME 0.276 `m68kmmu.h` +
 kstenerud 4.60 core).
 
+## D34. MOVEM CM reuses EA only for indexed/PC-relative modes [ruled: primary manual, 2026-11-09]
+
+MC68040UM-1993 §8.4.6.2 (PDF p. 238) explicitly limits stacked-EA reuse
+to mode 110 and mode 111/register 010 or 011. Section 8.4.6.7 (PDF p. 240)
+restores CM continuation and repeats the completed operand prefix. WinUAE
+`gencpu.c start_mmu040_movem` @ Hatari e77819f7 emits saved-EA reuse for
+all MOVEM modes, including plain (An), displacement and predecrement. The
+primary manual’s specific mode list wins over that blanket oracle rule.
+
+The fork also fixes its missing RTE-to-CM publication and avoids repeated
+full-index indirection. Those two agree with the pinned oracle’s
+`cpummu.c m68k_do_rte_mmu040` and generated indexed MOVEM handlers.
+A 4 848-sequence bare-core witness changes An/index/pointers, clears CM or
+edits the frame EA; it checks exact replayed bus operands and final registers.
+The initial matrix fails 5 952 checks. Natural re-fault and fresh-CPU restore
+cover the instruction boundary; the JIT witness checks threaded continuation
+and the running host’s existing native MOVEM latch guard.
+
+This is a primary-manual/source-reading ruling with host callback witnesses,
+not a patched-oracle differential capture. No oracle patch or corpus exception.
+The normal coarse cycle model is retained; exact continuation timing and pin
+waveforms are not claimed by these tests.
+
+## D33. Table U writes follow the next descriptor read [ruled: primary manual, 2026-11-09]
+
+WinUAE `cpummu.c:695–742`, `mmu_fill_atc` @ Hatari e77819f7, writes each
+root/pointer U bit before reading the next descriptor. MC68040UM-1993
+Figure 3-10 (PDF p. 60) explicitly schedules that write after the next
+level's descriptor read. If the next read fails, its predecessor's U bit
+must remain untouched. The primary rule wins.
+
+The fork retains the previous table descriptor/address and commits its U
+write only after the next read succeeds. Shared physical table reads also
+sequence their two host words. The initial 13 632-case matrix has 11 808
+incorrect table prefixes and 3 648 incorrect history images before this
+change, alongside 14 688 ordinary fault/negative-retention failures. The
+expanded 14 112 cases include first-/second-half read and U/M write faults,
+indirect pages, PTEST data/code domains, actual program fetches, split data
+and M re-walk hits. Ordinary descriptor errors also now use the table-search
+unwind already used by PTEST: an R=0 entry and original-access ATC fault,
+with context cleanup proved by a following physical /BERR before another
+walk. PTEST keeps MMUSR.B without an exception.
+
+This is a primary-manual/source-reading ruling with host callback witnesses,
+not a new patched-oracle differential capture. No oracle patch, corpus
+exception or regenerated vector hides the distinction. Descriptor LOCK/RMW
+pin waveforms are not newly modeled by the U-order correction.
+
+## D32. Split-page MA requires an ATC fault [ruled: primary manual, 2026-11-09]
+
+WinUAE `cpummu.c:989–997`, `misalignednotfirst` @ Hatari e77819f7,
+restores the initial address and unconditionally sets `MMU_SSW_MA`.
+The unaligned read/write wrappers invoke it from later-fragment exception
+handlers without checking the fault origin. MC68040UM-1993 §8.4.6.2
+(PDF p. 238) reserves MA for a second-page ATC fault. §8.4.6.4 (PDF p. 239)
+independently requires the initial logical FA for every misaligned fault.
+The primary rule wins: keep FA, qualify only MA with the ATC origin.
+
+The fork's initial 8 592 `cache040_test` sequences fail 2 016 frame checks,
+all on external data/fill errors after an earlier fragment. Controls cover
+first-/second-page nonresident, write-protected and supervisor-only ATC
+faults; .W/.L reads/stores; flat/4K/8K aliases; both privileges; three EA
+modes; cache-off/NC/fill paths; exact transferred prefixes and software
+WB3/RTE completion on safe RAM. The existing pending-store and restart
+policy is unchanged. Descriptor-cycle /BERR qualification during an ordinary
+table walk needs a separate witness; these ATC controls use descriptor
+validity/protection. This is a source-reading/manual ruling held by host
+callbacks, not a new patched-oracle differential capture. No corpus
+exception, regenerated vector or oracle patch hides the distinction.
+
+## D31. Failed 040 CAS2 has a terminal write [ruled: primary manual, 2026-11-09]
+
+WinUAE `gencpu.c i_CAS2` / generated `cpuemu_31.c op_0cfc/op_0efc` @
+Hatari e77819f7 read both operands and update Dc when either comparison
+fails, but issue no write. MC68040UM-1993 §7.4.5 (PDF p. 168) explicitly
+requires a single write of the second operand read to terminate the locked
+sequence, including when the first comparison failed. CAS already has this
+transfer in the oracle. The primary rule wins for CAS2.
+
+A same-value write does not change the bytes a RAM-only vector records.
+`cache040_test` therefore records bus transfers, and faults each terminal
+host beat. Its 1 814 sequences include 78 unchanged pre-040 controls and
+1 736 040 cases with flat/4K/8K mappings, both privileges and cache states.
+The old core fails 3 752 checks. The fork now emits the write through the
+usual final-store funnel before Dc updates. That ordering and next-PC
+fault policy follow pinned CAS; applying them to CAS2 is an explicit F
+pending a hardware terminal-write /BERR capture. D31 establishes the bus
+transfer, not that internal pipeline ordering. No corpus exception or
+regenerated oracle payload is introduced.
+
 ## Arbitrated (2026-07-15) — first arbitration turn
 
 All five O4-slice-1 disputes were re-run against WinUAE. WinUAE + the

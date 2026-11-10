@@ -1,0 +1,23 @@
+Test project /Users/mercure/src/pom68k/build
+    Start 444: moira_interp_berr030_test
+1/5 Test #444: moira_interp_berr030_test ........   Passed    0.46 sec
+    Start 445: moira_interp_fpu_sanity
+2/5 Test #445: moira_interp_fpu_sanity ..........   Passed    0.46 sec
+    Start 446: moira_interp_fpu040_test
+3/5 Test #446: moira_interp_fpu040_test .........   Passed    0.47 sec
+    Start 447: moira_interp_callm_rtm_test
+4/5 Test #447: moira_interp_callm_rtm_test ......   Passed    0.45 sec
+    Start 448: moira_interp_test
+5/5 Test #448: moira_interp_test ................   Passed    0.71 sec
+
+100% tests passed out of 5
+
+Label Time Summary:
+asset-none         =   2.55 sec*proc (5 tests)
+host-any           =   2.55 sec*proc (5 tests)
+interp-only        =   2.55 sec*proc (5 tests)
+scope-component    =   2.55 sec*proc (5 tests)
+tier-daily         =   2.55 sec*proc (5 tests)
+unit               =   2.55 sec*proc (5 tests)
+
+Total Test time (real) =   2.60 sec

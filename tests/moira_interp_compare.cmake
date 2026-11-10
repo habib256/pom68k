@@ -1,0 +1,11 @@
+foreach(variant IN ITEMS FULL BARE)
+    execute_process(COMMAND ${EMULATOR} "${${variant}}" RESULT_VARIABLE result
+        OUTPUT_VARIABLE ${variant}_out ERROR_VARIABLE diagnostic TIMEOUT 25)
+    message("${diagnostic}${${variant}_out}")
+    if(NOT result STREQUAL "0")
+        message(FATAL_ERROR "${variant} interpreter workload failed: ${result}")
+    endif()
+endforeach()
+if(NOT FULL_out STREQUAL BARE_out)
+    message(FATAL_ERROR "Interpreter state, timing, bus or RAM differs without JIT seams")
+endif()

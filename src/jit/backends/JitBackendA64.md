@@ -26,7 +26,7 @@ validation, restartable writes and emitted i-cache accounting; the dedicated
 long 030 lockstep and platform boots keep that automatic path gated.
 
 **The peripheral-phase access-clock bias (JIT_BRINGUP § C.4nonies) is
-carried by this backend since 2026-08-22.** `pom68kA64Read/Write` bias
+carried by this backend since 2026-08-22.** `pom68kJitRead/Write` bias
 the clock around an exact access thunk by the instruction's would-be
 i-cache fetch penalty (`Moira::pomJitIcachePeekPenalty`), so a forced I/O
 flush sees the same clock the interpreter's same access would; the

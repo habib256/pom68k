@@ -1093,7 +1093,7 @@ int main() {
                   "AArch64 68030 publishes its measured cold-code score");
             check(a64auto030->caps().accessClockBias,
                   "AArch64 declares the access-clock bias its thunks carry "
-                  "since 2026-08-22 (pom68kA64Read/Write, JIT_BRINGUP "
+                  "since 2026-08-22 (pom68kJitRead/Write, JIT_BRINGUP "
                   "§ C.4nonies) — the admission defaults ride it");
         }
 #endif
@@ -1395,10 +1395,10 @@ int main() {
         // the knob resolves through the typed startup snapshot only.
         std::vector<pom68k::StartupSnapshot::Entry> on, off;
         off.emplace_back("POM68K_JIT_FPU_MEMBER", "0");
-        check(jit::resolveConfig(pom68k::StartupSnapshot(std::move(on)))
+        check(pom68k::resolveJitConfig(pom68k::StartupSnapshot(std::move(on)))
                   .fpuMember,
               "FPU general-window membership is the default");
-        check(!jit::resolveConfig(pom68k::StartupSnapshot(std::move(off)))
+        check(!pom68k::resolveJitConfig(pom68k::StartupSnapshot(std::move(off)))
                    .fpuMember,
               "POM68K_JIT_FPU_MEMBER=0 restores the F-line boundary");
     }

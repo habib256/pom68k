@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "jit/JitConfig.h"
+#include "JitStartupConfig.h"
 
 #include <cstdlib>
 #include <utility>
@@ -25,7 +25,7 @@ inline jit::ResolvedConfig resolveFromEnvironment() {
         const char* value = std::getenv(option.name.data());
         if (value && *value) entries.emplace_back(option.name, value);
     }
-    return jit::resolveConfig(
+    return pom68k::resolveJitConfig(
         pom68k::StartupSnapshot(std::move(entries)));
 }
 

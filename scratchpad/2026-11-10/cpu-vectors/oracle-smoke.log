@@ -1,0 +1,9 @@
+Test project /private/tmp/pom68k-oracle-20261110
+    Start 1: oracle_uae_smoke
+1/2 Test #1: oracle_uae_smoke .................   Passed    0.76 sec
+    Start 2: oracle_uae_smoke040
+2/2 Test #2: oracle_uae_smoke040 ..............   Passed    0.33 sec
+
+100% tests passed out of 2
+
+Total Test time (real) =   1.10 sec

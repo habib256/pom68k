@@ -1,0 +1,29 @@
+Test project /Users/mercure/src/pom68k/build
+    Start 437: jit_asset_free_lockstep_test
+1/6 Test #437: jit_asset_free_lockstep_test .....   Passed   38.03 sec
+    Start 449: cache040_test
+2/6 Test #449: cache040_test ....................   Passed  108.36 sec
+    Start 453: moira_rules_test
+3/6 Test #453: moira_rules_test .................   Passed    8.27 sec
+    Start 454: moira_state_test
+4/6 Test #454: moira_state_test .................   Passed    0.51 sec
+    Start 455: mmu040_atc_test
+5/6 Test #455: mmu040_atc_test ..................   Passed   20.82 sec
+    Start 467: jit_backend_test
+6/6 Test #467: jit_backend_test .................   Passed    0.48 sec
+
+100% tests passed out of 6
+
+Label Time Summary:
+asset-none         = 176.46 sec*proc (6 tests)
+host-any           = 138.43 sec*proc (5 tests)
+host-native        =  38.03 sec*proc (1 test)
+jit                =  38.51 sec*proc (2 tests)
+jit-fast           =  38.51 sec*proc (2 tests)
+scope-component    = 137.96 sec*proc (4 tests)
+scope-engine       =  38.51 sec*proc (2 tests)
+smoke              =   0.48 sec*proc (1 test)
+tier-daily         = 176.46 sec*proc (6 tests)
+unit               = 176.46 sec*proc (6 tests)
+
+Total Test time (real) = 176.55 sec

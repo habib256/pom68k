@@ -1,0 +1,15 @@
+Test project /Users/mercure/src/pom68k/build
+    Start 67: docs_test
+1/1 Test #67: docs_test ........................   Passed    1.23 sec
+
+100% tests passed out of 1
+
+Label Time Summary:
+asset-none          =   1.23 sec*proc (1 test)
+host-any            =   1.23 sec*proc (1 test)
+jit-fast            =   1.23 sec*proc (1 test)
+scope-repository    =   1.23 sec*proc (1 test)
+tier-daily          =   1.23 sec*proc (1 test)
+unit                =   1.23 sec*proc (1 test)
+
+Total Test time (real) =   1.27 sec

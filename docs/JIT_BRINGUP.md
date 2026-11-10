@@ -28,7 +28,7 @@ Facts this plan builds on. Each was read out of the tree, not remembered.
 | `threaded` declares `kGuestAny`; `auto` uses it for 000/020, while an 030 reaches the native generator on both ISAs | `JitBackendThreaded.cpp`, `JitBackendA64.cpp` |
 | Selection tests guest validity *before* host ranking | `JitBackend.cpp:63-66`, `:137-140` |
 | `pomJitProbeCode` has an 030 branch (TT regs, TC.E-off identity, read-only 22-entry ATC scan, last-hit memo) | `MoiraExecMMU_cpp.h`, `Moira::pomJitProbeCode` |
-| **`pomJitProbeData` now has one too** (data-space `fc = 5/1`, write-protect and owed-M-bit refusals) — C.2 is landed | `MoiraExecMMU_cpp.h:2363-2413` |
+| **`pomJitProbeData` now has one too** (data-space `fc = 5/1`, write-protect and owed-M-bit refusals) — C.2 is landed | `MoiraExecMMU_cpp.h`, `Moira::pomJitProbeData` |
 | **`pomJitReadData`/`pomJitWriteData` now branch on the model**, reaching `mmuRead`/`mmuWrite` on an 030 and `mmu040Read`/`mmu040Write` otherwise — C.3 is landed | `MoiraExecMMU_cpp.h`, `Moira::pomJitReadData` / `Moira::pomJitWriteData` |
 | The 030 i-cache overlay is charged **inside `mmuFetchWord`, before the JIT window hook** — so the fetch window and the `threaded` backend are conformant on it by construction | `MoiraExecMMU_cpp.h`, `Moira::mmuFetchWord` |
 | `PomIcache` = MC68030UM §6: 256 B, 16 lines × 4 longwords, logical, direct-mapped, tag = A[31:8] + supervisor, per-longword valid bits, gated on `CACR` bit 0, `missPenalty` cycles per miss | `Moira.h:1245-1260`, rationale in `Cpu030.h:164-189` |
@@ -359,7 +359,7 @@ reset block.
 2. **The 030 marks its last write restartable and stacks a format $A frame**
    (`:355-361`); the 040 does not. **Closed on a64 for a narrow family** —
    `restartWrite030()` (a64: the local `restartWrite` at
-   `JitBackendA64.cpp:2180`; x64 member `JitBackendX64.cpp:347`):
+   `JitBackendA64.cpp:2154`; x64 member `JitBackendX64.cpp:301`):
    register/immediate-source
    `MOVE` to `(An)`, `(An)+`, `-(An)`, `d16(An)`, brief-indexed or absolute.
    Predecrement is performed before the access and reversed before replay;
@@ -405,7 +405,7 @@ reset block.
    this**. Two fields are immediately guest-visible: `mmuCcrSave` is what a
    bus-error frame stacks, and `mmuRmw` left true from an earlier locked
    access sends every subsequent translation down the RMW path. `mmuRmw` is
-   now cleared in the a64 block prologue (`JitBackendA64.cpp:4690`) — once
+   now cleared in the a64 block prologue (`JitBackendA64.cpp:4646`) — once
    per linked chain, since `TAS` and `CAS` are its only setters and both are
    `Kind::Unsafe`. It was measured and it was **not** the cause of any
    divergence; the hole is real and the rest of the block is still open.
@@ -672,7 +672,7 @@ At that checkpoint the a64 half was a different story — within 3 % of
 in § B. Porting
 its `baseCycles` consumption and `(An)+` ordering to x86-64 was the
 obvious coverage work (both landed with § C.4sexies: `Emitter::traced030`
-at `JitBackendX64.cpp:577`, the restartable family at `:2358-2374`), though
+at `JitBackendX64.cpp:568`, the restartable family at `:2358-2374`), though
 C.4quater said not to expect parity from it alone — and it was right: the
 parity came from the uncharge fix.
 
@@ -1160,7 +1160,7 @@ the class closed.
 > default. If the JIT wins on a family and is proved bit-identical on that
 > family, the JIT is what a user gets without setting anything.
 
-`defaultEngine(bool jitByDefault)` (`JitConfig.h:323`) is no longer a
+`defaultEngine(bool jitByDefault)` (`JitConfig.h:206`) is no longer a
 constant; `Engine::Engine` passes
 `(guestFamily & (kGuest68040 | kGuest68030)) != 0` (`JitEngine.cpp:216-218`).
 So `jit/auto` is the shipped default on the 68040 machines **and the

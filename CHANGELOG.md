@@ -176,6 +176,10 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Execution engines — the interpreter, the JIT, PGO
 
+- **Can Moira omit the acceleration fields and hot-path branches at compile time?** → [The standalone interpreter build](#2026-11-10-moira-interp-build)
+
+- **Can another host include the JIT without importing POM68K startup?** → [The host-independent policy boundary](#2026-11-10-jit-startup-boundary)
+
 - **what "the conformant JIT code generator is finished" means in this tree — the three exit criteria of TODO tier B, the evidence behind each, and what remains as conditional study rather than open conformance work** → [2026-09-07 (second) — Tier B is closed…](#2026-09-07-tier-b-closed)
 - **why an FPU instruction no longer costs a dispatch, what keeps its Line-F / FPSP / enabled-exception vectors a boundary, how a trapping member stops retracing its prefix, and which same-binary ABBA measured it** → [2026-09-07 — The FPU general window stops ending a block…](#2026-09-07-fpu-block-member)
 - **which Speedometer families exist beyond CPU, how the harness selects them independently, and whether FPU and five-depth QuickDraw stay exact between A64 and `threaded`** → [2026-09-06 (seventh) — Speedometer becomes four attributable workload families…](#2026-09-06-speedometer-suite)
@@ -267,6 +271,31 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### CPU cores, MMU/FPU, and the WinUAE oracle
 
+- **Does a clean CI checkout execute any oracle CPU vector?** → [Public, reproducible CPU vectors](#2026-11-10-cpu-vectors)
+- **Can an FPU context be shared if every instruction rearms FPCR?** → [Nested and parallel CPUs keep their own arithmetic context](#2026-11-10-fpu-context)
+- **Why did a plain 68020 repeat a data cycle whose handler cleared DF?** → [The 020/EC020 retry context](#2026-11-10-rte020-completion)
+
+- **Do 040 ATC hits through windows and native code choose the same set victim?** → [Sixteen four-way sets and committed access effects](#2026-11-09-atc040-sets-access-phase)
+- **Why did MOVEM lose its saved EA after RTE, or repeat memory indirection during continuation?** → [Guest-produced CM continuation](#2026-11-09-movem-cm-continuation)
+- **Why did a repaired descriptor remove an ordinary ATC fault without PFLUSH, or bypass S while setting M?** → [Retained R/W/S and permission before M](#2026-11-09-atc-failure-retention)
+- **Why did a descriptor /BERR look like an operand error, lose its ATC entry or update U too soon?** → [Descriptor faults and deferred U history](#2026-11-09-descriptor-bus-errors)
+- **Why did a physical page-split error set MA as if it were an ATC fault?** → [Independent MA and fault address](#2026-11-09-split-page-ma)
+- **Why did a push fault lose its victim image, logical pending store or newly read line?** → [Physical push frames and completion](#2026-11-09-cache-push-faults)
+- **Where did the store go when a write-allocate fill faulted?** → [Pending WB3 and software completion](#2026-11-09-write-allocate-pending)
+- **Why did an unused cache-fill beat raise an exception, overwrite the logical descriptor and push a dirty victim too early?** → [Demanded versus unused read-fill faults](#2026-11-09-read-fill-faults)
+
+- **Why did MOVE16 bus faults look like instruction fetches, and can a completed dirty push overwrite the next operand's fault context?** → [Own logical MOVE16 descriptors and scoped push stamps](#2026-11-09-move16-fault-context)
+
+- **Why must a failed 040 CAS/CAS2 still write, and what happens if that final transfer faults?** → [Original read data, terminal writes and WB3](#2026-11-09-cas-terminal-write)
+
+- **Why did MOVES/TAS/CAS miss dirty copyback data, and why must CAS2 read with write permission?** → [Access inhibition keeps the enabled cache controller coherent](#2026-11-09-implicit-nc-coherency)
+
+- **Why did a faulting MOVEP skip its remaining peripheral bytes after RTE?** → [Keep the unfinished MOVEP's instruction PC](#2026-11-09-movep040-restart)
+
+- **Which 68040 ATC entries do PFLUSH and PTEST select, and can PTEST report a table /BERR without an exception?** → [Selected flush/refill and retained negative entries](#2026-11-09-atc-flush-test)
+
+- **Do 68040 MMU register writes discard resident translations, and when does a new root take effect?** → [Retained ATCs and an explicit PFLUSHA control](#2026-11-09-atc-register-retention)
+
 - **Can the same logical page keep different user/supervisor translations, including MOVES?** → [The FC2 regression becomes a permanent gate](#2026-11-09-atc-fc2)
 
 - **Why did cache invalidation touch a translated alias while all CPU corpora passed?** → [Physical CINV/CPUSH operands and the gate that expected the bug](#2026-11-08-physical-cache-operands)
@@ -325,6 +354,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Save states
 
+- **Why did a snapshot lose dirty 040 data, and why does preserving the instruction cache require more than pushing copyback lines?** → [Architectural cache contents travel in format v30](#2026-11-09-cache040-state)
 - **the archive core: one `visit<Ar>()` drives both save and load** → [2026-07-30 — Save states: the archive core + the whole LC II tree](#2026-07-30--save-states-the-archive-core--the-whole-lc-ii-tree)
 - **restore determinism under the real Finder (LC II)** → [2026-07-30 — Save states survive the real Finder…](#2026-07-30--save-states-survive-the-real-finder-lcii_savestate_etalon)
 - **…and on the 040 side** → [2026-07-30 — `q605_savestate_etalon`: real-OS restore determinism on the 040 side](#2026-07-30--q605_savestate_etalon-real-os-restore-determinism-on-the-040-side)
@@ -524,6 +554,26 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-10 (fifth)** — [A clean checkout executes 256 reproducible CPU vectors](#2026-11-10-cpu-vectors)
+- **2026-11-10 (fourth)** — [FPU rounding, exceptions and intermediate captures belong to each CPU](#2026-11-10-fpu-context)
+- **2026-11-10 (third)** — [Plain 020 software-completed bus faults survive RTE and restore](#2026-11-10-rte020-completion)
+- **2026-11-10 (second)** — [An interpreter can compile without the acceleration seam](#2026-11-10-moira-interp-build)
+- **2026-11-10** — [The JIT no longer imports POM68K startup](#2026-11-10-jit-startup-boundary)
+- **2026-11-09 (seventeenth)** — [Four-way ATCs and committed access counters](#2026-11-09-atc040-sets-access-phase)
+- **2026-11-09 (sixteenth)** — [MOVEM continuation after guest RTE](#2026-11-09-movem-cm-continuation)
+- **2026-11-09 (fifteenth)** — [68040 validity/protection failure retention](#2026-11-09-atc-failure-retention)
+- **2026-11-09 (fourteenth)** — [68040 descriptor errors and deferred U history](#2026-11-09-descriptor-bus-errors)
+- **2026-11-09 (thirteenth)** — [68040 split-page MA distinguishes ATC and external errors](#2026-11-09-split-page-ma)
+- **2026-11-09 (twelfth)** — [68040 physical push frames and retained replacement lines](#2026-11-09-cache-push-faults)
+- **2026-11-09 (eleventh)** — [68040 write-allocate faults retain the pending store](#2026-11-09-write-allocate-pending)
+- **2026-11-09 (tenth)** — [Read fills preserve logical descriptors, suppress unused-beat faults and defer dirty pushes](#2026-11-09-read-fill-faults)
+- **2026-11-09 (ninth)** — [MOVE16 owns its fault descriptor; successful pushes restore the logical operand context](#2026-11-09-move16-fault-context)
+- **2026-11-09 (eighth)** — [Failed 040 CAS/CAS2 issue their terminal write, including write-only bus faults](#2026-11-09-cas-terminal-write)
+- **2026-11-09 (seventh)** — [MOVES and locked operands push dirty data before bypass; CAS2 checks write permission](#2026-11-09-implicit-nc-coherency)
+- **2026-11-09 (sixth)** — [040 save states preserve dirty data and stale instruction bytes, without pushing lines](#2026-11-09-cache040-state)
+- **2026-11-09 (fifth)** — [68040 MOVEP faults retain their instruction PC and finish after RTE](#2026-11-09-movep040-restart)
+- **2026-11-09 (fourth)** — [68040 PFLUSH honours DFC; PTEST renews its selected ATC entry and reports table /BERR](#2026-11-09-atc-flush-test)
+- **2026-11-09 (third)** — [68040 TC/URP/SRP writes retain ATCs and invalidate derived fast mappings](#2026-11-09-atc-register-retention)
 - **2026-11-09 (second)** — [FC2-tagged ATCs, MOVES and correct JIT publication associations](#2026-11-09-atc-fc2)
 - **2026-11-09** — [The x86 gate registry missed the common snapshot test; regenerate both host sections](#2026-11-09-x64-status-registry)
 - **2026-11-08 (ninth)** — [CINV/CPUSH use physical operands; the translation-accepting cache gate was wrong](#2026-11-08-physical-cache-operands)
@@ -1252,6 +1302,1034 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-10-cpu-vectors"></a>
+## 2026-11-10 (fifth) — A clean checkout executes 256 reproducible CPU vectors
+
+The large SST suites still need optional external files, and a green CI job
+previously replayed none of their vectors. `tests/cpu_vectors/` now ships
+compressed, public oracle output: 112 030+68882 and 144 full-040 vectors,
+with random RAM and no Apple data. The cells cover integer execution,
+translated MMU/faults, FPU arithmetic and two-instruction continuation;
+the 040 also has 8 KB pages and three-step handler/FSAVE sequences.
+
+The manifest records every option and seed, count, uncompressed size and
+SHA-256. Regeneration against the separately built oracle reproduces both
+identities. The existing SST executables pass all 256 vectors with no known
+divergence list or MMU skip. These are grade-D comparisons, not a hardware
+or 030/040 timing proof; the original corpus publication TODO remains open.
+
+`cpu_vectors030_test`, `cpu_vectors040_test` and
+`cpu_vectors_contract_test` register in the asset-free tier and therefore
+run in Linux CI and the nightly ASan/UBSan job. Seven contract tests reject
+missing/corrupt/empty payloads, a successful soft-skip, zero/partial counts,
+unlisted known divergences, nonzero MMU skips and a failing harness exit.
+The Linux CI job also builds the standalone oracle, runs both smoke tests
+and checks exact regeneration with NumPy. The same commands are documented
+in the fixture README; runtime replay needs no oracle library or NumPy.
+
+The larger sanitizer replay also made two latent C defects concrete:
+`shortShift128Left` shifted a 64-bit value by 64 when normalizing an all-zero
+significand, and `int32_to_floatx80` negated `INT32_MIN` in signed arithmetic.
+The shift helper now handles its full-width boundary explicitly, and the
+integer conversion forms its magnitude using unsigned subtraction. This
+preserves the rounder's existing flag/capture path. The oracle copy remains
+unchanged. `softfloat_primitives_test`, also in the asset-free CPU tier,
+checks 1,040 shifts (eight patterns, counts 0–64, in-place and separate
+outputs) and five exact signed-integer conversions. The old shift helper
+fails UBSan against the same test; both original runtime reports are kept.
+
+All four public-CPU tier gates and the final 24-gate CPU/JIT/state/docs
+selection pass. The initial ASan/UBSan run completed
+1,000,058/1,000,058 68000 vectors with exact bus ordering and timing before
+exposing the two 030 FPU defects. After the fixes, all eight instrumented
+corpus/primitive/FPU/state gates pass; the 7,500-vector integrated-FPU
+corpus also completes without sanitizer reports, keeping its 44 named
+divergences. UBSan uses `halt_on_error=1`; no error is suppressed. POM68K is
+rebuilt with the final library. Local smoke, generation, reproduction,
+replay and sanitizer evidence is under `scratchpad/2026-11-10/cpu-vectors/`.
+
+<a id="2026-11-10-fpu-context"></a>
+## 2026-11-10 (fourth) — FPU rounding, exceptions and intermediate captures belong to each CPU
+
+The surface contract's shared-context assertion was false even on one host
+thread. A deterministic memory callback executes a second CPU while the
+first is fetching or storing an FPU operand. Its FPCR changes the first
+CPU's rounding, or its exact arithmetic clears the first CPU's inexact flag.
+A separate C witness shows that an underflow in context B replaces context A's
+captured overflow operand. The final `fpu_context_test` fails seven checks
+against the old core, including independent CPUs on two host threads.
+
+Moira now owns an opaque SoftFloat context per instance. The eight conversion
+helpers that need status are members; all numerical calls use that instance's
+rounding/exception state. SoftFloat's eight intermediate-result globals move
+into `float_status`, and all seven `getFloatInternal*` getters (plus the
+rounded helper) take an explicit context. This changes the local C API/struct
+ABI and requires rebuilding clients. There is no arithmetic formula change,
+thread-local active CPU, global lock or oracle-tree modification.
+
+The public Moira header keeps only a forward declaration and an owning
+pointer. Guest archives retain the existing pending/FSAVE result images;
+the host scratch context is not a new archive field. The optional shared
+040 diagnostic histogram remains outside the thread-safety claim.
+
+Both optimized core variants pass the complete witness: both nested
+directions on 030+68882 and full 040, all seven capture getters and 2,048
+instructions on independent host threads. The 16-gate component/state/docs
+selection and all 13 asset-free JIT gates pass. The three base corpora
+retain their results (1,000,058 exact-bus 68000, 3,078/3,082 030 with the
+four named divergences, 7,200/7,200 040). All six integrated-FPU files were
+regenerated and matched the lock byte for byte: 7,456/7,500 pass, with the
+same 44 named divergences and zero MMU skips. `nm` finds no writable
+data/BSS/common symbols
+in the rebuilt C library. `fpu_context_test` and
+`moira_interp_fpu_context_test` register the proof in both core variants;
+a threadless WebAssembly build still runs the deterministic cases. The
+remaining cross-project TODO names NeoST's second SoftFloat port explicitly.
+Evidence and the scoped source delta are in
+`scratchpad/2026-11-10/fpu-context/`.
+
+<a id="2026-11-10-rte020-completion"></a>
+## 2026-11-10 (third) — Plain 020 bus faults consume software-completed data cycles after RTE
+
+The TODO's plain-020 RTE suspicion is reproduced: the final 404-sequence
+witness fails 1,514 checks against the pre-change core. A handler clearing
+SSW.DF still repeated its access; postincrement/predecrement operands could
+move twice, and a MOVE prefetch could advance `pc0` before the fault frame
+captured the instruction address. The same tests also expose an empty
+plain-020 data-output buffer.
+
+The 020/EC020 handlers now seed restart scratch state before instruction
+execution. Data faults restore the replay's CCR/EA adjustments and keep the
+original start PC. RTE's one-shot read/write substitution is consumed in
+the ordinary bus path, including the second word of a long transfer.
+Reads use the frame's right-justified input buffer; writes skip the
+software-completed transfer and capture the pending output at its size.
+The protocol comes from MC68020UM-1992 §§6.2.1–6.2.3, now pinned by PDF hash
+and checked locators. This manual reserves SSW bit 9: the 020 no longer
+writes or requires the oracle-private 030 DF mirror. The 030 convention is
+retained unchanged for its corpus.
+
+The witness also checks MOVES FC=7, user/supervisor state, a fresh CPU loaded
+between RTE and retry, reset cancellation, one-shot consumption, TAS/CAS/CAS2
+RMW fault identification and the distinction between locked data and a later
+instruction prefetch. A PC-redirect control caught a second bug in the first
+implementation: the next identical instruction could consume the previous
+instruction's completed value. Each 020 frame now retains its original PC
+in a private internal word; redirected and nested frames are distinguished
+without a new CPU archive field or payload version.
+
+The development build passes all 404 sequences. All three base corpora also
+pass against that corrected core: 1,000,058/1,000,058 68000 vectors with exact
+bus ordering/timing; 3,078/3,082 68030 with the four existing named divergences
+and no MMU skip; 7,200/7,200 68040. Both optimized CMake variants pass the 404 cases; their 17-sequence
+interpreter transcript is identical. The 14-gate regression passes, including
+Mac II and LC boots, 030 fault replay, FPU/state/cache/MMU proofs and native
+asset-free lockstep; the other 12 asset-free JIT gates also pass. The stale
+continuation-snapshot TODO is removed: its fields were already included on
+November 8 and `moira_state_test` still exercises those windows.
+
+This remains instruction replay, not a silicon microstate implementation.
+Internal 020 frame words remain grade F; prior successful transfers may be
+reissued, and a software-completed locked RMW instruction is not covered.
+The broader RTE-$B TODO remains open. Logs and the source delta live under
+`scratchpad/2026-11-10/rte020/`.
+
+<a id="2026-11-10-moira-interp-build"></a>
+## 2026-11-10 (second) — An interpreter build omits the acceleration seam without forking CPU execution
+
+The next portability TODO is closed by `MOIRA_ENABLE_JIT=0`, applied to the
+CPU and every client translation unit. The compatibility default stays 1.
+The disabled build omits fetch windows on all CPU families, the data DTLBs,
+native cache publications, translation/layout probes and timing instrumentation.
+Architectural 030/040 ATCs, 040 cache data/timing, the 030 timing overlay,
+CPU/FPU execution, fault continuations and the portable state visitor remain.
+The public `pomJitExecOne` is an enabled-only wrapper around the private
+`executeFastOne` that `execute()` also uses. The ordinary 040 fetch stamp is
+renamed `mmu040StampFetch` and remains outside the optional layer. Shared
+MMU/cache invalidations reduce to private, fieldless no-ops in the bare build.
+There is no new virtual dispatch, runtime policy or product-default change.
+
+`moira_interp` builds the same source against softfloat alone and propagates
+the compile definition. Its class layout differs from `moira`, so the two
+variants must not be mixed. On this AArch64 host `sizeof(Moira)` is 64,368
+bytes without the seam, against 89,248 with it (24,880 bytes removed).
+The bare archive has no `pomJit`, `PomJit` or `pomInterp` symbols under `nm`.
+
+`moira_interp_test` compares seventeen sequences across 68000, 68010, 68020,
+68030, 68LC040 and 68040: per-instruction portable state, guest cycles,
+ordered bus address/value/clock records and final RAM. The cases include a
+non-identity 030 mapping, 4K/8K 040 pages with caches off/on, dirty copyback
+followed by guest CPUSHA, and save/load halfway through each sequence.
+Five compile-time checks require window/DTLB/publication storage, timing
+probes and the public JIT execution entry to be absent. All five fail against
+the pre-change headers with the switch set to zero; both current variants
+pass the runtime transcript comparison.
+
+All five new gates pass, as do the thirteen asset-free JIT gates, the full
+040 cache/MMU matrices, hardware-rule and continuation-state gates, and the
+original 030 bus-error, 6888x, 040 FPU and CALLM/RTM gates. The bare variant
+also replays all three pinned base corpora: 1,000,058/1,000,058 68000 vectors
+with exact bus order/timing; 3,078/3,082 68030 with the same four named D23b
+divergences and no MMU skip; 7,200/7,200 68040 with no MMU skip. The final
+build log has no compiler warnings. Logs live under
+`scratchpad/2026-11-10/interp-seam/`.
+
+The source contract and vendor row 76 document the boundary; STATUS is
+regenerated for both host registries. No oracle ruling, corpus or snapshot
+payload changed.
+
+<a id="2026-11-10-jit-startup-boundary"></a>
+## 2026-11-10 — The JIT consumes host-independent policy without POM68K startup headers
+
+`src/jit/JitConfig.h` already carried an injected `ResolvedConfig`, but also
+included the product's `StartupSnapshot.h` and decoded its option schema.
+An external host therefore needed POM68K startup just to include the engine.
+The decoder and opcode-watch parser now live in `src/JitStartupConfig.h`,
+under `pom68k::resolveJitConfig`. Product startup and test process adapters
+use that decoder; the reusable JIT consumes the same policy value and keeps
+its existing defaults, backend resolution and scoped compilation snapshot.
+There is no new environment read or change to engine admission.
+
+The metrics writer's compile-time architecture identity now lives under
+`src/jit/backends/`, preserving its JSON output. `docs_test` checks quoted
+includes throughout the JIT tree: each resolves inside that tree or to the
+Moira CPU contract. It also rejects host architecture macros above backends,
+except in the executable-memory allocator. The surface contract and JIT
+design document describe direct policy construction by another host.
+
+Validation compiles nine JIT translation units from an isolated copy, with
+only Moira and softfloat include paths, for both AArch64 and x86-64 using
+`-Wall -Wextra -Werror -fsyntax-only`. No application header is available in
+that proof. All thirteen asset-free JIT gates pass, including startup profiles, native
+selection, copyback, restartable writes and lockstep.
+The TODO startup-dependency item is closed; compilation without the CPU's
+JIT seams remains separate open work.
+
+<a id="2026-11-09-atc040-sets-access-phase"></a>
+## 2026-11-09 (seventeenth) — 040 ATCs have sixteen four-way sets, and fast-path hits commit their replacement effects
+
+The next TODO replaces 32 fully associative pseudo-LRU entries per side with
+the geometry defined by MC68040UM-1993 §3.3 (PDF pp. 75–78): separate
+64-entry I/D ATCs, sixteen four-way sets, LA15:12/LA16:13 indexing for 4K/8K
+pages, FC2 tags, invalid-way priority and an access-driven two-bit victim
+counter. Last-hit memos accelerate lookup and no longer determine replacement.
+
+Instruction/data windows, native DTLBs and native cache-line hits must advance
+that counter too. The tracer records actual 040 instruction-stream words;
+generated code uses live window provenance so unchanged physical blocks can
+survive TC/TTR changes. Semantic memory slots stage operand weights, including
+MOVEM spans and optional bitfield tails. Commit publishes them. Exact thunks
+debit preceding operands before their own access; an abandoned attempt restores
+private ATC arrays, counters and memos before full Moira replay, and revokes
+derived publications. Descriptor U/M stores are not undone. This proves the
+architectural boundary, not an exact speculative-fault bus waveform.
+
+The counter comparison exposed an existing cacheless native JSR omission:
+the target-word read was absent and terminal IRC was wrong. Both generators
+now use the interpreter's ordered push/target-read transaction for ordinary
+040 JSR with either cache mode. A64 full-indirect JSR keeps its existing
+preflight transaction. Native cache entries retain their 32-byte stride
+without an MRU pointer/memo guard; 16-byte DTLB entries gain provenance beside
+their 16-bit code mask. Guest archive payload/version and product defaults
+are unchanged.
+
+`mmu040_atc_test` adds 768 geometry and 2,688 relative-phase sequences, using
+read-only probes to inspect set residency, FC2 isolation, victims and repaired
+descriptors. PFLUSH controls check phase retention. The asset-free JIT gate
+adds 432 access/fault/TC-TTR cases and 1,152 victim/U-bit cases across native,
+threaded and interpreter windows, under both CCR layouts where relevant.
+Native hit counters require the measured operand to execute through the cache
+path. Cache residency is trained before compilation; generation admission is
+resolved before publishing the measured hit. For the old-policy comparison,
+the write memo is selected after conflict fills so even a one-instruction
+prefix reaches its native copyback hit. Both complete asset-free JIT
+executables pass on AArch64 and x86-64/Rosetta; these are functional results,
+not x86 hardware performance measurements.
+
+The baseline uses the identical corrected fixtures against an isolated
+32-entry core and native backends, including the access-accounting seams.
+The 768 bare geometry sequences fail 98,256 checks and the 2,688 relative-
+phase sequences fail 6,240 checks on that baseline; both matrices pass on
+the corrected core.
+The 1,152 pipeline cases all reach their intended access path and fail only
+the missing four-way victim check. The new model passes all of them. The
+432 access/fault/TC-TTR comparisons hold counters and architectural state;
+the changed replacement policy is checked separately through victims and U.
+
+Both emitters share the exact step/data/program-word thunks in `JitRuntime`.
+ATC route capabilities live with the EA proofs, and tracer metadata is
+assigned once for all three recording exits. ABI assertions protect the
+16-byte DTLB's 16-bit code mask and provenance offset, the native cache
+provenance offset and the replay prefix. Source-size ceilings are unchanged.
+
+Grade F remains explicit for independent zero-seeded phases, exact debit
+edges, PTEST installation phase and I/D coupling. The manual does not settle
+them; real 040 traces are required. TC/TTR reuse witnesses keep TC.P fixed.
+TODO replaces the geometry implementation item with the remaining hardware
+phase measurement, and retains the data-window performance remeasurement.
+Vendor row 75 and the host/JIT contracts record the change. No oracle patch
+or corpus exception.
+
+Release validation rebuilt every ARM64 target and the x86-64 asset-free
+JIT target without compiler warnings. After the shared-runtime cleanup,
+all 139 asset-free gates execute without skips: 133 in the sandbox and
+six serial/network/GUI gates with host access. The complete JIT gate passes
+for both ISAs (x86-64 under Rosetta), including the new matrices and its
+existing native-admission budgets.
+
+The three base instruction corpora, the Quadra 605 Finder boot and both
+five-million-instruction locksteps also pass on the rebuilt binaries, with
+all six gates executing and no soft skips. Their logs and execution census
+are preserved with the asset-free and cross-ISA results.
+
+<a id="2026-11-09-movem-cm-continuation"></a>
+## 2026-11-09 (sixteenth) — Guest RTE restores MOVEM continuation, without repeated memory indirection
+
+The next reproducible TODO fails **5 952 checks in 4 848 sequences** before
+production changes: 2 928 missing RTE continuation boundaries, 1 008 repeated
+indirect pointer reads, 1 008 incorrect operand-replay traces and 1 008
+incorrect repeated-store values. Original CM/EA/PC frames and the cleared-CM
+controls already pass. The 16-bit bus witness distinguishes the completed
+prefix from replay.
+The baseline rebuild uses an isolated pre-fix core and the identical corrected
+fixture: NC also without MMU, and PC displacements within signed-word range.
+
+RTE now restores the stacked EA and CM after a successful format-$7 unstack.
+Indexed An and PC-relative modes reuse that EA, including handler edits.
+The full-EA decoder consumes instruction extensions without rereading the
+indirect pointer. Other modes recalculate from current registers. This follows
+MC68040UM-1993 §§8.4.6.2/8.4.6.7 (PDF pp. 238/240); all operand transfers,
+including the completed prefix, repeat using current source-register values.
+A new fault consumes the latch into CM again; successful MOVEM clears it.
+D34 records the manual’s explicit mode restriction over the pinned oracle’s
+blanket saved-EA reuse. Its RTE publication and indirect bypass already agree
+with the manual. No oracle patch or corpus exception.
+
+`build/moira_rules_test --movem-restart` covers EC/LC/full 040, user/supervisor,
+cache-off/active NC, W/L, physical errors and 4K/8K invalid-page faults.
+AI, displacement, brief/full indexed, PC-relative, postincrement and
+predecrement cases fault at each of three transfers. Handlers change An,
+index and pointers, clear CM or edit frame EA. Exact bus prefixes/replays,
+indirection count, sign extension, source values, flags and final An are
+checked. `moira_state_test` faults/refaults a real MOVEM, runs guest RTE,
+saves at the live continuation boundary and restores a fresh EC/LC/full CPU.
+The asset-free JIT gate retains a trained native MOVEM block while the
+interpreter produces a partial fault and guest RTE. These are observed one
+instruction at a time because the existing coarse model can charge zero
+cycles before the fault. RTE’s known-empty IRQ-check request (pin 0, mask 7)
+is cleared to reach the generated CM guard instead of the generic CPU-flags
+exit. Native and threaded replay agree under both CCR layouts; AArch64
+and x86-64/Rosetta each enter once and execute one slow instruction. The
+complete asset-free JIT executable also passes on x86-64/Rosetta. This is
+functional x86-64 backend evidence, not an x86 hardware performance claim.
+The synthetic plain-memory spans are bounded at their unmapped hole.
+
+Validation: full build and all 139 asset-none gates pass. The focused
+MOVEM matrix passes 4 848/4 848 sequences (5 952 failed checks with the same
+fixture on the isolated pre-fix core); natural state continuation passes on
+EC/LC/full 040. The three base corpora pass: 68000 1 000 058/1 000 058,
+68030 3 078/3 082 with its four existing named divergences, 68040 7 200/7 200.
+Q605 reaches Finder in 256 colors. Both JIT locksteps match 5 000 000 steps;
+the cache-active AArch64 run executes 2 050 506 native line reads and 182 574
+copyback writes. Execution census confirms 145 executed gates, no soft-skips
+or failures. Documentation, 348 WinUAE/44 SST/140 manual comment blocks,
+all four pinned manual identities and `git diff --check` pass.
+
+TODO removes the reproduced MOVEM item. Vendor row 74, host-surface notes,
+manual locators and oracle ruling D34 document the contract. No new CPU
+field, archive payload/version, backend admission, cache policy or cycle
+calibration. Exact continuation timing and pin waveforms remain outside
+these architectural witnesses.
+
+<a id="2026-11-09-atc-failure-retention"></a>
+## 2026-11-09 (fifteenth) — 68040 validity/protection faults retain their ATC mapping and deny before M re-walk
+
+The next TODO reproduces **33 488 failed checks in 8 192 sequences**.
+The same matrix against the corrected core reports **zero failures**.
+The baseline rebuild restores only the three changed ATC decisions in an
+isolated core copy; both binaries use the same fixture, including WB3
+completion in its saved FC2 domain. Initial fault frames and permitted M
+controls pass. Ordinary cold faults checked validity and protection before
+publishing their entry, so a descriptor repair changed the result or
+physical mapping without PFLUSH. A second bug also affected PTEST-created
+entries: user S=1/M=0 writes discarded the entry to set M before checking
+supervisor protection. Both direct and scanned lookup were affected.
+
+Normal translation now publishes the completed walk result before rejecting
+R/W/S. Invalid root/pointer/page/indirect chains retain R=0; protected valid
+pages retain their PA and attributes. Both lookup paths preserve an S denial
+before considering M update. Permitted unmodified writes still re-walk;
+modified writes retain their cached mapping. This follows MC68040UM-1993
+§§3.3/3.5 (PDF pp. 75–79) and the pinned oracle's existing ordering; no new
+ruling or oracle patch is needed.
+
+The matrix covers LC/full 040, 4K/8K pages, cache-off/NC/WT/CB, both
+privileges, B/W/L reads/stores, actual code fetches, PTEST R/W data/code and
+locked TAS. Root/pointer/page WP, S with M=0/M=1, all invalid levels and
+indirect cases are repaired to a distinct PA. A same-domain detour chooses
+scanned lookup; the opposite FC2 domain must see its own repaired mapping.
+Reads and denials must not walk repaired tables, and denials must not emit
+operand stores. WP retains its readable old PA. Positive controls distinguish
+M=0 re-walks from modified writes. PFLUSH exposes the repair, followed by
+safe-RAM WB3/RTE completion or read/TAS/code restart with one EA update.
+The before/after counts include recovery consequences of wrongly allowed
+diagnostic writes. The focused command is
+`build/mmu040_atc_test --failure-retention`; registration remains unchanged.
+
+The wider suite also exposes 276 stale MOVEP recovery checks: that
+fixture repaired an invalid page and immediately executed RTE, implicitly
+relying on the missing failed entry. Its guest handler now executes
+PFLUSHA before RTE for MMU cases. All 192 MOVEP fault/retry sequences and
+36 ordinary final-store controls pass, with the original MOVEP restart
+policy unchanged.
+
+Validation: the full build passes. The focused matrix reports 8 192
+sequences and zero failures; the registered ATC gate includes all earlier
+cases. The three base corpora pass: 68000 1 000 058/1 000 058, 68030
+3 078/3 082 with its four existing named divergences, and 68040 7 200/7 200.
+The Q605 reaches Finder in 256 colors. Both JIT locksteps match 5 000 000
+steps; the cache-active AArch64 run executes 2 050 506 native line reads and
+182 574 copyback writes. The final complete asset-none run passes all
+139 gates. Execution census confirms 145 executed gates across the four
+batches, zero soft-skips and zero failures. Documentation, evidence-grade
+checks, all four pinned manual identities and `git diff --check` pass.
+
+TODO removes the completed retention item. No CPU/snapshot state, fault-frame
+or pending-store stage policy, history ordering, cache replacement, native
+admission or corpus exception changes. Existing hardware pipeline captures
+and descriptor LOCK/RMW waveforms remain separate work.
+
+<a id="2026-11-09-descriptor-bus-errors"></a>
+## 2026-11-09 (fourteenth) — 68040 descriptor errors fault the original access and preserve deferred U history
+
+The next TODO reproduces **30 144 failures in 13 632 cases** on the old
+core: **7 344 original-access frame failures, 7 344 lost negative entries,
+11 808 incorrect table prefixes and 3 648 incorrect partial-history images**.
+The baseline uses MMUSR's defined R/M fields, excluding the descriptor U
+bit. Ordinary walks lacked PTEST's table-search context, so a descriptor
+/BERR looked like an operand error and was forgotten after a repair.
+Root/pointer U writes also happened before the next descriptor read.
+
+Ordinary translation now scopes `mmuInTableSearch` around the raw walk.
+Its private bus-error signal unwinds before operand metadata changes. The
+catch clears the context, creates an R=0 entry in the selected I/D/privilege
+ATC and constructs the original logical access's ATC/MA frame. Address,
+size, direction, FC and pending WB3 stay with that access. PTEST still
+reports only MMUSR.B and creates no exception. Every exit clears the
+context, with a subsequent TTR physical /BERR before any other walk proving
+that cleanup.
+
+MC68040UM-1993 §3.5 (PDF p. 79), Figure 3-10 (p. 60) and §8.4.6.2 define
+the failed translation/retry and frame. The figure explicitly defers a
+scheduled table U write until the next descriptor read. The walker now
+retains the prior descriptor/address and follows that order. D33 records
+the primary-manual ruling over eager writes in the pinned oracle, with no
+oracle patch or corpus exception. Shared physical longword reads also
+sequence host words explicitly; the first-half abort cannot read the second.
+
+The expanded **14 112 cases** cover LC/full 040, 4K/8K pages, both privileges,
+cache-off/NC/WT-read/CB-write paths, B/W/L reads/stores, actual code fetches,
+PTEST R/W in both domains, indirect pages and both halves of every read/U/M
+write. Cold and post-split faults, plus 480 resident-M=0 write re-walk
+controls, hold table prefixes/history, target suppression, frames/MMUSR,
+negative-entry lifetime and safe-RAM PFLUSH/WB3/RTE recovery together.
+The isolated command is `build/cache040_test --descriptor-faults`; the
+registered gate still runs the complete cache suite. Its diagnostic
+physical-fault frame is discarded explicitly; the original frame drives
+actual recovery.
+
+The ordinary pending-store/restart policy stays unchanged. Descriptor
+LOCK/RMW pin waveforms are not newly modeled. TODO removes the completed
+descriptor-error item and separates ordinary validity/protection failure
+retention, whose publication still follows validation. No CPU member,
+snapshot payload, cache replacement rule, native admission or gate
+registration changes.
+
+**Validation:** complete ARM64 build, zero warnings/errors. All **14 112
+expanded cases pass**; the initial **30 144 failures become zero**. A final
+focused rebuild/rerun after extending the observer to the second-page
+PTEST target window also passes all 14 112 cases. The full cache gate and
+all **139 asset-none gates execute with zero skips/failures**; local socket
+tests run outside the sandbox. The base corpora execute without soft-skips:
+68000 **1 000 058 / 1 000 058**, 68030 **3 078 / 3 082 plus four named
+divergences**, 68040 **7 200 / 7 200**. The Q605 reaches its 256-color Finder.
+Both 040 locksteps execute **5 000 000 identical steps**, without skips;
+the A64 cache-on run records **2 050 506 native line reads** and **182 574
+copyback writes**. Execution censuses confirm **145 CTest gates executed,
+zero skipped or failed** across those four batches. Documentation, evidence
+grades, manual PDF identities and `git diff --check` pass. No recorded
+registry-data change.
+
+<a id="2026-11-09-split-page-ma"></a>
+## 2026-11-09 (thirteenth) — 68040 split-page MA marks ATC faults, not external data errors
+
+The next TODO reproduces **2 016 frame failures in 8 592 sequences** before
+changing the core. `mmu040Fault` restored the initial logical FA and set MA
+in the same unconditional later-fragment block. MC68040UM-1993 §8.4.6.2
+(PDF p. 238) reserves MA for a second-page ATC fault. §8.4.6.4 (PDF p. 239)
+independently keeps the initial logical FA for all misaligned faults.
+
+Only the MA assignment now requires `atc`; FA restoration stays independent.
+The fork deliberately differs from WinUAE `cpummu.c:989–997`,
+`misalignednotfirst` @ Hatari e77819f7, which sets MA on every later-fragment
+exception. D32 records the primary-manual ruling, with no oracle patch,
+corpus exception or regenerated vector.
+
+The matrix covers .W/.L reads/stores, every crossing alignment and aligned
+first-page controls, `(An)`, `(An)+`, `-(An)`, both privileges, EC040 flat
+controls and LC/full 040 flat/4K/8K aliases. Physical errors target every
+requested host transfer or either host half of a demanded fill longword.
+Nonresident, write-protected and supervisor-only descriptors provide
+first-/second-page ATC controls. Cache-off, active NC, active WT reads and
+CB write allocation all reach the builder. Exact prefixes, trap origins,
+SSW/FA/WB3, already committed fragments, registers/flags and single EA
+updates are checked together. Software completes pending WB3 on safe RAM;
+RTE advances a final store or retries a read without losing operand bytes
+or neighbours.
+
+The existing pending-store stage and restart policy stay intact. No CPU or
+snapshot field, timing table, replacement rule, native admission or gate
+registration changes. TODO removes the completed MA distinction and names
+a separate witness for descriptor-cycle /BERR qualification in ordinary
+table walks, which do not use PTEST's `mmuInTableSearch` context. The new
+ATC controls use descriptor validity/protection; they do not claim that
+separate error path. Unused write-fill delivery and simultaneous pipeline
+buffers remain open.
+
+**Validation:** complete ARM64 build, with zero warnings/errors. All
+**8 592 new sequences pass**: **4 200 physical errors, 2 880 ATC controls
+and 1 512 successful accesses**. The **2 016 pre-fix frame failures become
+zero**; earlier cache, CAS, MOVE16, fill and push witnesses stay green.
+All **139 asset-none gates execute with zero skips/failures**, including
+the expanded cache gate; local socket tests run outside the sandbox.
+The base corpora execute without soft-skips: 68000 **1 000 058 / 1 000 058**,
+68030 **3 078 / 3 082 plus four named divergences**, 68040 **7 200 / 7 200**.
+The Q605 reaches its 256-color Finder. Both 040 locksteps execute
+**5 000 000 identical steps**, without skips; the A64 cache-on run records
+**2 050 506 native line reads** and **182 574 copyback writes**. Execution
+censuses confirm **145 CTest gates executed, zero skipped or failed** in
+these four batches. Documentation, evidence grades, manual PDF identities
+and `git diff --check` pass. No recorded registry-data change.
+
+<a id="2026-11-09-cache-push-faults"></a>
+## 2026-11-09 (twelfth) — 68040 push faults export physical frames and retain completed replacement lines
+
+The next TODO starts with **15 848 failures in 5 733 sequences** before
+the core changes. Pushes used ordinary write descriptors, shared physical
+FA/WB3A, omitted WB1A/full PD, replaced a pending logical store with victim
+data and rolled back a successful replacement read. CPUSH retained a line
+that §7.6.1 says must be invalidated even when the push fails. Multi-dirty
+pushes also transferred only dirty longwords instead of a complete line.
+
+MC68040UM-1993 §4.6.2 requires a longword for one dirty longword and a line
+for two or more. §§8.4.6.2/8.4.6.4–8.4.6.6 and Table 8-6 give a physical
+push frame: write/TM=0/TT=0, FA=WB1A, WB1 invalid and all four PD words,
+even for a single-longword push. §7.6.1 retains a successfully read new
+line after a replacement push fault. The reviewed PDF locators include
+p. 180, pp. 239–240 and Table 8-6 p. 244.
+
+A private push probe defers frame construction. The controller preserves
+the caller's existing continuation/LK/pending-store policy, then emits the
+physical push transaction and victim PD image. WB3A is independent logical
+fault-to-frame scratch, reset with the other fault fields and consumed
+before an instruction boundary; the snapshot payload/version is unchanged.
+A completed replacement is no longer rolled back after its victim push
+fails. Drains invalidate first while a local saved line supplies the bus
+sink and fault image. Multi-dirty pushes now transfer all four longwords,
+with the corresponding existing per-longword timing charges.
+
+The expanded **12 285 sequences** cover CPUSH line/page/all, replacement
+reads/B/W/L writes, NC reads/B/W/L writes, locked TAS, every host half,
+single-dirty positions and multi-dirty masks, both privileges and flat/4K/8K
+aliases. Software completes the actual stacked PD first, then pending WB3
+through architectural memory, including retained copyback lines. RTE must
+not repeat a completed push or replacement fill or an EA adjustment.
+Earlier coherency matrices now expect full-line multi-dirty transfers.
+
+The ordinary-store WB3 stage remains a synchronous-model choice. NC-fault
+invalidation follows the shared drain policy; the manual explicitly names
+replacement and CPUSH, so the NC case still needs hardware evidence.
+Asynchronous WB2/WB3 and pending MOVE16 combinations remain open. Physical
+non-push page-split MA and unused write-fill delivery are separate TODOs.
+No gate registration, native admission or corpus exception change.
+
+**Validation:** complete ARM64 build. The expanded **12 285 push sequences
+pass**, with the initial **15 848 failures becoming zero**; all earlier
+cache/locked-operand/MOVE16/read-fill/write-allocate cases remain green.
+All **139 asset-none gates execute with zero skips/failures**, including
+the expanded cache gate; local socket tests run outside the sandbox.
+The base corpora execute without soft-skips: 68000 **1 000 058 / 1 000 058**,
+68030 **3 078 / 3 082 plus four named divergences**, 68040 **7 200 / 7 200**.
+The Q605 reaches its 256-color Finder. Both 040 locksteps execute
+**5 000 000 identical steps**, without skips; the A64 cache-on run records
+**2 050 506 native line reads** and **182 574 copyback writes**. Execution
+censuses confirm **145 CTest gates executed, zero skipped or failed** in
+these four batches. Documentation, evidence grades, manual PDF identities
+and `git diff --check` pass. No recorded registry-data change.
+
+<a id="2026-11-09-write-allocate-pending"></a>
+## 2026-11-09 (eleventh) — 68040 write-allocate faults retain the pending store, and replacement reads precede dirty pushes
+
+The next TODO reproduces **35 112 failures in 14 616 MOVE.B/W/L sequences**
+before changing the core. The fill loop replaced the store descriptor with
+a physical longword read and lost the pending data in every reported fault.
+Dirty victims also reached RAM before the replacement read could abort.
+
+Write-allocate fills now use the private bus probe without overwriting the
+logical store descriptor. A reported fill-read fault retains the original
+logical address and B/W/L size, constructs a read SSW, and exposes the
+outstanding store's register-aligned data in WB3. WB1/WB2 stay invalid.
+MC68040UM-1993 §8.4.6/Table 8-6 permits this read-error frame combination;
+its Table 8-6 locator is reviewed at PDF p. 244. Assignment of the synchronous
+model's store to WB3 remains F pending a real write-miss fault capture.
+The existing final-store PC/CCR/EA policy is preserved.
+
+The replacement read now precedes a dirty victim push for write misses too
+(§4.6.2). An aborted read restores dirty cache bytes without writing their
+RAM first; a successful fill and push retain the caller's original stamp.
+The regression covers B/W/L, `(An)`, `(An)+`, `-(An)`, line crossings,
+wrapped fills, either host half, missing/clean/dirty victims, both privileges
+and flat/4K/8K aliases. A software handler consumes the actual WB3 value;
+RTE reaches the next instruction without another operand read or repeated
+EA adjustment. Cache-visible values and untouched neighbours are checked,
+including a first-line update before a second-line fault. Completion uses
+safe RAM, not peripheral replay.
+
+Unused write-allocation beat errors are still reported conservatively.
+Suppressing those errors and completing the store without a valid cache
+line remain open, as do push-fault PD frames and new-line retention.
+TODO now distinguishes those contracts from loss of the pending store.
+No CPU member, snapshot format, timing table, native admission or corpus
+exception changes.
+
+**Validation:** complete ARM64 build. All **14 616 new sequences pass**;
+**35 112 pre-fix failures become zero**, with the earlier cache, CAS and
+MOVE16 cases still passing. All **139 asset-none gates execute with zero
+skips/failures**, including the expanded cache gate; local-socket tests run
+outside the sandbox. The three base corpora execute without soft-skips:
+68000 **1 000 058 / 1 000 058**, 68030 **3 078 / 3 082 plus four named
+divergences**, 68040 **7 200 / 7 200**. The Q605 reaches its 256-color Finder.
+Both 040 locksteps execute **5 000 000 identical steps**, without skips;
+the A64 cache-on run records **2 050 564 native line reads** and **182 605
+copyback writes**. Execution censuses confirm **145 CTest gates executed,
+zero skipped or failed** across those four batches. Manual identities,
+evidence grades, documentation and `git diff --check` pass. No gate
+registration or recorded registry-data change.
+
+<a id="2026-11-09-read-fill-faults"></a>
+## 2026-11-09 (tenth) — Read fills keep logical descriptors, suppress unused-beat faults and defer dirty pushes
+
+The next TODO's read-fill cases are reproduced before changing the core:
+**4 872 data reads and 224 instruction fetches fail 7 936 checks**.
+The fill loop overwrote each read's logical address and original size with
+a physical longword descriptor, every failed speculative beat raised an
+exception, and a dirty victim reached RAM before a replacement read that
+could still abort.
+
+MC68040UM-1993 §§4.6.1/7.6.1 distinguish demanded from unused longwords;
+§4.6.2 reads before pushing a displaced dirty line. §§8.4.6.2/8.4.6.4 retain
+the original size and logical initial FA. The reviewed PDF locators are
+95/97/179 and 237/239. `pomCache040Fill` now receives the requested byte
+chunk and a caller-owned scratch line. A private read-probe sentinel makes
+`extBusError040` throw an internal abort before constructing a frame or
+consuming continuation/writeback state. The size is restored immediately;
+only a demanded longword builds the architectural read fault.
+
+On an unused abort, the requested bytes survive in the caller's buffer,
+the attempted cache line is invalidated and no guest exception occurs.
+Copying those bytes before victim restoration prevents returning the old
+victim's bytes. A dirty victim is restored without a premature memory
+write; a clean victim stays discarded. Successful read replacements now
+read the new line before pushing the dirty victim. An aborted line cannot
+publish a valid native cache-line pointer. No new CPU member, snapshot
+field, replacement policy, timing table or native admission changes.
+
+The data matrix covers B/W/L, unaligned accesses within and across cache
+lines, wrapped first-longword positions, either host word, missing/clean/
+dirty victims, WT/CB mappings, both privileges and flat/4K/8K aliases.
+Instruction witnesses hold logical word-size program faults and unused
+beats under the fork's explicit two-word lookahead. Bus traces, RAM/victim
+state, requested values, frame size/address/space and safe-RAM repair/RTE
+retries are held together. This is a fill-buffer contract, not a new
+instruction-prefetch pipeline or pin timing model.
+
+`readBytes=0` preserves the old write-allocate path, explicitly F until its
+pending write is carried. A failure inside the subsequent dirty push still
+conservatively restores the victim until the full PD frame/new-line
+retention exists. Physical page-split MA encoding and delayed/cancelled
+instruction-prefetch faults remain separate. TODO now names these remaining
+contracts instead of claiming all fills share one unresolved stamp issue.
+
+**Validation:** complete ARM64 build. The 5 096 new sequences pass with
+zero failures; all earlier cache/locked-operand/MOVE16 cases remain green. The three base
+corpora execute, without soft-skips: 68000 **1 000 058 / 1 000 058**, 68030
+**3 078 / 3 082 plus four named divergences**, 68040 **7 200 / 7 200**.
+Manual PDF identities, evidence grades, documentation and `git diff --check`
+pass. All **139 asset-none gates execute with zero skips/failures** (local
+socket gates outside the sandbox); the expanded cache gate executes in
+that suite. The Q605 reaches its 256-color Finder without a soft-skip.
+Both 040 locksteps execute **5 000 000 identical steps**; the A64 cache-on
+run records **2 050 564 native line reads** and **182 605 copyback writes**.
+Both execute without skips/failures. No gate registration, corpus exception
+or snapshot-format change.
+
+<a id="2026-11-09-move16-fault-context"></a>
+## 2026-11-09 (ninth) — MOVE16 owns its fault descriptor, and successful pushes restore the logical operand context
+
+The next cache-fault TODO separates into different contracts. A MOVE16
+fault must identify its data transfer, a fill fault must retain the
+execution unit's original access size, and a push fault uses a physical
+address plus push data. This change closes MOVE16's descriptor and the
+return from a successful push; cache-fill faults and faults inside pushes
+remain open with their pending-write requirements stated explicitly.
+
+The initial **3 810 MOVE16 sequences and 70 post-push read-fault sequences
+fail 5 230 checks**. MOVE16 inherits its preceding opcode/window stamp, so
+a physical data bus error is reported as a program word/longword read,
+even when the failing transfer is a write. `mmu040EffAddr` is also stale,
+so the existing WB2 capture can point at the wrong destination on an ATC
+fault. Separately, a successful dirty push overwrites the next MOVES/TAS
+read's descriptor with the physical longword write it just completed.
+
+`mmu040GetMove16/PutMove16` now set the aligned logical EA and all five
+bus-stamp fields before translation: initial line address, value, line
+size, direction and data space. Each helper owns one descriptor for all
+its host beats; the destination EA also supplies the existing WB2 capture.
+`pomCache040Writeback` saves/restores the five caller fields on normal
+return. It keeps the previous fault path if a push itself throws, now
+explicitly F for its missing physical-TM/WB1A/PD frame. No new CPU member,
+snapshot version, timing table, cache geometry or native admission changes.
+
+The primary stamp rules are MC68040UM-1993 §§8.4.6.2/8.4.6.4 (reviewed
+PDF pp. 237/239). The MOVE16 matrix covers all five forms with unaligned
+cursors, EC/LC/full 040, user/supervisor, flat/4K/8K aliases, ordinary fetch,
+proved instruction-window fetch and cache-on misses. It faults every host
+word of the source and destination, plus either MMU stage. Traces retain
+completed prefixes; frames retain line size, data FC, direction, initial
+logical FA, destination WB2 address and full PD0-3. Safe-RAM repair,
+PFLUSHA where supported, RTE and retry preserve the copy and increment
+registers once. Seventy MOVES.B/W/L and TAS witnesses first push two dirty
+longwords, then fault the operand read without reporting stale push data.
+
+The WB2/PD/restart sequencing remains the fork's existing WinUAE-derived
+pipeline model, not a new silicon proof. Cached MOVE16 hits are outside
+this matrix: §4.3.3's valid/dirty read-hit service and write-hit invalidation
+still need coherency witnesses. Cache-fill speculative beats, write-allocate
+pending state and push-fault frames also remain open. Retry witnesses use
+safe RAM and do not imply peripheral-safe double reads.
+
+**Validation:** complete ARM64 build. The 3 810 MOVE16 and 70 post-push
+sequences now pass with zero failures; all earlier cache/locked-operand
+cases remain green.
+The three base corpora execute with zero soft-skips: 68000 **1 000 058 /
+1 000 058**, 68030 **3 078 / 3 082 plus four named divergences**, 68040
+**7 200 / 7 200**. Manual PDF identities and reviewed locators, evidence
+grades, documentation and `git diff --check` pass.
+All **139 asset-none gates execute with zero skips/failures** (local
+socket gates outside the sandbox). The Q605 reaches its 256-color Finder.
+Both 040 locksteps execute **5 000 000 identical steps**; the A64 cache-on
+run records **2 050 564 native line reads** and **182 605 copyback writes**.
+The boot and both locksteps execute with zero skips/failures. No gate
+registration, corpus exception or snapshot-format change.
+
+<a id="2026-11-09-cas-terminal-write"></a>
+## 2026-11-09 (eighth) — Failed 040 CAS/CAS2 issue their terminal write and expose write-only bus faults
+
+The next TODO item is reproduced before changing the core: **1 814
+sequences fail 3 752 checks**, while all 78 legacy 68020/68030 controls
+already pass. A failed comparison leaves ordinary RAM unchanged, but the
+040 still owes an external write. Omitting it hides device side effects
+and a /BERR that can occur only on that write.
+
+MC68040UM-1993 §7.4.5 explicitly requires CAS to write its read operand
+back, and CAS2 to write only its second read operand, even when comparison
+one failed. `execCas` and `execCas2` now send those captured values through
+`writeM` before updating compare registers, on EC/LC/full 040 only. The
+existing final-write funnel carries size, function code, logical address
+and original read data into WB3 on /BERR. No new member, snapshot format,
+cache policy, timing table or native admission changes.
+
+WinUAE `cpuemu_31.c op_0ad0/op_0cd0/op_0ed0` @ Hatari e77819f7 already
+writes on failed CAS, before Dc update, with final-store/next-PC fault
+semantics. Its `gencpu.c i_CAS2` omits the terminal write. New ruling D31
+in `oracle/README.md` and `oracle/fuzz/disputes/NOTES.md` follows the primary
+manual for that bus transfer. CAS2's register-commit/frame-PC sequencing
+on the newly observable write fault uses the CAS model by analogy and is
+explicitly F until a real 040 capture exists. The manual-backed transfer
+must not be mistaken for hardware proof of that internal pipeline order.
+
+`cache040_test` adds **1 736 040 sequences plus 78 earlier-core controls**:
+supervisor/user; flat or 4K/8K translated aliases; cache off or missing,
+clean and dirty lines; CAS.B/W/L at (An)/(An)+/-(An); CAS2.W/L with either
+mismatch. Exact bus traces require the original operand, not Du, only the
+second CAS2 address, dirty pushes before operand reads, one EA update and
+unchanged dirty neighbours. A longword remains two host `write16` calls;
+the fault arm covers either host beat without failing an earlier dirty
+push. /BERR cases pin format $7, LK/write attributes, logical FA/WB3 address,
+WB3's original read value, next PC and deferred Dc commit, then complete
+WB3 and RTE without reading the operands again. These hold the stated
+fault model; they do not prove LOCK/LOCKE waveform fidelity.
+
+**Validation:** complete ARM64 build. The 1 814-sequence regression now
+passes with zero failures, including 1 008 write-fault/WB3/RTE cases and
+all 78 legacy controls. All **139 asset-none gates execute**, with zero
+skips/failures (local socket gates outside the sandbox). The three base
+corpora execute: 68000 **1 000 058 / 1 000 058**, 68030 **3 078 / 3 082
+plus four named divergences**, 68040 **7 200 / 7 200**. Primary PDF identities,
+evidence grades, documentation and `git diff --check` pass.
+The Q605 reaches its 256-color Finder. Both 040 locksteps execute
+**5 000 000 identical steps**; the A64 cache-active run records
+**2 050 564 native line reads** and **182 605 native copyback writes**.
+Those three integration gates execute with zero skips/failures. No gate
+registration, snapshot version or corpus exceptions are changed.
+
+<a id="2026-11-09-implicit-nc-coherency"></a>
+## 2026-11-09 (seventh) — MOVES and locked operands push dirty data before bypass, and CAS2 checks write permission
+
+The cache-active TODO witness is reproduced. The initial **630 executed
+sequences fail 1 351 checks**: MOVES reads stale memory instead of dirty
+copyback data; stores lose dirty neighbours; TAS/CAS compare stale RAM;
+clean lines survive with old bytes. CAS2 lacks the locked marker entirely,
+so it serves operands from the cache and does not write-probe its reads.
+
+MC68040UM-1993 §§7.4.1/7.4.3 identify MOVES and RMW as implicitly
+noncacheable; §§4.3.2/7.4.5 require matching dirty data to reach memory
+before the external RMW starts, or a clean line to be invalidated.
+`pomCache040Touch` was clearing `pomCache040Enabled`, conflating access
+inhibition with CACR disable and thereby skipping resident-line resolution.
+It now retains the CACR marker and inhibits through `pomCache040Cm=CM_NC`.
+CAS2 arms `mmu040Lrmw` before both operand reads, sharing TAS/CAS's write
+permission and SSW.LK path, including when the cache model is off. No
+new member, cache geometry, replacement policy or timing setting changes.
+
+The regression executes EC/LC/full 040 with transparent copyback RAM or
+4K/8K translated aliases; missing, clean and dirty physical lines; MOVES
+byte/word/long reads and writes at SFC/DFC 1/2/5/6; TAS and successful
+CAS.B/W/L and CAS2.W/L. Operand bus traces distinguish pushed dirty
+longwords from external reads/writes, hold their ordering and exact width,
+and preserve unmodified dirty neighbours. Clean matches are invalidated,
+no line is allocated, and the next ordinary instruction caches again.
+Three CACR-off/on controls retain dirty bytes across an ordinary bypass;
+sixteen CAS2 page-protection cases require a locked write-permission fault
+on either operand before any store, with both page sizes and cache modes.
+
+The failed-comparison terminal write required by §7.4.5 remains a separate
+bus-protocol defect, now named in TODO: CAS writes back the value read,
+CAS2 the second operand. The §4.3.3 disabled-cache locked-hit/next-miss
+quirk and dirty-push fault stamping remain open too. The tests establish
+data coherency and permission handling, not LOCK/LOCKE waveform fidelity.
+
+> **Follow-up, 2026-11-09 (eighth):** terminal transfers are implemented and
+> tested below; CAS2 write-fault pipeline sequencing remains explicitly F.
+
+**Validation:** complete ARM64 build; the 630-sequence regression now
+passes with zero failures, as do all three CACR controls and sixteen CAS2
+protection cases. The three base corpora execute: 68000 **1 000 058 /
+1 000 058**, 68030 **3 078 / 3 082 plus four named divergences**, 68040
+**7 200 / 7 200**, with zero soft-skips. Manual PDF identities, the new
+§7.4.5 locator (PDF p. 168), evidence grades and documentation checks pass.
+All **139 asset-none gates execute with zero skips/failures** (local socket
+gates outside the sandbox). The Q605 reaches its 256-color Finder. Both
+040 locksteps execute **5 000 000 identical steps**; the A64 cache-active
+run counts **2 050 564 native line reads** and **182 605 copyback writes**.
+Those three integration gates also execute with zero skips/failures.
+`git diff --check` passes. No gate registration or snapshot-format change.
+
+<a id="2026-11-09-cache040-state"></a>
+## 2026-11-09 (sixth) — 040 save states preserve dirty data and stale instructions without pushing cache lines
+
+The TODO's copyback loss is reproduced: six fresh bare-CPU round trips
+fail **24 checks**. RAM does not contain the most recent dirty data, but
+restore invalidates both architectural caches. A clean I-cache line can
+also contain instructions older than RAM, so draining dirty D-cache lines
+alone cannot preserve execution. Draining would additionally change RAM,
+bus effects and guest time during save.
+
+`Cache040::visit` now preserves replacement phase and every valid line's
+tag, per-longword dirty mask and 16 bytes. Invalid garbage and diagnostic
+counters are omitted. `Moira::pomVisitState` appends both caches and the
+cache-model mode for EC/LC/full 040, including retained disabled lines.
+Load drops old ATCs, JIT windows/TLBs and cache lines before restoring the
+payload. Save does not touch RAM, dirty masks or the clock. The strict host
+format becomes **v30**; versions through v29 are refused before mutation.
+CPU/FPU and timing configuration still must match. This changes software
+persistence without settling the open hardware replacement/timing work.
+
+`moira_state_test` resumes stale instruction fetches, a dirty write across
+two longwords and the next dirty victim on 68LC040/68040 in active,
+CACR-disabled and model-disabled modes. It also checks invalid-slot
+canonicalization and derived-window invalidation. `savestate_040_test`
+adds ten full-container cases: Q605, Centris, Q700, Q900 and Q630, each in
+interpreter and JIT mode. They check exact re-save, resumed execution,
+rollback from a truncated CPU payload over different dirty live data,
+and v29 rejection without mutation.
+
+**Validation:** complete ARM64 build; all **139 asset-none gates executed**
+with zero skips/failures (local socket gates outside the sandbox). The
+three base corpora execute: 68000 **1 000 058 / 1 000 058**, 68030
+**3 078 / 3 082 plus four named divergences**, 68040 **7 200 / 7 200**.
+The Q605 Finder boot, in-place save/restore and file-backed fresh-instance
+relaunch all execute with zero skips/failures. The six CPU regressions
+now pass, as do all ten full-container cache cases including rollback.
+Both 040 locksteps execute **5 000 000 identical steps**, with zero skips:
+the A64 cache-active run records **2 050 564 native line reads** and
+**182 605 native copyback writes**. Documentation, evidence grades and
+`git diff --check` pass.
+
+<a id="2026-11-09-movep040-restart"></a>
+## 2026-11-09 (fifth) — A faulting 68040 MOVEP no longer skips the rest of its byte stream after RTE
+
+The named `random/identity/8k seed=845 #1967` witness is reproduced from
+the generator at `4f0747b4`: `$0789 $54F5`, MOVEP.W D3,(d16,A1), at
+`$117A4`. The fork stacked `$117A8`, while the independently rebuilt pinned
+WinUAE oracle stacked `$117A4`. Its `cpuemu_31.c op_0188_31_ff` and
+`op_01c8_31_ff` @ Hatari e77819f7 never set `mmu_restart=false` for any
+MOVEP store byte. Ordinary MOVE stores do. The byte write funnel had
+marked the first byte as a last write, so a later fault followed by RTE
+skipped the rest of the transfer.
+
+The fault dispatcher now excludes MOVEP stores from that next-PC branch,
+as it already does for FPU stores. Successful transfers, ordinary final
+stores and the other CPU families keep their paths. This fixes the existing
+re-execution model on grade-D evidence. MC68040UM-1993 § 8.4's generic
+format-$7 diagram labels the PC as the next instruction without explaining
+an incomplete MOVEP peripheral sequence. Hardware PC/writeback/partial
+transfer policy still needs a real 040 capture and is explicitly F at the
+site; no silicon or pipeline fidelity is inferred from this oracle match.
+
+`moira_rules_test` adds **192 MOVEP sequences and 36 ordinary-store
+controls**: 68LC040/68040, .W/.L loads/stores, each byte fault and success,
+external /BERR and 4K/8K page faults, data-window prefixes and cache-active
+WT stores. It holds frame PC/SSW/FA/WB3, completed prefixes and untouched
+gaps, source/CCR/An, then repair/RTE and a completed retry. MOVE.B/W/L
+ordinary stores still stack next PC. The full pre-fix gate fails **558
+checks**; read/success/final-store controls pass. The rebuilt oracle also
+passes 26 targeted MOVEP/MOVE page-fault cells. The original vector now
+replays **1/1**, previously **0/1** with the stacked-PC byte mismatch.
+`scratchpad/2026-11-09/movep040-repro.py` regenerates just that vector;
+its initial-state hash rejects drift from the pinned generator recipe.
+
+The ATC geometry/replacement audit preceding this fix exposed a prerequisite
+now stated in TODO: `pomJitFetch`, `pomJitData` and native data/fetch paths
+skip ATC consultations. The current `atcMru` guard proves an already-set bit
+would not change; it cannot justify omitting a per-access counter increment.
+Counter state must follow commit/replay on both emitters before a new victim
+policy can preserve interpreter/JIT U-bit writes. No ATC policy or native
+admission changes are made here.
+
+**Validation:** complete ARM64 build and **139 asset-none gates executed,
+zero skips/failures** (loopback tests run outside the sandbox). The three
+base corpora execute: 68000 **1 000 058 / 1 000 058**, 68030 **3 078 /
+3 082 plus four named divergences**, 68040 **7 200 / 7 200**. The Quadra
+605 reaches its 256-color Finder. Both 040 locksteps execute **5 000 000
+identical steps**; the A64 cache-active run counts **2 050 564 native line
+reads** and **182 605 native copyback writes**. Those six asset-dependent
+gates execute with zero skips/failures. The rebuilt oracle's 040 smoke
+passes; the hash-checked single-vector recipe regenerates identical JSON,
+and the expanded permanent rule gate passes all 228 new sequences.
+The remaining hardware capture is named explicitly in TODO. Evidence,
+documentation and `git diff --check` pass.
+
+<a id="2026-11-09-atc-flush-test"></a>
+## 2026-11-09 (fourth) — PFLUSH selects a privilege; PTEST renews one ATC and keeps negative results resident
+
+The 68040 PFLUSH page forms ignored DFC and flushed both privileges.
+PTEST searched the tables and reported MMUSR but neither invalidated nor
+filled an ATC entry. MC68040UM-1993 §§ 3.7.2/3.7.3 and the pinned
+M68000PRM-1992 PFLUSH/PTEST entries (PDF pp. 489/490 and 524/525) define
+different selection rules: PFLUSH selects FC2 from DFC but acts on both
+I/D ATCs; PTEST flushes/refills only the I/D ATC and privilege selected by
+DFC. Global entries are spared only by the N flush variants. PFLUSHA and
+PFLUSHAN ignore DFC and select all pages/domains.
+
+WinUAE `cpummu.c mmu_op_real/mmu_flush_atc` @ Hatari e77819f7 flushes both
+I/D ATCs for PTEST. The PRM explicitly selects one, so the fork preserves
+the other. The pinned single-instruction vectors cannot expose that
+disagreement. `mmu040AtcFlushPage` now accepts privilege and optional I/D
+selection; PTEST uses it before testing the TTRs or walking the tables.
+Derived windows/TLBs/cache-line publications still lose their generation.
+
+Invalid descriptors and descriptor /BERR leave a negative R-clear entry;
+a later access still faults after a descriptor repair without a flush.
+Write lookup no longer drops a negative entry in order to set M. TTR hits
+allocate no entry. PTEST catches descriptor transfer errors through the
+existing side-effect-free `MmuTableSearchBusError` unwind, reporting B alone
+without constructing a format-$7 access exception. The 040 arms that
+barrier only during PTEST, on descriptor reads and U/M updates alike.
+
+The registered bare-core `mmu040_atc_test` adds **1 216 sequences**:
+512 PFLUSH and 704 PTEST cases across 68LC040/68040, 4K/8K pages,
+cache off/on, all defined DFC values, both access directions and global
+selection. Descriptors change after the old entries are resident; the
+gate holds unaffected entries, positive and negative refills, write
+protection after a descriptor repair, TTR hits, and /BERR on each of the
+three levels' reads and updates. Cold positive refills are separate cases.
+The old core fails **3 616 checks**, in 192 PFLUSH cases and all 704
+PTEST cases. The preceding 68 FC2/MOVES/register-retention sequences remain.
+
+The manual lock adds the reviewed PFLUSH/PTEST locators. The surface and
+fork inventory record the new contract. ATC geometry/replacement, ordinary
+040 access-walk handling, undefined DFC values and the 68EC040 are outside
+this gate's claim.
+
+The injection precondition caught a wrong root-descriptor address in the
+first harness draft: logical `$10000000` uses root offset `$20`, hence
+`$4020/$6020`, not `$4080/$6080`. Both cores were rerun with the corrected
+fixture. The final pre-fix run has zero missed fault injections.
+
+**Validation:** the complete ARM64 build succeeds (the existing unused
+`kSub` warning in `debug_session_test.cpp` remains). All **139 asset-none
+gates execute, zero skips/failures**, outside the sandbox so loopback socket
+tests can run. The expanded ATC gate has **1 284 sequences, zero failures**.
+The three base corpora pass: 68000 **1 000 058 / 1 000 058**, 68030
+**3 078 / 3 082 plus four named divergences**, 68040 **7 200 / 7 200**.
+The Quadra 605 reaches the 256-color Finder. Both 040 locksteps execute
+**5 000 000 identical steps**; the A64 cache-active run reports **2 050 564
+native line reads** and **182 605 native copyback writes**. Those six
+asset-dependent gates have zero skips/failures. Manual evidence and
+documentary checks pass; the moved `pomJitProbeData` citation in
+`docs/JIT_BRINGUP.md` now names the function. `git diff --check` is clean.
+
+<a id="2026-11-09-atc-register-retention"></a>
+## 2026-11-09 (third) — 68040 MMU register writes keep resident translations until an explicit flush
+
+TC/URP/SRP writes called `mmu040AtcFlushAll()`, discarding both I/D ATCs.
+MC68040UM-1993 § 3.7.4 (printed p. 3-34, PDF p. 83 of the pinned manual)
+requires them to retain those entries. The three setters now call
+`pomJitMapMoved()` instead: their derived fetch windows, data TLBs and native
+cache-line publications are revoked, while architectural ATC entries survive.
+Misses use the current root; guest software issues PFLUSH when it needs to
+replace already-resident translations.
+
+`mmu040_atc_test` adds **24 sequences** to the existing FC2/MOVES gate:
+68LC040/68040, 4K/8K pages, cache off/on, and all three registers. Each
+sequence warms I/D entries for both privilege domains. Two roots disagree
+on both resident and fresh pages: the old page must retain its translation,
+a miss must use the new root, and an executed PFLUSHA must finally expose
+the replacement mapping. TC tests edit descriptors before a same-value
+write and a disable/re-enable cycle. They also change and restore TC.P
+while translation is disabled, without asserting a mapping at the other
+page size. The old core fails **192 checks** on these additions.
+
+The manual locator joins `tests/core_manuals.lock`; the fork inventory and
+portable surface record the retained-ATC contract. Snapshot restore and
+debugger MMU edits already flush explicitly, so they keep their prior
+semantics. Reset retains its documented host cold-initialization policy.
+ATC geometry/replacement and the remaining PFLUSH/PTEST effects stay open.
+
+**Validation:** the complete ARM64 build succeeds (one existing unused
+`kSub` warning in `debug_session_test.cpp`). All **139 asset-none gates**
+execute with zero skips or failures, including the eight `jit-fast` gates.
+The first sandboxed pass failed MacIP loopback checks and blocked on the
+serial socket test; interrupting it and rerunning outside the sandbox
+passes both without a code change. The three base corpora execute:
+68000 **1 000 058 / 1 000 058**, 68030 **3 078 / 3 082 plus four named
+divergences**, 68040 **7 200 / 7 200**. The Quadra 605 reaches its 256-color
+Finder. Both `jit_lockstep_test` and `jit_lockstep_a64_coarse_test` pass;
+the latter exercises **2 050 564 native cache-line reads** and **182 605
+native copyback writes**. Those six asset-dependent gates execute with
+zero skips or failures. `git diff --check` is clean.
 
 <a id="2026-11-09-atc-fc2"></a>
 ## 2026-11-09 (second) — The 68040 ATC distinguishes user and supervisor translations, including MOVES and JIT publications

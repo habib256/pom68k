@@ -1,0 +1,62 @@
+[  0%] Building C object extern/softfloat/CMakeFiles/softfloat68k.dir/softfloat.c.o
+[100%] Building C object extern/softfloat/CMakeFiles/softfloat68k.dir/softfloat_decimal.c.o
+[100%] Linking C static library libsoftfloat68k.a
+[100%] Built target softfloat68k
+[100%] Building C object CMakeFiles/softfloat_primitives_test.dir/tests/softfloat_primitives_test.c.o
+[100%] Linking C executable softfloat_primitives_test
+[100%] Built target softfloat_primitives_test
+[ 50%] Built target softfloat68k
+[ 50%] Built target moira
+[100%] Linking CXX executable sst68030
+[100%] Built target sst68030
+[100%] Built target softfloat68k
+[100%] Built target moira
+[100%] Linking CXX executable sst68040
+[100%] Built target sst68040
+[100%] Built target softfloat68k
+[100%] Built target moira
+[100%] Linking CXX executable fpu_context_test
+[100%] Built target fpu_context_test
+[ 50%] Built target softfloat68k
+[ 50%] Built target moira
+[ 50%] Linking CXX executable fpu_sanity
+[100%] Built target fpu_sanity
+[100%] Built target softfloat68k
+[100%] Built target moira
+[100%] Linking CXX executable fpu040_test
+[100%] Built target fpu040_test
+[100%] Built target softfloat68k
+[100%] Built target moira
+[100%] Linking CXX executable moira_state_test
+[100%] Built target moira_state_test
+[100%] Built target softfloat68k
+[100%] Built target moira_interp
+[100%] Linking CXX executable moira_interp_fpu_context_test
+[100%] Built target moira_interp_fpu_context_test
+[100%] Built target softfloat68k
+[100%] Built target moira_interp
+[100%] Linking CXX executable moira_interp_fpu_sanity
+[100%] Built target moira_interp_fpu_sanity
+[ 50%] Built target softfloat68k
+[ 50%] Built target moira_interp
+[ 50%] Linking CXX executable moira_interp_fpu040_test
+[100%] Built target moira_interp_fpu040_test
+[100%] Built target softfloat68k
+[100%] Built target moira
+[100%] Linking CXX executable moira_interp_full
+[100%] Built target moira_interp_full
+[ 50%] Built target softfloat68k
+[ 50%] Built target moira_interp
+[ 50%] Linking CXX executable moira_interp_bare
+[100%] Built target moira_interp_bare
+[  6%] Built target softfloat68k
+[  6%] Built target moira
+[ 93%] Built target pom68k_core
+[ 93%] Linking CXX executable jit_asset_free_lockstep_test
+[100%] Built target jit_asset_free_lockstep_test
+[  4%] Built target softfloat68k
+[  4%] Built target moira
+[  9%] Built target pom68k_app
+[ 76%] Built target pom68k_core
+[ 76%] Linking CXX executable POM68K
+[100%] Built target POM68K

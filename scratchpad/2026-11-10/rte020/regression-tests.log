@@ -1,0 +1,52 @@
+Test project /Users/mercure/src/pom68k/build
+      Start  74: sst68000
+ 1/14 Test  #74: sst68000 .........................   Passed   28.47 sec
+      Start  75: sst68030
+ 2/14 Test  #75: sst68030 .........................   Passed    1.98 sec
+      Start  76: sst68040
+ 3/14 Test  #76: sst68040 .........................   Passed    4.71 sec
+      Start 233: lc_boot_etalon
+ 4/14 Test #233: lc_boot_etalon ...................   Passed  298.23 sec
+      Start 385: berr030_test
+ 5/14 Test #385: berr030_test .....................   Passed    0.49 sec
+      Start 392: macii_boot_etalon
+ 6/14 Test #392: macii_boot_etalon ................   Passed  178.48 sec
+      Start 437: jit_asset_free_lockstep_test
+ 7/14 Test #437: jit_asset_free_lockstep_test .....   Passed   43.99 sec
+      Start 450: cache040_test
+ 8/14 Test #450: cache040_test ....................   Passed  141.14 sec
+      Start 451: fpu_sanity
+ 9/14 Test #451: fpu_sanity .......................   Passed    0.74 sec
+      Start 452: fpu040_test
+10/14 Test #452: fpu040_test ......................   Passed    0.46 sec
+      Start 453: callm_rtm_test
+11/14 Test #453: callm_rtm_test ...................   Passed    0.46 sec
+      Start 455: moira_rules_test
+12/14 Test #455: moira_rules_test .................   Passed    9.28 sec
+      Start 456: moira_state_test
+13/14 Test #456: moira_state_test .................   Passed    0.53 sec
+      Start 457: mmu040_atc_test
+14/14 Test #457: mmu040_atc_test ..................   Passed   23.04 sec
+
+100% tests passed out of 14
+
+Label Time Summary:
+asset-none         = 220.13 sec*proc (9 tests)
+asset-optional     =  35.16 sec*proc (3 tests)
+asset-required     = 1967.86 sec*proc (2 tests)
+etalon             = 1967.86 sec*proc (2 tests)
+etalon-core        = 178.48 sec*proc (1 test)
+host-any           = 2179.16 sec*proc (13 tests)
+host-native        =  43.99 sec*proc (1 test)
+jit                =  43.99 sec*proc (1 test)
+jit-fast           =  43.99 sec*proc (1 test)
+m030               = 1789.38 sec*proc (1 test)
+scope-component    = 211.30 sec*proc (11 tests)
+scope-engine       =  43.99 sec*proc (1 test)
+scope-profile      = 1967.86 sec*proc (2 tests)
+tier-daily         = 220.13 sec*proc (9 tests)
+tier-full          = 1824.54 sec*proc (4 tests)
+tier-platform      = 178.48 sec*proc (1 test)
+unit               = 255.30 sec*proc (12 tests)
+
+Total Test time (real) = 732.13 sec

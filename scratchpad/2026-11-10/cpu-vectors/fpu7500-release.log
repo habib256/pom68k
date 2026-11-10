@@ -1,0 +1,8 @@
+[sst68040] dir=/private/tmp/pom68k-fpu7500-final files=6 cycles=off(advisory) mmu=full
+  fpu_identity     :   1000/1000   OK
+  fpu_off          :   1000/1000   OK
+  fpu_tt           :   1000/1000   OK
+  fpuraw_identity  :   1490/1500   OK (+10 known)
+  fpuraw_off       :   1485/1500   OK (+15 known)
+  fpuraw_tt        :   1481/1500   OK (+19 known)
+[sst68040] OK: 7456/7500 across 6 file(s), 44 known divergence(s), 0 mmu-skipped

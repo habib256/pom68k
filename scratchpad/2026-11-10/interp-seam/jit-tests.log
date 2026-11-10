@@ -1,0 +1,39 @@
+Test project /Users/mercure/src/pom68k/build
+      Start  67: docs_test
+ 1/11 Test  #67: docs_test .............................   Passed    1.15 sec
+      Start  68: config_test
+ 2/11 Test  #68: config_test ...........................   Passed    0.21 sec
+      Start  69: store_inventory_test
+ 3/11 Test  #69: store_inventory_test ..................   Passed    0.07 sec
+      Start 386: jit_restart_write_030_test
+ 4/11 Test #386: jit_restart_write_030_test ............   Passed    1.75 sec
+      Start 437: jit_copyback_write_040_test
+ 5/11 Test #437: jit_copyback_write_040_test ...........   Passed    0.65 sec
+      Start 438: jit_copyback_write_040_control_test
+ 6/11 Test #438: jit_copyback_write_040_control_test ...   Passed    0.07 sec
+      Start 439: jit_copyback_bsr_040_test
+ 7/11 Test #439: jit_copyback_bsr_040_test .............   Passed    0.06 sec
+      Start 440: jit_copyback_pair_040_test
+ 8/11 Test #440: jit_copyback_pair_040_test ............   Passed    0.05 sec
+      Start 441: jit_copyback_pair_040_control_test
+ 9/11 Test #441: jit_copyback_pair_040_control_test ....   Passed    0.05 sec
+      Start 442: jit_store_guard_a64_test
+10/11 Test #442: jit_store_guard_a64_test ..............   Passed    0.52 sec
+      Start 466: jit_backend_parity_test
+11/11 Test #466: jit_backend_parity_test ...............   Passed    0.44 sec
+
+100% tests passed out of 11
+
+Label Time Summary:
+asset-none          =   5.02 sec*proc (11 tests)
+host-a64            =   0.52 sec*proc (1 test)
+host-any            =   3.62 sec*proc (5 tests)
+host-native         =   0.88 sec*proc (5 tests)
+jit                 =   3.59 sec*proc (8 tests)
+jit-fast            =   2.19 sec*proc (6 tests)
+scope-engine        =   3.59 sec*proc (8 tests)
+scope-repository    =   1.43 sec*proc (3 tests)
+tier-daily          =   5.02 sec*proc (11 tests)
+unit                =   5.02 sec*proc (11 tests)
+
+Total Test time (real) =   5.08 sec

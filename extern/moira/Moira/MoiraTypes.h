@@ -537,6 +537,8 @@ struct MmuBusError : public std::exception { };
 // fetch (extBusError() while mmuInTableSearch). Carries nothing and leaves
 // no fault state behind: the search catches it and reports MMUSR B|I —
 // MC68030UM-1989 § 9.5.2, Table 9-3 (Moira.h § mmuInTableSearch).
+// [B] M68000PRM-1992 PTEST: a 040 PTEST walk shares this unwind and
+// reports MMUSR.B without an access exception (mmu040_atc_test).
 struct MmuTableSearchBusError : public std::exception { };
 
 // Internal control transfer: a 68020/030 accepted an interrupt while the

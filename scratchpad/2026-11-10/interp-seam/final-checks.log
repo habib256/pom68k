@@ -1,0 +1,26 @@
+Test project /Users/mercure/src/pom68k/build
+    Start  67: docs_test
+1/6 Test  #67: docs_test ........................   Passed    1.11 sec
+    Start 385: berr030_test
+2/6 Test #385: berr030_test .....................   Passed    0.49 sec
+    Start 450: fpu_sanity
+3/6 Test #450: fpu_sanity .......................   Passed    0.47 sec
+    Start 451: fpu040_test
+4/6 Test #451: fpu040_test ......................   Passed    0.45 sec
+    Start 452: callm_rtm_test
+5/6 Test #452: callm_rtm_test ...................   Passed    0.52 sec
+    Start 551: file_size_budget_test
+6/6 Test #551: file_size_budget_test ............   Passed    5.22 sec
+
+100% tests passed out of 6
+
+Label Time Summary:
+asset-none          =   8.25 sec*proc (6 tests)
+host-any            =   8.25 sec*proc (6 tests)
+jit-fast            =   1.11 sec*proc (1 test)
+scope-component     =   7.14 sec*proc (5 tests)
+scope-repository    =   1.11 sec*proc (1 test)
+tier-daily          =   8.25 sec*proc (6 tests)
+unit                =   8.25 sec*proc (6 tests)
+
+Total Test time (real) =   8.31 sec

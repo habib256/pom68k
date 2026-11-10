@@ -1,0 +1,1895 @@
+020 model=2 bytes=1 write=0 mode=0 completed=0 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+020 model=2 bytes=1 write=0 mode=0 completed=0 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+020 model=2 bytes=1 write=0 mode=0 completed=0 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+020 model=2 bytes=1 write=0 mode=0 completed=0 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+020 model=2 bytes=1 write=0 mode=0 completed=1 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=1 write=0 mode=0 completed=1 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=1 write=0 mode=0 completed=1 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=1 write=0 mode=0 completed=1 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=1 write=0 mode=1 completed=0 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=1 write=0 mode=1 completed=0 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=1 write=0 mode=1 completed=0 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=1 write=0 mode=1 completed=0 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=1 write=0 mode=1 completed=1 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=1 write=0 mode=1 completed=1 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=1 write=0 mode=1 completed=1 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=1 write=0 mode=1 completed=1 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=1 write=0 mode=2 completed=0 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=1 write=0 mode=2 completed=0 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=1 write=0 mode=2 completed=0 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=1 write=0 mode=2 completed=0 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=1 write=0 mode=2 completed=1 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=1 write=0 mode=2 completed=1 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=1 write=0 mode=2 completed=1 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=1 write=0 mode=2 completed=1 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=1 write=1 mode=0 completed=0 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=2 bytes=1 write=1 mode=0 completed=0 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=2 bytes=1 write=1 mode=0 completed=0 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=2 bytes=1 write=1 mode=0 completed=0 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=2 bytes=1 write=1 mode=0 completed=1 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=1 write=1 mode=0 completed=1 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=1 write=1 mode=0 completed=1 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=1 write=1 mode=0 completed=1 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=1 write=1 mode=1 completed=0 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=2 bytes=1 write=1 mode=1 completed=0 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=2 bytes=1 write=1 mode=1 completed=0 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=2 bytes=1 write=1 mode=1 completed=0 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=2 bytes=1 write=1 mode=1 completed=1 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=1 write=1 mode=1 completed=1 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=1 write=1 mode=1 completed=1 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=1 write=1 mode=1 completed=1 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=1 write=1 mode=2 completed=0 restore=0 second=0 user=0
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=1 write=1 mode=2 completed=0 restore=0 second=0 user=1
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=1 write=1 mode=2 completed=0 restore=1 second=0 user=0
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=1 write=1 mode=2 completed=0 restore=1 second=0 user=1
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=1 write=1 mode=2 completed=1 restore=0 second=0 user=0
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=1 write=1 mode=2 completed=1 restore=0 second=0 user=1
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=1 write=1 mode=2 completed=1 restore=1 second=0 user=0
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=1 write=1 mode=2 completed=1 restore=1 second=0 user=1
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=2 write=0 mode=0 completed=0 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+020 model=2 bytes=2 write=0 mode=0 completed=0 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+020 model=2 bytes=2 write=0 mode=0 completed=0 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+020 model=2 bytes=2 write=0 mode=0 completed=0 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+020 model=2 bytes=2 write=0 mode=0 completed=1 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=2 write=0 mode=0 completed=1 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=2 write=0 mode=0 completed=1 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=2 write=0 mode=0 completed=1 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=2 write=0 mode=1 completed=0 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=2 write=0 mode=1 completed=0 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=2 write=0 mode=1 completed=0 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=2 write=0 mode=1 completed=0 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=2 write=0 mode=1 completed=1 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=2 write=0 mode=1 completed=1 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=2 write=0 mode=1 completed=1 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=2 write=0 mode=1 completed=1 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=2 write=0 mode=2 completed=0 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=2 write=0 mode=2 completed=0 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=2 write=0 mode=2 completed=0 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=2 write=0 mode=2 completed=0 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=2 write=0 mode=2 completed=1 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=2 write=0 mode=2 completed=1 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=2 write=0 mode=2 completed=1 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=2 write=0 mode=2 completed=1 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=2 write=1 mode=0 completed=0 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=2 bytes=2 write=1 mode=0 completed=0 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=2 bytes=2 write=1 mode=0 completed=0 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=2 bytes=2 write=1 mode=0 completed=0 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=2 bytes=2 write=1 mode=0 completed=1 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=2 write=1 mode=0 completed=1 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=2 write=1 mode=0 completed=1 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=2 write=1 mode=0 completed=1 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=2 write=1 mode=1 completed=0 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=2 bytes=2 write=1 mode=1 completed=0 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=2 bytes=2 write=1 mode=1 completed=0 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=2 bytes=2 write=1 mode=1 completed=0 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=2 bytes=2 write=1 mode=1 completed=1 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=2 write=1 mode=1 completed=1 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=2 write=1 mode=1 completed=1 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=2 write=1 mode=1 completed=1 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=2 write=1 mode=2 completed=0 restore=0 second=0 user=0
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=2 write=1 mode=2 completed=0 restore=0 second=0 user=1
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=2 write=1 mode=2 completed=0 restore=1 second=0 user=0
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=2 write=1 mode=2 completed=0 restore=1 second=0 user=1
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=2 write=1 mode=2 completed=1 restore=0 second=0 user=0
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=2 write=1 mode=2 completed=1 restore=0 second=0 user=1
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=2 write=1 mode=2 completed=1 restore=1 second=0 user=0
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=2 write=1 mode=2 completed=1 restore=1 second=0 user=1
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=4 write=0 mode=0 completed=0 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+020 model=2 bytes=4 write=0 mode=0 completed=0 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+020 model=2 bytes=4 write=0 mode=0 completed=0 restore=0 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+020 model=2 bytes=4 write=0 mode=0 completed=0 restore=0 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+020 model=2 bytes=4 write=0 mode=0 completed=0 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+020 model=2 bytes=4 write=0 mode=0 completed=0 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+020 model=2 bytes=4 write=0 mode=0 completed=0 restore=1 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+020 model=2 bytes=4 write=0 mode=0 completed=0 restore=1 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+020 model=2 bytes=4 write=0 mode=0 completed=1 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=0 mode=0 completed=1 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=0 mode=0 completed=1 restore=0 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL read consumes the right-justified data input buffer
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=0 mode=0 completed=1 restore=0 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL read consumes the right-justified data input buffer
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=0 mode=0 completed=1 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=0 mode=0 completed=1 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=0 mode=0 completed=1 restore=1 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL read consumes the right-justified data input buffer
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=0 mode=0 completed=1 restore=1 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL read consumes the right-justified data input buffer
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=0 mode=1 completed=0 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=4 write=0 mode=1 completed=0 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=4 write=0 mode=1 completed=0 restore=0 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=4 write=0 mode=1 completed=0 restore=0 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=4 write=0 mode=1 completed=0 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=4 write=0 mode=1 completed=0 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=4 write=0 mode=1 completed=0 restore=1 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=4 write=0 mode=1 completed=0 restore=1 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=4 write=0 mode=1 completed=1 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=0 mode=1 completed=1 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=0 mode=1 completed=1 restore=0 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=0 mode=1 completed=1 restore=0 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=0 mode=1 completed=1 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=0 mode=1 completed=1 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=0 mode=1 completed=1 restore=1 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=0 mode=1 completed=1 restore=1 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=0 mode=2 completed=0 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=4 write=0 mode=2 completed=0 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=4 write=0 mode=2 completed=0 restore=0 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=4 write=0 mode=2 completed=0 restore=0 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=4 write=0 mode=2 completed=0 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=4 write=0 mode=2 completed=0 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=4 write=0 mode=2 completed=0 restore=1 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=4 write=0 mode=2 completed=0 restore=1 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=4 write=0 mode=2 completed=1 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=0 mode=2 completed=1 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=0 mode=2 completed=1 restore=0 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=0 mode=2 completed=1 restore=0 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=0 mode=2 completed=1 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=0 mode=2 completed=1 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=0 mode=2 completed=1 restore=1 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=0 mode=2 completed=1 restore=1 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=1 mode=0 completed=0 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=2 bytes=4 write=1 mode=0 completed=0 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=2 bytes=4 write=1 mode=0 completed=0 restore=0 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=2 bytes=4 write=1 mode=0 completed=0 restore=0 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=2 bytes=4 write=1 mode=0 completed=0 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=2 bytes=4 write=1 mode=0 completed=0 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=2 bytes=4 write=1 mode=0 completed=0 restore=1 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=2 bytes=4 write=1 mode=0 completed=0 restore=1 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=2 bytes=4 write=1 mode=0 completed=1 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=1 mode=0 completed=1 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=1 mode=0 completed=1 restore=0 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=1 mode=0 completed=1 restore=0 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=1 mode=0 completed=1 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=1 mode=0 completed=1 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=1 mode=0 completed=1 restore=1 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=1 mode=0 completed=1 restore=1 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=1 mode=1 completed=0 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=2 bytes=4 write=1 mode=1 completed=0 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=2 bytes=4 write=1 mode=1 completed=0 restore=0 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=2 bytes=4 write=1 mode=1 completed=0 restore=0 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=2 bytes=4 write=1 mode=1 completed=0 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=2 bytes=4 write=1 mode=1 completed=0 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=2 bytes=4 write=1 mode=1 completed=0 restore=1 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=2 bytes=4 write=1 mode=1 completed=0 restore=1 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=2 bytes=4 write=1 mode=1 completed=1 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=1 mode=1 completed=1 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=1 mode=1 completed=1 restore=0 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=1 mode=1 completed=1 restore=0 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=1 mode=1 completed=1 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=1 mode=1 completed=1 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=1 mode=1 completed=1 restore=1 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=1 mode=1 completed=1 restore=1 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=2 bytes=4 write=1 mode=2 completed=0 restore=0 second=0 user=0
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=4 write=1 mode=2 completed=0 restore=0 second=0 user=1
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=4 write=1 mode=2 completed=0 restore=0 second=1 user=0
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=4 write=1 mode=2 completed=0 restore=0 second=1 user=1
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=4 write=1 mode=2 completed=0 restore=1 second=0 user=0
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=4 write=1 mode=2 completed=0 restore=1 second=0 user=1
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=4 write=1 mode=2 completed=0 restore=1 second=1 user=0
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=4 write=1 mode=2 completed=0 restore=1 second=1 user=1
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=2 bytes=4 write=1 mode=2 completed=1 restore=0 second=0 user=0
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=4 write=1 mode=2 completed=1 restore=0 second=0 user=1
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=4 write=1 mode=2 completed=1 restore=0 second=1 user=0
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=4 write=1 mode=2 completed=1 restore=0 second=1 user=1
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=4 write=1 mode=2 completed=1 restore=1 second=0 user=0
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=4 write=1 mode=2 completed=1 restore=1 second=0 user=1
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=4 write=1 mode=2 completed=1 restore=1 second=1 user=0
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=2 bytes=4 write=1 mode=2 completed=1 restore=1 second=1 user=1
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=1 write=0 mode=0 completed=0 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+020 model=3 bytes=1 write=0 mode=0 completed=0 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+020 model=3 bytes=1 write=0 mode=0 completed=0 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+020 model=3 bytes=1 write=0 mode=0 completed=0 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+020 model=3 bytes=1 write=0 mode=0 completed=1 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=1 write=0 mode=0 completed=1 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=1 write=0 mode=0 completed=1 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=1 write=0 mode=0 completed=1 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=1 write=0 mode=1 completed=0 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=1 write=0 mode=1 completed=0 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=1 write=0 mode=1 completed=0 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=1 write=0 mode=1 completed=0 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=1 write=0 mode=1 completed=1 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=1 write=0 mode=1 completed=1 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=1 write=0 mode=1 completed=1 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=1 write=0 mode=1 completed=1 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=1 write=0 mode=2 completed=0 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=1 write=0 mode=2 completed=0 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=1 write=0 mode=2 completed=0 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=1 write=0 mode=2 completed=0 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=1 write=0 mode=2 completed=1 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=1 write=0 mode=2 completed=1 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=1 write=0 mode=2 completed=1 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=1 write=0 mode=2 completed=1 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=1 write=1 mode=0 completed=0 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=3 bytes=1 write=1 mode=0 completed=0 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=3 bytes=1 write=1 mode=0 completed=0 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=3 bytes=1 write=1 mode=0 completed=0 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=3 bytes=1 write=1 mode=0 completed=1 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=1 write=1 mode=0 completed=1 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=1 write=1 mode=0 completed=1 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=1 write=1 mode=0 completed=1 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=1 write=1 mode=1 completed=0 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=3 bytes=1 write=1 mode=1 completed=0 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=3 bytes=1 write=1 mode=1 completed=0 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=3 bytes=1 write=1 mode=1 completed=0 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=3 bytes=1 write=1 mode=1 completed=1 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=1 write=1 mode=1 completed=1 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=1 write=1 mode=1 completed=1 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=1 write=1 mode=1 completed=1 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=1 write=1 mode=2 completed=0 restore=0 second=0 user=0
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=1 write=1 mode=2 completed=0 restore=0 second=0 user=1
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=1 write=1 mode=2 completed=0 restore=1 second=0 user=0
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=1 write=1 mode=2 completed=0 restore=1 second=0 user=1
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=1 write=1 mode=2 completed=1 restore=0 second=0 user=0
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=1 write=1 mode=2 completed=1 restore=0 second=0 user=1
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=1 write=1 mode=2 completed=1 restore=1 second=0 user=0
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=1 write=1 mode=2 completed=1 restore=1 second=0 user=1
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=2 write=0 mode=0 completed=0 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+020 model=3 bytes=2 write=0 mode=0 completed=0 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+020 model=3 bytes=2 write=0 mode=0 completed=0 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+020 model=3 bytes=2 write=0 mode=0 completed=0 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+020 model=3 bytes=2 write=0 mode=0 completed=1 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=2 write=0 mode=0 completed=1 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=2 write=0 mode=0 completed=1 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=2 write=0 mode=0 completed=1 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=2 write=0 mode=1 completed=0 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=2 write=0 mode=1 completed=0 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=2 write=0 mode=1 completed=0 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=2 write=0 mode=1 completed=0 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=2 write=0 mode=1 completed=1 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=2 write=0 mode=1 completed=1 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=2 write=0 mode=1 completed=1 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=2 write=0 mode=1 completed=1 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=2 write=0 mode=2 completed=0 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=2 write=0 mode=2 completed=0 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=2 write=0 mode=2 completed=0 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=2 write=0 mode=2 completed=0 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=2 write=0 mode=2 completed=1 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=2 write=0 mode=2 completed=1 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=2 write=0 mode=2 completed=1 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=2 write=0 mode=2 completed=1 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=2 write=1 mode=0 completed=0 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=3 bytes=2 write=1 mode=0 completed=0 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=3 bytes=2 write=1 mode=0 completed=0 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=3 bytes=2 write=1 mode=0 completed=0 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=3 bytes=2 write=1 mode=0 completed=1 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=2 write=1 mode=0 completed=1 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=2 write=1 mode=0 completed=1 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=2 write=1 mode=0 completed=1 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=2 write=1 mode=1 completed=0 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=3 bytes=2 write=1 mode=1 completed=0 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=3 bytes=2 write=1 mode=1 completed=0 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=3 bytes=2 write=1 mode=1 completed=0 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=3 bytes=2 write=1 mode=1 completed=1 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=2 write=1 mode=1 completed=1 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=2 write=1 mode=1 completed=1 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=2 write=1 mode=1 completed=1 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=2 write=1 mode=2 completed=0 restore=0 second=0 user=0
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=2 write=1 mode=2 completed=0 restore=0 second=0 user=1
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=2 write=1 mode=2 completed=0 restore=1 second=0 user=0
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=2 write=1 mode=2 completed=0 restore=1 second=0 user=1
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=2 write=1 mode=2 completed=1 restore=0 second=0 user=0
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=2 write=1 mode=2 completed=1 restore=0 second=0 user=1
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=2 write=1 mode=2 completed=1 restore=1 second=0 user=0
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=2 write=1 mode=2 completed=1 restore=1 second=0 user=1
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=4 write=0 mode=0 completed=0 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+020 model=3 bytes=4 write=0 mode=0 completed=0 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+020 model=3 bytes=4 write=0 mode=0 completed=0 restore=0 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+020 model=3 bytes=4 write=0 mode=0 completed=0 restore=0 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+020 model=3 bytes=4 write=0 mode=0 completed=0 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+020 model=3 bytes=4 write=0 mode=0 completed=0 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+020 model=3 bytes=4 write=0 mode=0 completed=0 restore=1 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+020 model=3 bytes=4 write=0 mode=0 completed=0 restore=1 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+020 model=3 bytes=4 write=0 mode=0 completed=1 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=0 mode=0 completed=1 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=0 mode=0 completed=1 restore=0 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL read consumes the right-justified data input buffer
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=0 mode=0 completed=1 restore=0 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL read consumes the right-justified data input buffer
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=0 mode=0 completed=1 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=0 mode=0 completed=1 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL read consumes the right-justified data input buffer
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=0 mode=0 completed=1 restore=1 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL read consumes the right-justified data input buffer
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=0 mode=0 completed=1 restore=1 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL read consumes the right-justified data input buffer
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=0 mode=1 completed=0 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=4 write=0 mode=1 completed=0 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=4 write=0 mode=1 completed=0 restore=0 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=4 write=0 mode=1 completed=0 restore=0 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=4 write=0 mode=1 completed=0 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=4 write=0 mode=1 completed=0 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=4 write=0 mode=1 completed=0 restore=1 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=4 write=0 mode=1 completed=0 restore=1 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=4 write=0 mode=1 completed=1 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=0 mode=1 completed=1 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=0 mode=1 completed=1 restore=0 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=0 mode=1 completed=1 restore=0 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=0 mode=1 completed=1 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=0 mode=1 completed=1 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=0 mode=1 completed=1 restore=1 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=0 mode=1 completed=1 restore=1 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=0 mode=2 completed=0 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=4 write=0 mode=2 completed=0 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=4 write=0 mode=2 completed=0 restore=0 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=4 write=0 mode=2 completed=0 restore=0 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=4 write=0 mode=2 completed=0 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=4 write=0 mode=2 completed=0 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=4 write=0 mode=2 completed=0 restore=1 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=4 write=0 mode=2 completed=0 restore=1 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=4 write=0 mode=2 completed=1 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=0 mode=2 completed=1 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=0 mode=2 completed=1 restore=0 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=0 mode=2 completed=1 restore=0 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=0 mode=2 completed=1 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=0 mode=2 completed=1 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=0 mode=2 completed=1 restore=1 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=0 mode=2 completed=1 restore=1 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL read consumes the right-justified data input buffer
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=1 mode=0 completed=0 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=3 bytes=4 write=1 mode=0 completed=0 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=3 bytes=4 write=1 mode=0 completed=0 restore=0 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=3 bytes=4 write=1 mode=0 completed=0 restore=0 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=3 bytes=4 write=1 mode=0 completed=0 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=3 bytes=4 write=1 mode=0 completed=0 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=3 bytes=4 write=1 mode=0 completed=0 restore=1 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=3 bytes=4 write=1 mode=0 completed=0 restore=1 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=3 bytes=4 write=1 mode=0 completed=1 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=1 mode=0 completed=1 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=1 mode=0 completed=1 restore=0 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=1 mode=0 completed=1 restore=0 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=1 mode=0 completed=1 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=1 mode=0 completed=1 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=1 mode=0 completed=1 restore=1 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=1 mode=0 completed=1 restore=1 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=1 mode=1 completed=0 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=3 bytes=4 write=1 mode=1 completed=0 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=3 bytes=4 write=1 mode=1 completed=0 restore=0 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=3 bytes=4 write=1 mode=1 completed=0 restore=0 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=3 bytes=4 write=1 mode=1 completed=0 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=3 bytes=4 write=1 mode=1 completed=0 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=3 bytes=4 write=1 mode=1 completed=0 restore=1 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=3 bytes=4 write=1 mode=1 completed=0 restore=1 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+020 model=3 bytes=4 write=1 mode=1 completed=1 restore=0 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=1 mode=1 completed=1 restore=0 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=1 mode=1 completed=1 restore=0 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=1 mode=1 completed=1 restore=0 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=1 mode=1 completed=1 restore=1 second=0 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=1 mode=1 completed=1 restore=1 second=0 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL no data bus callback for the completed operand
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=1 mode=1 completed=1 restore=1 second=1 user=0
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=1 mode=1 completed=1 restore=1 second=1 user=1
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL software completion permits progress
+  FAIL software-completed cycle is never repeated
+  FAIL address update happens once across the fault/RTE
+  FAIL completed MOVE has the architectural XNZVC result
+020 model=3 bytes=4 write=1 mode=2 completed=0 restore=0 second=0 user=0
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=4 write=1 mode=2 completed=0 restore=0 second=0 user=1
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=4 write=1 mode=2 completed=0 restore=0 second=1 user=0
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=4 write=1 mode=2 completed=0 restore=0 second=1 user=1
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=4 write=1 mode=2 completed=0 restore=1 second=0 user=0
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=4 write=1 mode=2 completed=0 restore=1 second=0 user=1
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=4 write=1 mode=2 completed=0 restore=1 second=1 user=0
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=4 write=1 mode=2 completed=0 restore=1 second=1 user=1
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL DF still set reruns and faults the same operand
+020 model=3 bytes=4 write=1 mode=2 completed=1 restore=0 second=0 user=0
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=4 write=1 mode=2 completed=1 restore=0 second=0 user=1
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=4 write=1 mode=2 completed=1 restore=0 second=1 user=0
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=4 write=1 mode=2 completed=1 restore=0 second=1 user=1
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=4 write=1 mode=2 completed=1 restore=1 second=0 user=0
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=4 write=1 mode=2 completed=1 restore=1 second=0 user=1
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=4 write=1 mode=2 completed=1 restore=1 second=1 user=0
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+020 model=3 bytes=4 write=1 mode=2 completed=1 restore=1 second=1 user=1
+  FAIL format $B names the faulted instruction
+  FAIL 020 SSW needs no oracle-private bit-9 marker
+  FAIL output buffer contains the pending transfer at the faulted size
+  FAIL RTE returns to the faulted instruction
+  FAIL software completion permits progress
+  FAIL address update happens once across the fault/RTE
+  FAIL alias: pending result is consumed once, or cancelled by reset
+  FAIL MOVES: software-completed FC=7 cycle is not repeated
+  FAIL MOVES: FC=7 read uses the saved input
+  FAIL MOVES: software-completed FC=7 cycle is not repeated
+  FAIL TAS/CAS/CAS2: frame identifies a locked RMW data fault
+  FAIL TAS/CAS/CAS2: frame identifies a locked RMW data fault
+  FAIL TAS/CAS/CAS2: frame identifies a locked RMW data fault
+  FAIL alias: pending result is consumed once, or cancelled by reset
+  FAIL MOVES: software-completed FC=7 cycle is not repeated
+  FAIL MOVES: FC=7 read uses the saved input
+  FAIL MOVES: software-completed FC=7 cycle is not repeated
+  FAIL TAS/CAS/CAS2: frame identifies a locked RMW data fault
+  FAIL TAS/CAS/CAS2: frame identifies a locked RMW data fault
+  FAIL TAS/CAS/CAS2: frame identifies a locked RMW data fault
+berr020_test: 400 executed sequences, 1510 failure(s)

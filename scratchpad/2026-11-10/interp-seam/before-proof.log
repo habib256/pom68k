@@ -1,0 +1,31 @@
+tests/moira_interp_test.cpp:15:15: error: static assertion failed due to requirement 'HasWindow<moira::Moira> == bool(0)'
+   15 | static_assert(HasWindow<moira::Moira> == bool(MOIRA_ENABLE_JIT));
+      |               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/moira_interp_test.cpp:15:39: note: expression evaluates to 'true == false'
+   15 | static_assert(HasWindow<moira::Moira> == bool(MOIRA_ENABLE_JIT));
+      |               ~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~
+tests/moira_interp_test.cpp:16:15: error: static assertion failed due to requirement 'HasDtlb<moira::Moira> == bool(0)'
+   16 | static_assert(HasDtlb<moira::Moira> == bool(MOIRA_ENABLE_JIT));
+      |               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/moira_interp_test.cpp:16:37: note: expression evaluates to 'true == false'
+   16 | static_assert(HasDtlb<moira::Moira> == bool(MOIRA_ENABLE_JIT));
+      |               ~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~
+tests/moira_interp_test.cpp:17:15: error: static assertion failed due to requirement 'HasProbe<moira::Moira> == bool(0)'
+   17 | static_assert(HasProbe<moira::Moira> == bool(MOIRA_ENABLE_JIT));
+      |               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/moira_interp_test.cpp:17:38: note: expression evaluates to 'true == false'
+   17 | static_assert(HasProbe<moira::Moira> == bool(MOIRA_ENABLE_JIT));
+      |               ~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~
+tests/moira_interp_test.cpp:18:15: error: static assertion failed due to requirement 'HasPublication<moira::Moira> == bool(0)'
+   18 | static_assert(HasPublication<moira::Moira> == bool(MOIRA_ENABLE_JIT));
+      |               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/moira_interp_test.cpp:18:44: note: expression evaluates to 'true == false'
+   18 | static_assert(HasPublication<moira::Moira> == bool(MOIRA_ENABLE_JIT));
+      |               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~
+tests/moira_interp_test.cpp:19:15: error: static assertion failed due to requirement 'HasStep<moira::Moira> == bool(0)'
+   19 | static_assert(HasStep<moira::Moira> == bool(MOIRA_ENABLE_JIT));
+      |               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/moira_interp_test.cpp:19:37: note: expression evaluates to 'true == false'
+   19 | static_assert(HasStep<moira::Moira> == bool(MOIRA_ENABLE_JIT));
+      |               ~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~
+5 errors generated.

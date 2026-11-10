@@ -196,16 +196,6 @@ boot.
   n'existent que sur deux hôtes et le disque privé : les publier (asset de
   release, sortie WinUAE sans donnée Apple), ou les remplacer par des
   corpus à recette une fois celle-ci retrouvée.
-- [ ] **Exécuter un corpus de vecteurs en CI, et sous sanitizers.** Les
-  corpus 030/040 sont de la sortie WinUAE, pas des données Apple : un
-  sous-ensemble public épinglé peut devenir `asset-none`. Aujourd'hui aucun
-  job ne rejoue un vecteur, et le million de vecteurs n'a jamais tourné
-  sous ASan/UBSan (l'UB du rang 36 a été trouvé dans un miroir de test, pas
-  dans Moira). Dépend de la ligne précédente.
-- [ ] **Enregistrer les fumées de l'oracle et la recette de fuzz.**
-  `oracle_uae_smoke` et `oracle_uae_smoke040` vivent dans le projet CMake
-  séparé `oracle/uae`, hors registre et hors CI ; le 040 n'a pas
-  d'équivalent de `loop.sh`.
 - [ ] **Élargir la géométrie MMU du fuzzer 030.** `gen030.py` n'a qu'un TC
   (pages de 32 Ko, un niveau, descripteurs courts, CRP sans limite) : ni
   FCL/SRE, ni tables à plusieurs niveaux, ni terminaison anticipée, ni
@@ -237,9 +227,9 @@ boot.
   `cacr` ≠ 0 : le rang 28 (caches porteurs de données) n'a que
   `cache040_test`, écrit à la main.
 - [ ] **Couvrir le 68020 nu par l'oracle.** Aucun corpus 020 ;
-  `callm_rtm_test`, calculé à la main, est le seul test qui pose
-  `Model::M68020`. Le chemin à file de préfetch du 020 ne repose que sur
-  les boots Mac II et LC.
+  `callm_rtm_test` et les 404 séquences de `berr020_test` tiennent des
+  règles ciblées, mais aucun corpus différentiel ne juge le 020. Le fetch
+  général à file de préfetch repose encore sur les boots Mac II et LC.
 - [ ] **Donner un gate CPU aux rangs qui n'ont qu'un boot.** Rang 11 (pipe
   de préfetch + poll IPL en mode 5), rang 13 (`irqDelay`), rang 21 (/BERR
   du 68020), moitié 010/020 du rang 15, rang 20 (watchpoints sous MMU, sans
@@ -251,7 +241,7 @@ boot.
   copyback et `jit_restart_write_030_test` ; tous les `jit_lockstep_*`
   exigent une ROM.
 - [ ] **Obtenir une preuve indépendante du 6888x.** La convergence
-  numérique est « par construction » (même famille softfloat que l'oracle)
+  numérique repose sur la même famille SoftFloat que l'oracle
   et l'interruption en cours d'instruction (format $9, BUSY) ne tient que
   par un scénario FSQRT de `fpu_sanity`, fenêtre que WinUAE n'a pas.
   *Bloqué : vecteurs d'un vrai 68881/68882, ou une seconde référence
@@ -330,30 +320,18 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   (`JitIr.h` : « Memory bitfields always begin with a longword access »)
   et les deux émetteurs suivent le même long : à changer ensemble, donc
   avec une session AArch64.
-- [ ] **Sérialiser l'état en vol, ou refuser de sauver quand il est
-  vivant.** *À reproduire.* `MoiraSnapshot::visitCpuCommon` omet
-  l'opération 6888x suspendue (`fpu.busy` et ses registres), le
-  micro-état FSAVE UNIMP/BUSY du FPU 68040 (`fpu.cmdreg1b` … `wbt`), les
-  mots de pipe capturés après un PMOVE (`mmuPipe*`), le verrou armé par un
-  RTE à DF effacé (`mmuRteSubst*`) et le verrou de reprise MOVEM du 68040
-  (`mmu040MovemArmed`, `mmu040MovemEa`) — table complète dans
-  `POM68K_SURFACE.md` § 8. Les gates de déterminisme ne le voient que si
-  une sauvegarde tombe dans une de ces fenêtres : en construire une par
-  fenêtre.
-- [ ] **Porter le verrou « accès déjà rejoué » du RTE $B au 68020 nu.**
-  *À reproduire.* Il n'est consommé que dans `mmuRead`/`mmuWrite` (chemin
-  030) ; un handler Mac II ou LC qui efface DF réexécuterait l'accès — le
-  mode de panne de la tempête d'origine. Sur le cœur nu, `extBusError`
-  empile aussi $B sans fixups ni restauration du CCR.
 - [ ] **Modéliser les fautes de préfetch différées, 030 et 040.** Limite
   documentée : `irc` est lu à pc+2 dès le début de l'instruction, donc une
   instruction d'un mot dans le dernier mot d'une page peut fauter là où le
   processeur réel attend que le mot serve.
 - [ ] **Remplacer ou prouver le modèle « réexécuter l'instruction » du RTE
   $B.** Les accès antérieurs à la faute sont réémis (lecture de
-  périphérique en double), le RMW verrouillé est exclu, et le verrou repose
-  sur le bit 9 du SSW, marqueur interne de WinUAE qu'aucun 68030 n'écrit.
-  Preuve actuelle : `berr030_test` et un boot.
+  périphérique en double) et le RMW verrouillé à DF effacé est exclu. Le
+  68030 dépend encore du bit 9 du SSW, marqueur interne de WinUAE qu'aucun
+  68030 n'écrit. Le 020/EC020 n'en dépend plus : `berr020_test` tient les
+  cycles complétés, les (An)±, les demi-longs, MOVES et la reprise restaurée
+  (`CHANGELOG` 2026-11-10, troisième), pas une continuation matérielle
+  complète. Garder aussi `berr030_test` et les boots.
 - [ ] **Généraliser le report du pipe de préfetch.** `mmuCapturePipe`
   capture quatre mots après PMOVE TC/CRP/SRP seulement, pour un idiome de
   la ROM LC II ; PFLUSH, une écriture de TT ou une cible de saut n'ont rien.
@@ -433,56 +411,49 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   contrôle vers une destination relative au PC (D27).** Un vecteur : un
   EA indirect mémoire marque une page « utilisée » dans l'oracle. Même
   famille que l'ordre de lecture de FMOVEM (› Justesse 68030).
-- [ ] **Reproduire une reprise MOVEM 68040 après RTE format $7.**
-  *À reproduire :* `mmu040Fault` consomme `mmu040MovemArmed` dans SSW.CM
-  et la frame EA, mais `execRte` ne le réarme pas, contrairement aux
-  commentaires de Q3. Faire modifier An dans le handler puis reprendre un
-  transfert partiel, avec témoin oracle ou manuel. Le nouveau visiteur
-  tient un verrou armé par l'hôte ; cela ne prouve pas sa production par
-  RTE (`CHANGELOG` 2026-11-08, septième).
-- [ ] **Corriger le PC empilé d'un MOVEP qui faute en cours de route.**
-  *À reproduire :* `fuzz040.py --family random --mmu identity --page 8k
-  --seed 845 --n 2000`, #1967 (`0789 54F5`, MOVEP.W D3,(d16,A1)) : la
-  frame $7 empile PC+4 de trop. Le marqueur « dernière écriture » s'arme
-  sur la première des écritures d'octet.
-- [ ] **Donner à l'ATC du 68040 sa géométrie et son remplacement.**
-  Trente-deux entrées pleinement associatives avec pseudo-LRU, contre
-  quatre voies × seize jeux et un compteur aux accès (MC68040UM-1993
-  § 3.3). L'ordre est visible par les bits U réécrits et la fenêtre de
-  fetch J3b ; `sst68040` purge son ATC à chaque vecteur. Le gate FC2
-  `mmu040_atc_test` ne prouve ni cette géométrie ni ce remplacement.
-- [ ] **Tenir les effets ATC de PFLUSH/PTEST du 68040.** PFLUSH (An)
-  ignore encore DFC et purge les deux privilèges ; PTEST ne purge ni ne
-  remplit son entrée. MC68040UM-1993 §§ 3.7.2/3.7.3 et M68000PRM-1992 :
-  isoler d'abord chaque effet sur des entrées I/D et utilisateur/superviseur
-  résidentes, puis modifier les descripteurs avant l'instruction testée.
-- [ ] **Conserver les entrées ATC lors d'un MOVEC aux racines/TC du 040.**
-  Les setters URP/SRP/TC purgent actuellement tout l'ATC ; MC68040UM-1993
-  § 3.7.4 dit qu'écrire les registres ne le purge pas. Écrire d'abord une
-  cellule avec deux racines différentes et un PFLUSHA explicite en contrôle.
+- [ ] **Mesurer la phase exacte du remplacement ATC 040 sur matériel.**
+  La géométrie 64 entrées par ATC, seize jeux de quatre voies, la priorité
+  aux invalides et le compteur aux accès sont modélisés et comparés en
+  interprète, fenêtres, threaded et natif sur les deux hôtes
+  (`CHANGELOG` 2026-11-09, dix-septième). MC68040UM-1993 § 3.3 ne fixe
+  ni la phase de reset, ni le front d'incrément, ni le couplage I/D, ni
+  la phase d'installation de PTEST. Les compteurs indépendants initialisés
+  à zéro et le débit recherche + installation/reprise restent des choix
+  grade F. *Bloqué : traces de remplacement d'un vrai 68040/68LC040.*
+- [ ] **Trancher la frame d'un MOVEP 040 partiellement écrit sur matériel.**
+  Relever PC, WB1/WB2/WB3 et les octets répétés après RTE, à chaque
+  position de faute .W/.L. La figure générique du MC68040UM-1993 § 8.4
+  ne décrit pas cette séquence périphérique ; la reprise actuelle est un
+  choix de modèle grade D, pas une preuve de silicium (`CHANGELOG`
+  2026-11-09, cinquième). *Bloqué : capture d'un vrai 68040/68LC040.*
 - [ ] **Cadencer le remplacement du cache 040 sur les accès.** Le compteur
   de `Cache040::allocate` avance au remplacement seulement ; MC68040UM-1993
   § 4.1 le fait aussi avancer aux accès au cache. Une séquence de hits puis
   conflit doit exposer la victime choisie avant de changer la politique.
-- [ ] **Vider ou sérialiser les lignes copyback sales à la sauvegarde.**
-  *À reproduire.* Sous `POM68K_040_DCACHE=1` une ligne sale porte des
-  données absentes de la RAM ; la sauvegarde ne les pousse pas et le
-  chargement invalide les deux caches. La règle « caches vidés, jamais
-  sérialisés » date du modèle à tags seuls.
-- [ ] **Corriger l'estampille d'accès d'un /BERR pendant un remplissage,
-  une réécriture ou un MOVE16.** *À reproduire.* `pomCache040Fill` et
-  `pomCache040Writeback` écrasent l'accès en vol par des adresses
-  physiques de battement ; MOVE16 hérite de l'estampille du fetch
-  précédent.
+- [ ] **Trancher les erreurs tardives de write-allocate 040.** Distinguer
+  les portions demandées des battements inutiles, puis terminer une
+  écriture dont le remplissage avorte sans exception, sans perdre les
+  voisins ni la victime sale (§ 4.6.1). Le modèle signale encore chaque
+  erreur de remplissage d'écriture. Capturer aussi une frame réelle pour
+  valider le choix de WB3 pour l'écriture en attente et le PC de reprise.
+- [ ] **Prouver les buffers simultanés après une faute de poussée 040.**
+  Étendre les témoins au WB2 d'une MOVE16 en attente et aux combinaisons
+  WB2/WB3 de la vraie pipeline (MC68040UM-1993, Table 8-6). Les nouveaux
+  témoins ne couvrent que l'écriture ordinaire de leur instruction.
+  Capturer aussi l'invalidation sur faute de poussée déclenchée par un
+  accès NC ; § 7.6.1 décrit explicitement le remplacement et CPUSH.
 - [ ] **Fermer la preuve du mode cache actif.** Aucun `sst68040`
   enregistré avec le cache, aucun boot interprète cache actif, tous les
   etalons ROM sans cache ; le débogueur lit la RAM sous le cache et
   `pomSnoop040Read/Write` n'ont aucun appelant, donc tout écrivain hôte de
   RAM invitée est un maître non espionné.
-  *À reproduire aussi* : MOVES/locked force `pomCache040Enabled=false`,
-  tandis que la résolution d'une ligne sale avant un accès non cachable
-  dans `pomCache040ReadValue/WriteValue` exige ce même booléen à true.
-  Distinguer le cache désactivé (rétention) de l'accès implicitement NC.
+  Vérifier aussi le cas d'un hit verrouillé avec CACR.DE désactivé :
+  MC68040UM-1993 § 4.3.3 décrit alors le premier miss ordinaire suivant
+  comme non alloué ; cette transition reste à modéliser.
+  Donner aussi des témoins MOVE16 sur hit propre/sale : § 4.3.3 impose
+  une lecture servie par le cache et une écriture qui invalide. Le chemin
+  commun NC invalide aujourd'hui le hit de lecture et pousse les anciennes
+  données avant la réécriture. Les tests de faute MOVE16 couvrent les misses.
 - [ ] **Décider l'hybride 68LC040 + 68882 logiciel.** Défaut produit des
   LC 475/575/580 et Centris 610/650, combinaison qui n'existe pas en
   matériel ; un vrai `NONE` boote déjà le Quadra 605
@@ -576,9 +547,10 @@ d'instruction.
   sauve le CCR à chaque instruction 030, sous un `try`, avec `sync()` et
   les lectures en virtuel et un `dynamic_cast` dans `processException`.
 - [ ] **Re-mesurer la fenêtre de données 040 après la géométrie de
-  l'ATC.** Éteinte parce que le TLB plafonne aux 32 pages de l'ATC
-  (≈ 10 % plus lent, pire sous mémoire virtuelle) ; le passage à 64
-  entrées (› Justesse 68040) change la donnée.
+  l'ATC.** La mesure qui la laisse éteinte utilisait l'ancien ATC de
+  32 entrées (≈ 10 % plus lent, pire sous mémoire virtuelle). Le modèle
+  64 entrées en seize jeux de quatre voies change cette donnée ; le
+  défaut reste inchangé en attendant une nouvelle mesure.
 
 ### JIT justesse et parité des hôtes
 
@@ -685,14 +657,6 @@ compilation et dans la documentation.
   (à NeoST). Les champs omis du visiteur : corrigés et tenus par
   `moira_state_test` (`CHANGELOG` 2026-11-08, septième). Chacune
   devient un gate ou une phrase corrigée.
-- [ ] **Détacher `src/jit` du démarrage de POM68K.** Le seul include
-  extérieur est `JitConfig.h` → `StartupSnapshot.h` : le remplacer par un
-  `jit::Config` injecté. `JitMetrics.h` porte un `#ifdef __aarch64__`
-  au-dessus de `backends/`, contre l'invariant 6.
-- [ ] **Séparer à la compilation la couture JIT du chemin chaud de
-  l'interpréteur.** `mmu040InstrStart`, `mmu040Read` et `mmu040Write`
-  portent en ligne fenêtre, DTLB, sonde de timing et publication de
-  cache ; un interpréteur seul doit pouvoir se construire sans.
 - [ ] **Terminer la revue des affirmations matérielles sans source du cœur.**
   Les citations explicites de manuel ont une édition et un emplacement
   vérifiés ; les comparaisons Musashi perdues sont `[F]` avec leur témoin
@@ -700,10 +664,11 @@ compilation et dans la documentation.
   `core_grades_test` tient ces sources (`CHANGELOG` 2026-11-08, huitième).
   Restent les règles sans citation, à relier à une preuve ou à étiqueter
   `[F]` avec ce qui les trancherait ; le gate de citations ne les détecte pas.
-- [ ] **Choisir un seul softfloat 80 bits et le rendre réentrant.**
-  `extern/softfloat` ici, un second portage de la même lignée dans
-  `src/io/SoftFloat*.hpp` chez NeoST ; `moiraFpuFs` est un état statique
-  partagé par toutes les instances.
+- [ ] **Unifier le softfloat 80 bits avec NeoST.** POM68K utilise
+  `extern/softfloat` avec un contexte par CPU, y compris les captures
+  intermédiaires (`fpu_context_test`, `CHANGELOG` 2026-11-10, quatrième).
+  Reste le second portage de la même lignée dans `src/io/SoftFloat*.hpp`
+  chez NeoST : choisir une seule implémentation et y porter les adaptations.
 - [ ] **Dédupliquer avant de porter.** `src/Mmu030Peek.h` réimplémente la
   marche de tables et a déjà dérivé deux fois ; les quatre wrappers 040
   sont des quasi-copies qui ont divergé, et la logique

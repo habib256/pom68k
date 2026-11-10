@@ -63,7 +63,8 @@ inline constexpr Field kFields[] = {
     {"loopModeDelay", 4},
     {"readBuffer", 2}, {"writeBuffer", 2}, {"flags", 4},
     // Past this point: FPU registers, then PMMU/FPU continuation state
-    // (MoiraState.h). fieldAt reports that tail as a combined block.
+    // (MoiraState.h), then the optional 040 cache payload. fieldAt reports
+    // that tail as a combined block.
 };
 
 // Name the field containing `off`, an offset into the CPU chunk PAYLOAD
@@ -79,7 +80,7 @@ inline const char* fieldAt(std::size_t off, std::size_t* fieldOff) {
         at += f.size;
     }
     if (fieldOff) *fieldOff = off - at;
-    return "FPU / continuation block";
+    return "FPU / continuation / 040 cache block";
 }
 
 // Print "byte N of M" together with the chunk and field it lands in, given

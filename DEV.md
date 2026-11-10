@@ -44,6 +44,14 @@ configuration may omit `imgui/`: `pom68k_core` and the test targets still
 build, while the `POM68K` GUI target is not declared. Tests are enabled by
 default; use `-DPOM68K_TESTS=OFF` only for a deliberate package-only build.
 
+For a standalone interpreter, `moira_interp` builds the same CPU sources with
+`MOIRA_ENABLE_JIT=0` and propagates that definition to its clients. It removes
+the acceleration storage/API and hot-path probes while retaining CPU/MMU/FPU,
+architectural caches, timing and snapshots. Run `ctest --test-dir build -L
+interp-only --output-on-failure` for the comparison and reused bare CPU gates.
+The normal `moira` target keeps the enabled compatibility default; the two
+class layouts must not be mixed. See `extern/moira/POM68K_SURFACE.md` § 9.
+
 Private ROMs, firmware and disk images are not needed for `asset-none`.
 Machine and full-system gates soft-skip when their declared assets are absent;
 never report a green soft-skip as executed coverage. `STATUS.md`, generated
@@ -271,6 +279,13 @@ JIT translations directly, via `jitMapChanged()` ([§4](#4-jit--the-second-execu
   `MoiraSnapshot` delegates to it. The host archive and file format stay
   outside Moira. `moira_state_test` loads fresh bare CPUs at executed
   PMMU/FPU continuation boundaries and checks resumed execution.
+- **Format v30** preserves the 040 data-bearing I/D caches, including dirty
+  copyback bytes, stale instruction bytes, replacement phase and cache-model
+  mode. Saving does not push lines or advance guest time; loading drops old
+  ATC/JIT state before restoring the cache payload. Disabled retained lines
+  travel too. `moira_state_test` covers bare CPU continuation;
+  `savestate_040_test` covers full containers, rollback and both engines on
+  Q605, Centris, Q700, Q900 and Q630. Versions through v29 are refused.
 - **Format v29** adds the 030 pre-switch pipe and DF-cleared retry, the
   suspended 6888x result, 040 UNIMP/BUSY micro-state and an armed MOVEM
   latch. Loading preserves the live debugger requests and CPU/FPU model;
@@ -706,8 +721,9 @@ and the `q605_*` rigs (`tests/Q605Profile.h`, the Quadra 605) both read it.
 - **Core:** the Q1-Q4 Moira 040 at 25 MHz — MOVE16, 040 control registers,
   040 exception frames, TTRs, three-level URP/SRP translation, MMUSR/PTEST
   and restartable MMU faults. `sst68040` pins **7 200/7 200** vectors
-  across integer, random and MMU families. Q8 adds a separate I/D ATC (32
-  entries, `POM68K_MMU040_WALK` disables it), an i-cache/throughput overlay,
+  across integer, random and MMU families. Q8 adds separate I/D ATCs (64
+  entries each in sixteen four-way sets since vendor row 75;
+  `POM68K_MMU040_WALK` disables them), an i-cache/throughput overlay,
   and data-bearing 4 KB I/D caches with WT/CB/NC modes, dirty writeback,
   CPUSH/CINV, snooping and bus-transaction timing. Pin-level BCLK/TA
   waveforms are not modelled.
@@ -2930,7 +2946,7 @@ single `getenv()` read stays in `ProcessEnvironment.cpp`; every decoder
 receives the same `const StartupSnapshot&`, never a public map. The 143
 keys, 41 of them in the JIT domain, are declared once in the neutral
 catalogue `StartupOptions.h`, each with its typed domain. The capture
-iterates that single collection; the decoders and `JitConfig` handle
+iterates that single collection; the decoders and `JitStartupConfig` handle
 `StartupOption`s, never a free key string. The `Domains` parameter of the
 type is checked by the `ProductStartupView`, `CoreStartupView` and
 `MachineStartupView` views; using an option outside its domain is a
@@ -3367,6 +3383,14 @@ Pinned CPU vector suites, which are gates in their own right:
 `sst68030` (**3 082** pinned integer/MMU/bus-fault/FPU vectors from the
 WinUAE/Hatari oracle; rulings D1-D23 in `oracle/fuzz/disputes/NOTES.md`),
 `sst68040` (**7 200/7 200** integer/random/MMU vectors).
+
+The smaller public corpus in `tests/cpu_vectors/` travels with a clean
+checkout: 112 030+68882 and 144 full-040 vectors, including faults and
+multi-instruction FPU sequences. `ctest -L cpu-vectors` verifies their
+identities and requires every vector to execute; these `asset-none` gates
+also run in CI and the nightly ASan/UBSan tier. Recipes and regeneration
+instructions are in `tests/cpu_vectors/README.md`. The oracle's separate
+smoke tests and exact regeneration are checked by the Linux CI job.
 
 ---
 

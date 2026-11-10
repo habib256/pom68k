@@ -1,0 +1,13 @@
+[sst68040] dir=/Users/mercure/src/pom68k/tests/data/sst68040 files=11 cycles=off(advisory) mmu=full
+  core_identity    :    600/600    OK
+  core_off         :    800/800    OK
+  core_tt          :    600/600    OK
+  fault_identity   :    600/600    OK
+  fault_tt         :    600/600    OK
+  mmu_identity     :    600/600    OK
+  mmu_off          :    600/600    OK
+  mmu_tt           :    600/600    OK
+  random_identity  :    600/600    OK
+  random_off       :    800/800    OK
+  random_tt        :    800/800    OK
+[sst68040] OK: 7200/7200 across 11 file(s), 0 mmu-skipped

@@ -7,6 +7,13 @@
 
 #pragma once
 
+// POM68K: optional acceleration seam. Define to 0 in EVERY translation
+// unit embedding an interpreter-only core. Default preserves existing hosts;
+// CPU/MMU/FPU, architectural caches and their timing remain available.
+#ifndef MOIRA_ENABLE_JIT
+#define MOIRA_ENABLE_JIT 1
+#endif
+
 /* Set to true to enable precise timing mode (68000 and 68010 only).
  *
  * When disabled, Moira calls the 'sync' function at the end of each instruction,

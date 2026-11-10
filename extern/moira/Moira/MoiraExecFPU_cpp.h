@@ -173,12 +173,6 @@ static constexpr u32 FPSR_AE_UNFL   = 0x00000020;
 static constexpr u32 FPSR_AE_DZ     = 0x00000010;
 static constexpr u32 FPSR_AE_INEX   = 0x00000008;
 
-// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-// One softfloat context. WinUAE keeps a single static too
-// (fpp_softfloat.c:50); every instruction re-arms it from FPCR via
-// fpuSetMode(), so sharing across Moira instances is safe.
-static float_status moiraFpuFs;
-
 // FpuExtended (MoiraTypes.h) mirrors softfloat's floatx80 bit-for-bit
 static inline floatx80 fpuToFx80(const FpuExtended &v)
 {
@@ -202,21 +196,21 @@ static inline void fpuFromIntV(FpuExtended &v, i32 val)
 {
     v = fpuFromFx80(int32_to_floatx80(val));
 }
-static inline void fpuToSingleV(FpuExtended &v, u32 w)
+void Moira::fpuToSingleV(FpuExtended &v, u32 w)
 {
-    v = fpuFromFx80(float32_to_floatx80_allowunnormal(w, &moiraFpuFs));
+    v = fpuFromFx80(float32_to_floatx80_allowunnormal(w, fpuFloatStatus.get()));
 }
-static inline u32 fpuFromSingleV(const FpuExtended &v)
+u32 Moira::fpuFromSingleV(const FpuExtended &v)
 {
-    return floatx80_to_float32(fpuToFx80(v), &moiraFpuFs);
+    return floatx80_to_float32(fpuToFx80(v), fpuFloatStatus.get());
 }
-static inline void fpuToDoubleV(FpuExtended &v, u32 w1, u32 w2)
+void Moira::fpuToDoubleV(FpuExtended &v, u32 w1, u32 w2)
 {
-    v = fpuFromFx80(float64_to_floatx80_allowunnormal((u64(w1) << 32) | w2, &moiraFpuFs));
+    v = fpuFromFx80(float64_to_floatx80_allowunnormal((u64(w1) << 32) | w2, fpuFloatStatus.get()));
 }
-static inline void fpuFromDoubleV(const FpuExtended &v, u32 *w1, u32 *w2)
+void Moira::fpuFromDoubleV(const FpuExtended &v, u32 *w1, u32 *w2)
 {
-    float64 f = floatx80_to_float64(fpuToFx80(v), &moiraFpuFs);
+    float64 f = floatx80_to_float64(fpuToFx80(v), fpuFloatStatus.get());
     *w1 = u32(f >> 32);
     *w2 = u32(f);
 }
@@ -225,26 +219,26 @@ static inline void fpuToExtendedV(FpuExtended &v, u32 w1, u32 w2, u32 w3)
     v.high = u16(w1 >> 16);
     v.low = (u64(w2) << 32) | w3;
 }
-static inline void fpuFromExtendedV(const FpuExtended &v, u32 *w1, u32 *w2, u32 *w3)
+void Moira::fpuFromExtendedV(const FpuExtended &v, u32 *w1, u32 *w2, u32 *w3)
 {
-    floatx80 f = floatx80_to_floatx80(fpuToFx80(v), &moiraFpuFs);
+    floatx80 f = floatx80_to_floatx80(fpuToFx80(v), fpuFloatStatus.get());
     *w1 = u32(f.high) << 16;
     *w2 = u32(f.low >> 32);
     *w3 = u32(f.low);
 }
-static inline i64 fpuToIntV(const FpuExtended &v, int size)
+i64 Moira::fpuToIntV(const FpuExtended &v, int size)
 {
     switch (size) {
-        case 0:  return floatx80_to_int8(fpuToFx80(v), &moiraFpuFs);
-        case 1:  return floatx80_to_int16(fpuToFx80(v), &moiraFpuFs);
-        case 2:  return floatx80_to_int32(fpuToFx80(v), &moiraFpuFs);
+        case 0:  return floatx80_to_int8(fpuToFx80(v), fpuFloatStatus.get());
+        case 1:  return floatx80_to_int16(fpuToFx80(v), fpuFloatStatus.get());
+        case 2:  return floatx80_to_int32(fpuToFx80(v), fpuFloatStatus.get());
         default: return 0;
     }
 }
 
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Packed decimal (P) input — WinUAE fp_to_pack (fpp_softfloat.c:629-687)
-static void fpuToPackedV(FpuExtended &v, const u32 wrd[3])
+void Moira::fpuToPackedV(FpuExtended &v, const u32 wrd[3])
 {
     if (((wrd[0] >> 16) & 0x7fff) == 0x7fff) {
         // Infinity has extended exponent and all-0 packed fraction;
@@ -277,16 +271,16 @@ static void fpuToPackedV(FpuExtended &v, const u32 wrd[3])
     f.high = u16((exp & 0x3FFF) | (packSe ? 0x4000 : 0) | (packSm ? 0x8000 : 0));
     f.low = u64(mant);
 
-    v = fpuFromFx80(floatdecimal_to_floatx80(f, &moiraFpuFs));
+    v = fpuFromFx80(floatdecimal_to_floatx80(f, fpuFloatStatus.get()));
 }
 
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Packed decimal (P) output with k-factor — WinUAE fp_from_pack
 // (fpp_softfloat.c:690-751)
-static void fpuFromPackedV(const FpuExtended &v, u32 wrd[3], int kfactor)
+void Moira::fpuFromPackedV(const FpuExtended &v, u32 wrd[3], int kfactor)
 {
     i32 kf = kfactor;
-    floatx80 f = floatx80_to_floatdecimal(fpuToFx80(v), &kf, &moiraFpuFs);
+    floatx80 f = floatx80_to_floatdecimal(fpuToFx80(v), &kf, fpuFloatStatus.get());
 
     if ((f.high & 0x7FFF) == 0x7FFF) {
 
@@ -676,27 +670,27 @@ Moira::fpuSetMode()
     // FPCR mode byte -> softfloat (WinUAE fp_set_mode,
     // fpp_softfloat.c:53-84). Note the 6888x quirk: an invalid precision
     // field ($C0) selects double, not extended.
-    set_float_detect_tininess(float_tininess_before_rounding, &moiraFpuFs);
+    set_float_detect_tininess(float_tininess_before_rounding, fpuFloatStatus.get());
 
     switch (fpu.fpcr & 0xC0) {
 
-        case 0x40: set_floatx80_rounding_precision(32, &moiraFpuFs); break;
-        case 0x00: set_floatx80_rounding_precision(80, &moiraFpuFs); break;
-        default:   set_floatx80_rounding_precision(64, &moiraFpuFs); break;
+        case 0x40: set_floatx80_rounding_precision(32, fpuFloatStatus.get()); break;
+        case 0x00: set_floatx80_rounding_precision(80, fpuFloatStatus.get()); break;
+        default:   set_floatx80_rounding_precision(64, fpuFloatStatus.get()); break;
     }
     switch (fpu.fpcr & 0x30) {
 
-        case 0x00: set_float_rounding_mode(float_round_nearest_even, &moiraFpuFs); break;
-        case 0x10: set_float_rounding_mode(float_round_to_zero, &moiraFpuFs); break;
-        case 0x20: set_float_rounding_mode(float_round_down, &moiraFpuFs); break;
-        case 0x30: set_float_rounding_mode(float_round_up, &moiraFpuFs); break;
+        case 0x00: set_float_rounding_mode(float_round_nearest_even, fpuFloatStatus.get()); break;
+        case 0x10: set_float_rounding_mode(float_round_to_zero, fpuFloatStatus.get()); break;
+        case 0x20: set_float_rounding_mode(float_round_down, fpuFloatStatus.get()); break;
+        case 0x30: set_float_rounding_mode(float_round_up, fpuFloatStatus.get()); break;
     }
 
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // The integrated 040 and external 6888x use different NaN/infinity
     // compatibility flags (WinUAE fp_init_softfloat, fpp_softfloat.c).
     set_special_flags(fpuModel == FPUModel::M68040
-        ? cmp_signed_nan : addsub_swap_inf, &moiraFpuFs);
+        ? cmp_signed_nan : addsub_swap_inf, fpuFloatStatus.get());
 }
 
 void
@@ -706,7 +700,7 @@ Moira::fpuClearStatus()
     // Clear the FPSR exception status byte only (WinUAE fpsr_clear_status,
     // fpp.c:626-633) plus the softfloat flag accumulator
     fpu.fpsr &= 0x0fff00f8;
-    moiraFpuFs.float_exception_flags = 0;
+    fpuFloatStatus->float_exception_flags = 0;
 }
 
 u32
@@ -717,7 +711,7 @@ Moira::fpuMakeStatus()
     // fpsr_make_status/fp_get_status/updateaccrued, fpp.c:635-670).
     // Returns the enabled exceptions that abort the register update
     // (SNAN/OPERR/DZ — softfloat build has support_exceptions).
-    auto f = moiraFpuFs.float_exception_flags;
+    auto f = fpuFloatStatus->float_exception_flags;
 
     if (f & float_flag_signaling) fpu.fpsr |= FPSR_SNAN;
     if (f & float_flag_invalid)   fpu.fpsr |= FPSR_OPERR;
@@ -900,9 +894,9 @@ Moira::fpuCheckArithException(
             fpu.cmdreg3b = u16((ext & 0x03c3) | ((ext & 0x0038) >> 1) |
                                ((ext & 0x0004) << 3));
             put(fpu.wbt, fpuFromFx80(fpu.expPend == 51
-                                     ? getFloatInternalUnrounded()
-                                     : getFloatInternalRoundedSome()));
-            fpu.grs = u8(getFloatInternalGRS());
+                                     ? getFloatInternalUnrounded(fpuFloatStatus.get())
+                                     : getFloatInternalRoundedSome(fpuFloatStatus.get())));
+            fpu.grs = u8(getFloatInternalGRS(fpuFloatStatus.get()));
             fpu.wbte15 = fpu.expPend == 51 ? 1 : 0;
             put(fpu.et, src);
             fpu.stag = fpuTag040(src, opclass == 0 ? -1 : size);
@@ -915,9 +909,9 @@ Moira::fpuCheckArithException(
 
             // FMOVE to a register, FABS, FNEG: the rounded value in FPTEMP
             // and, undocumented, the fully rounded one in ETEMP.
-            put(fpu.fpt, fpuFromFx80(getFloatInternalFloatx80()));
-            fpu.grs = u8(getFloatInternalGRS());
-            put(fpu.et, fpuFromFx80(getFloatInternalRoundedAll()));
+            put(fpu.fpt, fpuFromFx80(getFloatInternalFloatx80(fpuFloatStatus.get())));
+            fpu.grs = u8(getFloatInternalGRS(fpuFloatStatus.get()));
+            put(fpu.et, fpuFromFx80(getFloatInternalRoundedAll(fpuFloatStatus.get())));
             fpu.stag = fpuTag040(src, opclass == 0 ? -1 : size);
 
         } else {
@@ -974,7 +968,7 @@ Moira::fpuCheckArithException(
         }
         case 53:                                        // OVFL
         {
-            FpuExtended eo = fpuFromFx80(getFloatInternalOverflow());
+            FpuExtended eo = fpuFromFx80(getFloatInternalOverflow(fpuFloatStatus.get()));
             fpu.fsaveEo[0] = u32(eo.high) << 16;
             fpu.fsaveEo[1] = u32(eo.low >> 32);
             fpu.fsaveEo[2] = u32(eo.low);
@@ -982,7 +976,7 @@ Moira::fpuCheckArithException(
         }
         case 51:                                        // UNFL
         {
-            FpuExtended eo = fpuFromFx80(getFloatInternalUnderflow());
+            FpuExtended eo = fpuFromFx80(getFloatInternalUnderflow(fpuFloatStatus.get()));
             fpu.fsaveEo[0] = u32(eo.high) << 16;
             fpu.fsaveEo[1] = u32(eo.low >> 32);
             fpu.fsaveEo[2] = u32(eo.low);
@@ -1374,8 +1368,8 @@ Moira::fpuGetConstant(FpuExtended &v, int cr)
             }
 
             fpuToExtendedV(v, f[0], f[1], f[2]);
-            if (prec == 1) v = fpuFromFx80(floatx80_round32(fpuToFx80(v), &moiraFpuFs));
-            if (prec >= 2) v = fpuFromFx80(floatx80_round64(fpuToFx80(v), &moiraFpuFs));
+            if (prec == 1) v = fpuFromFx80(floatx80_round32(fpuToFx80(v), fpuFloatStatus.get()));
+            if (prec >= 2) v = fpuFromFx80(floatx80_round64(fpuToFx80(v), fpuFloatStatus.get()));
 
             if (f1Adjust) {
                 f[0] = u32(v.high) << 16;
@@ -1402,8 +1396,8 @@ Moira::fpuGetConstant(FpuExtended &v, int cr)
 
     fpuToExtendedV(v, f[0], f[1], f[2]);
 
-    if (prec == 1) v = fpuFromFx80(floatx80_round32(fpuToFx80(v), &moiraFpuFs));
-    if (prec >= 2) v = fpuFromFx80(floatx80_round64(fpuToFx80(v), &moiraFpuFs));
+    if (prec == 1) v = fpuFromFx80(floatx80_round32(fpuToFx80(v), fpuFloatStatus.get()));
+    if (prec >= 2) v = fpuFromFx80(floatx80_round64(fpuToFx80(v), fpuFloatStatus.get()));
 
     fpuSetResultFlags(v);
     return true;
@@ -1431,63 +1425,63 @@ Moira::fpuArithmetic(const FpuExtended &srcM, FpuExtended &dstM, u16 ext)
     // lets SoftFloat raise INEX/OVFL/UNFL at the architecturally selected
     // boundary (MC68040UM-1993 §9.4.2).
     if (int precision = fpuForcedPrecision040(ext))
-        set_floatx80_rounding_precision(precision, &moiraFpuFs);
+        set_floatx80_rounding_precision(precision, fpuFloatStatus.get());
 
     switch (ext & 0x7f) {
 
-        case 0x00: dst = floatx80_move(src, &moiraFpuFs); break;            // FMOVE
-        case 0x01: dst = floatx80_round_to_int(src, &moiraFpuFs); break;    // FINT
-        case 0x02: dst = floatx80_sinh(src, &moiraFpuFs); break;            // FSINH
-        case 0x03: dst = floatx80_round_to_int_toward_zero(src, &moiraFpuFs); break; // FINTRZ
+        case 0x00: dst = floatx80_move(src, fpuFloatStatus.get()); break;            // FMOVE
+        case 0x01: dst = floatx80_round_to_int(src, fpuFloatStatus.get()); break;    // FINT
+        case 0x02: dst = floatx80_sinh(src, fpuFloatStatus.get()); break;            // FSINH
+        case 0x03: dst = floatx80_round_to_int_toward_zero(src, fpuFloatStatus.get()); break; // FINTRZ
         case 0x04:                                                          // FSQRT
-        case 0x05: dst = floatx80_sqrt(src, &moiraFpuFs); break;
+        case 0x05: dst = floatx80_sqrt(src, fpuFloatStatus.get()); break;
         case 0x06:                                                          // FLOGNP1
-        case 0x07: dst = floatx80_lognp1(src, &moiraFpuFs); break;
-        case 0x08: dst = floatx80_etoxm1(src, &moiraFpuFs); break;          // FETOXM1
-        case 0x09: dst = floatx80_tanh(src, &moiraFpuFs); break;            // FTANH
+        case 0x07: dst = floatx80_lognp1(src, fpuFloatStatus.get()); break;
+        case 0x08: dst = floatx80_etoxm1(src, fpuFloatStatus.get()); break;          // FETOXM1
+        case 0x09: dst = floatx80_tanh(src, fpuFloatStatus.get()); break;            // FTANH
         case 0x0a:                                                          // FATAN
-        case 0x0b: dst = floatx80_atan(src, &moiraFpuFs); break;
-        case 0x0c: dst = floatx80_asin(src, &moiraFpuFs); break;            // FASIN
-        case 0x0d: dst = floatx80_atanh(src, &moiraFpuFs); break;           // FATANH
-        case 0x0e: dst = floatx80_sin(src, &moiraFpuFs); break;             // FSIN
-        case 0x0f: dst = floatx80_tan(src, &moiraFpuFs); break;             // FTAN
-        case 0x10: dst = floatx80_etox(src, &moiraFpuFs); break;            // FETOX
-        case 0x11: dst = floatx80_twotox(src, &moiraFpuFs); break;          // FTWOTOX
+        case 0x0b: dst = floatx80_atan(src, fpuFloatStatus.get()); break;
+        case 0x0c: dst = floatx80_asin(src, fpuFloatStatus.get()); break;            // FASIN
+        case 0x0d: dst = floatx80_atanh(src, fpuFloatStatus.get()); break;           // FATANH
+        case 0x0e: dst = floatx80_sin(src, fpuFloatStatus.get()); break;             // FSIN
+        case 0x0f: dst = floatx80_tan(src, fpuFloatStatus.get()); break;             // FTAN
+        case 0x10: dst = floatx80_etox(src, fpuFloatStatus.get()); break;            // FETOX
+        case 0x11: dst = floatx80_twotox(src, fpuFloatStatus.get()); break;          // FTWOTOX
         case 0x12:                                                          // FTENTOX
-        case 0x13: dst = floatx80_tentox(src, &moiraFpuFs); break;
-        case 0x14: dst = floatx80_logn(src, &moiraFpuFs); break;            // FLOGN
-        case 0x15: dst = floatx80_log10(src, &moiraFpuFs); break;           // FLOG10
+        case 0x13: dst = floatx80_tentox(src, fpuFloatStatus.get()); break;
+        case 0x14: dst = floatx80_logn(src, fpuFloatStatus.get()); break;            // FLOGN
+        case 0x15: dst = floatx80_log10(src, fpuFloatStatus.get()); break;           // FLOG10
         case 0x16:                                                          // FLOG2
-        case 0x17: dst = floatx80_log2(src, &moiraFpuFs); break;
-        case 0x18: dst = floatx80_abs(src, &moiraFpuFs); break;             // FABS
-        case 0x19: dst = floatx80_cosh(src, &moiraFpuFs); break;            // FCOSH
+        case 0x17: dst = floatx80_log2(src, fpuFloatStatus.get()); break;
+        case 0x18: dst = floatx80_abs(src, fpuFloatStatus.get()); break;             // FABS
+        case 0x19: dst = floatx80_cosh(src, fpuFloatStatus.get()); break;            // FCOSH
         case 0x1a:                                                          // FNEG
-        case 0x1b: dst = floatx80_neg(src, &moiraFpuFs); break;
-        case 0x1c: dst = floatx80_acos(src, &moiraFpuFs); break;            // FACOS
-        case 0x1d: dst = floatx80_cos(src, &moiraFpuFs); break;             // FCOS
-        case 0x1e: dst = floatx80_getexp(src, &moiraFpuFs); break;          // FGETEXP
-        case 0x1f: dst = floatx80_getman(src, &moiraFpuFs); break;          // FGETMAN
-        case 0x20: dst = floatx80_div(dst, src, &moiraFpuFs); break;        // FDIV
+        case 0x1b: dst = floatx80_neg(src, fpuFloatStatus.get()); break;
+        case 0x1c: dst = floatx80_acos(src, fpuFloatStatus.get()); break;            // FACOS
+        case 0x1d: dst = floatx80_cos(src, fpuFloatStatus.get()); break;             // FCOS
+        case 0x1e: dst = floatx80_getexp(src, fpuFloatStatus.get()); break;          // FGETEXP
+        case 0x1f: dst = floatx80_getman(src, fpuFloatStatus.get()); break;          // FGETMAN
+        case 0x20: dst = floatx80_div(dst, src, fpuFloatStatus.get()); break;        // FDIV
         case 0x21:                                                          // FMOD
             fpuGetQuotient(&quot, &s);
             q = quot;
-            dst = floatx80_mod(dst, src, &q, &s, &moiraFpuFs);
+            dst = floatx80_mod(dst, src, &q, &s, fpuFloatStatus.get());
             fpuSetQuotient(q, s);
             break;
-        case 0x22: dst = floatx80_add(dst, src, &moiraFpuFs); break;        // FADD
-        case 0x23: dst = floatx80_mul(dst, src, &moiraFpuFs); break;        // FMUL
-        case 0x24: dst = floatx80_sgldiv(dst, src, &moiraFpuFs); break;     // FSGLDIV
+        case 0x22: dst = floatx80_add(dst, src, fpuFloatStatus.get()); break;        // FADD
+        case 0x23: dst = floatx80_mul(dst, src, fpuFloatStatus.get()); break;        // FMUL
+        case 0x24: dst = floatx80_sgldiv(dst, src, fpuFloatStatus.get()); break;     // FSGLDIV
         case 0x25:                                                          // FREM
             fpuGetQuotient(&quot, &s);
             q = quot;
-            dst = floatx80_rem(dst, src, &q, &s, &moiraFpuFs);
+            dst = floatx80_rem(dst, src, &q, &s, fpuFloatStatus.get());
             fpuSetQuotient(q, s);
             break;
-        case 0x26: dst = floatx80_scale(dst, src, &moiraFpuFs); break;      // FSCALE
-        case 0x27: dst = floatx80_sglmul(dst, src, &moiraFpuFs); break;     // FSGLMUL
+        case 0x26: dst = floatx80_scale(dst, src, fpuFloatStatus.get()); break;      // FSCALE
+        case 0x27: dst = floatx80_sglmul(dst, src, fpuFloatStatus.get()); break;     // FSGLMUL
         case 0x28:                                                          // FSUB
         case 0x29: case 0x2a: case 0x2b: case 0x2c: case 0x2d: case 0x2e: case 0x2f:
-            dst = floatx80_sub(dst, src, &moiraFpuFs);
+            dst = floatx80_sub(dst, src, fpuFloatStatus.get());
             break;
         case 0x30: case 0x31: case 0x32: case 0x33:                         // FSINCOS
         case 0x34: case 0x35: case 0x36: case 0x37:
@@ -1497,41 +1491,41 @@ Moira::fpuArithmetic(const FpuExtended &srcM, FpuExtended &dstM, u16 ext)
             // (WinUAE fp_sincos, fpp_softfloat.c:527-530); when FPc == FPs
             // the sine (stored last) wins
             floatx80 c;
-            dst = floatx80_sincos(src, &c, &moiraFpuFs);
+            dst = floatx80_sincos(src, &c, fpuFloatStatus.get());
             fpu.fp[ext & 7] = fpuFromFx80(c);
             break;
         }
         case 0x38: case 0x39: case 0x3c: case 0x3d:                         // FCMP
         {
-            dst = floatx80_cmp(dst, src, &moiraFpuFs);
+            dst = floatx80_cmp(dst, src, fpuFloatStatus.get());
             fpuMakeStatus();
             fpuSetResultFlags(fpuFromFx80(dst));
             return false;
         }
         case 0x3a: case 0x3b: case 0x3e: case 0x3f:                         // FTST
         {
-            dst = floatx80_tst(src, &moiraFpuFs);
+            dst = floatx80_tst(src, fpuFloatStatus.get());
             fpuMakeStatus();
             fpuSetResultFlags(fpuFromFx80(dst));
             return false;
         }
 
-        case 0x40: dst = floatx80_move(src, &moiraFpuFs); break;            // FSMOVE
-        case 0x41: dst = floatx80_sqrt(src, &moiraFpuFs); break;            // FSSQRT
-        case 0x44: dst = floatx80_move(src, &moiraFpuFs); break;            // FDMOVE
-        case 0x45: dst = floatx80_sqrt(src, &moiraFpuFs); break;            // FDSQRT
-        case 0x58: dst = floatx80_abs(src, &moiraFpuFs); break;             // FSABS
-        case 0x5a: dst = floatx80_neg(src, &moiraFpuFs); break;             // FSNEG
-        case 0x5c: dst = floatx80_abs(src, &moiraFpuFs); break;             // FDABS
-        case 0x5e: dst = floatx80_neg(src, &moiraFpuFs); break;             // FDNEG
-        case 0x60: dst = floatx80_div(dst, src, &moiraFpuFs); break;        // FSDIV
-        case 0x62: dst = floatx80_add(dst, src, &moiraFpuFs); break;        // FSADD
-        case 0x63: dst = floatx80_mul(dst, src, &moiraFpuFs); break;        // FSMUL
-        case 0x64: dst = floatx80_div(dst, src, &moiraFpuFs); break;        // FDDIV
-        case 0x66: dst = floatx80_add(dst, src, &moiraFpuFs); break;        // FDADD
-        case 0x67: dst = floatx80_mul(dst, src, &moiraFpuFs); break;        // FDMUL
-        case 0x68: dst = floatx80_sub(dst, src, &moiraFpuFs); break;        // FSSUB
-        case 0x6c: dst = floatx80_sub(dst, src, &moiraFpuFs); break;        // FDSUB
+        case 0x40: dst = floatx80_move(src, fpuFloatStatus.get()); break;            // FSMOVE
+        case 0x41: dst = floatx80_sqrt(src, fpuFloatStatus.get()); break;            // FSSQRT
+        case 0x44: dst = floatx80_move(src, fpuFloatStatus.get()); break;            // FDMOVE
+        case 0x45: dst = floatx80_sqrt(src, fpuFloatStatus.get()); break;            // FDSQRT
+        case 0x58: dst = floatx80_abs(src, fpuFloatStatus.get()); break;             // FSABS
+        case 0x5a: dst = floatx80_neg(src, fpuFloatStatus.get()); break;             // FSNEG
+        case 0x5c: dst = floatx80_abs(src, fpuFloatStatus.get()); break;             // FDABS
+        case 0x5e: dst = floatx80_neg(src, fpuFloatStatus.get()); break;             // FDNEG
+        case 0x60: dst = floatx80_div(dst, src, fpuFloatStatus.get()); break;        // FSDIV
+        case 0x62: dst = floatx80_add(dst, src, fpuFloatStatus.get()); break;        // FSADD
+        case 0x63: dst = floatx80_mul(dst, src, fpuFloatStatus.get()); break;        // FSMUL
+        case 0x64: dst = floatx80_div(dst, src, fpuFloatStatus.get()); break;        // FDDIV
+        case 0x66: dst = floatx80_add(dst, src, fpuFloatStatus.get()); break;        // FDADD
+        case 0x67: dst = floatx80_mul(dst, src, fpuFloatStatus.get()); break;        // FDMUL
+        case 0x68: dst = floatx80_sub(dst, src, fpuFloatStatus.get()); break;        // FSSUB
+        case 0x6c: dst = floatx80_sub(dst, src, fpuFloatStatus.get()); break;        // FDSUB
         default:
             return false;   // unreachable — filtered in execFGeneric
     }
@@ -1812,7 +1806,7 @@ Moira::fpuPutDest(u16 opcode, u16 ext, FpuExtended value, u32 &ea)
                 fpuNormalize(value);
                 fpuFromPackedV(value, wrd, k);
 
-                auto f = moiraFpuFs.float_exception_flags;
+                auto f = fpuFloatStatus->float_exception_flags;
                 if (f & float_flag_signaling) fpu.fpsr |= FPSR_SNAN;
                 if (f & float_flag_invalid)   fpu.fpsr |= FPSR_OPERR;
                 if (f & float_flag_divbyzero) fpu.fpsr |= FPSR_DZ;

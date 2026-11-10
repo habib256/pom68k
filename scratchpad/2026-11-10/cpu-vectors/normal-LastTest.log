@@ -1,0 +1,2071 @@
+Start testing: Nov 10 12:17 +04
+----------------------------------------------------------
+67/559 Testing: docs_test
+67/559 Test: docs_test
+Command: "/Users/mercure/src/pom68k/build/docs_test"
+Directory: /Users/mercure/src/pom68k
+"docs_test" start time: Nov 10 12:17 +04
+Output:
+----------------------------------------------------------
+ok   Machine menu consumes the compiled profile catalogue
+ok   snapshot ids live beside the profile catalogue
+ok   compiled machine catalogue is non-empty
+ok   CLAUDE.md states a profile count somewhere
+ok   CLAUDE.md profile count 58 == 58 in the code
+ok   headless application architecture files are present
+ok   leaf devices consume subsystem views instead of the CoreConfig bag
+ok   board composition roots require explicit CoreConfig injection
+ok   LLE qualification state is a type, not loose globals
+ok   a MachineSession owns its LLE registry
+ok   devices receive their LLE registry through the core policy
+ok   configured CPU leaves require explicit CoreCpuConfig injection
+ok   core policy has one explicit fixture default and no section fallbacks
+ok   main injects ProcessEnvironment into RuntimeConfig before composition
+ok   RuntimeConfig composes typed domains without legacy knob spellings
+ok   startup decoding has separate compatibility, product, core and machine owners
+ok   startup options have one unique typed schema consumed by decoders
+ok   all startup options declare a value policy; only five stay custom
+ok   typed boolean policies preserve all legacy empty and false forms
+ok   typed integer policies own radix and bounds
+ok   StartupSnapshot rejects unknown names and publishes immutable typed values
+ok   the unified startup schema owns all 41 typed JIT options
+ok   each startup decoder is compile-time restricted to its option domain
+ok   main is a cold composition root with no concrete GUI dependency
+ok   MachineSession type-erases the concrete core/host/UI runtime
+ok   MachineSession owns the concrete runtime with RAII
+ok   GUI runtime owns decomposed host/UI process state with RAII
+ok   a real cable gets the Rx queue and keeps the real wire pace
+ok   machines receive host services directly without a reverse pointer
+ok   GUI window, ImGui backend and texture handles have one RAII owner
+ok   ROM identity dispatch belongs to MachineFactory, not main.cpp
+ok   profile routing consumes typed selections and retains no raw map
+ok   Machine menu marks the actual typed snapshot as current
+ok   Machine menu relaunch is typed and never mutates process policy
+ok   Peripheral relaunch carries typed firmware policy without env mutation
+ok   RuntimeConfig parses typed ROM/media and exact relaunch inputs
+ok   RuntimeConfig injects product, JIT and core policy aggregates
+ok   typed serial endpoints reject unknown schemes and invalid ports
+ok   typed configuration preserves empty-value default-on semantics
+ok   Q605 scheduler defaults remain explicitly reversible
+ok   RuntimeConfig preserves 0/1 environment semantics for strict mode
+ok   typed profile option overrides inherited identity and FPU policy
+ok   typed Q605 relaunch restores the Quadra 605 board ID and integrated FPU
+ok   typed LC 580 relaunch selects the LC 580 board ID
+ok   typed relaunch replaces stale profile arguments without moving media
+ok   typed ADB policy overrides inherited mode and clears its path
+ok   typed Egret mode stays distinct and preserves colons in paths
+ok   typed Cuda policy overrides inherited HLE and path independently
+ok   typed Toby declaration ROM policy overrides the inherited knobs
+ok   POM68K_TOBY_DECL seeds the Toby declaration ROM path
+ok   required PMU firmware path survives typed parsing and relaunch
+ok   required color video ROM path survives typed parsing and relaunch
+ok   typed firmware relaunch replaces stale policy without moving media
+ok   unrelated relaunch retains the current typed firmware policy
+ok   MachineFactory maps every platform's default ROM identity
+ok   512Ke shared-Plus-ROM selector round-trips without overriding 64K ROMs
+ok   Duo 210/250 profiles select the MSC board identity of their model
+ok   040 Duo relaunch selects the shared ROM's panel without changing GSC ROM identity
+ok   040 Duo relaunch selects the shared ROM's panel without changing GSC ROM identity
+ok   JeDI typed relaunch selects the PowerBook 150 ROM and profile
+ok   typed Jaws selection routes the shared Quadra ROM
+ok   typed Jaws selection routes the shared Quadra ROM
+ok   typed Jaws selection routes the shared Quadra ROM
+ok   typed Jaws selection routes the shared Quadra ROM
+ok   Niagra typed relaunch selects the shared ROM's profile without changing Quadra routing
+ok   Niagra typed relaunch selects the shared ROM's profile without changing Quadra routing
+ok   Niagra typed relaunch selects the shared ROM's profile without changing Quadra routing
+ok   Niagra typed relaunch selects the shared ROM's profile without changing Quadra routing
+ok   Niagra typed relaunch selects the shared ROM's profile without changing Quadra routing
+ok   MachineFactory routes every catalogue profile, including variants
+ok   typed relaunch option round-trips every shared-ROM profile
+ok   strict AArch64 mode accepts only qualified 1 MB 68040 ROMs
+ok   MachineSession retains and delegates once to its runtime
+ok   MachineSession destroys its owned runtime at session teardown
+ok   GUI session objects are destroyed in reverse dependency order
+ok   GuiShell, GuiHostServices and PlatformComposers are present
+ok   GUI runtime only owns and connects the three responsibilities
+ok   GuiHostServices owns network, audio, relaunch and diagnostics only
+ok   GuiShell owns windows, menus and six family render-loop units
+ok   PlatformComposers performs typed family construction without rendering
+ok   GUI shell loops use typed media and session-owned mutable state
+ok   GuiShell owns shared screen and ADB input mechanics
+ok   the GUI runtime consumes injected configuration without getenv
+ok   every board with SCSI disks advances and cables its CD transport
+ok   only ProcessEnvironment may read process-global configuration in src
+ok   the Moira core reads no process environment
+ok   ProcessEnvironment derives the sole process capture from option schemas
+ok   domain decoders use typed options instead of raw key strings
+ok   RuntimeConfig decoders have explicit inputs and no process-reading API
+ok   standalone JIT gates inject their own test-boundary snapshot
+ok   Duo shell preserves no-floppy and staged-CD capabilities
+ok   the six runners upload frames through one function, not six copies
+ok   CMake root composes five ordered test responsibilities
+ok   CMake gates, dev tools and registry policy stay separated
+ok   GUI and gate locators both prefer hdv/ref fixtures
+ok   reference lookup and writable ref-to-work routing stay paired
+ok   all gate-local asset resolvers delegate to the ref-aware helper
+ok   pom68k_gates.tsv located (CMake writes it at configure time)
+ok   gate roster read from pom68k_gates.tsv
+ok   gate manifest has the versioned eight-column schema
+ok   gate manifest covers every registered gate exactly once
+ok   every gate manifest row has valid assets/host/scope/tier/config/slots
+ok   performance budget manifest has valid workload/family/host rows
+ok   performance policy separates daily hosts and pins measured Macintosh baselines
+ok   JIT metrics schema is explicit and versioned
+ok   x86-64 CI validates and archives structured JIT metrics
+ok   AArch64 CI validates and archives structured JIT metrics
+note: 5 host-conditional gate(s) not registered here; the documented union totals are held to account
+ok   TODO.md active backlog located
+ok   TODO.md delegates generated gate facts to STATUS.md
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains only unchecked task markers
+ok   TODO.md contains actionable open work
+ok   every registered gate carries at least one label
+ok   CLAUDE.md names gates by their full name
+ok   CLAUDE.md names `docs_test` — registered here or declared host-conditional
+ok   CLAUDE.md names `file_size_budget_test` — registered here or declared host-conditional
+ok   the docs state a registry total for AArch64
+ok   CLAUDE.md splits the registry by host and states the AArch64 total
+ok   TODO.md splits the registry by host and states the AArch64 total
+ok   README.md splits the registry by host and states the AArch64 total
+ok   DEV.md splits the registry by host and states the AArch64 total
+ok   STATUS.md generated registry located
+ok   STATUS.md declares itself generated
+ok   STATUS.md carries the union section
+ok   STATUS.md union total 564 == configured union 564
+ok   STATUS.md union label table matches the roster
+ok   STATUS.md carries a section for aarch64
+ok   STATUS.md says 559 gates registered on aarch64; ctest has 559
+ok   STATUS.md absent-here count matches the absent roster
+ok   STATUS.md aarch64 dimension table matches the manifest
+ok   STATUS.md carries the PRODUCT_LLE registry section
+ok   STATUS.md PRODUCT_LLE registry has been materialized
+ok   Moira fork design record located
+ok   Moira source inventory traversed
+ok   every source file exposing a pom* extension carries a POM68K marker
+ok   Moira local-patch inventory table parsed
+ok   Moira inventory names marked source `MoiraDataflow.h`
+ok   Moira inventory names marked source `MoiraCache040.h`
+ok   Moira inventory names marked source `Moira.cpp`
+ok   Moira inventory names marked source `MoiraDataflow_cpp.h`
+ok   Moira inventory names marked source `MoiraExceptions_cpp.h`
+ok   Moira inventory names marked source `MoiraTypes.h`
+ok   Moira inventory names marked source `MoiraExecMMU_cpp.h`
+ok   Moira inventory names marked source `Moira.h`
+ok   Moira inventory names marked source `MoiraInit_cpp.h`
+ok   Moira inventory names marked source `MoiraDebugger.cpp`
+ok   Moira inventory names marked source `MoiraState.h`
+ok   Moira inventory names marked source `MoiraDasm_cpp.h`
+ok   Moira inventory names marked source `MoiraExec_cpp.h`
+ok   Moira inventory names marked source `MoiraALU_cpp.h`
+ok   Moira inventory names marked source `MoiraConfig.h`
+ok   Moira inventory names marked source `MoiraExecFPU_cpp.h`
+ok   Moira document states the computed pom* identifier count
+ok   Moira document states the computed POM68K-marked line count
+ok   Moira document states the computed marked/source file count
+ok   Moira document states the computed patch-group count
+ok   CHANGELOG_INDEX.md lists 753 of the 753 dated entries — regenerate with tools/changelog_index.py
+ok   src/jit/backends/JitBackendA64.cpp located
+ok   src/jit/backends/JitBackendA64.cpp consumes Instr::memory plans
+ok   src/jit/backends/JitBackendA64.cpp does not decode memory semantics
+ok   src/jit/backends/JitBackendA64.cpp has no opcode-local sole-access guess
+ok   src/jit/backends/JitBackendA64.cpp has no opcode-local exact-access exception
+ok   src/jit/backends/JitBackendA64.cpp consumes Instr::semantics
+ok   src/jit/backends/JitBackendA64.cpp consumes the shared EA plan
+ok   src/jit/backends/JitBackendA64.cpp does not re-decode effective addresses
+ok   src/jit/backends/JitBackendA64.cpp consumes Instr control-flow plans
+ok   src/jit/backends/JitBackendA64.cpp does not decode branch extensions
+ok   src/jit/backends/JitBackendA64.cpp reads the shared cost columns and defines none
+ok   src/jit/backends/JitBackendA64.cpp reads the shared full-format cost, not a local twin
+ok   src/jit/backends/JitBackendA64.cpp never re-decodes BlockIr extension words
+ok   src/jit/backends/JitBackendA64.cpp shares raw-opcode census semantics
+ok   src/jit/backends/JitBackendA64.cpp has no opcode-line dispatch decoder
+ok   src/jit/backends/JitBackendA64.cpp has no private ALU semantic decoder
+ok   src/jit/backends/JitBackendA64.cpp has no private live environment policy
+ok   src/jit/backends/JitBackendX64.cpp located
+ok   src/jit/backends/JitBackendX64.cpp consumes Instr::memory plans
+ok   src/jit/backends/JitBackendX64.cpp does not decode memory semantics
+ok   src/jit/backends/JitBackendX64.cpp has no opcode-local sole-access guess
+ok   src/jit/backends/JitBackendX64.cpp has no opcode-local exact-access exception
+ok   src/jit/backends/JitBackendX64.cpp consumes Instr::semantics
+ok   src/jit/backends/JitBackendX64.cpp consumes the shared EA plan
+ok   src/jit/backends/JitBackendX64.cpp does not re-decode effective addresses
+ok   src/jit/backends/JitBackendX64.cpp consumes Instr control-flow plans
+ok   src/jit/backends/JitBackendX64.cpp does not decode branch extensions
+ok   src/jit/backends/JitBackendX64.cpp reads the shared cost columns and defines none
+ok   src/jit/backends/JitBackendX64.cpp reads the shared full-format cost, not a local twin
+ok   src/jit/backends/JitBackendX64.cpp never re-decodes BlockIr extension words
+ok   src/jit/backends/JitBackendX64.cpp shares raw-opcode census semantics
+ok   src/jit/backends/JitBackendX64.cpp has no opcode-line dispatch decoder
+ok   src/jit/backends/JitBackendX64.cpp has no private ALU semantic decoder
+ok   src/jit/backends/JitBackendX64.cpp has no private live environment policy
+ok   JitEaPlan.h owns the shared EA admission wrapper
+ok   JitEaPlan.h keeps full-format admission opt-in per caller
+ok   JitCost.h owns the 68020 cycle columns
+ok   JitCost.h owns the D1F0 full-format sub-form predicate
+ok   JitCost.h owns the CMPA surcharge
+ok   citation lookup preserves filename case on every host
+ok   CLAUDE.md: every in-tree file:line citation lands inside its file
+ok   README.md: every in-tree file:line citation lands inside its file
+ok   DEV.md: every in-tree file:line citation lands inside its file
+ok   TODO.md: every in-tree file:line citation lands inside its file
+ok   src/jit/POM68K_JIT.md: every in-tree file:line citation lands inside its file
+ok   extern/moira/POM68K_VENDOR.md: every in-tree file:line citation lands inside its file
+ok   docs/68K_FAMILY_SCOPE.md: every in-tree file:line citation lands inside its file
+ok   docs/APPLETALK.md: every in-tree file:line citation lands inside its file
+ok   docs/BASILISK_ROM_NOTES.md: every in-tree file:line citation lands inside its file
+ok   docs/CACHE_040.md: every in-tree file:line citation lands inside its file
+ok   docs/DUO_BRINGUP.md: every in-tree file:line citation lands inside its file
+ok   docs/HLE_OVERLAY.md: every in-tree file:line citation lands inside its file
+ok   docs/IOP_BRINGUP.md: every in-tree file:line citation lands inside its file
+ok   docs/JIT_BRINGUP.md: every in-tree file:line citation lands inside its file
+ok   docs/LC520_BRINGUP.md: every in-tree file:line citation lands inside its file
+ok   docs/LCII_HARDWARE.md: every in-tree file:line citation lands inside its file
+ok   docs/LLE_VS_HLE.md: every in-tree file:line citation lands inside its file
+ok   docs/MAME_PARITY_AUDIT.md: every in-tree file:line citation lands inside its file
+ok   docs/MEASURING.md: every in-tree file:line citation lands inside its file
+ok   docs/PB030_BRINGUP.md: every in-tree file:line citation lands inside its file
+ok   docs/PORTABLE_BRINGUP.md: every in-tree file:line citation lands inside its file
+ok   docs/RASPBERRY_PI.md: every in-tree file:line citation lands inside its file
+ok   docs/SCSI_HOTPLUG.md: every in-tree file:line citation lands inside its file
+ok   docs/SIMPLIFICATIONS_REVIEW.md: every in-tree file:line citation lands inside its file
+ok   docs/SNOW_COMPARISON.md: every in-tree file:line citation lands inside its file
+ok   docs/SNOW_IMPLEMENTATION_PLAN.md: every in-tree file:line citation lands inside its file
+ok   in-tree file:line citations judged (380)
+ok   each JIT Engine requires one explicitly injected snapshot
+ok   src/jit/JitEngineCensus.cpp: portable JIT include JitEngine.h
+ok   src/jit/JitEngineCensus.cpp: host architecture stays in backends
+ok   src/jit/JitEngine.h: portable JIT include JitBackend.h
+ok   src/jit/JitEngine.h: portable JIT include JitConfig.h
+ok   src/jit/JitEngine.h: portable JIT include JitDispatchCache.h
+ok   src/jit/JitEngine.h: portable JIT include JitGuard.h
+ok   src/jit/JitEngine.h: portable JIT include JitIr.h
+ok   src/jit/JitEngine.h: portable JIT include JitShiftVersions.h
+ok   src/jit/JitEngine.h: portable JIT include JitStats.h
+ok   src/jit/JitEngine.h: host architecture stays in backends
+ok   src/jit/JitCost.h: portable JIT include JitIr.h
+ok   src/jit/JitCost.h: host architecture stays in backends
+ok   src/jit/JitRuntime.cpp: portable JIT include JitRuntime.h
+ok   src/jit/JitRuntime.cpp: portable JIT include Moira.h
+ok   src/jit/JitRuntime.cpp: host architecture stays in backends
+ok   src/jit/JitConfig.h: host architecture stays in backends
+ok   src/jit/JitBackend.h: portable JIT include JitGuard.h
+ok   src/jit/JitBackend.h: portable JIT include JitIr.h
+ok   src/jit/JitBackend.h: portable JIT include JitStats.h
+ok   src/jit/JitBackend.h: host architecture stays in backends
+ok   src/jit/JitCodeBuffer.h: host architecture stays in backends
+ok   src/jit/JitGuard.h: host architecture stays in backends
+ok   src/jit/backends/JitBackendX64.h: portable JIT include ../JitBackend.h
+ok   src/jit/backends/JitBackendX64.cpp: portable JIT include JitBackendX64.h
+ok   src/jit/backends/JitBackendX64.cpp: portable JIT include ../JitCodeBuffer.h
+ok   src/jit/backends/JitBackendX64.cpp: portable JIT include ../JitConfig.h
+ok   src/jit/backends/JitBackendX64.cpp: portable JIT include ../JitCost.h
+ok   src/jit/backends/JitBackendX64.cpp: portable JIT include ../JitEaPlan.h
+ok   src/jit/backends/JitBackendX64.cpp: portable JIT include ../JitRuntime.h
+ok   src/jit/backends/JitBackendX64.cpp: portable JIT include X64Asm.h
+ok   src/jit/backends/JitBackendX64.cpp: portable JIT include Moira.h
+ok   src/jit/backends/JitBackendX64.cpp: portable JIT include JitBackendX64Atc040.inl
+ok   src/jit/backends/JitBackendX64.cpp: portable JIT include JitBackendX64Jsr040.inl
+ok   src/jit/backends/JitBackendA64.cpp: portable JIT include JitBackendA64.h
+ok   src/jit/backends/JitBackendA64.cpp: portable JIT include ../JitCodeBuffer.h
+ok   src/jit/backends/JitBackendA64.cpp: portable JIT include ../JitConfig.h
+ok   src/jit/backends/JitBackendA64.cpp: portable JIT include ../JitCost.h
+ok   src/jit/backends/JitBackendA64.cpp: portable JIT include ../JitEaPlan.h
+ok   src/jit/backends/JitBackendA64.cpp: portable JIT include ../JitRuntime.h
+ok   src/jit/backends/JitBackendA64.cpp: portable JIT include Moira.h
+ok   src/jit/backends/JitBackendA64.cpp: portable JIT include JitBackendA64Atc040.inl
+ok   src/jit/backends/JitBackendA64.cpp: portable JIT include JitBackendA64Jsr040.inl
+ok   src/jit/backends/JitBackendThreaded.h: portable JIT include ../JitBackend.h
+ok   src/jit/backends/JitBackendThreaded.cpp: portable JIT include JitBackendThreaded.h
+ok   src/jit/backends/JitBackendThreaded.cpp: portable JIT include Moira.h
+ok   src/jit/backends/JitBackendA64.h: portable JIT include ../JitBackend.h
+ok   src/jit/JitCodeBuffer.cpp: portable JIT include JitCodeBuffer.h
+ok   src/jit/JitShiftVersions.h: host architecture stays in backends
+ok   src/jit/JitShiftVersions.cpp: portable JIT include JitShiftVersions.h
+ok   src/jit/JitShiftVersions.cpp: portable JIT include JitCost.h
+ok   src/jit/JitShiftVersions.cpp: portable JIT include JitEngine.h
+ok   src/jit/JitShiftVersions.cpp: portable JIT include Moira.h
+ok   src/jit/JitShiftVersions.cpp: host architecture stays in backends
+ok   src/jit/JitIr.h: host architecture stays in backends
+ok   src/jit/JitRuntime.h: portable JIT include Moira.h
+ok   src/jit/JitRuntime.h: host architecture stays in backends
+ok   src/jit/JitDispatchCache.h: portable JIT include JitShiftVersions.h
+ok   src/jit/JitDispatchCache.h: host architecture stays in backends
+ok   src/jit/JitBlockCache.cpp: portable JIT include JitEngine.h
+ok   src/jit/JitBlockCache.cpp: portable JIT include Moira.h
+ok   src/jit/JitBlockCache.cpp: host architecture stays in backends
+ok   src/jit/JitMetrics.h: portable JIT include backends/JitHostArchitecture.h
+ok   src/jit/JitMetrics.h: host architecture stays in backends
+ok   src/jit/JitBackend.cpp: portable JIT include JitBackend.h
+ok   src/jit/JitBackend.cpp: portable JIT include JitConfig.h
+ok   src/jit/JitBackend.cpp: portable JIT include backends/JitBackendThreaded.h
+ok   src/jit/JitBackend.cpp: portable JIT include backends/JitBackendX64.h
+ok   src/jit/JitBackend.cpp: portable JIT include backends/JitBackendA64.h
+ok   src/jit/JitBackend.cpp: host architecture stays in backends
+ok   src/jit/JitStats.h: host architecture stays in backends
+ok   src/jit/JitEngine.cpp: portable JIT include JitEngine.h
+ok   src/jit/JitEngine.cpp: portable JIT include JitCost.h
+ok   src/jit/JitEngine.cpp: portable JIT include Moira.h
+ok   src/jit/JitEngine.cpp: host architecture stays in backends
+ok   src/jit/JitEaPlan.h: portable JIT include JitCost.h
+ok   src/jit/JitEaPlan.h: portable JIT include JitIr.h
+ok   src/jit/JitEaPlan.h: host architecture stays in backends
+ok   src/Cpu68k.h requires non-null JIT configuration injection
+ok   src/IIfxCpu.h requires non-null JIT configuration injection
+ok   src/Cpu020.h requires non-null JIT configuration injection
+ok   src/Cpu030.h requires non-null JIT configuration injection
+ok   src/Cpu040.h requires non-null JIT configuration injection
+ok   src/MscCpu.h requires non-null JIT configuration injection
+ok   src/CentrisCpu.h requires non-null JIT configuration injection
+ok   src/Q630Cpu.h requires non-null JIT configuration injection
+ok   src/Q700Cpu.h requires non-null JIT configuration injection
+ok   src/SonoraCpu.h requires non-null JIT configuration injection
+ok   src/VaspCpu.h requires non-null JIT configuration injection
+ok   src/RbvCpu.h requires non-null JIT configuration injection
+ok   src/Pb030Cpu.h requires non-null JIT configuration injection
+ok   src/PortableCpu.h requires non-null JIT configuration injection
+ok   every printed soft-skip line carries the census's own marker
+PASS
+<end of output>
+Test time =   1.42 sec
+----------------------------------------------------------
+Test Passed.
+"docs_test" end time: Nov 10 12:17 +04
+"docs_test" time elapsed: 00:00:01
+----------------------------------------------------------
+
+75/559 Testing: sst68030
+75/559 Test: sst68030
+Command: "/Users/mercure/src/pom68k/build/sst68030" "/Users/mercure/src/pom68k/tests/data/sst68030" "--known" "/Users/mercure/src/pom68k/tests/sst68030.known"
+Directory: /Users/mercure/src/pom68k/build
+"sst68030" start time: Nov 10 12:17 +04
+Output:
+----------------------------------------------------------
+[sst68030] dir=/Users/mercure/src/pom68k/tests/data/sst68030 files=12 cycles=off(advisory) mmu=full
+  core_identity    :     69/69     OK
+  core_off         :    160/160    OK
+  core_tt          :     56/56     OK
+  fault_identity   :     70/70     OK
+  fault_tt         :     35/35     OK
+  fpu_identity     :    731/732    OK (+1 known)
+  fpu_off          :   1097/1099   OK (+2 known)
+  fpu_tt           :    210/211    OK (+1 known)
+  mmu_identity     :     69/69     OK
+  mmu_off          :    210/210    OK
+  random_identity  :    121/121    OK
+  random_off       :    250/250    OK
+[sst68030] OK: 3078/3082 across 12 file(s), 4 known divergence(s), 0 mmu-skipped
+<end of output>
+Test time =   2.18 sec
+----------------------------------------------------------
+Test Passed.
+"sst68030" end time: Nov 10 12:17 +04
+"sst68030" time elapsed: 00:00:02
+----------------------------------------------------------
+
+76/559 Testing: sst68040
+76/559 Test: sst68040
+Command: "/Users/mercure/src/pom68k/build/sst68040" "/Users/mercure/src/pom68k/tests/data/sst68040"
+Directory: /Users/mercure/src/pom68k/build
+"sst68040" start time: Nov 10 12:17 +04
+Output:
+----------------------------------------------------------
+[sst68040] dir=/Users/mercure/src/pom68k/tests/data/sst68040 files=11 cycles=off(advisory) mmu=full
+  core_identity    :    600/600    OK
+  core_off         :    800/800    OK
+  core_tt          :    600/600    OK
+  fault_identity   :    600/600    OK
+  fault_tt         :    600/600    OK
+  mmu_identity     :    600/600    OK
+  mmu_off          :    600/600    OK
+  mmu_tt           :    600/600    OK
+  random_identity  :    600/600    OK
+  random_off       :    800/800    OK
+  random_tt        :    800/800    OK
+[sst68040] OK: 7200/7200 across 11 file(s), 0 mmu-skipped
+<end of output>
+Test time =   4.61 sec
+----------------------------------------------------------
+Test Passed.
+"sst68040" end time: Nov 10 12:17 +04
+"sst68040" time elapsed: 00:00:04
+----------------------------------------------------------
+
+385/559 Testing: berr030_test
+385/559 Test: berr030_test
+Command: "/Users/mercure/src/pom68k/build/berr030_test"
+Directory: /Users/mercure/src/pom68k/build
+"berr030_test" start time: Nov 10 12:17 +04
+Output:
+----------------------------------------------------------
+berr030_test — external /BERR + RTE $A/$B (O6 slice 1)
+  read fault: handler RTE resumed past the probe             ok
+  read fault: frame format $B                                ok
+  read fault: stacked fault address = $F00000                ok
+  read fault: SSW = DF|DF2|RW|long|fc5 ($0345)               ok
+  write fault: frame format $A (last write)                  ok
+  write fault: a failed replay stacks a second format-$A frame ok
+  write fault: stacked fault address = $F00000               ok
+  write fault: RTE completes the pending data-output cycle   ok
+  write fault: RTE from $A frame continues after             ok
+  RTE restart: transient read uses format $B                 ok
+  RTE restart: faulted read completes after retry            ok
+  RTE restart: postincrement is applied exactly once         ok
+  RTE restart: execution continues after retried instruction ok
+  fetch fault: frame format $B                               ok
+  fetch fault: stacked fault address = $F00000               ok
+  fetch fault: SSW = FB|RB|RW|word|fc6 ($5066)               ok
+  fetch fault: handler RTE resumed                           ok
+  probe: SSW = DF|DF2|RW|byte|fc5 ($0355)                    ok
+  probe: RTE with DF set re-ran and re-faulted               ok
+  probe: DF cleared -> read = data input buffer byte         ok
+  probe: execution continued past the probe                  ok
+  stacking fault: double fault halts the CPU                 ok
+  MMU fetch: extension word translated on the new page       ok
+  MMU fetch: instruction completed across the page boundary  ok
+  MMU fetch fault: format $B frame                           ok
+  MMU fetch fault: frame names extension address $8000       ok
+  PMOVE (A0),TT0: translated fault uses format $B            ok
+  PMOVE (A0),TT0: oracle SSW is exact                        ok
+  PMOVE (A0),TT0: logical operand address is stacked         ok
+  PMOVE (A0),TT0: stacked PC identifies PMOVE                ok
+  PMOVE TT0,(A0): translated fault uses format $B            ok
+  PMOVE TT0,(A0): oracle SSW is exact                        ok
+  PMOVE TT0,(A0): logical operand address is stacked         ok
+  PMOVE TT0,(A0): stacked PC identifies PMOVE                ok
+  FMOVEM indirect: pointer long read before register image   ok
+  FMOVEM indirect: three operand longs read in ascending order ok
+  FMOVEM indirect: WinUAE raw FP7 image reproduced           ok
+  CACR.CEI: unrelated instruction-cache line preserved       ok
+  CACR.CEI: only CAAR-selected longword cleared              ok
+  CACR.CI: complete instruction cache cleared                ok
+PASSED
+<end of output>
+Test time =   0.09 sec
+----------------------------------------------------------
+Test Passed.
+"berr030_test" end time: Nov 10 12:17 +04
+"berr030_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+437/559 Testing: jit_asset_free_lockstep_test
+437/559 Test: jit_asset_free_lockstep_test
+Command: "/Users/mercure/src/pom68k/build/jit_asset_free_lockstep_test"
+Directory: /Users/mercure/src/pom68k/build
+"jit_asset_free_lockstep_test" start time: Nov 10 12:17 +04
+Output:
+----------------------------------------------------------
+jit_asset_free_lockstep_test — deterministic native 68040 proof
+  host generator: aarch64
+    MOVEM CM backend=aarch64 packed=0 guarded=1 identical=1 runs=1 slow=1 interp=0
+  guest-produced MOVEM CM continuation agrees through native guard/threaded replay ok
+    MOVEM CM backend=aarch64 packed=1 guarded=1 identical=1 runs=1 slow=1 interp=0
+  guest-produced MOVEM CM continuation agrees through native guard/threaded replay ok
+    MOVEM CM backend=threaded packed=0 guarded=1 identical=1 runs=1 slow=1 interp=0
+  guest-produced MOVEM CM continuation agrees through native guard/threaded replay ok
+    MOVEM CM backend=threaded packed=1 guarded=1 identical=1 runs=1 slow=1 interp=0
+  guest-produced MOVEM CM continuation agrees through native guard/threaded replay ok
+    ATC accounting: 432 cases, 0 failures
+  040 ATC accesses agree through interpreter windows, threaded and native paths ok
+    ATC pipeline replacement: 1152 cases, 0 failures
+  040 set victims and descriptor U bits agree after window, threaded and native hits ok
+    backend=aarch64 compiled=9 runs=769 native=19576 interp=1 slow=0
+    budgets: compiled>=3 runs>=700 native>=990‰ slow<=0
+  versioned structural budget retained compiled native execution         ok
+  versioned native-share budget rejects broad fallback regressions       ok
+  versioned fallback budget remains within policy                        ok
+  complete synthetic RAM image is identical after the loop               ok
+  768 deterministic checkpoints match registers, queue, cycles and RAM   ok
+  last-write /BERR boundary and format-$7 frame match the interpreter    ok
+  restart-read /BERR boundary and format-$7 frame match the interpreter  ok
+    exact-source compiled=1 runs=128 native=1919 slow=0 reads=384
+  exact MMIO source + preflighted RAM destination stays native and exact ok
+    late-IPL compiled=1 runs=106 native=552 slow=0 acks=43 first stacked PC=00001104
+  an MMIO read that raises the pin interrupts after its own instruction  ok
+    address-source ALU compiled=2 runs=256 native=1791 slow=0
+  ADD.L address-register source preserves value and flags natively       ok
+    brief-index compiled=7 runs=253 native=1169 slow=0
+  brief indexed reads, Scc, PEA and LEA stay native and exact            ok
+    indexed MOVE destination packed=0 compiled=7 runs=255 native=1537 slow=0
+  brief-indexed MOVE destinations stay native across every memory protocol ok
+    indexed MOVE destination packed=1 compiled=7 runs=255 native=1537 slow=0
+  packed CCR keeps indexed MOVE byte/word/long flags and writes exact    ok
+    indexed MOVE MMIO packed=0 writes=1/1 value=80/80 slow=1
+  indexed MOVE executes one exact MMIO write from canonical CCR code     ok
+  indexed MOVE /BERR replays pristine and builds the exact format-$7 frame ok
+    indexed MOVE MMIO packed=1 writes=1/1 value=80/80 slow=1
+  packed indexed MOVE executes one exact MMIO write                      ok
+  packed indexed MOVE preserves the /BERR result and frame               ok
+    full-direct LEA compiled=3 runs=126 native=511 slow=0
+  direct full-index LEA stays native across base/index suppression       ok
+    full-indirect compiled=4 runs=126 native=671 slow=0
+  memory-indirect full-index LEA/MOVE/CMP stay native and exact          ok
+    full-indirect JSR compiled=7 runs=130 native=1023 slow=0
+  memory-indirect full-index JSR preflights pointer and stack exactly    ok
+    dependent MOVE compiled=1 runs=62 native=447 slow=0
+  dependent (A7)+ destinations use the postincremented base exactly      ok
+    classic-bit packed=0 compiled=4 runs=382 native=1920 slow=0
+  BTST/BCHG/BCLR/BSET register and RAM forms stay native and exact       ok
+    bit-RMW MMIO packed=0 reads=1/1 writes=1/1 value=A4/A4 slow=1
+  bit RMW refuses before MMIO read, then replays exactly once            ok
+  bit RMW /BERR replays pristine and builds the exact format-$7 frame    ok
+    classic-bit packed=1 compiled=4 runs=382 native=1920 slow=0
+  classic bit operations preserve packed X/N/V/C and update only Z       ok
+    bit-RMW MMIO packed=1 reads=1/1 writes=1/1 value=A4/A4 slow=1
+  packed-CCR bit RMW replays MMIO exactly once                           ok
+  packed-CCR cold fallback preserves the /BERR result and frame          ok
+    legal-read-EA packed=0 compiled=1 runs=254 native=2047 slow=0
+  TST immediate and CMPI PC-relative stay native and exact               ok
+    legal-read-EA packed=1 compiled=1 runs=254 native=2047 slow=0
+  legal read-only 020 EAs preserve packed X and publish exact NZVC       ok
+    dynamic-bitfield packed=0 compiled=4 runs=251 native=1215 slow=0
+  dynamic register and tailed memory bitfields stay native on BOTH generators ok
+    dynamic-bitfield packed=1 compiled=4 runs=251 native=1215 slow=0
+  dynamic and tailed memory bitfields publish packed CCR natively        ok
+    dynamic-register-bitfield packed=0 compiled=3 runs=252 native=1538 slow=0
+  dynamic register bitfields stay native and exact on BOTH generators    ok
+    dynamic-register-bitfield packed=1 compiled=3 runs=252 native=1538 slow=0
+  dynamic register bitfields publish packed CCR natively                 ok
+    static-bitfield packed=0 compiled=5 runs=252 native=1332 slow=0
+  static register bitfields stay native and exact on BOTH generators     ok
+    static-bitfield packed=1 compiled=5 runs=252 native=1332 slow=0
+  static register bitfields publish packed CCR natively                  ok
+    memory-bitfield packed=0 compiled=5 runs=252 native=922 slow=0
+  tailless memory bitfield reads stay native and exact on BOTH generators ok
+    memory-bitfield packed=1 compiled=5 runs=252 native=922 slow=0
+  tailless memory bitfield reads publish packed CCR natively             ok
+    memory-bitfield-write packed=0 compiled=5 runs=252 native=704 slow=0
+  tailless memory bitfield writes stay native and exact on BOTH generators ok
+    memory-bitfield-write packed=1 compiled=5 runs=252 native=704 slow=0
+  tailless memory bitfield writes publish packed CCR natively            ok
+    memory-bitfield-tail-write packed=0 compiled=6 runs=252 native=1024 slow=0
+  crossing memory bitfield writes stay native and exact on BOTH generators ok
+    memory-bitfield-tail-write packed=1 compiled=6 runs=252 native=1024 slow=0
+  crossing memory bitfield writes publish packed CCR natively            ok
+    memory-bitfield-tail MMIO packed=0 reads=1/1 writes=1/1 value=5B/5B slow=1
+  crossing bitfield write refuses before tail MMIO then replays once     ok
+    memory-bitfield-tail MMIO packed=1 reads=1/1 writes=1/1 value=5B/5B slow=1
+  packed crossing bitfield write replays tail MMIO exactly once          ok
+  crossing bitfield tail /BERR preserves partial RAM and format-$7 frame ok
+  packed crossing bitfield tail preserves the exact /BERR result         ok
+    word-multiply compiled=6 runs=251 native=1536 slow=0
+  Speedometer MULU.W/MULS.W register, immediate and RAM forms stay native ok
+    ADDX/SUBX compiled=5 runs=253 native=4915 slow=0
+  Speedometer ADDX/SUBX B/W/L preserve X and cumulative Z natively       ok
+    EXTB.L compiled=7 runs=256 native=2047 slow=0
+  Speedometer EXTB.L overwrites Dn, preserves X and publishes N/Z/V/C    ok
+    word-multiply device reads=1/1 d0=21/21 runs=1/2 slow=0/0
+  word multiplication consumes one exact MMIO read and stays native      ok
+    word-division program=0 compiled=4 runs=253 native=1198 slow=0
+  DIVU.W/DIVS.W register and hot immediate forms stay native and exact   ok
+    word-division program=1 compiled=3 runs=257 native=536 slow=384
+  word-division quotient overflow reaches Moira before guest mutation    ok
+    word-division zero compiled=1 runs=1/2 sp=0000DFF4/0000DFF4 boundary=1 frame=1 ram=1
+  word division by zero reaches Moira's exact vector-5 path              ok
+    long-division program=0 compiled=4 runs=251 native=1407 slow=0
+  all DIVL Dn extension actions stay native and exact                    ok
+    long-division program=1 compiled=4 runs=257 native=712 slow=511
+  DIVL quotient overflow reaches Moira before guest mutation             ok
+    long-division zero compiled=1 runs=1/2 sp=0000DFF4/0000DFF4 boundary=1 frame=1 ram=1
+  DIVL by zero reaches Moira's exact vector-5 path                       ok
+    memory-division compiled=6 runs=251 native=1281 slow=0
+  word/long memory divisors and DIVL immediate stay native and exact     ok
+    memory-division overflow compiled=2 runs=257 native=805 slow=512
+  memory-divisor overflow replays after a side-effect-free probe         ok
+    memory-division zero compiled=1 runs=1/2 boundary=1 frame=1 ram=1
+  zero memory divisor reaches Moira's exact vector-5 path                ok
+    memory-division device reads=1/1 runs=1/2 slow=1
+  MMIO divisor falls back before one and only one device read            ok
+    cached memory-division compiled=1 runs=254 native=1023 slow=0
+  resident 040 cache divisors publish their hit only after guards        ok
+    guarded dynamic-shift count=4 compiled=3 runs=128 native=853 slow=0
+  guarded Rogue count-4 LSL remains exact and native                     ok
+    guarded dynamic-shift count=16 compiled=4 runs=128 native=639 slow=0
+  guarded Speedometer count-16 LSL remains exact and native              ok
+    multi-version shift mask=81000000 compiled=2 slow=0
+  Speedometer count-24/31 LSR selects two native cache versions          ok
+    bounded shift versions=32 mask=FFFFFFFF
+  dynamic-shift cache covers exactly the bounded 0..31 count domain      ok
+    exact shift matrix 4 opcodes x 32 counts: compiled=128 slow=0
+  all four measured shifts stay exact and native for counts 0..31        ok
+  mark/unmark inverse stays exact across 384 one/two-slice evictions     ok
+    fpu program=0 member=1 compiled=3 runs=128 instrs=903 slow=2 interp=1 traced=13 D0=127 D3=AE0CC75A
+  FPU general-window members replay exactly inside native blocks         ok
+    fpu program=0 member=0 compiled=3 runs=128 instrs=391 slow=0 interp=513 traced=7 D0=127 D3=AE0CC75A
+  POM68K_JIT_FPU_MEMBER=0 keeps every F-line form an exact boundary      ok
+  membership moves the FPU window from the dispatch loop into the block  ok
+    fpu program=1 member=1 compiled=3 runs=128 instrs=903 slow=2 interp=257 traced=140 D0=127 D3=0A265615
+  enabled FDIV divide-by-zero takes vector 50 from inside a block        ok
+    fpu program=1 member=0 compiled=3 runs=128 instrs=391 slow=0 interp=769 traced=7 D0=127 D3=0A265615
+  enabled FDIV divide-by-zero stays exact on the boundary arm            ok
+    fpu program=2 member=1 compiled=3 runs=411 instrs=1258 slow=0 interp=3257 traced=413 D0=407 D3=00000000
+  detached FPU takes format-$4 Line-F per member without a retrace storm ok
+    fpu program=2 member=0 compiled=3 runs=411 instrs=851 slow=0 interp=3664 traced=6 D0=407 D3=00000000
+  detached FPU stays exact on the boundary arm                           ok
+POM68K_JIT_METRICS {"schema":"pom68k.jit.metrics.v1","gate":"jit_asset_free_lockstep_test","workload":"synthetic_68040_lockstep","cpu_family":"68040","host_arch":"aarch64","host_profile":"aarch64","backend":"aarch64","engine":"jit","status":"pass","machine_cycles":76700,"core_cycles":76700,"wall_ns":1628708,"fingerprint":"0000000000000000","blocks_compiled":9,"blocks_run":769,"jit_instrs":19576,"native_instrs":19576,"interp_instrs":1,"slow_instrs":0,"window_instrs":0,"native_share_permille":999,"realtime_permille":0}
+  structured JIT metrics artifact is writable                            ok
+PASSED
+<end of output>
+Test time =  39.84 sec
+----------------------------------------------------------
+Test Passed.
+"jit_asset_free_lockstep_test" end time: Nov 10 12:18 +04
+"jit_asset_free_lockstep_test" time elapsed: 00:00:39
+----------------------------------------------------------
+
+444/559 Testing: cpu_vectors030_test
+444/559 Test: cpu_vectors030_test
+Command: "/usr/bin/python3" "/Users/mercure/src/pom68k/tools/cpu_vectors.py" "replay" "--model" "030" "--runner" "/Users/mercure/src/pom68k/build/sst68030" "--emulator" ""
+Directory: /Users/mercure/src/pom68k/build
+"cpu_vectors030_test" start time: Nov 10 12:18 +04
+Output:
+----------------------------------------------------------
+[sst68030] dir=/Users/mercure/.hermes/cache/scratch/pom68k-cpu-vectors-k509u8y5 files=1 cycles=off(advisory) mmu=full
+  public           :    112/112    OK
+[sst68030] OK: 112/112 across 1 file(s), 0 mmu-skipped
+cpu_vectors: 030 executed 112 pinned vectors; no soft skip
+<end of output>
+Test time =   0.89 sec
+----------------------------------------------------------
+Test Passed.
+"cpu_vectors030_test" end time: Nov 10 12:18 +04
+"cpu_vectors030_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+445/559 Testing: cpu_vectors040_test
+445/559 Test: cpu_vectors040_test
+Command: "/usr/bin/python3" "/Users/mercure/src/pom68k/tools/cpu_vectors.py" "replay" "--model" "040" "--runner" "/Users/mercure/src/pom68k/build/sst68040" "--emulator" ""
+Directory: /Users/mercure/src/pom68k/build
+"cpu_vectors040_test" start time: Nov 10 12:18 +04
+Output:
+----------------------------------------------------------
+[sst68040] dir=/Users/mercure/.hermes/cache/scratch/pom68k-cpu-vectors-56kzd17p files=1 cycles=off(advisory) mmu=full
+  public           :    144/144    OK
+[sst68040] OK: 144/144 across 1 file(s), 0 mmu-skipped
+cpu_vectors: 040 executed 144 pinned vectors; no soft skip
+<end of output>
+Test time =   1.25 sec
+----------------------------------------------------------
+Test Passed.
+"cpu_vectors040_test" end time: Nov 10 12:18 +04
+"cpu_vectors040_test" time elapsed: 00:00:01
+----------------------------------------------------------
+
+446/559 Testing: cpu_vectors_contract_test
+446/559 Test: cpu_vectors_contract_test
+Command: "/usr/bin/python3" "/Users/mercure/src/pom68k/tests/cpu_vectors_contract_test.py"
+Directory: /Users/mercure/src/pom68k/build
+"cpu_vectors_contract_test" start time: Nov 10 12:18 +04
+Output:
+----------------------------------------------------------
+.......
+----------------------------------------------------------------------
+Ran 7 tests in 0.047s
+
+OK
+<end of output>
+Test time =   0.39 sec
+----------------------------------------------------------
+Test Passed.
+"cpu_vectors_contract_test" end time: Nov 10 12:18 +04
+"cpu_vectors_contract_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+447/559 Testing: softfloat_primitives_test
+447/559 Test: softfloat_primitives_test
+Command: "/Users/mercure/src/pom68k/build/softfloat_primitives_test"
+Directory: /Users/mercure/src/pom68k/build
+"softfloat_primitives_test" start time: Nov 10 12:18 +04
+Output:
+----------------------------------------------------------
+softfloat_primitives_test: 1040 shifts, 5 conversions, 0 failures
+<end of output>
+Test time =   0.33 sec
+----------------------------------------------------------
+Test Passed.
+"softfloat_primitives_test" end time: Nov 10 12:18 +04
+"softfloat_primitives_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+448/559 Testing: moira_interp_berr020_test
+448/559 Test: moira_interp_berr020_test
+Command: "/Users/mercure/src/pom68k/build/moira_interp_berr020_test"
+Directory: /Users/mercure/src/pom68k/build
+"moira_interp_berr020_test" start time: Nov 10 12:18 +04
+Output:
+----------------------------------------------------------
+020 model=2 bytes=1 write=0 mode=0 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=1 write=0 mode=0 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=1 write=0 mode=0 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=1 write=0 mode=0 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=1 write=0 mode=0 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=1 write=0 mode=0 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=1 write=0 mode=0 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=1 write=0 mode=0 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=1 write=0 mode=1 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=1 write=0 mode=1 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=1 write=0 mode=1 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=1 write=0 mode=1 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=1 write=0 mode=1 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=1 write=0 mode=1 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=1 write=0 mode=1 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=1 write=0 mode=1 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=1 write=0 mode=2 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=1 write=0 mode=2 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=1 write=0 mode=2 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=1 write=0 mode=2 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=1 write=0 mode=2 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=1 write=0 mode=2 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=1 write=0 mode=2 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=1 write=0 mode=2 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=1 write=1 mode=0 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=1 write=1 mode=0 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=1 write=1 mode=0 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=1 write=1 mode=0 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=1 write=1 mode=0 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=1 write=1 mode=0 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=1 write=1 mode=0 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=1 write=1 mode=0 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=1 write=1 mode=1 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=1 write=1 mode=1 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=1 write=1 mode=1 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=1 write=1 mode=1 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=1 write=1 mode=1 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=1 write=1 mode=1 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=1 write=1 mode=1 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=1 write=1 mode=1 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=1 write=1 mode=2 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=1 write=1 mode=2 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=1 write=1 mode=2 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=1 write=1 mode=2 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=1 write=1 mode=2 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=1 write=1 mode=2 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=1 write=1 mode=2 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=1 write=1 mode=2 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=2 write=0 mode=0 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=2 write=0 mode=0 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=2 write=0 mode=0 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=2 write=0 mode=0 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=2 write=0 mode=0 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=2 write=0 mode=0 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=2 write=0 mode=0 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=2 write=0 mode=0 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=2 write=0 mode=1 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=2 write=0 mode=1 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=2 write=0 mode=1 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=2 write=0 mode=1 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=2 write=0 mode=1 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=2 write=0 mode=1 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=2 write=0 mode=1 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=2 write=0 mode=1 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=2 write=0 mode=2 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=2 write=0 mode=2 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=2 write=0 mode=2 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=2 write=0 mode=2 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=2 write=0 mode=2 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=2 write=0 mode=2 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=2 write=0 mode=2 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=2 write=0 mode=2 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=2 write=1 mode=0 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=2 write=1 mode=0 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=2 write=1 mode=0 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=2 write=1 mode=0 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=2 write=1 mode=0 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=2 write=1 mode=0 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=2 write=1 mode=0 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=2 write=1 mode=0 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=2 write=1 mode=1 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=2 write=1 mode=1 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=2 write=1 mode=1 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=2 write=1 mode=1 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=2 write=1 mode=1 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=2 write=1 mode=1 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=2 write=1 mode=1 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=2 write=1 mode=1 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=2 write=1 mode=2 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=2 write=1 mode=2 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=2 write=1 mode=2 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=2 write=1 mode=2 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=2 write=1 mode=2 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=2 write=1 mode=2 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=2 write=1 mode=2 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=2 write=1 mode=2 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=4 write=0 mode=0 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=4 write=0 mode=0 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=4 write=0 mode=0 completed=0 restore=0 second=1 user=0
+020 model=2 bytes=4 write=0 mode=0 completed=0 restore=0 second=1 user=1
+020 model=2 bytes=4 write=0 mode=0 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=4 write=0 mode=0 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=4 write=0 mode=0 completed=0 restore=1 second=1 user=0
+020 model=2 bytes=4 write=0 mode=0 completed=0 restore=1 second=1 user=1
+020 model=2 bytes=4 write=0 mode=0 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=4 write=0 mode=0 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=4 write=0 mode=0 completed=1 restore=0 second=1 user=0
+020 model=2 bytes=4 write=0 mode=0 completed=1 restore=0 second=1 user=1
+020 model=2 bytes=4 write=0 mode=0 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=4 write=0 mode=0 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=4 write=0 mode=0 completed=1 restore=1 second=1 user=0
+020 model=2 bytes=4 write=0 mode=0 completed=1 restore=1 second=1 user=1
+020 model=2 bytes=4 write=0 mode=1 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=4 write=0 mode=1 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=4 write=0 mode=1 completed=0 restore=0 second=1 user=0
+020 model=2 bytes=4 write=0 mode=1 completed=0 restore=0 second=1 user=1
+020 model=2 bytes=4 write=0 mode=1 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=4 write=0 mode=1 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=4 write=0 mode=1 completed=0 restore=1 second=1 user=0
+020 model=2 bytes=4 write=0 mode=1 completed=0 restore=1 second=1 user=1
+020 model=2 bytes=4 write=0 mode=1 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=4 write=0 mode=1 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=4 write=0 mode=1 completed=1 restore=0 second=1 user=0
+020 model=2 bytes=4 write=0 mode=1 completed=1 restore=0 second=1 user=1
+020 model=2 bytes=4 write=0 mode=1 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=4 write=0 mode=1 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=4 write=0 mode=1 completed=1 restore=1 second=1 user=0
+020 model=2 bytes=4 write=0 mode=1 completed=1 restore=1 second=1 user=1
+020 model=2 bytes=4 write=0 mode=2 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=4 write=0 mode=2 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=4 write=0 mode=2 completed=0 restore=0 second=1 user=0
+020 model=2 bytes=4 write=0 mode=2 completed=0 restore=0 second=1 user=1
+020 model=2 bytes=4 write=0 mode=2 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=4 write=0 mode=2 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=4 write=0 mode=2 completed=0 restore=1 second=1 user=0
+020 model=2 bytes=4 write=0 mode=2 completed=0 restore=1 second=1 user=1
+020 model=2 bytes=4 write=0 mode=2 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=4 write=0 mode=2 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=4 write=0 mode=2 completed=1 restore=0 second=1 user=0
+020 model=2 bytes=4 write=0 mode=2 completed=1 restore=0 second=1 user=1
+020 model=2 bytes=4 write=0 mode=2 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=4 write=0 mode=2 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=4 write=0 mode=2 completed=1 restore=1 second=1 user=0
+020 model=2 bytes=4 write=0 mode=2 completed=1 restore=1 second=1 user=1
+020 model=2 bytes=4 write=1 mode=0 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=4 write=1 mode=0 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=4 write=1 mode=0 completed=0 restore=0 second=1 user=0
+020 model=2 bytes=4 write=1 mode=0 completed=0 restore=0 second=1 user=1
+020 model=2 bytes=4 write=1 mode=0 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=4 write=1 mode=0 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=4 write=1 mode=0 completed=0 restore=1 second=1 user=0
+020 model=2 bytes=4 write=1 mode=0 completed=0 restore=1 second=1 user=1
+020 model=2 bytes=4 write=1 mode=0 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=4 write=1 mode=0 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=4 write=1 mode=0 completed=1 restore=0 second=1 user=0
+020 model=2 bytes=4 write=1 mode=0 completed=1 restore=0 second=1 user=1
+020 model=2 bytes=4 write=1 mode=0 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=4 write=1 mode=0 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=4 write=1 mode=0 completed=1 restore=1 second=1 user=0
+020 model=2 bytes=4 write=1 mode=0 completed=1 restore=1 second=1 user=1
+020 model=2 bytes=4 write=1 mode=1 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=4 write=1 mode=1 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=4 write=1 mode=1 completed=0 restore=0 second=1 user=0
+020 model=2 bytes=4 write=1 mode=1 completed=0 restore=0 second=1 user=1
+020 model=2 bytes=4 write=1 mode=1 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=4 write=1 mode=1 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=4 write=1 mode=1 completed=0 restore=1 second=1 user=0
+020 model=2 bytes=4 write=1 mode=1 completed=0 restore=1 second=1 user=1
+020 model=2 bytes=4 write=1 mode=1 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=4 write=1 mode=1 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=4 write=1 mode=1 completed=1 restore=0 second=1 user=0
+020 model=2 bytes=4 write=1 mode=1 completed=1 restore=0 second=1 user=1
+020 model=2 bytes=4 write=1 mode=1 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=4 write=1 mode=1 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=4 write=1 mode=1 completed=1 restore=1 second=1 user=0
+020 model=2 bytes=4 write=1 mode=1 completed=1 restore=1 second=1 user=1
+020 model=2 bytes=4 write=1 mode=2 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=4 write=1 mode=2 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=4 write=1 mode=2 completed=0 restore=0 second=1 user=0
+020 model=2 bytes=4 write=1 mode=2 completed=0 restore=0 second=1 user=1
+020 model=2 bytes=4 write=1 mode=2 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=4 write=1 mode=2 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=4 write=1 mode=2 completed=0 restore=1 second=1 user=0
+020 model=2 bytes=4 write=1 mode=2 completed=0 restore=1 second=1 user=1
+020 model=2 bytes=4 write=1 mode=2 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=4 write=1 mode=2 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=4 write=1 mode=2 completed=1 restore=0 second=1 user=0
+020 model=2 bytes=4 write=1 mode=2 completed=1 restore=0 second=1 user=1
+020 model=2 bytes=4 write=1 mode=2 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=4 write=1 mode=2 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=4 write=1 mode=2 completed=1 restore=1 second=1 user=0
+020 model=2 bytes=4 write=1 mode=2 completed=1 restore=1 second=1 user=1
+020 model=3 bytes=1 write=0 mode=0 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=1 write=0 mode=0 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=1 write=0 mode=0 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=1 write=0 mode=0 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=1 write=0 mode=0 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=1 write=0 mode=0 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=1 write=0 mode=0 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=1 write=0 mode=0 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=1 write=0 mode=1 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=1 write=0 mode=1 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=1 write=0 mode=1 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=1 write=0 mode=1 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=1 write=0 mode=1 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=1 write=0 mode=1 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=1 write=0 mode=1 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=1 write=0 mode=1 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=1 write=0 mode=2 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=1 write=0 mode=2 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=1 write=0 mode=2 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=1 write=0 mode=2 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=1 write=0 mode=2 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=1 write=0 mode=2 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=1 write=0 mode=2 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=1 write=0 mode=2 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=1 write=1 mode=0 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=1 write=1 mode=0 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=1 write=1 mode=0 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=1 write=1 mode=0 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=1 write=1 mode=0 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=1 write=1 mode=0 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=1 write=1 mode=0 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=1 write=1 mode=0 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=1 write=1 mode=1 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=1 write=1 mode=1 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=1 write=1 mode=1 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=1 write=1 mode=1 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=1 write=1 mode=1 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=1 write=1 mode=1 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=1 write=1 mode=1 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=1 write=1 mode=1 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=1 write=1 mode=2 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=1 write=1 mode=2 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=1 write=1 mode=2 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=1 write=1 mode=2 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=1 write=1 mode=2 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=1 write=1 mode=2 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=1 write=1 mode=2 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=1 write=1 mode=2 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=2 write=0 mode=0 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=2 write=0 mode=0 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=2 write=0 mode=0 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=2 write=0 mode=0 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=2 write=0 mode=0 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=2 write=0 mode=0 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=2 write=0 mode=0 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=2 write=0 mode=0 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=2 write=0 mode=1 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=2 write=0 mode=1 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=2 write=0 mode=1 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=2 write=0 mode=1 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=2 write=0 mode=1 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=2 write=0 mode=1 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=2 write=0 mode=1 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=2 write=0 mode=1 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=2 write=0 mode=2 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=2 write=0 mode=2 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=2 write=0 mode=2 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=2 write=0 mode=2 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=2 write=0 mode=2 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=2 write=0 mode=2 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=2 write=0 mode=2 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=2 write=0 mode=2 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=2 write=1 mode=0 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=2 write=1 mode=0 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=2 write=1 mode=0 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=2 write=1 mode=0 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=2 write=1 mode=0 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=2 write=1 mode=0 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=2 write=1 mode=0 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=2 write=1 mode=0 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=2 write=1 mode=1 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=2 write=1 mode=1 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=2 write=1 mode=1 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=2 write=1 mode=1 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=2 write=1 mode=1 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=2 write=1 mode=1 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=2 write=1 mode=1 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=2 write=1 mode=1 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=2 write=1 mode=2 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=2 write=1 mode=2 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=2 write=1 mode=2 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=2 write=1 mode=2 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=2 write=1 mode=2 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=2 write=1 mode=2 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=2 write=1 mode=2 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=2 write=1 mode=2 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=4 write=0 mode=0 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=4 write=0 mode=0 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=4 write=0 mode=0 completed=0 restore=0 second=1 user=0
+020 model=3 bytes=4 write=0 mode=0 completed=0 restore=0 second=1 user=1
+020 model=3 bytes=4 write=0 mode=0 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=4 write=0 mode=0 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=4 write=0 mode=0 completed=0 restore=1 second=1 user=0
+020 model=3 bytes=4 write=0 mode=0 completed=0 restore=1 second=1 user=1
+020 model=3 bytes=4 write=0 mode=0 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=4 write=0 mode=0 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=4 write=0 mode=0 completed=1 restore=0 second=1 user=0
+020 model=3 bytes=4 write=0 mode=0 completed=1 restore=0 second=1 user=1
+020 model=3 bytes=4 write=0 mode=0 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=4 write=0 mode=0 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=4 write=0 mode=0 completed=1 restore=1 second=1 user=0
+020 model=3 bytes=4 write=0 mode=0 completed=1 restore=1 second=1 user=1
+020 model=3 bytes=4 write=0 mode=1 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=4 write=0 mode=1 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=4 write=0 mode=1 completed=0 restore=0 second=1 user=0
+020 model=3 bytes=4 write=0 mode=1 completed=0 restore=0 second=1 user=1
+020 model=3 bytes=4 write=0 mode=1 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=4 write=0 mode=1 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=4 write=0 mode=1 completed=0 restore=1 second=1 user=0
+020 model=3 bytes=4 write=0 mode=1 completed=0 restore=1 second=1 user=1
+020 model=3 bytes=4 write=0 mode=1 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=4 write=0 mode=1 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=4 write=0 mode=1 completed=1 restore=0 second=1 user=0
+020 model=3 bytes=4 write=0 mode=1 completed=1 restore=0 second=1 user=1
+020 model=3 bytes=4 write=0 mode=1 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=4 write=0 mode=1 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=4 write=0 mode=1 completed=1 restore=1 second=1 user=0
+020 model=3 bytes=4 write=0 mode=1 completed=1 restore=1 second=1 user=1
+020 model=3 bytes=4 write=0 mode=2 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=4 write=0 mode=2 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=4 write=0 mode=2 completed=0 restore=0 second=1 user=0
+020 model=3 bytes=4 write=0 mode=2 completed=0 restore=0 second=1 user=1
+020 model=3 bytes=4 write=0 mode=2 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=4 write=0 mode=2 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=4 write=0 mode=2 completed=0 restore=1 second=1 user=0
+020 model=3 bytes=4 write=0 mode=2 completed=0 restore=1 second=1 user=1
+020 model=3 bytes=4 write=0 mode=2 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=4 write=0 mode=2 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=4 write=0 mode=2 completed=1 restore=0 second=1 user=0
+020 model=3 bytes=4 write=0 mode=2 completed=1 restore=0 second=1 user=1
+020 model=3 bytes=4 write=0 mode=2 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=4 write=0 mode=2 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=4 write=0 mode=2 completed=1 restore=1 second=1 user=0
+020 model=3 bytes=4 write=0 mode=2 completed=1 restore=1 second=1 user=1
+020 model=3 bytes=4 write=1 mode=0 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=4 write=1 mode=0 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=4 write=1 mode=0 completed=0 restore=0 second=1 user=0
+020 model=3 bytes=4 write=1 mode=0 completed=0 restore=0 second=1 user=1
+020 model=3 bytes=4 write=1 mode=0 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=4 write=1 mode=0 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=4 write=1 mode=0 completed=0 restore=1 second=1 user=0
+020 model=3 bytes=4 write=1 mode=0 completed=0 restore=1 second=1 user=1
+020 model=3 bytes=4 write=1 mode=0 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=4 write=1 mode=0 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=4 write=1 mode=0 completed=1 restore=0 second=1 user=0
+020 model=3 bytes=4 write=1 mode=0 completed=1 restore=0 second=1 user=1
+020 model=3 bytes=4 write=1 mode=0 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=4 write=1 mode=0 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=4 write=1 mode=0 completed=1 restore=1 second=1 user=0
+020 model=3 bytes=4 write=1 mode=0 completed=1 restore=1 second=1 user=1
+020 model=3 bytes=4 write=1 mode=1 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=4 write=1 mode=1 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=4 write=1 mode=1 completed=0 restore=0 second=1 user=0
+020 model=3 bytes=4 write=1 mode=1 completed=0 restore=0 second=1 user=1
+020 model=3 bytes=4 write=1 mode=1 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=4 write=1 mode=1 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=4 write=1 mode=1 completed=0 restore=1 second=1 user=0
+020 model=3 bytes=4 write=1 mode=1 completed=0 restore=1 second=1 user=1
+020 model=3 bytes=4 write=1 mode=1 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=4 write=1 mode=1 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=4 write=1 mode=1 completed=1 restore=0 second=1 user=0
+020 model=3 bytes=4 write=1 mode=1 completed=1 restore=0 second=1 user=1
+020 model=3 bytes=4 write=1 mode=1 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=4 write=1 mode=1 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=4 write=1 mode=1 completed=1 restore=1 second=1 user=0
+020 model=3 bytes=4 write=1 mode=1 completed=1 restore=1 second=1 user=1
+020 model=3 bytes=4 write=1 mode=2 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=4 write=1 mode=2 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=4 write=1 mode=2 completed=0 restore=0 second=1 user=0
+020 model=3 bytes=4 write=1 mode=2 completed=0 restore=0 second=1 user=1
+020 model=3 bytes=4 write=1 mode=2 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=4 write=1 mode=2 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=4 write=1 mode=2 completed=0 restore=1 second=1 user=0
+020 model=3 bytes=4 write=1 mode=2 completed=0 restore=1 second=1 user=1
+020 model=3 bytes=4 write=1 mode=2 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=4 write=1 mode=2 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=4 write=1 mode=2 completed=1 restore=0 second=1 user=0
+020 model=3 bytes=4 write=1 mode=2 completed=1 restore=0 second=1 user=1
+020 model=3 bytes=4 write=1 mode=2 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=4 write=1 mode=2 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=4 write=1 mode=2 completed=1 restore=1 second=1 user=0
+020 model=3 bytes=4 write=1 mode=2 completed=1 restore=1 second=1 user=1
+berr020_test: 404 executed sequences, 0 failure(s)
+<end of output>
+Test time =   1.04 sec
+----------------------------------------------------------
+Test Passed.
+"moira_interp_berr020_test" end time: Nov 10 12:18 +04
+"moira_interp_berr020_test" time elapsed: 00:00:01
+----------------------------------------------------------
+
+449/559 Testing: moira_interp_berr030_test
+449/559 Test: moira_interp_berr030_test
+Command: "/Users/mercure/src/pom68k/build/moira_interp_berr030_test"
+Directory: /Users/mercure/src/pom68k/build
+"moira_interp_berr030_test" start time: Nov 10 12:18 +04
+Output:
+----------------------------------------------------------
+berr030_test — external /BERR + RTE $A/$B (O6 slice 1)
+  read fault: handler RTE resumed past the probe             ok
+  read fault: frame format $B                                ok
+  read fault: stacked fault address = $F00000                ok
+  read fault: SSW = DF|DF2|RW|long|fc5 ($0345)               ok
+  write fault: frame format $A (last write)                  ok
+  write fault: a failed replay stacks a second format-$A frame ok
+  write fault: stacked fault address = $F00000               ok
+  write fault: RTE completes the pending data-output cycle   ok
+  write fault: RTE from $A frame continues after             ok
+  RTE restart: transient read uses format $B                 ok
+  RTE restart: faulted read completes after retry            ok
+  RTE restart: postincrement is applied exactly once         ok
+  RTE restart: execution continues after retried instruction ok
+  fetch fault: frame format $B                               ok
+  fetch fault: stacked fault address = $F00000               ok
+  fetch fault: SSW = FB|RB|RW|word|fc6 ($5066)               ok
+  fetch fault: handler RTE resumed                           ok
+  probe: SSW = DF|DF2|RW|byte|fc5 ($0355)                    ok
+  probe: RTE with DF set re-ran and re-faulted               ok
+  probe: DF cleared -> read = data input buffer byte         ok
+  probe: execution continued past the probe                  ok
+  stacking fault: double fault halts the CPU                 ok
+  MMU fetch: extension word translated on the new page       ok
+  MMU fetch: instruction completed across the page boundary  ok
+  MMU fetch fault: format $B frame                           ok
+  MMU fetch fault: frame names extension address $8000       ok
+  PMOVE (A0),TT0: translated fault uses format $B            ok
+  PMOVE (A0),TT0: oracle SSW is exact                        ok
+  PMOVE (A0),TT0: logical operand address is stacked         ok
+  PMOVE (A0),TT0: stacked PC identifies PMOVE                ok
+  PMOVE TT0,(A0): translated fault uses format $B            ok
+  PMOVE TT0,(A0): oracle SSW is exact                        ok
+  PMOVE TT0,(A0): logical operand address is stacked         ok
+  PMOVE TT0,(A0): stacked PC identifies PMOVE                ok
+  FMOVEM indirect: pointer long read before register image   ok
+  FMOVEM indirect: three operand longs read in ascending order ok
+  FMOVEM indirect: WinUAE raw FP7 image reproduced           ok
+  CACR.CEI: unrelated instruction-cache line preserved       ok
+  CACR.CEI: only CAAR-selected longword cleared              ok
+  CACR.CI: complete instruction cache cleared                ok
+PASSED
+<end of output>
+Test time =   0.09 sec
+----------------------------------------------------------
+Test Passed.
+"moira_interp_berr030_test" end time: Nov 10 12:18 +04
+"moira_interp_berr030_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+450/559 Testing: moira_interp_fpu_sanity
+450/559 Test: moira_interp_fpu_sanity
+Command: "/Users/mercure/src/pom68k/build/moira_interp_fpu_sanity"
+Directory: /Users/mercure/src/pom68k/build
+"moira_interp_fpu_sanity" start time: Nov 10 12:18 +04
+Output:
+----------------------------------------------------------
+[fpu_sanity] OK: detached F-line, FMOVECR, FADD, DZ, OPERR, FCMP/FScc, FMOVEM, packed, FPCR, FRESTORE/exception frames, 68882 timing/BUSY IRQ
+<end of output>
+Test time =   0.46 sec
+----------------------------------------------------------
+Test Passed.
+"moira_interp_fpu_sanity" end time: Nov 10 12:18 +04
+"moira_interp_fpu_sanity" time elapsed: 00:00:00
+----------------------------------------------------------
+
+451/559 Testing: moira_interp_fpu040_test
+451/559 Test: moira_interp_fpu040_test
+Command: "/Users/mercure/src/pom68k/build/moira_interp_fpu040_test"
+Directory: /Users/mercure/src/pom68k/build
+"moira_interp_fpu040_test" start time: Nov 10 12:18 +04
+Output:
+----------------------------------------------------------
+[fpu040_test] OK: integrated model + UNIMP/IDLE frames + native opmodes
+<end of output>
+Test time =   0.46 sec
+----------------------------------------------------------
+Test Passed.
+"moira_interp_fpu040_test" end time: Nov 10 12:18 +04
+"moira_interp_fpu040_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+452/559 Testing: moira_interp_fpu_context_test
+452/559 Test: moira_interp_fpu_context_test
+Command: "/Users/mercure/src/pom68k/build/moira_interp_fpu_context_test"
+Directory: /Users/mercure/src/pom68k/build
+"moira_interp_fpu_context_test" start time: Nov 10 12:18 +04
+Output:
+----------------------------------------------------------
+PASS all seven intermediate-result getters belong to their status context
+PASS the overflow context retains its own exception flags
+model=5 output=0 FP=3fff0000:80000100:00000000/3fff0000:80000100:00000000 FPSR=00000208/00000208
+PASS the nested CPU executed during the operand callback
+PASS nested execution preserves the outer CPU's precision, rounding and exception flags
+model=5 output=1 FP=3fff0000:c0000000:00000000/3fff0000:c0000000:00000000 FPSR=00000208/00000208
+PASS the nested CPU executed during the operand callback
+PASS nested execution preserves the outer CPU's precision, rounding and exception flags
+PASS two host threads retain separate rounding and flags for 1024 instructions
+model=8 output=0 FP=3fff0000:80000100:00000000/3fff0000:80000100:00000000 FPSR=00000208/00000208
+PASS the nested CPU executed during the operand callback
+PASS nested execution preserves the outer CPU's precision, rounding and exception flags
+model=8 output=1 FP=3fff0000:c0000000:00000000/3fff0000:c0000000:00000000 FPSR=00000208/00000208
+PASS the nested CPU executed during the operand callback
+PASS nested execution preserves the outer CPU's precision, rounding and exception flags
+PASS two host threads retain separate rounding and flags for 1024 instructions
+fpu_context_test: 0 failure(s)
+<end of output>
+Test time =   0.48 sec
+----------------------------------------------------------
+Test Passed.
+"moira_interp_fpu_context_test" end time: Nov 10 12:18 +04
+"moira_interp_fpu_context_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+453/559 Testing: moira_interp_callm_rtm_test
+453/559 Test: moira_interp_callm_rtm_test
+Command: "/Users/mercure/src/pom68k/build/moira_interp_callm_rtm_test"
+Directory: /Users/mercure/src/pom68k/build
+"moira_interp_callm_rtm_test" start time: Nov 10 12:18 +04
+Output:
+----------------------------------------------------------
+[callm_rtm_test] OK: type00 + type01 stack/access-control paths
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"moira_interp_callm_rtm_test" end time: Nov 10 12:18 +04
+"moira_interp_callm_rtm_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+454/559 Testing: moira_interp_test
+454/559 Test: moira_interp_test
+Command: "/opt/homebrew/bin/cmake" "-DFULL=/Users/mercure/src/pom68k/build/moira_interp_full" "-DBARE=/Users/mercure/src/pom68k/build/moira_interp_bare" "-DEMULATOR=" "-P" "/Users/mercure/src/pom68k/tests/moira_interp_compare.cmake"
+Directory: /Users/mercure/src/pom68k/build
+"moira_interp_test" start time: Nov 10 12:18 +04
+Output:
+----------------------------------------------------------
+MOIRA_ENABLE_JIT=1 sizeof(Moira)=89248
+model=0 map=0 cache=0 steps=81 state=978f16862b2a01ea bus=03036e9de4eefc38 ram=c8ef9e38647cc652 PASS
+model=1 map=0 cache=0 steps=81 state=e8588286c5c6ea79 bus=0d77dc79111571aa ram=c8ef9e38647cc652 PASS
+model=3 map=0 cache=0 steps=81 state=8e40d53d94e5ea72 bus=b8e56958874c3fc9 ram=c8ef9e38647cc652 PASS
+model=5 map=0 cache=0 steps=81 state=1ec7d4f83b952eb8 bus=67631c966d219402 ram=c8ef9e38647cc652 PASS
+model=5 map=1 cache=0 steps=81 state=bb8aad1a2c755c38 bus=8d0ceefd4fbd8c8a ram=47cd45b3004c3e41 PASS
+model=7 map=0 cache=0 steps=81 state=1b7e599fdee3654c bus=67631c966d219402 ram=c8ef9e38647cc652 PASS
+model=7 map=1 cache=0 steps=81 state=f09d6d516f743b6b bus=8af813154c3a736d ram=a4173c3947ca5cc7 PASS
+model=7 map=2 cache=0 steps=81 state=f7ac56db89d318ab bus=8af813154c3a736d ram=a4173c3947ca5cc7 PASS
+model=7 map=0 cache=1 steps=82 state=4352fa654ef6be03 bus=61c8f06955bfa588 ram=8b47e83784b47dfe PASS
+model=7 map=1 cache=1 steps=82 state=dbcab56eaa00021d bus=f1626714f94a164f ram=e3b09fa6fddeb39b PASS
+model=7 map=2 cache=1 steps=82 state=5a91385e7b8d801d bus=f1626714f94a164f ram=e3b09fa6fddeb39b PASS
+model=8 map=0 cache=0 steps=81 state=1b7e599fdee3654c bus=67631c966d219402 ram=c8ef9e38647cc652 PASS
+model=8 map=1 cache=0 steps=81 state=f09d6d516f743b6b bus=8af813154c3a736d ram=a4173c3947ca5cc7 PASS
+model=8 map=2 cache=0 steps=81 state=f7ac56db89d318ab bus=8af813154c3a736d ram=a4173c3947ca5cc7 PASS
+model=8 map=0 cache=1 steps=82 state=4352fa654ef6be03 bus=61c8f06955bfa588 ram=8b47e83784b47dfe PASS
+model=8 map=1 cache=1 steps=82 state=dbcab56eaa00021d bus=f1626714f94a164f ram=e3b09fa6fddeb39b PASS
+model=8 map=2 cache=1 steps=82 state=5a91385e7b8d801d bus=f1626714f94a164f ram=e3b09fa6fddeb39b PASS
+
+MOIRA_ENABLE_JIT=0 sizeof(Moira)=64376
+model=0 map=0 cache=0 steps=81 state=978f16862b2a01ea bus=03036e9de4eefc38 ram=c8ef9e38647cc652 PASS
+model=1 map=0 cache=0 steps=81 state=e8588286c5c6ea79 bus=0d77dc79111571aa ram=c8ef9e38647cc652 PASS
+model=3 map=0 cache=0 steps=81 state=8e40d53d94e5ea72 bus=b8e56958874c3fc9 ram=c8ef9e38647cc652 PASS
+model=5 map=0 cache=0 steps=81 state=1ec7d4f83b952eb8 bus=67631c966d219402 ram=c8ef9e38647cc652 PASS
+model=5 map=1 cache=0 steps=81 state=bb8aad1a2c755c38 bus=8d0ceefd4fbd8c8a ram=47cd45b3004c3e41 PASS
+model=7 map=0 cache=0 steps=81 state=1b7e599fdee3654c bus=67631c966d219402 ram=c8ef9e38647cc652 PASS
+model=7 map=1 cache=0 steps=81 state=f09d6d516f743b6b bus=8af813154c3a736d ram=a4173c3947ca5cc7 PASS
+model=7 map=2 cache=0 steps=81 state=f7ac56db89d318ab bus=8af813154c3a736d ram=a4173c3947ca5cc7 PASS
+model=7 map=0 cache=1 steps=82 state=4352fa654ef6be03 bus=61c8f06955bfa588 ram=8b47e83784b47dfe PASS
+model=7 map=1 cache=1 steps=82 state=dbcab56eaa00021d bus=f1626714f94a164f ram=e3b09fa6fddeb39b PASS
+model=7 map=2 cache=1 steps=82 state=5a91385e7b8d801d bus=f1626714f94a164f ram=e3b09fa6fddeb39b PASS
+model=8 map=0 cache=0 steps=81 state=1b7e599fdee3654c bus=67631c966d219402 ram=c8ef9e38647cc652 PASS
+model=8 map=1 cache=0 steps=81 state=f09d6d516f743b6b bus=8af813154c3a736d ram=a4173c3947ca5cc7 PASS
+model=8 map=2 cache=0 steps=81 state=f7ac56db89d318ab bus=8af813154c3a736d ram=a4173c3947ca5cc7 PASS
+model=8 map=0 cache=1 steps=82 state=4352fa654ef6be03 bus=61c8f06955bfa588 ram=8b47e83784b47dfe PASS
+model=8 map=1 cache=1 steps=82 state=dbcab56eaa00021d bus=f1626714f94a164f ram=e3b09fa6fddeb39b PASS
+model=8 map=2 cache=1 steps=82 state=5a91385e7b8d801d bus=f1626714f94a164f ram=e3b09fa6fddeb39b PASS
+
+<end of output>
+Test time =   1.11 sec
+----------------------------------------------------------
+Test Passed.
+"moira_interp_test" end time: Nov 10 12:18 +04
+"moira_interp_test" time elapsed: 00:00:01
+----------------------------------------------------------
+
+456/559 Testing: fpu_sanity
+456/559 Test: fpu_sanity
+Command: "/Users/mercure/src/pom68k/build/fpu_sanity"
+Directory: /Users/mercure/src/pom68k/build
+"fpu_sanity" start time: Nov 10 12:18 +04
+Output:
+----------------------------------------------------------
+[fpu_sanity] OK: detached F-line, FMOVECR, FADD, DZ, OPERR, FCMP/FScc, FMOVEM, packed, FPCR, FRESTORE/exception frames, 68882 timing/BUSY IRQ
+<end of output>
+Test time =   0.46 sec
+----------------------------------------------------------
+Test Passed.
+"fpu_sanity" end time: Nov 10 12:18 +04
+"fpu_sanity" time elapsed: 00:00:00
+----------------------------------------------------------
+
+457/559 Testing: fpu040_test
+457/559 Test: fpu040_test
+Command: "/Users/mercure/src/pom68k/build/fpu040_test"
+Directory: /Users/mercure/src/pom68k/build
+"fpu040_test" start time: Nov 10 12:18 +04
+Output:
+----------------------------------------------------------
+[fpu040_test] OK: integrated model + UNIMP/IDLE frames + native opmodes
+<end of output>
+Test time =   0.45 sec
+----------------------------------------------------------
+Test Passed.
+"fpu040_test" end time: Nov 10 12:18 +04
+"fpu040_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+458/559 Testing: fpu_context_test
+458/559 Test: fpu_context_test
+Command: "/Users/mercure/src/pom68k/build/fpu_context_test"
+Directory: /Users/mercure/src/pom68k/build
+"fpu_context_test" start time: Nov 10 12:18 +04
+Output:
+----------------------------------------------------------
+PASS all seven intermediate-result getters belong to their status context
+PASS the overflow context retains its own exception flags
+model=5 output=0 FP=3fff0000:80000100:00000000/3fff0000:80000100:00000000 FPSR=00000208/00000208
+PASS the nested CPU executed during the operand callback
+PASS nested execution preserves the outer CPU's precision, rounding and exception flags
+model=5 output=1 FP=3fff0000:c0000000:00000000/3fff0000:c0000000:00000000 FPSR=00000208/00000208
+PASS the nested CPU executed during the operand callback
+PASS nested execution preserves the outer CPU's precision, rounding and exception flags
+PASS two host threads retain separate rounding and flags for 1024 instructions
+model=8 output=0 FP=3fff0000:80000100:00000000/3fff0000:80000100:00000000 FPSR=00000208/00000208
+PASS the nested CPU executed during the operand callback
+PASS nested execution preserves the outer CPU's precision, rounding and exception flags
+model=8 output=1 FP=3fff0000:c0000000:00000000/3fff0000:c0000000:00000000 FPSR=00000208/00000208
+PASS the nested CPU executed during the operand callback
+PASS nested execution preserves the outer CPU's precision, rounding and exception flags
+PASS two host threads retain separate rounding and flags for 1024 instructions
+fpu_context_test: 0 failure(s)
+<end of output>
+Test time =   0.48 sec
+----------------------------------------------------------
+Test Passed.
+"fpu_context_test" end time: Nov 10 12:18 +04
+"fpu_context_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+460/559 Testing: berr020_test
+460/559 Test: berr020_test
+Command: "/Users/mercure/src/pom68k/build/berr020_test"
+Directory: /Users/mercure/src/pom68k/build
+"berr020_test" start time: Nov 10 12:18 +04
+Output:
+----------------------------------------------------------
+020 model=2 bytes=1 write=0 mode=0 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=1 write=0 mode=0 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=1 write=0 mode=0 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=1 write=0 mode=0 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=1 write=0 mode=0 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=1 write=0 mode=0 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=1 write=0 mode=0 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=1 write=0 mode=0 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=1 write=0 mode=1 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=1 write=0 mode=1 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=1 write=0 mode=1 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=1 write=0 mode=1 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=1 write=0 mode=1 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=1 write=0 mode=1 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=1 write=0 mode=1 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=1 write=0 mode=1 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=1 write=0 mode=2 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=1 write=0 mode=2 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=1 write=0 mode=2 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=1 write=0 mode=2 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=1 write=0 mode=2 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=1 write=0 mode=2 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=1 write=0 mode=2 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=1 write=0 mode=2 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=1 write=1 mode=0 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=1 write=1 mode=0 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=1 write=1 mode=0 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=1 write=1 mode=0 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=1 write=1 mode=0 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=1 write=1 mode=0 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=1 write=1 mode=0 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=1 write=1 mode=0 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=1 write=1 mode=1 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=1 write=1 mode=1 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=1 write=1 mode=1 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=1 write=1 mode=1 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=1 write=1 mode=1 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=1 write=1 mode=1 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=1 write=1 mode=1 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=1 write=1 mode=1 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=1 write=1 mode=2 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=1 write=1 mode=2 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=1 write=1 mode=2 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=1 write=1 mode=2 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=1 write=1 mode=2 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=1 write=1 mode=2 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=1 write=1 mode=2 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=1 write=1 mode=2 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=2 write=0 mode=0 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=2 write=0 mode=0 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=2 write=0 mode=0 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=2 write=0 mode=0 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=2 write=0 mode=0 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=2 write=0 mode=0 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=2 write=0 mode=0 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=2 write=0 mode=0 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=2 write=0 mode=1 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=2 write=0 mode=1 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=2 write=0 mode=1 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=2 write=0 mode=1 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=2 write=0 mode=1 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=2 write=0 mode=1 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=2 write=0 mode=1 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=2 write=0 mode=1 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=2 write=0 mode=2 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=2 write=0 mode=2 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=2 write=0 mode=2 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=2 write=0 mode=2 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=2 write=0 mode=2 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=2 write=0 mode=2 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=2 write=0 mode=2 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=2 write=0 mode=2 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=2 write=1 mode=0 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=2 write=1 mode=0 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=2 write=1 mode=0 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=2 write=1 mode=0 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=2 write=1 mode=0 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=2 write=1 mode=0 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=2 write=1 mode=0 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=2 write=1 mode=0 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=2 write=1 mode=1 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=2 write=1 mode=1 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=2 write=1 mode=1 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=2 write=1 mode=1 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=2 write=1 mode=1 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=2 write=1 mode=1 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=2 write=1 mode=1 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=2 write=1 mode=1 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=2 write=1 mode=2 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=2 write=1 mode=2 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=2 write=1 mode=2 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=2 write=1 mode=2 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=2 write=1 mode=2 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=2 write=1 mode=2 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=2 write=1 mode=2 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=2 write=1 mode=2 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=4 write=0 mode=0 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=4 write=0 mode=0 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=4 write=0 mode=0 completed=0 restore=0 second=1 user=0
+020 model=2 bytes=4 write=0 mode=0 completed=0 restore=0 second=1 user=1
+020 model=2 bytes=4 write=0 mode=0 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=4 write=0 mode=0 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=4 write=0 mode=0 completed=0 restore=1 second=1 user=0
+020 model=2 bytes=4 write=0 mode=0 completed=0 restore=1 second=1 user=1
+020 model=2 bytes=4 write=0 mode=0 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=4 write=0 mode=0 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=4 write=0 mode=0 completed=1 restore=0 second=1 user=0
+020 model=2 bytes=4 write=0 mode=0 completed=1 restore=0 second=1 user=1
+020 model=2 bytes=4 write=0 mode=0 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=4 write=0 mode=0 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=4 write=0 mode=0 completed=1 restore=1 second=1 user=0
+020 model=2 bytes=4 write=0 mode=0 completed=1 restore=1 second=1 user=1
+020 model=2 bytes=4 write=0 mode=1 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=4 write=0 mode=1 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=4 write=0 mode=1 completed=0 restore=0 second=1 user=0
+020 model=2 bytes=4 write=0 mode=1 completed=0 restore=0 second=1 user=1
+020 model=2 bytes=4 write=0 mode=1 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=4 write=0 mode=1 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=4 write=0 mode=1 completed=0 restore=1 second=1 user=0
+020 model=2 bytes=4 write=0 mode=1 completed=0 restore=1 second=1 user=1
+020 model=2 bytes=4 write=0 mode=1 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=4 write=0 mode=1 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=4 write=0 mode=1 completed=1 restore=0 second=1 user=0
+020 model=2 bytes=4 write=0 mode=1 completed=1 restore=0 second=1 user=1
+020 model=2 bytes=4 write=0 mode=1 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=4 write=0 mode=1 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=4 write=0 mode=1 completed=1 restore=1 second=1 user=0
+020 model=2 bytes=4 write=0 mode=1 completed=1 restore=1 second=1 user=1
+020 model=2 bytes=4 write=0 mode=2 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=4 write=0 mode=2 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=4 write=0 mode=2 completed=0 restore=0 second=1 user=0
+020 model=2 bytes=4 write=0 mode=2 completed=0 restore=0 second=1 user=1
+020 model=2 bytes=4 write=0 mode=2 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=4 write=0 mode=2 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=4 write=0 mode=2 completed=0 restore=1 second=1 user=0
+020 model=2 bytes=4 write=0 mode=2 completed=0 restore=1 second=1 user=1
+020 model=2 bytes=4 write=0 mode=2 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=4 write=0 mode=2 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=4 write=0 mode=2 completed=1 restore=0 second=1 user=0
+020 model=2 bytes=4 write=0 mode=2 completed=1 restore=0 second=1 user=1
+020 model=2 bytes=4 write=0 mode=2 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=4 write=0 mode=2 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=4 write=0 mode=2 completed=1 restore=1 second=1 user=0
+020 model=2 bytes=4 write=0 mode=2 completed=1 restore=1 second=1 user=1
+020 model=2 bytes=4 write=1 mode=0 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=4 write=1 mode=0 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=4 write=1 mode=0 completed=0 restore=0 second=1 user=0
+020 model=2 bytes=4 write=1 mode=0 completed=0 restore=0 second=1 user=1
+020 model=2 bytes=4 write=1 mode=0 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=4 write=1 mode=0 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=4 write=1 mode=0 completed=0 restore=1 second=1 user=0
+020 model=2 bytes=4 write=1 mode=0 completed=0 restore=1 second=1 user=1
+020 model=2 bytes=4 write=1 mode=0 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=4 write=1 mode=0 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=4 write=1 mode=0 completed=1 restore=0 second=1 user=0
+020 model=2 bytes=4 write=1 mode=0 completed=1 restore=0 second=1 user=1
+020 model=2 bytes=4 write=1 mode=0 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=4 write=1 mode=0 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=4 write=1 mode=0 completed=1 restore=1 second=1 user=0
+020 model=2 bytes=4 write=1 mode=0 completed=1 restore=1 second=1 user=1
+020 model=2 bytes=4 write=1 mode=1 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=4 write=1 mode=1 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=4 write=1 mode=1 completed=0 restore=0 second=1 user=0
+020 model=2 bytes=4 write=1 mode=1 completed=0 restore=0 second=1 user=1
+020 model=2 bytes=4 write=1 mode=1 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=4 write=1 mode=1 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=4 write=1 mode=1 completed=0 restore=1 second=1 user=0
+020 model=2 bytes=4 write=1 mode=1 completed=0 restore=1 second=1 user=1
+020 model=2 bytes=4 write=1 mode=1 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=4 write=1 mode=1 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=4 write=1 mode=1 completed=1 restore=0 second=1 user=0
+020 model=2 bytes=4 write=1 mode=1 completed=1 restore=0 second=1 user=1
+020 model=2 bytes=4 write=1 mode=1 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=4 write=1 mode=1 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=4 write=1 mode=1 completed=1 restore=1 second=1 user=0
+020 model=2 bytes=4 write=1 mode=1 completed=1 restore=1 second=1 user=1
+020 model=2 bytes=4 write=1 mode=2 completed=0 restore=0 second=0 user=0
+020 model=2 bytes=4 write=1 mode=2 completed=0 restore=0 second=0 user=1
+020 model=2 bytes=4 write=1 mode=2 completed=0 restore=0 second=1 user=0
+020 model=2 bytes=4 write=1 mode=2 completed=0 restore=0 second=1 user=1
+020 model=2 bytes=4 write=1 mode=2 completed=0 restore=1 second=0 user=0
+020 model=2 bytes=4 write=1 mode=2 completed=0 restore=1 second=0 user=1
+020 model=2 bytes=4 write=1 mode=2 completed=0 restore=1 second=1 user=0
+020 model=2 bytes=4 write=1 mode=2 completed=0 restore=1 second=1 user=1
+020 model=2 bytes=4 write=1 mode=2 completed=1 restore=0 second=0 user=0
+020 model=2 bytes=4 write=1 mode=2 completed=1 restore=0 second=0 user=1
+020 model=2 bytes=4 write=1 mode=2 completed=1 restore=0 second=1 user=0
+020 model=2 bytes=4 write=1 mode=2 completed=1 restore=0 second=1 user=1
+020 model=2 bytes=4 write=1 mode=2 completed=1 restore=1 second=0 user=0
+020 model=2 bytes=4 write=1 mode=2 completed=1 restore=1 second=0 user=1
+020 model=2 bytes=4 write=1 mode=2 completed=1 restore=1 second=1 user=0
+020 model=2 bytes=4 write=1 mode=2 completed=1 restore=1 second=1 user=1
+020 model=3 bytes=1 write=0 mode=0 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=1 write=0 mode=0 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=1 write=0 mode=0 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=1 write=0 mode=0 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=1 write=0 mode=0 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=1 write=0 mode=0 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=1 write=0 mode=0 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=1 write=0 mode=0 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=1 write=0 mode=1 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=1 write=0 mode=1 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=1 write=0 mode=1 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=1 write=0 mode=1 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=1 write=0 mode=1 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=1 write=0 mode=1 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=1 write=0 mode=1 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=1 write=0 mode=1 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=1 write=0 mode=2 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=1 write=0 mode=2 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=1 write=0 mode=2 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=1 write=0 mode=2 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=1 write=0 mode=2 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=1 write=0 mode=2 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=1 write=0 mode=2 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=1 write=0 mode=2 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=1 write=1 mode=0 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=1 write=1 mode=0 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=1 write=1 mode=0 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=1 write=1 mode=0 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=1 write=1 mode=0 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=1 write=1 mode=0 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=1 write=1 mode=0 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=1 write=1 mode=0 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=1 write=1 mode=1 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=1 write=1 mode=1 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=1 write=1 mode=1 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=1 write=1 mode=1 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=1 write=1 mode=1 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=1 write=1 mode=1 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=1 write=1 mode=1 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=1 write=1 mode=1 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=1 write=1 mode=2 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=1 write=1 mode=2 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=1 write=1 mode=2 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=1 write=1 mode=2 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=1 write=1 mode=2 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=1 write=1 mode=2 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=1 write=1 mode=2 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=1 write=1 mode=2 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=2 write=0 mode=0 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=2 write=0 mode=0 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=2 write=0 mode=0 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=2 write=0 mode=0 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=2 write=0 mode=0 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=2 write=0 mode=0 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=2 write=0 mode=0 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=2 write=0 mode=0 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=2 write=0 mode=1 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=2 write=0 mode=1 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=2 write=0 mode=1 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=2 write=0 mode=1 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=2 write=0 mode=1 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=2 write=0 mode=1 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=2 write=0 mode=1 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=2 write=0 mode=1 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=2 write=0 mode=2 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=2 write=0 mode=2 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=2 write=0 mode=2 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=2 write=0 mode=2 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=2 write=0 mode=2 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=2 write=0 mode=2 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=2 write=0 mode=2 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=2 write=0 mode=2 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=2 write=1 mode=0 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=2 write=1 mode=0 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=2 write=1 mode=0 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=2 write=1 mode=0 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=2 write=1 mode=0 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=2 write=1 mode=0 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=2 write=1 mode=0 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=2 write=1 mode=0 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=2 write=1 mode=1 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=2 write=1 mode=1 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=2 write=1 mode=1 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=2 write=1 mode=1 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=2 write=1 mode=1 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=2 write=1 mode=1 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=2 write=1 mode=1 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=2 write=1 mode=1 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=2 write=1 mode=2 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=2 write=1 mode=2 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=2 write=1 mode=2 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=2 write=1 mode=2 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=2 write=1 mode=2 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=2 write=1 mode=2 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=2 write=1 mode=2 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=2 write=1 mode=2 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=4 write=0 mode=0 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=4 write=0 mode=0 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=4 write=0 mode=0 completed=0 restore=0 second=1 user=0
+020 model=3 bytes=4 write=0 mode=0 completed=0 restore=0 second=1 user=1
+020 model=3 bytes=4 write=0 mode=0 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=4 write=0 mode=0 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=4 write=0 mode=0 completed=0 restore=1 second=1 user=0
+020 model=3 bytes=4 write=0 mode=0 completed=0 restore=1 second=1 user=1
+020 model=3 bytes=4 write=0 mode=0 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=4 write=0 mode=0 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=4 write=0 mode=0 completed=1 restore=0 second=1 user=0
+020 model=3 bytes=4 write=0 mode=0 completed=1 restore=0 second=1 user=1
+020 model=3 bytes=4 write=0 mode=0 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=4 write=0 mode=0 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=4 write=0 mode=0 completed=1 restore=1 second=1 user=0
+020 model=3 bytes=4 write=0 mode=0 completed=1 restore=1 second=1 user=1
+020 model=3 bytes=4 write=0 mode=1 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=4 write=0 mode=1 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=4 write=0 mode=1 completed=0 restore=0 second=1 user=0
+020 model=3 bytes=4 write=0 mode=1 completed=0 restore=0 second=1 user=1
+020 model=3 bytes=4 write=0 mode=1 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=4 write=0 mode=1 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=4 write=0 mode=1 completed=0 restore=1 second=1 user=0
+020 model=3 bytes=4 write=0 mode=1 completed=0 restore=1 second=1 user=1
+020 model=3 bytes=4 write=0 mode=1 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=4 write=0 mode=1 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=4 write=0 mode=1 completed=1 restore=0 second=1 user=0
+020 model=3 bytes=4 write=0 mode=1 completed=1 restore=0 second=1 user=1
+020 model=3 bytes=4 write=0 mode=1 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=4 write=0 mode=1 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=4 write=0 mode=1 completed=1 restore=1 second=1 user=0
+020 model=3 bytes=4 write=0 mode=1 completed=1 restore=1 second=1 user=1
+020 model=3 bytes=4 write=0 mode=2 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=4 write=0 mode=2 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=4 write=0 mode=2 completed=0 restore=0 second=1 user=0
+020 model=3 bytes=4 write=0 mode=2 completed=0 restore=0 second=1 user=1
+020 model=3 bytes=4 write=0 mode=2 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=4 write=0 mode=2 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=4 write=0 mode=2 completed=0 restore=1 second=1 user=0
+020 model=3 bytes=4 write=0 mode=2 completed=0 restore=1 second=1 user=1
+020 model=3 bytes=4 write=0 mode=2 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=4 write=0 mode=2 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=4 write=0 mode=2 completed=1 restore=0 second=1 user=0
+020 model=3 bytes=4 write=0 mode=2 completed=1 restore=0 second=1 user=1
+020 model=3 bytes=4 write=0 mode=2 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=4 write=0 mode=2 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=4 write=0 mode=2 completed=1 restore=1 second=1 user=0
+020 model=3 bytes=4 write=0 mode=2 completed=1 restore=1 second=1 user=1
+020 model=3 bytes=4 write=1 mode=0 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=4 write=1 mode=0 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=4 write=1 mode=0 completed=0 restore=0 second=1 user=0
+020 model=3 bytes=4 write=1 mode=0 completed=0 restore=0 second=1 user=1
+020 model=3 bytes=4 write=1 mode=0 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=4 write=1 mode=0 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=4 write=1 mode=0 completed=0 restore=1 second=1 user=0
+020 model=3 bytes=4 write=1 mode=0 completed=0 restore=1 second=1 user=1
+020 model=3 bytes=4 write=1 mode=0 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=4 write=1 mode=0 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=4 write=1 mode=0 completed=1 restore=0 second=1 user=0
+020 model=3 bytes=4 write=1 mode=0 completed=1 restore=0 second=1 user=1
+020 model=3 bytes=4 write=1 mode=0 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=4 write=1 mode=0 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=4 write=1 mode=0 completed=1 restore=1 second=1 user=0
+020 model=3 bytes=4 write=1 mode=0 completed=1 restore=1 second=1 user=1
+020 model=3 bytes=4 write=1 mode=1 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=4 write=1 mode=1 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=4 write=1 mode=1 completed=0 restore=0 second=1 user=0
+020 model=3 bytes=4 write=1 mode=1 completed=0 restore=0 second=1 user=1
+020 model=3 bytes=4 write=1 mode=1 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=4 write=1 mode=1 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=4 write=1 mode=1 completed=0 restore=1 second=1 user=0
+020 model=3 bytes=4 write=1 mode=1 completed=0 restore=1 second=1 user=1
+020 model=3 bytes=4 write=1 mode=1 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=4 write=1 mode=1 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=4 write=1 mode=1 completed=1 restore=0 second=1 user=0
+020 model=3 bytes=4 write=1 mode=1 completed=1 restore=0 second=1 user=1
+020 model=3 bytes=4 write=1 mode=1 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=4 write=1 mode=1 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=4 write=1 mode=1 completed=1 restore=1 second=1 user=0
+020 model=3 bytes=4 write=1 mode=1 completed=1 restore=1 second=1 user=1
+020 model=3 bytes=4 write=1 mode=2 completed=0 restore=0 second=0 user=0
+020 model=3 bytes=4 write=1 mode=2 completed=0 restore=0 second=0 user=1
+020 model=3 bytes=4 write=1 mode=2 completed=0 restore=0 second=1 user=0
+020 model=3 bytes=4 write=1 mode=2 completed=0 restore=0 second=1 user=1
+020 model=3 bytes=4 write=1 mode=2 completed=0 restore=1 second=0 user=0
+020 model=3 bytes=4 write=1 mode=2 completed=0 restore=1 second=0 user=1
+020 model=3 bytes=4 write=1 mode=2 completed=0 restore=1 second=1 user=0
+020 model=3 bytes=4 write=1 mode=2 completed=0 restore=1 second=1 user=1
+020 model=3 bytes=4 write=1 mode=2 completed=1 restore=0 second=0 user=0
+020 model=3 bytes=4 write=1 mode=2 completed=1 restore=0 second=0 user=1
+020 model=3 bytes=4 write=1 mode=2 completed=1 restore=0 second=1 user=0
+020 model=3 bytes=4 write=1 mode=2 completed=1 restore=0 second=1 user=1
+020 model=3 bytes=4 write=1 mode=2 completed=1 restore=1 second=0 user=0
+020 model=3 bytes=4 write=1 mode=2 completed=1 restore=1 second=0 user=1
+020 model=3 bytes=4 write=1 mode=2 completed=1 restore=1 second=1 user=0
+020 model=3 bytes=4 write=1 mode=2 completed=1 restore=1 second=1 user=1
+berr020_test: 404 executed sequences, 0 failure(s)
+<end of output>
+Test time =   1.04 sec
+----------------------------------------------------------
+Test Passed.
+"berr020_test" end time: Nov 10 12:18 +04
+"berr020_test" time elapsed: 00:00:01
+----------------------------------------------------------
+
+461/559 Testing: moira_rules_test
+461/559 Test: moira_rules_test
+Command: "/Users/mercure/src/pom68k/build/moira_rules_test"
+Directory: /Users/mercure/src/pom68k/build
+"moira_rules_test" start time: Nov 10 12:18 +04
+Output:
+----------------------------------------------------------
+  MOVEM 040 CM restart: 4848 sequences
+  MOVEP 040 fault/retry: 192 sequences
+  ordinary 040 final-store controls: 36 sequences
+[moira_rules_test] OK: DIVS.W of $80000000 on six models, 68000 external /BERR, host hooks, DIVx.L operand fault, 68040 CHK2/CMP2 flags, 68040 FPU trap priority, 68LC040 F-line shapes, five-bit FBcc predicate, 68040 FPU store fault, 68040 TTR table, CLR without its read from the 68020 up, PTEST at its level limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR during a table search, 68EC030 plain-020 path with a 68030 MMU/cache control
+<end of output>
+Test time =   8.80 sec
+----------------------------------------------------------
+Test Passed.
+"moira_rules_test" end time: Nov 10 12:18 +04
+"moira_rules_test" time elapsed: 00:00:08
+----------------------------------------------------------
+
+462/559 Testing: moira_state_test
+462/559 Test: moira_state_test
+Command: "/Users/mercure/src/pom68k/build/moira_state_test"
+Directory: /Users/mercure/src/pom68k/build
+"moira_state_test" start time: Nov 10 12:18 +04
+Output:
+----------------------------------------------------------
+  ok: 68882: save at handler boundary with format-$9 continuation
+  ok: CPU archive consumed exactly
+  ok: 68882: restored SQRT(4) completes with FP0 = 2
+  ok: 68882: restored FSAVE/FRESTORE/RTE matches uninterrupted state and RAM
+  ok: 68030: operand fault reaches format-$B handler
+  ok: 68030: save between RTE and the retried instruction
+  ok: CPU archive consumed exactly
+  ok: 68030: restored retry consumes stacked data without another bus read
+  ok: 68030: restored DF-cleared retry matches uninterrupted state and RAM
+  ok: 68030: PMOVE leaves the old instruction stream live at a boundary
+  ok: CPU archive consumed exactly
+  ok: 68030: restored pipe executes captured MOVEQ #1, not patched #7
+  ok: 68030: restored pipe matches uninterrupted CPU
+  ok: 68040: FINT trap reaches boundary before FSAVE UNIMP
+  ok: CPU archive consumed exactly
+  ok: 68040: expected FSAVE frame header
+  ok: 68040: restored UNIMP micro-state gives identical FSAVE payload
+  ok: 68040: datatype trap reaches boundary before FSAVE BUSY
+  ok: CPU archive consumed exactly
+  ok: 68040: expected FSAVE frame header
+  ok: 68040: restored BUSY micro-state gives identical FSAVE payload
+  ok: host: debugger requests do not enter the archive
+  ok: CPU archive consumed exactly
+  ok: host: load preserves live debugger requests and model
+  ok: host: explicitly armed MOVEM restart latch round-trips
+  ok: host: inactive MOVEM scratch EA does not affect the archive
+  ok: CPU archive consumed exactly
+  ok: host: inactive saved latch clears an armed destination
+  ok: 040: partial MOVEM produces CM in its access-error frame
+  ok: 040: continued MOVEM can fault again with the original EA
+  ok: 040: save between guest RTE and the continued MOVEM
+  ok: CPU archive consumed exactly
+  ok: 040: restored continuation uses the original EA and completes all transfers
+  ok: 040: guest-produced MOVEM continuation round-trips without new archive fields
+  ok: 040: partial MOVEM produces CM in its access-error frame
+  ok: 040: continued MOVEM can fault again with the original EA
+  ok: 040: save between guest RTE and the continued MOVEM
+  ok: CPU archive consumed exactly
+  ok: 040: restored continuation uses the original EA and completes all transfers
+  ok: 040: guest-produced MOVEM continuation round-trips without new archive fields
+  ok: 040: partial MOVEM produces CM in its access-error frame
+  ok: 040: continued MOVEM can fault again with the original EA
+  ok: 040: save between guest RTE and the continued MOVEM
+  ok: CPU archive consumed exactly
+  ok: 040: restored continuation uses the original EA and completes all transfers
+  ok: 040: guest-produced MOVEM continuation round-trips without new archive fields
+  ok: 040 cache: seed clean way
+  ok: 040 cache: dirty two longwords
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: nonzero replacement phase, dirty data absent from RAM
+  ok: 040 cache: saving neither pushes data nor advances the clock
+  ok: 040 cache: fresh CPU consumes archive and re-saves identical bytes
+  ok: 040 cache: runtime mode and replacement phase round-trip
+  ok: 040 cache: restored lines do not revive a previous JIT window
+  ok: 040 cache: stale instruction bytes survive newer backing RAM
+  ok: 040 cache: restored copyback bytes remain newer than RAM
+  ok: 040 cache: replacement after restore
+  ok: 040 cache: restored dirty victim writes back identically
+  ok: 040 cache: seed clean way
+  ok: 040 cache: dirty two longwords
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: nonzero replacement phase, dirty data absent from RAM
+  ok: 040 cache: saving neither pushes data nor advances the clock
+  ok: 040 cache: fresh CPU consumes archive and re-saves identical bytes
+  ok: 040 cache: runtime mode and replacement phase round-trip
+  ok: 040 cache: restored lines do not revive a previous JIT window
+  ok: 040 cache: stale instruction bytes survive newer backing RAM
+  ok: 040 cache: restored copyback bytes remain newer than RAM
+  ok: 040 cache: replacement after restore
+  ok: 040 cache: restored dirty victim writes back identically
+  ok: 040 cache: seed clean way
+  ok: 040 cache: dirty two longwords
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: nonzero replacement phase, dirty data absent from RAM
+  ok: 040 cache: saving neither pushes data nor advances the clock
+  ok: 040 cache: fresh CPU consumes archive and re-saves identical bytes
+  ok: 040 cache: runtime mode and replacement phase round-trip
+  ok: 040 cache: restored lines do not revive a previous JIT window
+  ok: 040 cache: stale instruction bytes survive newer backing RAM
+  ok: 040 cache: restored copyback bytes remain newer than RAM
+  ok: 040 cache: replacement after restore
+  ok: 040 cache: restored dirty victim writes back identically
+  ok: 040 cache: seed clean way
+  ok: 040 cache: dirty two longwords
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: nonzero replacement phase, dirty data absent from RAM
+  ok: 040 cache: saving neither pushes data nor advances the clock
+  ok: 040 cache: fresh CPU consumes archive and re-saves identical bytes
+  ok: 040 cache: runtime mode and replacement phase round-trip
+  ok: 040 cache: restored lines do not revive a previous JIT window
+  ok: 040 cache: stale instruction bytes survive newer backing RAM
+  ok: 040 cache: restored copyback bytes remain newer than RAM
+  ok: 040 cache: replacement after restore
+  ok: 040 cache: restored dirty victim writes back identically
+  ok: 040 cache: seed clean way
+  ok: 040 cache: dirty two longwords
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: nonzero replacement phase, dirty data absent from RAM
+  ok: 040 cache: saving neither pushes data nor advances the clock
+  ok: 040 cache: fresh CPU consumes archive and re-saves identical bytes
+  ok: 040 cache: runtime mode and replacement phase round-trip
+  ok: 040 cache: restored lines do not revive a previous JIT window
+  ok: 040 cache: stale instruction bytes survive newer backing RAM
+  ok: 040 cache: restored copyback bytes remain newer than RAM
+  ok: 040 cache: replacement after restore
+  ok: 040 cache: restored dirty victim writes back identically
+  ok: 040 cache: seed clean way
+  ok: 040 cache: dirty two longwords
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: fill conflicting dirty way
+  ok: 040 cache: nonzero replacement phase, dirty data absent from RAM
+  ok: 040 cache: saving neither pushes data nor advances the clock
+  ok: 040 cache: fresh CPU consumes archive and re-saves identical bytes
+  ok: 040 cache: runtime mode and replacement phase round-trip
+  ok: 040 cache: restored lines do not revive a previous JIT window
+  ok: 040 cache: stale instruction bytes survive newer backing RAM
+  ok: 040 cache: restored copyback bytes remain newer than RAM
+  ok: 040 cache: replacement after restore
+  ok: 040 cache: restored dirty victim writes back identically
+  ok: 040 cache: invalid bytes and diagnostic counters are omitted
+  ok: CPU archive consumed exactly
+  ok: 040 cache: loading an invalid slot clears target garbage
+moira_state_test: 0 failure(s)
+<end of output>
+Test time =   0.52 sec
+----------------------------------------------------------
+Test Passed.
+"moira_state_test" end time: Nov 10 12:18 +04
+"moira_state_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+473/559 Testing: core_grades_test
+473/559 Test: core_grades_test
+Command: "/usr/bin/python3" "tests/core_grades_test.py"
+Directory: /Users/mercure/src/pom68k
+"core_grades_test" start time: Nov 10 12:18 +04
+Output:
+----------------------------------------------------------
+stamped 5 evidence header(s)
+stamped 0 evidence header(s)
+stamped 0 evidence header(s)
+...........
+----------------------------------------------------------------------
+Ran 11 tests in 0.028s
+
+OK
+ok   347 WinUAE-citing comment blocks in the core, 44 SingleStepTests blocks, 147 manual blocks, 0 problem(s)
+<end of output>
+Test time =   0.88 sec
+----------------------------------------------------------
+Test Passed.
+"core_grades_test" end time: Nov 10 12:18 +04
+"core_grades_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+559/559 Testing: file_size_budget_test
+559/559 Test: file_size_budget_test
+Command: "/bin/bash" "/Users/mercure/src/pom68k/tools/check_file_sizes.sh"
+Directory: /Users/mercure/src/pom68k
+"file_size_budget_test" start time: Nov 10 12:18 +04
+Output:
+----------------------------------------------------------
+check_file_sizes: passed, with ceilings that can be tightened:
+      src/jit/JitConfig.h:      456 lines, ceiling 573 — lower it by 117
+<end of output>
+Test time =   5.23 sec
+----------------------------------------------------------
+Test Passed.
+"file_size_budget_test" end time: Nov 10 12:18 +04
+"file_size_budget_test" time elapsed: 00:00:05
+----------------------------------------------------------
+
+End testing: Nov 10 12:18 +04
+
+asset-none =  65.75 sec*proc
+
+asset-optional =   6.79 sec*proc
+
+cpu-vectors =   2.86 sec*proc
+
+host-any =  32.70 sec*proc
+
+host-native =  39.84 sec*proc
+
+interp-only =   3.68 sec*proc
+
+jit =  39.84 sec*proc
+
+jit-fast =  41.26 sec*proc
+
+scope-component =  30.40 sec*proc
+
+scope-engine =  39.84 sec*proc
+
+scope-repository =   2.30 sec*proc
+
+tier-daily =  65.75 sec*proc
+
+tier-full =   6.79 sec*proc
+
+unit =  72.54 sec*proc
+

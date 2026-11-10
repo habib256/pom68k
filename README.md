@@ -399,7 +399,9 @@ modified or included in the repository.
 
 PRAM is stored beside the boot volume as `<disk>.<profile>.pram`. Save states
 use `<disk>.<profile>.pomss`; incompatible profile, ROM or RAM configurations
-are refused without modifying the running machine. A state also records its
+are refused without modifying the running machine. Current format v30 also
+preserves 68040 instruction/data cache contents, including dirty copyback
+bytes; older formats are refused. A state also records its
 hard disks' content: restoring it rewinds a writable SCSI or IDE image to that
 content, even after quitting, using the `<image>.pomundo` journal kept beside
 the image. If the image changed in a way the journal cannot undo (edited

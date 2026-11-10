@@ -53,6 +53,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace {
@@ -68,6 +69,12 @@ public:
 
     // Cell 2: the board asserts /BERR on kHole.
     bool holeArmed = false;
+    uint32_t holeAt = kHole;
+    mutable unsigned holeTrips = 0;
+    bool recordMovem = false;
+    uint32_t movemBegin = 0, movemBytes = 0;
+    mutable std::vector<uint32_t> movemCycles;
+    mutable unsigned movemPointerReads = 0;
     // Cell 3: what the hooks saw. 'L'/'U' lock and unlock, 'r'/'w' bus cycles.
     bool handleIllegal = false;
     mutable std::string events;
@@ -79,12 +86,19 @@ private:
 
     // The board's /BERR, through the entry point of the model's core.
     void berr(moira::u32 a, bool write) const {
+        ++holeTrips;
         auto& self = *const_cast<TestCpu*>(this);
         if (model_ >= moira::Model::M68EC040) self.extBusError040();
         else if (model_ >= moira::Model::M68EC020) self.extBusError();
         else self.extBusError000(a, write);
     }
-    bool hole(moira::u32 a) const { return holeArmed && (a & 0xffffff) == kHole; }
+    bool hole(moira::u32 a) const { return holeArmed && (a & 0xffffff) == holeAt; }
+    void observeMovem(uint32_t a, bool write) const {
+        if (!recordMovem) return;
+        if (!write && ((a & ~3u) == 0x50000 || (a & ~3u) == 0x50010)) ++movemPointerReads;
+        if (a >= movemBegin && a < movemBegin + movemBytes)
+            movemCycles.push_back(a | (write ? 0x80000000u : 0));
+    }
 
     moira::u8 read8(moira::u32 a) const override {
         if (hole(a)) berr(a, false);
@@ -92,6 +106,7 @@ private:
         return mem[a & 0xfffff];
     }
     moira::u16 read16(moira::u32 a) const override {
+        observeMovem(a, false);
         if (hole(a)) berr(a, false);
         return moira::u16((mem[a & 0xfffff] << 8) | mem[(a + 1) & 0xfffff]);
     }
@@ -101,6 +116,7 @@ private:
         const_cast<TestCpu*>(this)->mem[a & 0xfffff] = v;
     }
     void write16(moira::u32 a, moira::u16 v) const override {
+        observeMovem(a, true);
         if (hole(a)) berr(a, true);
         auto& m = const_cast<TestCpu*>(this)->mem;
         m[a & 0xfffff] = moira::u8(v >> 8); m[(a + 1) & 0xfffff] = moira::u8(v);
@@ -517,6 +533,308 @@ void fpuStoreFaultRestarts040()
           c.getPC0(), kHandler, c.getA(0), kHole, g32(c, c.getSP() + 2), kCode);
 }
 
+// [D] WinUAE cpuemu_31.c op_0188/op_01c8 @ Hatari e77819f7:
+// no gen_set_fault_pc/mmu_restart=false on ANY MOVEP output byte.
+// [F] The manual's generic format-$7 PC does not specify this partial
+// peripheral transfer. Settled by: a faulting MOVEP on a real 68040.
+void movepFaultRestarts040()
+{
+    unsigned sequences = 0;
+    for (auto model : {moira::Model::M68LC040, moira::Model::M68040})
+    for (unsigned mmu = 0; mmu < 3; ++mmu)      // off, 4K, 8K
+    for (unsigned path = 0; path < 3; ++path)   // bus, data window, cache
+    for (bool load : {false, true}) {
+        if (load && path != 0) continue;        // read-fault controls
+        for (unsigned bytes : {2u, 4u})
+        for (unsigned fault = 0; fault <= bytes; ++fault) {
+            ++sequences;
+            TestCpu c(model);
+            const uint16_t opcode = uint16_t((load ? 0x0709 : 0x0789) |
+                                             (bytes == 4 ? 0x40 : 0));
+            constexpr uint32_t source = 0x89ABCDEF;
+            constexpr uint16_t displacement = 0x54F5;
+            const uint32_t pageBytes = mmu == 2 ? 8192 : 4096;
+            const uint32_t logicalPage = 0x10000000;
+            const uint32_t physicalPage = 0x60000;
+            const uint32_t bad = mmu ? logicalPage + pageBytes : kHole;
+            const uint32_t base = bad - 2 * fault;
+            const uint32_t physical = mmu ? physicalPage + pageBytes - 2 * fault : base;
+            const bool fails = fault < bytes;
+            const uint32_t an = base - displacement;
+            p32(c, 8, kHandler);
+            p16(c, kHandler, mmu ? 0xF518 : 0x4E73); // PFLUSHA / RTE
+            p16(c, kHandler + 2, mmu ? 0x4E73 : kNop);
+            p16(c, kHandler + 4, kNop);
+            stage(c, opcode, 0x1F);
+            p16(c, kCode + 2, displacement); c.setIRC(displacement);
+            c.setD(3, source); c.setA(1, an);
+            c.setPomCache040(path == 2);
+            c.setCACR(path == 2 ? 0x80008000 : 0);
+            if (mmu) {
+                p32(c, 0x4020, 0x4202); p32(c, 0x4200, 0x6002);
+                p32(c, 0x6000, physicalPage | 0x19); // U/M/R, WT
+                c.setURP040(0x4000); c.setSRP040(0x4000);
+                c.setITT0(0x0000C000); c.setDTT0(0x0000C000);
+                c.setTC040(mmu == 2 ? 0xC000 : 0x8000);
+            } else {
+                c.holeArmed = true;
+            }
+            for (unsigned i = 0; i < bytes; ++i) {
+                c.mem[physical + 2 * i] = uint8_t(0x10 + i);
+                c.mem[physical + 2 * i + 1] = 0xA5;
+            }
+            if (path == 1 && fault != 0) {
+                // Only the good page is exposed. The faulting page has no
+                // window entry and must return to the physical/MMU path.
+                uint32_t ignored = 0, pa = base, page = 0, length = 0;
+                CHECK(c.pomJitReadData(base, 1, ignored), "MOVEP window warm-up");
+                CHECK(c.pomJitProbeData(base, true, true, pa, page, length),
+                      "MOVEP window has a permitted resident translation");
+                c.pomJitDtlbFillFn = [](void*, moira::u32, int) -> moira::u8* { return nullptr; };
+                auto& e = c.pomJitDtlbW.e[(base >> 12) &
+                                         (moira::Moira::PomJitDtlb::kEntries - 1)];
+                e.tag = c.pomJitDataTag(base, true); e.codeMask = 0;
+                e.host = c.mem.data() + (pa & ~0xFFFu);
+            }
+            CHECK(executeContained(c), "MOVEP fault escaped execute()");
+            CHECK(c.getA(1) == an && (c.getSR() & 31) == 0x1F && !c.isHalted(),
+                  "MOVEP changed An/CCR or halted");
+            if (fails) {
+                const auto sp = c.getSP();
+                CHECK(c.getPC0() == kHandler && sp == 0x8000 - 60 &&
+                      g16(c, sp + 6) == 0x7008 && g32(c, sp + 2) == kCode,
+                      "MOVEP.%c %s model=%u mmu=%u path=%u byte=%u: "
+                      "PC=%08X SP=%08X format=%04X stacked PC=%08X (want %08X)",
+                      bytes == 2 ? 'W' : 'L', load ? "load" : "store",
+                      unsigned(model), mmu, path, fault, c.getPC0(), sp,
+                      g16(c, sp + 6), g32(c, sp + 2), kCode);
+                CHECK(g32(c, sp + 20) == bad &&
+                      g16(c, sp + 12) == ((mmu ? 0x400 : 0) | (load ? 0x125 : 0x25)),
+                      "MOVEP fault address/SSW do not describe its failed byte");
+                if (!load)
+                    CHECK(g32(c, sp + 24) == bad &&
+                          g32(c, sp + 28) == ((source >> (8 * (bytes - fault - 1))) & 0xFF),
+                          "MOVEP writeback does not contain the failed byte");
+                CHECK(c.getD(3) == source && (mmu || c.holeTrips == 1),
+                      "MOVEP source/destination changed early or /BERR did not fire once");
+                if (path == 1 && fault != 0)
+                    CHECK(c.pomJitDataW1.host != nullptr,
+                          "MOVEP prefix did not exercise the data window");
+            } else {
+                const uint32_t loaded = bytes == 2 ? 0x89AB1011 : 0x10111213;
+                CHECK(c.getPC() == kCode + 4 && c.getSP() == 0x8000 &&
+                      c.holeTrips == 0 && c.getD(3) == (load ? loaded : source),
+                      "MOVEP success control did not complete normally");
+            }
+            for (unsigned i = 0; i < bytes; ++i) {
+                const auto expected = !load && i < fault ?
+                    uint8_t(source >> (8 * (bytes - i - 1))) : uint8_t(0x10 + i);
+                CHECK(c.mem[physical + 2 * i] == expected &&
+                      c.mem[physical + 2 * i + 1] == 0xA5,
+                      "MOVEP prefix/gap mismatch byte=%u fault=%u", i, fault);
+            }
+            if (fails) {
+                c.holeArmed = false;
+                if (mmu) p32(c, 0x6004, (physicalPage + pageBytes) | 0x19);
+                // [B] MC68040UM-1993 §3.5: repairing the descriptor does
+                // not discard the failed ATC entry. The guest must flush it.
+                if (mmu)
+                    CHECK(executeContained(c) && c.getPC0() == kHandler + 2,
+                          "MOVEP repair handler did not execute PFLUSHA");
+                CHECK(executeContained(c) && c.getPC() == kCode,
+                      "MOVEP RTE skipped the unfinished instruction");
+                CHECK(executeContained(c) && c.getPC() == kCode + 4,
+                      "MOVEP did not complete on retry");
+                const uint32_t loaded = bytes == 2 ? 0x89AB1011 : 0x10111213;
+                CHECK(c.getD(3) == (load ? loaded : source), "MOVEP retry register result");
+                for (unsigned i = 0; i < bytes; ++i)
+                    CHECK(c.mem[physical + 2 * i] == (load ? uint8_t(0x10 + i) :
+                          uint8_t(source >> (8 * (bytes - i - 1)))),
+                          "MOVEP retry left byte %u incomplete", i);
+            }
+        }
+    }
+    std::printf("  MOVEP 040 fault/retry: %u sequences\n", sequences);
+}
+
+// [B] MC68040UM-1993 §§8.4.6.2/8.4.6.7: CM restores the calculated EA
+// for indexed/PC-relative MOVEM and repeats all operand accesses. Other
+// modes calculate from the current registers. Memory indirection is not
+// repeated, even if the handler changed the pointer or the index/base.
+void movemRestart040()
+{
+    unsigned sequences = 0;
+    for (auto model : {moira::Model::M68EC040, moira::Model::M68LC040, moira::Model::M68040})
+    for (unsigned mmu = 0; mmu < 3; ++mmu)
+    for (bool super : {false, true})
+    for (bool cache : {false, true})
+    for (bool load : {false, true})
+    for (unsigned mode = 0; mode < 8; ++mode) // AI, DI, IX brief/full, DIPC, IXPC full, PI, PD
+    for (unsigned bytes : {2u, 4u})
+    for (unsigned fault = 0; fault < 3; ++fault)
+    for (unsigned action = 0; action < 3; ++action) { // CM, cleared CM, edited EA
+        const bool indexed = mode >= 2 && mode <= 5, indirect = mode == 3 || mode == 5;
+        const bool pd = mode == 7;
+        if ((mmu && (model == moira::Model::M68EC040 || pd)) ||
+            (load ? pd : mode == 4 || mode == 5 || mode == 6) || (!indexed && action == 2)) continue;
+        const auto before = failures;
+        TestCpu c(model);
+        const uint32_t pageBytes = mmu == 2 ? 8192 : 4096;
+        const uint32_t offset = pd ? 0 : pageBytes - fault * bytes;
+        const uint32_t oldPa = 0x60000 + offset, repairedPa = mmu ? 0x70000 + offset : oldPa;
+        const uint32_t altPa = (mmu ? 0x80000 : 0x64000) + offset;
+        const uint32_t ea = mmu ? 0x10000000 + offset : oldPa;
+        const uint32_t altEa = mmu ? ea + 0x4000 : altPa;
+        const uint32_t pc = ea - 0x100;
+        const uint16_t eaBits[] = {0x10, 0x28, 0x30, 0x30, 0x3A, 0x3B, 0x18, 0x20};
+        const uint16_t opcode = uint16_t((load ? 0x4C80 : 0x4880) | (bytes == 4 ? 0x40 : 0) | eaBits[mode]);
+        const uint16_t mask = pd ? 0xC080 : 0x0103; // D0/D1/A0, reversed for predecrement
+        const uint16_t sr = uint16_t((super ? 0x2700 : 0x0700) | 0x1F);
+        const uint32_t fresh[] = {0x89ABCDEF, 0x12345678, 0xFEDCBA98};
+        stage(c, opcode, 0x1F);
+        c.setUSP(0x9000); c.setSR(sr);
+        p32(c, 8, kHandler);
+        p16(c, kHandler, mmu ? 0xF518 : kNop);
+        p16(c, kHandler + 2, 0x4E73); p16(c, kHandler + 4, kNop);
+        p16(c, pc, opcode); p16(c, pc + 2, mask);
+        unsigned length = 4;
+        uint32_t a0 = ea;
+        if (mode == 1) { p16(c, pc + 4, 0x40); a0 -= 0x40; length = 6; }
+        if (mode == 2) { p16(c, pc + 4, 0x0800); a0 -= 0x20; length = 6; }
+        if (mode == 3) { p16(c, pc + 4, 0x0151); a0 = 0x50000; length = 6; }
+        if (mode == 4) { p16(c, pc + 4, uint16_t(ea - (pc + 4))); length = 6; }
+        if (mode == 5) { p16(c, pc + 4, 0x01F1); p32(c, pc + 6, 0x50000); length = 10; }
+        if (pd) a0 += 3 * bytes;
+        p16(c, pc + length, kNop); p16(c, pc + length + 2, kNop);
+        p32(c, 0x50000, ea); p32(c, 0x50010, altEa);
+        c.setA(0, a0); c.setD(0, 0x20); c.setD(1, 0x13579BDF);
+        c.setPC(pc); c.setPC0(pc); c.setIRD(opcode); c.setIRC(mask);
+        c.setPomCache040(cache); c.setCACR(cache ? 0x80008000 : 0);
+        c.setITT0(0x1000C040); c.setITT1(0x0000C040); c.setDTT0(0x0000C040);
+        if (mmu) {
+            p32(c, 0x4020, 0x4202); p32(c, 0x4200, 0x6002);
+            p32(c, 0x6000, 0x60059); // U/M/R, NC; next page invalid
+            const unsigned altIndex = mmu == 2 ? 8 : 16;
+            p32(c, 0x6000 + altIndex, 0x80059);
+            p32(c, 0x6004 + altIndex, (0x80000 + pageBytes) | 0x59);
+            c.setURP040(0x4000); c.setSRP040(0x4000);
+            c.setTC040(mmu == 2 ? 0xC000 : 0x8000);
+        } else {
+            c.holeAt = pd ? oldPa + (2 - fault) * bytes : oldPa + fault * bytes;
+            c.holeArmed = true;
+        }
+        for (unsigned i = 0; i < 3; ++i) {
+            if (bytes == 4) p32(c, oldPa + i * bytes, fresh[i]);
+            else p16(c, oldPa + i * bytes, uint16_t(fresh[i]));
+        }
+        c.recordMovem = true; c.movemBegin = oldPa; c.movemBytes = 3 * bytes;
+        CHECK(executeContained(c), "MOVEM: original fault escaped execute");
+        const uint32_t sp = c.getSP(), savedEa = pd ? ea + 3 * bytes : ea;
+        CHECK(c.getPC0() == kHandler && sp == 0x8000 - 60 && !c.isHalted() &&
+              g16(c, sp + 6) == 0x7008 && g32(c, sp + 2) == pc &&
+              g32(c, sp + 8) == savedEa && (g16(c, sp + 12) & 0x1000) &&
+              !c.mmu040MovemArmed && c.getCCR() == 0x1F,
+              "MOVEM: original CM/EA/PC frame and consumed latch");
+        CHECK(c.movemCycles.size() == fault * (bytes / 2) + (mmu ? 0 : 1),
+              "MOVEM: exact completed transfer prefix and failed bus cycle");
+        CHECK(c.movemPointerReads == (indirect ? 2u : 0u), "MOVEM: initial indirect pointer read once");
+        c.holeArmed = false;
+        if (mmu) {
+            p32(c, 0x6000, 0x70059);
+            p32(c, 0x6004, (0x70000 + pageBytes) | 0x59);
+        }
+        for (unsigned i = 0; i < 3; ++i) {
+            for (uint32_t dest : {repairedPa, altPa}) {
+                if (bytes == 4) p32(c, dest + i * bytes, fresh[i]);
+                else p16(c, dest + i * bytes, uint16_t(fresh[i]));
+            }
+        }
+        uint32_t newA0 = altEa;
+        if (mode == 1) newA0 -= 0x40;
+        if (mode == 2) newA0 -= 0x40;
+        if (mode == 3) newA0 = 0x50010;
+        if (pd) newA0 += 3 * bytes;
+        c.setA(0, newA0); c.setD(0, 0x40); c.setD(1, 0x2468ACE0);
+        if (mode == 4) p16(c, pc + 4, uint16_t(altEa - (pc + 4)));
+        if (mode == 5) p32(c, pc + 6, 0x50010);
+        if (action == 1) p16(c, sp + 12, uint16_t(g16(c, sp + 12) & ~0x1000));
+        if (action == 2) p32(c, sp + 8, altEa);
+        CHECK(executeContained(c) && c.getPC0() == kHandler + 2, "MOVEM: handler flush/NOP");
+        CHECK(executeContained(c) && c.getPC0() == pc && c.getSR() == sr &&
+              c.getSP() == (super ? 0x8000u : 0x9000u) &&
+              c.mmu040MovemArmed == (action != 1) &&
+              (action == 1 || c.mmu040MovemEa == (action == 2 ? altEa : savedEa)),
+              "MOVEM: RTE produces the saved CM continuation at an instruction boundary");
+        const bool useSaved = indexed && action != 1;
+        const uint32_t target = useSaved && action != 2 ? repairedPa : altPa;
+        const uint32_t targetEa = useSaved && action != 2 ? ea : altEa;
+        c.movemBegin = target; c.movemCycles.clear(); c.movemPointerReads = 0;
+        CHECK(executeContained(c) && c.getPC0() == pc + length && !c.isHalted() &&
+              !c.mmu040MovemArmed && c.getCCR() == 0x1F,
+              "MOVEM: retry completes and consumes the continuation");
+        CHECK(c.movemPointerReads == (indirect && !useSaved ? 2u : 0u),
+              "MOVEM: continuation must not repeat the indirect pointer read");
+        std::vector<uint32_t> expectedCycles;
+        for (unsigned n = 0; n < 3; ++n) {
+            const auto i = pd ? 2 - n : n;
+            for (unsigned half = 0; half < bytes; half += 2)
+                expectedCycles.push_back((target + i * bytes + half) | (load ? 0u : 0x80000000u));
+        }
+        CHECK(c.movemCycles == expectedCycles, "MOVEM: all operand accesses repeat in order, including the prefix");
+        if (load) {
+            const auto sext = [bytes](uint32_t v) { return bytes == 4 ? v : uint32_t(int32_t(int16_t(v))); };
+            CHECK(c.getD(0) == sext(fresh[0]) && c.getD(1) == sext(fresh[1]) &&
+                  c.getA(0) == (mode == 6 ? targetEa + 3 * bytes : sext(fresh[2])),
+                  "MOVEM: loaded registers and postincrement result");
+        } else {
+            const uint32_t expected[] = {0x40, 0x2468ACE0, pd ? newA0 - bytes : newA0};
+            for (unsigned i = 0; i < 3; ++i)
+                CHECK((bytes == 4 ? g32(c, target + i * bytes) : g16(c, target + i * bytes)) ==
+                      (bytes == 4 ? expected[i] : uint16_t(expected[i])), "MOVEM: repeated stores use current register values");
+            CHECK(c.getA(0) == (pd ? altEa : newA0), "MOVEM: base register commits once");
+        }
+        if (failures != before)
+            std::printf("MOVEM context: model=%u mmu=%u S=%u cache=%u load=%u mode=%u bytes=%u fault=%u action=%u\n",
+                        unsigned(model), mmu, super, cache, load, mode, bytes, fault, action);
+        ++sequences;
+    }
+    std::printf("  MOVEM 040 CM restart: %u sequences\n", sequences);
+}
+
+void ordinaryStoreStillAdvances040()
+{
+    // [D] WinUAE cpuemu_31.c @ Hatari e77819f7: ordinary MOVE stores
+    // call gen_set_fault_pc. The MOVEP exception must not capture them.
+    unsigned sequences = 0;
+    for (auto model : {moira::Model::M68LC040, moira::Model::M68040})
+    for (unsigned mmu = 0; mmu < 3; ++mmu)
+    for (bool cache : {false, true})
+    for (uint16_t opcode : {0x1343, 0x3343, 0x2343}) { // MOVE.B/W/L D3,d16(A1)
+        ++sequences;
+        TestCpu c(model);
+        p32(c, 8, kHandler);
+        p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
+        stage(c, opcode, 0x1F);
+        p16(c, kCode + 2, 0x54F5); c.setIRC(0x54F5);
+        c.setD(3, 0x89ABCDEF);
+        c.setA(1, (mmu ? 0x10000000u : kHole) - 0x54F5);
+        c.setPomCache040(cache); c.setCACR(cache ? 0x80008000 : 0);
+        if (mmu) {
+            p32(c, 0x4020, 0x4202); p32(c, 0x4200, 0x6002); // invalid page
+            c.setURP040(0x4000); c.setSRP040(0x4000);
+            c.setITT0(0x0000C000); c.setDTT0(0x0000C000);
+            c.setTC040(mmu == 2 ? 0xC000 : 0x8000);
+        } else {
+            c.holeArmed = true;
+        }
+        CHECK(executeContained(c) && !c.isHalted() && c.getPC0() == kHandler &&
+              g32(c, c.getSP() + 2) == kCode + 4 && (c.getSR() & 31) == 0x18,
+              "MOVE %04X final-store control changed, model=%u mmu=%u cache=%u",
+              opcode, unsigned(model), mmu, cache);
+    }
+    std::printf("  ordinary 040 final-store controls: %u sequences\n", sequences);
+}
+
 void ttrTableFollowsRegisters()
 {
     // mmu040MatchTTR answers from a table derived from the TTRs, and the
@@ -778,8 +1096,14 @@ void tableSearchBusError030()
     }
 }
 
-int main()
+int main(int argc, char** argv)
 {
+    if (argc == 2 && std::string_view(argv[1]) == "--movem-restart") {
+        movemRestart040();
+        std::printf("[moira_rules_test] MOVEM: %d failure(s)\n", failures);
+        return failures ? 1 : 0;
+    }
+    movemRestart040();
     divsOfIntMin();
     externalBusError000();
     hostHooks();
@@ -789,6 +1113,8 @@ int main()
     flineShapesOn68LC040();
     fbccPredicateIsFiveBits();
     fpuStoreFaultRestarts040();
+    movepFaultRestarts040();
+    ordinaryStoreStillAdvances040();
     ttrTableFollowsRegisters();
     clrReadsOnlyOn68000();
     ptestFlagsInvalidAtTheLimit();

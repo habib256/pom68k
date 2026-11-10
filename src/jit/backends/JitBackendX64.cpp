@@ -82,12 +82,13 @@ MemoryProofOptions proofOptions(const Layout& L) {
     return o;
 }
 
+using AtcReplay040 = moira::Moira::PomJitAtcReplay040;
+
 static_assert(sizeof(moira::Moira::PomJitCache040Entry) == 32);
 static_assert(offsetof(moira::Moira::PomJitCache040Entry, physicalTag) == 4);
 static_assert(offsetof(moira::Moira::PomJitCache040Entry, generation) == 8);
 static_assert(offsetof(moira::Moira::PomJitCache040Entry, atcIndex) == 12);
 static_assert(offsetof(moira::Moira::PomJitCache040Entry, line) == 16);
-static_assert(offsetof(moira::Moira::PomJitCache040Entry, atcMru) == 24);
 static_assert(offsetof(moira::Cache040::Line, tag) == 0);
 static_assert(offsetof(moira::Cache040::Line, valid) == 4);
 static_assert(offsetof(moira::Cache040::Line, dirty) == 5);
@@ -97,15 +98,6 @@ static_assert(offsetof(moira::Cache040::Line, data) == 6);
 // Everything generated code calls. All noexcept, all reporting failure by
 // return value (decision 1 above).
 
-// Runs one instruction through Moira, from a clean boundary.
-//   1 = retired normally, 0 = did not retire (fault/exception processed),
-//  -1 = the code window no longer covers this pc — leave, do not count.
-extern "C" int pom68kJitStep(moira::Moira* cpu) noexcept {
-    if (!cpu->pomJitCovers(cpu->getPC())) return -1;
-    if (!cpu->pomJitIdle()) return -1;
-    return cpu->pomJitExecOne() ? 1 : 0;
-}
-
 // Charging the clock. Generated code cannot just add to `clock`: the CPU
 // wrapper's sync() is where peripheral time is handed out, and a block that
 // only bumped the counter would run the guest forward with the VIA, the
@@ -114,50 +106,6 @@ extern "C" int pom68kJitStep(moira::Moira* cpu) noexcept {
 // JIT makes exactly one too, in the same place — at the end.
 extern "C" void pom68kJitSync(moira::Moira* cpu, uint32_t cycles) noexcept {
     cpu->pomJitSync(int(cycles));
-}
-
-// The slow half of the data path: a real mmu040 access, fault turned into
-// a status. `bytes` is 1, 2 or 4.
-//
-// `pcWords` (fetchWords << 32 | pc, 0 when the block emits no i-cache
-// charge) is the peripheral-phase alignment of 2026-08-21: this path is
-// where I/O lands, an I/O access forces a peripheral flush at the access
-// clock, and the interpreter reaches the same access with the fetch
-// penalty already on the clock while the emitted charge sits after the
-// body. Bias the clock by the read-only peek for the access alone —
-// success or fault, the bias is gone before anything else runs, so the
-// success-path charge and the fault re-run both stay exactly as they were.
-extern "C" int pom68kJitRead(moira::Moira* cpu, uint32_t addr, uint32_t bytes,
-                             uint32_t* out, uint64_t pcWords) noexcept {
-    const moira::i64 bias = pcWords
-        ? cpu->pomJitIcachePeekPenalty(uint32_t(pcWords), int(pcWords >> 32))
-        : 0;
-    if (bias) cpu->pomJitBiasClock(bias);
-    const int ok = cpu->pomJitReadData(addr, int(bytes), *out) ? 1 : 0;
-    if (bias) cpu->pomJitBiasClock(-bias);
-    return ok;
-}
-extern "C" int pom68kJitWrite(moira::Moira* cpu, uint32_t addr, uint32_t bytes,
-                              uint32_t val, uint64_t pcWords) noexcept {
-    const moira::i64 bias = pcWords
-        ? cpu->pomJitIcachePeekPenalty(uint32_t(pcWords), int(pcWords >> 32))
-        : 0;
-    if (bias) cpu->pomJitBiasClock(bias);
-    const int ok = cpu->pomJitWriteData(addr, int(bytes), val) ? 1 : 0;
-    if (bias) cpu->pomJitBiasClock(-bias);
-    return ok;
-}
-
-// The 030 JSR reads the first word at its target and leaves that run-time
-// value in queue.irc.  No compile-time word is exact: a trap patch may have
-// changed it since the block was recorded.  A false result means the read
-// would fault, so generated code replays the still-untouched instruction.
-extern "C" int pom68kJitReadProg(moira::Moira* cpu, uint32_t addr,
-                                 uint32_t* out) noexcept {
-    uint16_t word = 0;
-    const int ok = cpu->pomJitReadProg(addr, word) ? 1 : 0;
-    *out = word;
-    return ok;
 }
 
 // ── the frame generated code runs against ────────────────────────────────
@@ -221,7 +169,13 @@ struct Frame {
     uint32_t  runtimeBytes;                        // +156  0 = no access
     uint32_t  runtimeWrite;                        // +160
     uint32_t  pad3;                                // +164
+    AtcReplay040 atc;
 };
+static_assert(MemoryContract::MaxAccesses == AtcReplay040::Accesses);
+constexpr int32_t kFAtc040 = int32_t(offsetof(Frame, atc));
+constexpr int32_t kFAtcFetch040 = kFAtc040 + int32_t(offsetof(AtcReplay040, fetches));
+constexpr int32_t kFAtcRoutes040 = kFAtc040 + int32_t(offsetof(AtcReplay040, routes));
+constexpr int32_t kFAtcAccess040 = kFAtc040 + int32_t(offsetof(AtcReplay040, access));
 constexpr int32_t kFClockTarget = 0, kFInstrs = 8, kFExit = 12;
 constexpr int32_t kFDtlbSelf = 16, kFDtlbFill = 24, kFGuard = 32;
 constexpr int32_t kFScratch = 40, kFSaveA = 44, kFSaveV = 48;
@@ -438,7 +392,13 @@ private:
     // `bytes` is the SPAN the caller will touch through the pointer — a
     // size for a plain access, n×size for a MOVEM burst; a span crossing
     // the page boundary misses (two translations, someone else's problem).
-    void memProbe(Reg addr, int bytes, bool write, Label& miss,
+    bool atcContext040_ = false;
+    uint8_t atcRoutes040_ = 0;
+    void beginAtcInstruction040(size_t i);
+    void recordAtcRoute040(AtcRoute route, Reg entry, bool cache);
+    void prepareAtcThunk040(unsigned access, Reg argument);
+    void commitAtcInstruction040();
+    void memProbe(Reg addr, int bytes, bool write, Label& miss, AtcRoute route,
                   bool cacheRead = false, Label* cacheWriteHit = nullptr,
                   bool cacheOnly = false, bool countCacheHit = true);
     // Access capabilities are minted from Instr::memory. In particular,
@@ -488,7 +448,8 @@ private:
     void call(void* fn);
     void loadPackedCcr();
     void spillPackedCcr();
-    void retire() {
+    void retire(bool nativeAtc = true) {
+        if (nativeAtc) commitAtcInstruction040();
         a_.aluRI(Asm::Op::ADD, packedCcr_ ? Sz::Q : Sz::L, kCnt,
                  packedCcr_ ? kRetireUnit : 1);
     }
@@ -535,7 +496,7 @@ private:
     // instructions — still nothing against returning to the engine.
     void leaveToDynamic();
     bool emitSubroutine(size_t i);   // JSR / BSR / RTS
-    void emitJsr040Transaction(size_t, uint16_t, unsigned, bool, const ControlFlowPlan&);
+    void emitJsr040Transaction(size_t, uint16_t, unsigned, bool, const ControlFlowPlan&, const MemoryAccessPlan&);
     void chargeCycles(int cycles);
     uint64_t accessPcWords(size_t i) const;
     void spillClock() { a_.movMR(Sz::Q, at(L_.clock), kClk); }
@@ -723,6 +684,8 @@ private:
 // (Moira.cpp:327). Charging here as well would double-count; charging
 // before the bail-out decision would charge an instruction that then re-runs
 // and charges again.
+#include "JitBackendX64Atc040.inl"
+
 void Emitter::chargeIcache(size_t i, uint32_t exactFetchWords) {
     if (!ic_) return;
     const Instr& in = ir_.instrs[i];
@@ -1187,12 +1150,12 @@ bool Emitter::emitSubroutine(size_t i) {
         // mappings while the instruction is pristine, then perform that
         // read once; a refused stack can therefore never duplicate MMIO.
         addrOfFullIndirectPointer(ea, RAX);
-        memProbe(RAX, 4, /*write=*/false, runtimeStub(i));
+        memProbe(RAX, 4, /*write=*/false, runtimeStub(i), AtcRoute(pointerRead));
         a_.movMR(Sz::Q, F(kFPointerHost), RSI);
         a_.movRM(Sz::L, RAX, A(7));
         a_.aluRI(Asm::Op::SUB, Sz::L, RAX, 4);
         a_.movMR(Sz::L, F(kFSaveA), RAX);
-        memProbe(RAX, 4, /*write=*/true, runtimeStub(i));
+        memProbe(RAX, 4, /*write=*/true, runtimeStub(i), AtcRoute(write));
         a_.movMR(Sz::Q, F(kFProgHost), RSI);
         a_.movRM(Sz::Q, RSI, F(kFPointerHost));
         a_.movRM(Sz::L, RDI, mem(RSI, 0));
@@ -1207,9 +1170,11 @@ bool Emitter::emitSubroutine(size_t i) {
         a_.jcc(Cc::NE, runtimeStub(i));
     }
 
-    if (!L_.is030 && L_.cache040Live) {
+    // The target-word read owns an I-ATC access with caches off too.
+    // Preserve its post-push fault boundary through the shared transaction.
+    if (!L_.is030 && (L_.cache040Live || !fullIndirect)) {
         if (fullIndirect) return false;
-        emitJsr040Transaction(i, op, opCost, constant, control);
+        emitJsr040Transaction(i, op, opCost, constant, control, write);
         return true;
     }
 
@@ -1227,7 +1192,7 @@ bool Emitter::emitSubroutine(size_t i) {
             a_.movRM(Sz::L, RAX, A(7));
             a_.aluRI(Asm::Op::SUB, Sz::L, RAX, 4);
             a_.movMR(Sz::L, F(kFSaveA), RAX);
-            memProbe(RAX, 4, /*write=*/true, runtimeStub(i));
+            memProbe(RAX, 4, /*write=*/true, runtimeStub(i), AtcRoute(write));
             a_.movMR(Sz::Q, F(kFProgHost), RSI);
         }
 
@@ -1249,6 +1214,7 @@ bool Emitter::emitSubroutine(size_t i) {
         a_.movRR(Sz::Q, RDI, kCpu);
         a_.movRM(Sz::L, RSI, F(kFValue));
         a_.leaRM(RDX, F(kFScratch));
+        prepareAtcThunk040(AtcReplay040::Accesses, RCX);
         call(reinterpret_cast<void*>(&pom68kJitReadProg));
         fillClock();
         a_.testRR(Sz::L, RAX, RAX);
@@ -1772,7 +1738,7 @@ void Emitter::commitEa(const Ea& ea, int szIdx,
 // exit RSI points at the host bytes. A tag miss goes to the fill stub (and
 // retries); anything the fill refuses, and any access straddling a page,
 // goes to this instruction's slow path with nothing committed.
-void Emitter::memProbe(Reg addr, int bytes, bool write, Label& miss,
+void Emitter::memProbe(Reg addr, int bytes, bool write, Label& miss, AtcRoute route,
                        bool cacheRead, Label* cacheWriteHit,
                        bool cacheOnly, bool countCacheHit) {
     const int n = bytes;
@@ -1826,25 +1792,12 @@ void Emitter::memProbe(Reg addr, int bytes, bool write, Label& miss,
         a_.aluRM(Asm::Op::CMP, Sz::L, R8, mem(RCX, 0));
         a_.jcc(Cc::NE, cacheMiss);
 
-        // Invalidate with the DATA ATC generation, then require the lookup
-        // Moira would perform to be a replacement-state no-op. The memo and
-        // MRU guard matter even without an eviction: bypassing their updates
-        // otherwise changes a later ATC victim and eventually cycle timing.
+        // Invalidate with the DATA ATC generation. ATC-backed hits stage
+        // their replacement-counter debit until the instruction commits.
         a_.movRM(Sz::L, R9, mem(RCX, 8));
         a_.aluRM(Asm::Op::CMP, Sz::L, R9, at(L_.cache040Gen));
         a_.jcc(Cc::NE, cacheMiss);
-        Label& atcExact = *a_.fresh();
-        a_.movzx(Sz::B, R9, mem(RCX, 12));
-        a_.aluRI(Asm::Op::CMP, Sz::L, R9, 0xFF);
-        a_.jcc(Cc::E, atcExact);
-        a_.movzx(Sz::B, R8,
-                 at(L_.cache040AtcLastD + uint32_t(cacheWrite ? 1 : 0)));
-        a_.aluRR(Asm::Op::CMP, Sz::L, R9, R8);
-        a_.jcc(Cc::NE, cacheMiss);
-        a_.movRM(Sz::Q, RSI, mem(RCX, 24));
-        a_.aluMI(Asm::Op::CMP, Sz::B, mem(RSI, 0), 0);
-        a_.jcc(Cc::E, cacheMiss);
-        a_.bind(atcExact);
+        recordAtcRoute040(route, RCX, true);
 
         // The cache way is stable, its contents are not: validate both the
         // valid bit and physical tag before exposing its big-endian bytes.
@@ -1911,6 +1864,8 @@ void Emitter::memProbe(Reg addr, int bytes, bool write, Label& miss,
         a_.aluRI(Asm::Op::CMP, Sz::L, RDX, 4096 - n);
         a_.jcc(Cc::A, crossMiss);
     }
+    recordAtcRoute040(route, RCX, false);
+
     // ── the per-slice code mask, writes only (Moira.h § PomJitDtlbEntry) ──
     // An entry maps 4 KB; CodeGuard works at 256 bytes. A store into a slice
     // that some cached block was translated from must go through the memory
@@ -1926,7 +1881,7 @@ void Emitter::memProbe(Reg addr, int bytes, bool write, Label& miss,
     Label& maskOk = *a_.fresh();
     if (write) {
         Label& maskCold = *a_.fresh();
-        a_.aluMI(Asm::Op::CMP, Sz::L, mem(RCX, 4), 0);
+        a_.aluMI(Asm::Op::CMP, Sz::W, mem(RCX, 4), 0);
         a_.jcc(Cc::NE, maskCold);
         // Cold: which slices does THIS access touch? `n` is at most 64
         // (a full MOVEM burst) and a slice is 256 bytes, so an access spans
@@ -1934,7 +1889,7 @@ void Emitter::memProbe(Reg addr, int bytes, bool write, Label& miss,
         // than as a range, which needs no mask construction.
         cold_.push_back([this, &maskCold, &maskOk, &maskMiss, n] {
             a_.bind(maskCold);
-            a_.movRM(Sz::L, R8, mem(RCX, 4));          // the mask
+            a_.movzx(Sz::W, R8, mem(RCX, 4));          // the mask
             for (int end = 0; end < (n > 1 ? 2 : 1); end++) {
                 a_.movRR(Sz::L, RCX, RDX);             // entry ptr is done with
                 if (end) a_.aluRI(Asm::Op::ADD, Sz::L, RCX, n - 1);
@@ -2040,7 +1995,7 @@ void Emitter::memLoad(Reg addr, int szIdx, Reg dst,
     Label& miss = exactAccess ? *a_.fresh() : runtimeStub(cur_);
 
     if (!access.exactRequired) {
-        memProbe(addr, sizeBytes(szIdx), false, miss, cacheRead);
+        memProbe(addr, sizeBytes(szIdx), false, miss, AtcRoute(access), cacheRead);
         if (szIdx == 0) {
             a_.movzx(Sz::B, dst, mem(RSI, 0));
         } else if (szIdx == 1) {
@@ -2059,11 +2014,12 @@ void Emitter::memLoad(Reg addr, int szIdx, Reg dst,
         return;
     }
     if (!exactAccess) return;
+    if (!L_.is030) atcRoutes040_ |= access.mask();
 
     Label& done = *a_.fresh();
     a_.bind(done);
     const size_t idx = cur_;
-    cold_.push_back([this, &miss, &done, addr, szIdx, dst, idx] {
+    cold_.push_back([this, &miss, &done, addr, szIdx, dst, idx, access] {
         a_.bind(miss);
         spillClock();                    // a device access can stall the CPU
         a_.movRR(Sz::Q, RDI, kCpu);
@@ -2071,6 +2027,7 @@ void Emitter::memLoad(Reg addr, int szIdx, Reg dst,
         a_.movRI(RDX, uint32_t(sizeBytes(szIdx)));
         a_.leaRM(RCX, F(kFValue));
         a_.movRI64(R8, accessPcWords(idx));
+        prepareAtcThunk040(access.index, R9);
         call(reinterpret_cast<void*>(&pom68kJitRead));
         fillClock();
         a_.testRR(Sz::L, RAX, RAX);
@@ -2096,11 +2053,11 @@ bool Emitter::loadReplayableMemory(size_t i, const Ea& ea, int szIdx, Reg dst,
         return false;
     addrOf(ea, RAX, szIdx);
     if (L_.cache040Live)
-        memProbe(RAX, sizeBytes(szIdx), false, runtimeStub(i),
+        memProbe(RAX, sizeBytes(szIdx), false, runtimeStub(i), AtcRoute(access),
                  /*cacheRead=*/true, /*cacheWriteHit=*/nullptr,
                  /*cacheOnly=*/true, /*countCacheHit=*/false);
     else
-        memProbe(RAX, sizeBytes(szIdx), false, runtimeStub(i));
+        memProbe(RAX, sizeBytes(szIdx), false, runtimeStub(i), AtcRoute(access));
     if (szIdx == 1) {
         a_.movzx(Sz::W, dst, mem(RSI, 0));
         a_.rolR16(dst, 8);
@@ -2155,7 +2112,7 @@ void Emitter::memStore(Reg addr, int szIdx, Reg src,
     if (access.exactRequired) {
         a_.jmp(miss);
     } else {
-        memProbe(addr, sizeBytes(szIdx), true, miss, false, cacheHit);
+        memProbe(addr, sizeBytes(szIdx), true, miss, AtcRoute(access), false, cacheHit);
         emitStore();
         if (cacheWrite) {
             a_.jmp(*cacheDone);
@@ -2166,13 +2123,14 @@ void Emitter::memStore(Reg addr, int szIdx, Reg src,
         }
     }
     if (!exactAccess) return;
+    if (!L_.is030) atcRoutes040_ |= access.mask();
 
     Label& done = *a_.fresh();
     a_.bind(done);
     const size_t idx = cur_;
     // The cold lambda runs after this frame is gone: carry the rollback by
     // value, never by pointer.
-    cold_.push_back([this, &miss, &done, addr, szIdx, idx] {
+    cold_.push_back([this, &miss, &done, addr, szIdx, idx, access] {
         a_.bind(miss);
         spillClock();                    // a device access can stall the CPU
         a_.movRR(Sz::Q, RDI, kCpu);
@@ -2180,6 +2138,7 @@ void Emitter::memStore(Reg addr, int szIdx, Reg src,
         a_.movRI(RDX, uint32_t(sizeBytes(szIdx)));
         a_.movRM(Sz::L, RCX, F(kFSaveV));
         a_.movRI64(R8, accessPcWords(idx));
+        prepareAtcThunk040(access.index, R9);
         call(reinterpret_cast<void*>(&pom68kJitWrite));
         fillClock();
         a_.testRR(Sz::L, RAX, RAX);
@@ -2223,7 +2182,7 @@ void Emitter::memRmwLoad(Reg addr, int szIdx, Reg dst,
         a_.jmp(runtimeStub(cur_));
         return;
     }
-    memProbe(addr, sizeBytes(szIdx), true, runtimeStub(cur_));
+    memProbe(addr, sizeBytes(szIdx), true, runtimeStub(cur_), AtcRoute(read, write));
     a_.movMR(Sz::Q, F(kFValue), RSI);
     if (szIdx == 0) {
         a_.movzx(Sz::B, dst, mem(RSI, 0));
@@ -2469,14 +2428,14 @@ bool Emitter::emitMove(size_t i, int szIdx) {
             return false;
         const int step = (src.reg == 7 && szIdx == 0) ? 2 : sizeBytes(szIdx);
         addrOf(src, RAX, szIdx);
-        memProbe(RAX, sizeBytes(szIdx), false, runtimeStub(i));
+        memProbe(RAX, sizeBytes(szIdx), false, runtimeStub(i), AtcRoute(srcAccess));
         a_.movMR(Sz::Q, F(kFValue), RSI);
 
         a_.movRM(Sz::L, RAX, A(src.reg));
         a_.aluRI(Asm::Op::ADD, Sz::L, RAX, step);
         if (dst.idx == EA_DI && dst.value)
             a_.aluRI(Asm::Op::ADD, Sz::L, RAX, dst.value);
-        memProbe(RAX, sizeBytes(szIdx), true, runtimeStub(i));
+        memProbe(RAX, sizeBytes(szIdx), true, runtimeStub(i), AtcRoute(dstAccess));
         a_.movRR(Sz::Q, R11, RSI);
         a_.movRM(Sz::Q, R10, F(kFValue));
 
@@ -2510,11 +2469,11 @@ bool Emitter::emitMove(size_t i, int szIdx) {
         // any miss reaches the whole-instruction fallback with pristine EA,
         // flags and diagnostic counters.
         addrOf(src, RAX, szIdx);
-        memProbe(RAX, 4, false, runtimeStub(i), true, nullptr, true, false);
+        memProbe(RAX, 4, false, runtimeStub(i), AtcRoute(srcAccess), true, nullptr, true, false);
         a_.movRR(Sz::Q, R10, RSI);
         addrOf(dst, RAX, szIdx);
         Label& writeHit = *a_.fresh();
-        memProbe(RAX, 4, true, runtimeStub(i), false, &writeHit, true, false);
+        memProbe(RAX, 4, true, runtimeStub(i), AtcRoute(dstAccess), false, &writeHit, true, false);
         a_.jmp(runtimeStub(i));
         a_.bind(writeHit);
         a_.movRR(Sz::Q, R11, RSI);
@@ -2541,10 +2500,10 @@ bool Emitter::emitMove(size_t i, int szIdx) {
         // x64 expansion of PreflightAll: a destination refusal cannot occur
         // after flags or a source device side effect have become visible.
         addrOf(src, RAX, szIdx);
-        memProbe(RAX, sizeBytes(szIdx), false, runtimeStub(i));
+        memProbe(RAX, sizeBytes(szIdx), false, runtimeStub(i), AtcRoute(srcAccess));
         a_.movMR(Sz::Q, F(kFValue), RSI);
         addrOf(dst, RAX, szIdx);
-        memProbe(RAX, sizeBytes(szIdx), true, runtimeStub(i));
+        memProbe(RAX, sizeBytes(szIdx), true, runtimeStub(i), AtcRoute(dstAccess));
         a_.movRR(Sz::Q, R11, RSI);                  // destination bytes
         a_.movRM(Sz::Q, R10, F(kFValue));           // source bytes
 
@@ -3947,7 +3906,7 @@ bool Emitter::emitBitfield(size_t i) {
             }
             a_.movMR(Sz::L, F(kFValue), RDX);       // normalized width
 
-            memProbe(RAX, 4, !readOnly, runtimeStub(i));
+            memProbe(RAX, 4, !readOnly, runtimeStub(i), readOnly ? AtcRoute(read) : AtcRoute(read, write));
             a_.movMR(Sz::Q, F(kFPointerHost), RSI); // first host pointer
 
             if (dynOffset) {
@@ -3964,7 +3923,7 @@ bool Emitter::emitBitfield(size_t i) {
 
             a_.movRM(Sz::L, RAX, F(kFSaveA));
             a_.aluRI(Asm::Op::ADD, Sz::L, RAX, 4);
-            memProbe(RAX, 1, !readOnly, runtimeStub(i));
+            memProbe(RAX, 1, !readOnly, runtimeStub(i), readOnly ? AtcRoute(tail) : AtcRoute(tail, tailWrite));
             if (!readOnly)
                 a_.movMR(Sz::Q, F(kFProgHost), RSI); // tail host pointer
             a_.movzx(Sz::B, R8, mem(RSI, 0));       // optional fifth byte
@@ -4402,10 +4361,10 @@ bool Emitter::emitCmpm(size_t i) {
 
     // Prove both mappings before either register moves or a flag changes.
     addrOf(src, RAX, szIdx);
-    memProbe(RAX, sizeBytes(szIdx), false, runtimeStub(i));
+    memProbe(RAX, sizeBytes(szIdx), false, runtimeStub(i), AtcRoute(srcRead));
     a_.movMR(Sz::Q, F(kFValue), RSI);               // source host pointer
     addrOf(dst, RAX, szIdx);
-    memProbe(RAX, sizeBytes(szIdx), false, runtimeStub(i));
+    memProbe(RAX, sizeBytes(szIdx), false, runtimeStub(i), AtcRoute(dstRead));
     a_.movRR(Sz::Q, R11, RSI);                      // destination bytes
     a_.movRM(Sz::Q, R10, F(kFValue));               // source bytes
 
@@ -4736,7 +4695,7 @@ bool Emitter::emitMovem(size_t i) {
         // is also the span base and the final An.
         a_.movRM(Sz::L, RAX, A(ea.reg));
         a_.aluRI(Asm::Op::SUB, Sz::L, RAX, n * size);
-        memProbe(RAX, n * size, /*write=*/true, runtimeStub(i));
+        memProbe(RAX, n * size, /*write=*/true, runtimeStub(i), AtcRoute(span, unsigned(n)));
         // The probe's fill path clobbers caller-saved registers; the base
         // register itself is unchanged until the end, so re-read it.
         a_.movRM(Sz::L, RDI, A(ea.reg));             // initial
@@ -4769,7 +4728,7 @@ bool Emitter::emitMovem(size_t i) {
 
     // Ascending forms, both directions: base address into RAX.
     addrOf(ea, RAX, szIdx);
-    memProbe(RAX, n * size, toRegs ? false : true, runtimeStub(i));
+    memProbe(RAX, n * size, toRegs ? false : true, runtimeStub(i), AtcRoute(span, unsigned(n)));
     int j = 0;
     for (int b = 0; b < 16; b++) {
         if (!(mask & (1 << b))) continue;
@@ -4923,6 +4882,7 @@ bool Emitter::emit() {
 
     size_t emitted = 0;
     for (size_t i = 0; i < n; i++) {
+        const Instr& in = ir_.instrs[i];
         cur_ = i;
         a_.bind(*entry_[i]);
         // The census's per-instruction default: any bail-out that is not one
@@ -5029,10 +4989,17 @@ bool Emitter::emit() {
         }
 
         const Asm::Mark mark = a_.mark();
+        if (!L_.is030 && !in.fetchWords040) {
+            a_.aluMI(Asm::Op::CMP, Sz::B, at(L_.atcWindow040), 0);
+            a_.jcc(Cc::NE, runtimeStub(i));
+        }
+        beginAtcInstruction040(i);
         pollIpl();
         instructionCycles_ = uint16_t(
             L_.is030 ? ir_.instrs[i].baseCycles : ir_.instrs[i].cycles);
-        const bool native = emitInstr(i);
+        bool native = emitInstr(i);
+        if (native && !L_.is030 && atcRoutes040_ != memoryContractMask(in.memory))
+            native = false;
         emitted = i + 1;
 
         if (!native) {
@@ -5161,12 +5128,14 @@ bool Emitter::emit() {
         emitBoundary(ir_.instrs[i].pc, int(i) == loopTarget ? -1 : int(i) - 1);
         spillClock();
         a_.movRR(Sz::Q, RDI, kCpu);
+        if (L_.is030) a_.movRI64(RSI, 0);
+        else a_.leaRM(RSI, F(kFAtc040));
         call(reinterpret_cast<void*>(&pom68kJitStep));
         fillClock();
         a_.aluRI(Asm::Op::CMP, Sz::L, RAX, 0);
         a_.jcc(Cc::L, *exitLost_);                   // -1: the window went away
         a_.jcc(Cc::E, *exitFault_);                  //  0: it did not retire
-        retire();
+        retire(false);
         a_.aluMI(Asm::Op::ADD, Sz::L, F(kFSlow), 1);
         // Moira may have written guest memory, and a write into this very
         // block's page leaves everything compiled after it stale. The
@@ -5201,7 +5170,7 @@ bool Emitter::emit() {
     a_.movMI(Sz::L, F(kFExit), int32_t(Exit::WindowLost));
     a_.jmp(*epilogue_);
     a_.bind(*exitFault_);
-    retire();                                        // it ran, it just faulted
+    retire(false);                                   // Moira already owns its effects
     a_.movMI(Sz::L, F(kFExit), int32_t(Exit::Fault));
 
     a_.bind(*epilogue_);
@@ -5578,6 +5547,7 @@ RunResult X64Backend::run(Compiled* c, Context& ctx) {
 
     using Fn = void (*)(moira::Moira*, Frame*);
     reinterpret_cast<Fn>(static_cast<X64Compiled*>(c)->entry)(ctx.cpu, &f);
+    if (f.atc.active) ctx.cpu->pomJitAtcReplayAbort040(f.atc);
 
     RunResult r;
     r.instrs = f.instrs;

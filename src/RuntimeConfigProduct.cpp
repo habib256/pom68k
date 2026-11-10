@@ -1,6 +1,6 @@
 // POM68K — product/host startup policy decoder.
-
 #include "RuntimeConfigParsers.h"
+#include "JitStartupConfig.h"
 
 namespace pom68k::app::detail {
 
@@ -11,7 +11,7 @@ ProductStartupConfig parseProductStartup(
 
     config.cpu.fpu = !values.present(startup_option::NoFpu);
     config.cpu.q605Fpu = !values.present(startup_option::Q605NoFpu);
-    config.jit.resolved = jit::resolveConfig(startup);
+    config.jit.resolved = pom68k::resolveJitConfig(startup);
 
     config.network.appleTalkWasSpecified =
         values.present(startup_option::AppleTalk);

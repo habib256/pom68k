@@ -13,6 +13,9 @@
 #include "MoiraDebugger.h"
 
 #include <algorithm>
+#include <memory>
+
+struct float_status;
 
 namespace moira {
 
@@ -300,6 +303,7 @@ public:
     bool isStopped() const { return flags & State::STOPPED; }
 
 
+#if MOIRA_ENABLE_JIT
     //
     // POM68K JIT seam (src/jit/POM68K_JIT.md)
     //
@@ -312,9 +316,9 @@ public:
     // (POM68K_VENDOR.md § "willFetchInstr … Folded inline": a per-instruction
     // indirect call once measured ~11% of the whole emulator.)
     //
-    // Everything below is INERT until a jit::Engine arms it. Disarmed, the
-    // whole seam costs the interpreter one predictable branch per
-    // instruction — the PomIcache precedent.
+    // MOIRA_ENABLE_JIT=0 removes this API, its storage and its fetch/data
+    // paths. With it enabled, either an Engine or the interpreter-owned
+    // window can arm the accelerators; no engine object is required.
 
 public:
 
@@ -335,6 +339,7 @@ public:
         u32  gen  = 0;              // pomJitMmuGen at validation time
         bool armed = false;
         bool super = false;         // sr.s the translation was validated for
+        bool atc040 = false;        // an architectural instruction ATC hit is bypassed
     };
     PomJitWindow pomJitWindow;
     using PomCodeSpanFn = const u8 *(*)(void *ctx, u32 physPage, u32 &len);
@@ -345,7 +350,7 @@ public:
     void pomInterpArm(u32 pc);
 
     // Bumped by every event that can change a logical→physical mapping:
-    // ATC flushes (PFLUSH family, TC/URP/SRP writes) and TTR writes. A
+    // ATC flushes (PFLUSH family), TC/URP/SRP writes and TTR writes. A
     // window whose `gen` no longer matches is refused without any further
     // check — the one thing an address-range test cannot detect.
     u32 pomJitMmuGen = 0;
@@ -414,6 +419,7 @@ public:
         pomJitWindow.len   = len;
         pomJitWindow.gen   = pomJitMmuGen;
         pomJitWindow.super = super;
+        pomJitWindow.atc040 = pomJitAtcBacked040(base, false, super);
         pomJitWindow.armed = host != nullptr && len >= 4;
     }
     void pomJitDisarm() { pomJitWindow.armed = false; pomJitWindow.host = nullptr; }
@@ -463,7 +469,7 @@ public:
     // and the staged trace — happens here, in the same single copy
     // execute() uses. Returns false when the instruction did not retire
     // normally, which is always a "go back through execute()" signal.
-    bool pomJitExecOne();
+    bool pomJitExecOne() { return executeFastOne(); }
 
     // Detailed timing for one instruction while the JIT tracer is recording.
     // The probe is deliberately opt-in: normal interpreter execution pays
@@ -498,6 +504,7 @@ public:
         // so it fetches `words`, not `words + 1` — the emitted 030 i-cache
         // charge needs the real count (POM68K JIT, 2026-08-19).
         i64 fetchWords = 0;
+        u32 fetchWords040 = 0; // opcode/lookahead/extension words, not target reads
         bool valid = false;
     };
     void pomJitBeginTiming() {
@@ -531,7 +538,6 @@ public:
     // three-word) shadow: symmetry by construction, including the
     // not-counting. Found as a +2-fetches/+2-hits/0-miss/0-cycle lockstep
     // divergence in the System's self-patched MMU-init loop.
-    bool pomMmuPipeLive() const { return mmuPipeCnt > 0; }
 
     // ── J2: the data-side twin of the code window ────────────────────────
     // Generated host code cannot call mmu040Read: that path throws on a
@@ -574,7 +580,9 @@ public:
         // whenever a slice gains its first block. Losing one (serviceGuard's
         // 1 -> 0 direction) leaves the mask conservative, which costs
         // coverage and never correctness.
-        u32 codeMask;
+        u16 codeMask;
+        bool atc040 = false;        // exact translation provenance, independent of code slices
+        u8 reserved = 0;
         u8* host;                       // host bytes for that page, byte 0
     };
     struct PomJitDtlb {
@@ -590,7 +598,7 @@ public:
         PomJitDtlb() { clear(); }
         void clear() {
             for (u32 i = 0; i < kEntries; i++) {
-                e[i].tag = kEmpty; e[i].host = nullptr; e[i].codeMask = 0;
+                e[i].tag = kEmpty; e[i].host = nullptr; e[i].codeMask = 0; e[i].atc040 = false;
             }
         }
     };
@@ -608,22 +616,22 @@ public:
     // Generated code trusts none of it blindly. Every hit compares:
     //   * logical line + privilege (tag),
     //   * the current data-ATC epoch (generation),
-    //   * that the interpreter's per-direction ATC memo and pseudo-LRU bit
-    //     already describe this entry (so bypassing mmu040AtcLookup is a
-    //     state-preserving no-op),
     //   * line.valid and the line's current physical tag.
+    // Each retired ATC-backed hit also advances the replacement counter.
+    // The per-direction last-hit memo is only a lookup accelerator.
     // A cache eviction/reallocation therefore misses by physical tag; a
     // CINV/CPUSH misses by valid; an ATC eviction or map/control change
     // misses by generation. The pointer itself is stable because Cache040
     // owns a fixed array of Line objects for the CPU lifetime.
-    struct PomJitCache040Entry {
+    // Power-of-two stride for both generated line-table indexers.
+    struct alignas(32) PomJitCache040Entry {
         u32 tag = 0xFFFFFFFF;            // (logical >> 4) | supervisor bit
         u32 physicalTag = 0;             // Cache040::Line::tag at publication
         u32 generation = 0;              // pomJitCache040Gen at publication
         u8 atcIndex = 0xFF;              // 0xFF for TTR/MMU-off identity
-        u8 pad[3] {};
+        bool atc040 = false;
+        u8 pad[2] {};
         Cache040::Line *line = nullptr;
-        const bool *atcMru = nullptr;     // stable Mmu040AtcEntry::mru address
     };
     struct PomJitCache040Table {
         static constexpr u32 kEntries = 256;
@@ -665,7 +673,9 @@ public:
     // construction, and real 68k data traffic is page-local enough (a copy
     // loop is one read page + one write page) that it catches most of what
     // the big table would have.
-    struct PomJitDataPage { u32 tag = 0xFFFFFFFF; u8 *host = nullptr; };
+    struct PomJitDataPage {
+        u32 tag = 0xFFFFFFFF; bool atc040 = false; u8 *host = nullptr;
+    };
     PomJitDataPage pomJitDataR1, pomJitDataW1;
 
     // POM68K B.2 slice 5 (2026-09-04): the 68030 half of this window is
@@ -737,12 +747,15 @@ public:
         if (off > 4096u - N) return nullptr;            // page straddle
         const u32 want = pomJitDataTag(addr, bool(reg.sr.s));
         PomJitDataPage &c = W ? pomJitDataW1 : pomJitDataR1;
-        if (c.tag == want) [[likely]]
+        if (c.tag == want) [[likely]] {
+            if (c.host && c.atc040) ++mmu040AtcAccessD;
             return c.host ? c.host + off : nullptr;     // null = remembered refusal
+        }
         // Levels 1 and 2 (the table, then the engine's fill) out of line —
         // and the no-engine case falls out for free: with the callback null
         // nothing ever fills, so the level-0 tag never matches.
         u8 *base = pomJitDataSlow(addr, want, W);
+        if (base && c.atc040) ++mmu040AtcAccessD;
         return base ? base + off : nullptr;
     }
 
@@ -792,7 +805,7 @@ public:
     // terminal irc holds). A native JSR reproduces it at run time through
     // this door, exactly as read<PROG> would; false = it would fault.
     bool pomJitReadProg(u32 addr, u16 &out) noexcept;
-    // Cache-active 68040 JSR commit door. The target has already been
+    // 68040 JSR commit door, with or without the cache model. The target has already been
     // computed by generated code, but the return-address push and the
     // subsequent program-space target read are one ordered transaction:
     // a target fault observes the completed push and must be processed here,
@@ -948,7 +961,8 @@ public:
         // 68040 D-cache windows. A generated hit still validates the logical
         // tag, ATC epoch/replacement state, physical tag and live cache line;
         // write hits use the stronger W publication and update dirty state.
-        u32 cache040R, cache040W, cache040Gen, cache040AtcLastD, cache040Hits;
+        u32 cache040R, cache040W, cache040Gen, cache040Hits;
+        u32 atcAccessI040, atcAccessD040, atcWindow040;
         u32 cache040NativeReadHits, cache040NativeWriteHits;
         bool cache040Live;
         // POM68K JIT: the public 68040 MOVEM latch. A compiled MOVEM must
@@ -1009,7 +1023,7 @@ private:
     // the 68040 (mmu040InstrStart, readExt) and one on the 68030
     // (mmuFetchWord) — the seam stopped being 040-only in 2026-07-28.
     // `n` bytes must fit; callers pass 4 (ird + irc) or 2 (extension word).
-    bool pomJitFetch(u32 addr, u32 n, const u8 *&p) const {
+    bool pomJitFetch(u32 addr, u32 n, const u8 *&p) {
         const PomJitWindow &w = pomJitWindow;
         if (!w.armed) return false;
         if (u32(addr - w.base) > w.len - n) return false;
@@ -1023,6 +1037,9 @@ private:
         // Native decoding therefore cannot observe memory newer than an
         // architecturally stale line or skip a required fill.
         if (!pomJitCache040Match(addr, n)) return false;
+        if (w.atc040) mmu040AtcAccessI += n / 2;
+        if (cpuModel >= Model::M68EC040 && pomJitTimingProbe)
+            pomJitTiming.fetchWords040 += n / 2;
         p = w.host + (addr - w.base);
         return true;
     }
@@ -1045,12 +1062,28 @@ private:
         return true;
     }
 
-    // Reproduces the in-flight access context an mmu040Read<C, Word> would
-    // have left behind. Only read back by extBusError040(), and only
-    // inherited (rather than set) by MOVE16 — but skipping it would make an
-    // external bus error stack a different frame under the JIT than under
-    // the interpreter.
-    void pomJitStampAccess(u32 addr) {
+#endif
+
+public:
+    // Architectural post-PMOVE continuation, independent of acceleration.
+    bool pomMmuPipeLive() const { return mmuPipeCnt > 0; }
+
+private:
+
+    bool executeFastOne();
+
+#if !MOIRA_ENABLE_JIT
+    // Shared MMU/cache mutations have no derived publications in this build.
+    void pomJitMapMoved() {}
+    void pomJitDtlbFlush() {}
+    void pomJitCache040Bump() {}
+    void pomJitAtcEvict(u32, u32, bool) {}
+#endif
+
+    // Keep the in-flight fetch context of mmu040Read<C, Word> at the window
+    // boundary. Data accessors, including MOVE16, establish their own stamp
+    // before translation/bus callbacks; they do not inherit this fetch.
+    void mmu040StampFetch(u32 addr) {
         mmu040AccBase  = addr;
         mmu040AccAddr  = addr;
         mmu040AccVal   = 0;
@@ -1316,12 +1349,15 @@ protected:
         else if (value & 0x04) pomIcache.clearEntry(reg.caar);
     }
 
+#if MOIRA_ENABLE_JIT
     // Written only by the opt-in 68030 path in pomJitExecOne(). Keeping the
     // storage beside the cache model makes the measured miss delta and its
     // configured penalty part of one contract.
     bool pomJitTimingProbe = false;
     PomJitTiming pomJitTiming {};
     i64 pomJitTimingFetch0 = 0;
+
+#endif
 
     
     //
@@ -1563,19 +1599,20 @@ public:
     // Setter masks mirror the oracle (WinUAE newcpu_common.c m68k_move2c,
     // 68040 rows): TC keeps E|P, ITT/DTT keep $FFFFE364, URP/SRP/MMUSR
     // store all 32 bits.
-    // POM68K JIT: the three ATC-flushing setters below reach pomJitMmuGen
-    // through mmu040AtcFlushAll(); the four TTR setters do not flush the
-    // ATC, so they bump the generation themselves.
+    // [B] MC68040UM-1993 §3.7.4: MMU register writes retain the ATCs.
+    // POM68K JIT: revoke derived mappings, including on TC.E/P changes,
+    // without losing resident I/D translations (mmu040_atc_test).
+    // The four TTR setters follow the same invalidation contract.
     u32 getURP040() const { return reg.urp040; }
-    void setURP040(u32 val) { reg.urp040 = val; mmu040AtcFlushAll(); }
+    void setURP040(u32 val) { reg.urp040 = val; pomJitMapMoved(); }
 
     u32 getSRP040() const { return reg.srp040; }
-    void setSRP040(u32 val) { reg.srp040 = val; mmu040AtcFlushAll(); }
+    void setSRP040(u32 val) { reg.srp040 = val; pomJitMapMoved(); }
 
     u32 getTC040() const { return reg.tc040; }
     void setTC040(u32 val) {
         reg.tc040 = val & 0xC000;
-        mmu040AtcFlushAll();                 // page size / enable change
+        pomJitMapMoved();
     }
 
     // POM68K Q8: disable the 040 ATC and force walk-per-access (oracle-
@@ -1604,9 +1641,12 @@ public:
     bool pomCache040Active() const {
         return pomCache040On && cpuModel >= Model::M68EC040;
     }
+#if MOIRA_ENABLE_JIT
     bool pomCache040CodeMatches(u32 addr, u32 bytes) const {
         return pomJitCache040Match(addr, bytes);
     }
+#endif
+
     Cache040 &pomCache040Data() { return pomCache040D; }
     Cache040 &pomCache040Inst() { return pomCache040I; }
 
@@ -1741,6 +1781,16 @@ private:
     void fpuResetState();
     void fpuCompleteBusy(bool wait);
     template <Core C> void fpuRunBusy(int cycles, u16 opcode, u16 ext);
+
+    // Context-bearing conversions; pure bit copies remain free helpers.
+    void fpuToSingleV(FpuExtended &v, u32 w);
+    u32 fpuFromSingleV(const FpuExtended &v);
+    void fpuToDoubleV(FpuExtended &v, u32 w1, u32 w2);
+    void fpuFromDoubleV(const FpuExtended &v, u32 *w1, u32 *w2);
+    void fpuFromExtendedV(const FpuExtended &v, u32 *w1, u32 *w2, u32 *w3);
+    i64 fpuToIntV(const FpuExtended &v, int size);
+    void fpuToPackedV(FpuExtended &v, const u32 wrd[3]);
+    void fpuFromPackedV(const FpuExtended &v, u32 wrd[3], int kfactor);
 
     // FPCR mode byte -> softfloat rounding mode/precision (fpp_softfloat.c
     // fp_set_mode) + the 6888x NaN/infinity special flags
@@ -2100,6 +2150,32 @@ protected:
     u32 mmuRteSubstData {};     // stacked data input buffer
     u32 mmuRteSubstPc {};       // stacked PC (the faulting instruction)
 
+    // POM68K: the MMU-less 020 shares the restart model, but has no
+    // per-instruction translated-fetch loop to seed its scratch state.
+    // [F] Internal 020 frame words use the fork's replay model, not a
+    // silicon microstate image. Settled by: real 020 fault/RTE captures.
+    bool mmuPlain020() const {
+        return cpuModel == Model::M68EC020 || cpuModel == Model::M68020;
+    }
+    void mmuPreparePlain020(u16 opcode) {
+        if (!mmuPlain020()) return;
+        mmuState[0] = mmuState[1] = mmuState[2] = 0;
+        mmuIdx = mmuIdxDone = 0;
+        mmuAd[0] = 0;
+        mmuFixupReg[0] = mmuFixupReg[1] = 0;
+        mmuCcrSave = getCCR();
+        mmuOpcodeV = opcode;
+        mmuLastWritePc = reg.pc0; // start PC, before prefetch moves pc0
+        mmuRmw = false;
+    }
+    bool mmuSubstitutePlain020(u32 addr, bool write) {
+        if (!mmuPlain020() || !mmuRteSubstArmed ||
+            mmuRteSubstWrite != write || mmuRteSubstAddr != addr ||
+            mmuRteSubstPc != mmuLastWritePc) return false;
+        mmuRteSubstArmed = false;
+        return true;
+    }
+
     // Fault capture, valid while a MmuBusError unwinds (mmu030_page_fault)
     u32 mmuFaultAddr {};
     u16 mmuSsw {};
@@ -2120,6 +2196,7 @@ private:
     // Page masks derived from TC.PS (§ 9.7.2)
     u32 mmuPageMask() const { return (u32(1) << (reg.tc >> 20 & 0xf)) - 1; }
 
+#if MOIRA_ENABLE_JIT
     // POM68K patch 31 (2026-08-28): an IDENTITY probe answer needs an
     // identity-sized bound. The two 68030 probes take their page bound from
     // mmuPageMask(), i.e. from TC.PS — and TC.PS is 0 until the OS programs
@@ -2138,6 +2215,8 @@ private:
         pageBase = logical & ~4095u;
         pageLen  = 4096;
     }
+
+#endif
 
     // Per-instruction state reset + mode-5-style opcode fetch; returns
     // false when the fetch faulted (exception already processed)
@@ -2185,6 +2264,8 @@ private:
     // inside the walk: the same frame for a normal access, but no B entry
     // left in the ATC, and a PTEST/PLOAD took an exception instead of
     // reporting. Gate: moira_rules_test § bus error during a table search.
+    // [B] M68000PRM-1992 PTEST, p. 6-71: also armed around a 040 PTEST
+    // walk, where extBusError040() reports B only (mmu040_atc_test).
     mutable bool mmuInTableSearch = false;
 
     // [B] MC68030UM-1989 §9.4: ATC operations.
@@ -2225,13 +2306,15 @@ protected:
     // POM68K save states: restoring a snapshot replaces RAM (and therefore
     // the page tables) underneath a CPU whose ATCs still cache the OLD
     // translations, so both have to be dropped. The flushes are private and
-    // no public setter reaches the 030 one (setURP040 covers only the 040),
+    // no public MMU register setter flushes either ATC,
     // hence this helper for MoiraState.h. Flushing the set the
-    // current model does not use is free — it is already empty. The M1
-    // cache-tag model follows the same save-state convention (CLAUDE.md
-    // § save states: caches are FLUSHED, never serialized).
+    // current model does not use is free — it is already empty. This also
+    // discards the target's architectural 040 lines; the state visitor
+    // restores their payload afterwards. Debugger map edits use the discard
+    // directly (those edits refuse an active architectural cache model).
     void pomFlushAtcs() {
         mmuAtcFlushAll(); mmu040AtcFlushAll();
+        mmu040AtcAccessI = mmu040AtcAccessD = 0;
         pomCache040I.invalidateAll(); pomCache040D.invalidateAll();
     }
 
@@ -2282,7 +2365,9 @@ public:
     u32 mmu040FaultAddr {};
     u32 mmu040EffAddr {};
     u16 mmu040Ssw {};
-    u32 mmu040Wb3Data {};
+    // Fault-to-frame scratch only, consumed before the instruction boundary.
+    // POM68K: a physical push FA must not replace a pending logical WB3A.
+    u32 mmu040Wb3Address {}, mmu040Wb3Data {};
     u16 mmu040Wb3Status {}, mmu040Wb2Status {};
     u32 mmu040Wb2Address {};
     u32 mmu040Move16[4] {};
@@ -2341,33 +2426,62 @@ private:
     bool mmu040Enabled() const { return (reg.tc040 & 0x8000) != 0; }
     u32 mmu040PageMaskI() const { return (reg.tc040 & 0x4000) ? 0xFFFFE000 : 0xFFFFF000; }
 
-    // [B] MC68040UM-1993 §3.3: hardware ATCs; fork approximation below.
-    // Hardware has separate 64-entry, four-way I/D ATCs and an FC2 tag.
+    // [B] MC68040UM-1993 §3.3: separate 64-entry, four-way I/D ATCs.
     // FC2 tags each translation independently of the descriptor's S bit.
-    // [F] POM68K Q8 still uses 32 fully associative entries per side with
-    // pseudo-LRU and TC.P-selected 4K/8K pages. Global G is honoured by
-    // non-global flushes. Settled by: the ATC geometry/replacement work in
-    // TODO, with set conflicts and hardware replacement traces.
+    // [F] The manual does not specify counter reset phase, clock edge,
+    // PTEST installation phase or I/D phase coupling. Model independent
+    // zero-seeded counters, a lookup debit and an installation/retry debit.
+    // Settled by: real 040 ATC traces.
     struct Mmu040AtcEntry {
         u32 logical = 0;            // page-aligned logical
         u32 physical = 0;           // page-aligned physical
         u32 status = 0;             // descriptor status (WP|G|S|CM|M|R…)
         bool valid = false;
-        bool mru = false;
         bool supervisor = false;   // FC2 tag, not supervisor protection
     };
-    static constexpr int MMU040_ATC_ENTRIES = 32;
+    static constexpr int MMU040_ATC_WAYS = 4;
+    static constexpr int MMU040_ATC_SETS = 16;
+    static constexpr int MMU040_ATC_ENTRIES = MMU040_ATC_SETS * MMU040_ATC_WAYS;
     Mmu040AtcEntry mmu040AtcI[MMU040_ATC_ENTRIES] {};
     Mmu040AtcEntry mmu040AtcD[MMU040_ATC_ENTRIES] {};
-    int mmu040AtcMruI {0}, mmu040AtcMruD {0};
+    u32 mmu040AtcAccessI {0}, mmu040AtcAccessD {0};
     i8  mmu040AtcLastI[2] {};       // [write]
     i8  mmu040AtcLastD[2] {};
     bool mmu040AtcArmed {true};
 
+#if MOIRA_ENABLE_JIT
+public:
+    // [B] MC68040UM-1993 §3.3: derived ATC access phase, including hits.
+    // POM68K: native probes stage per-operand weights; only retirement or
+    // an exact access publishes them. Replay restores speculative ATC state.
+    bool pomJitAtcBacked040(u32 addr, bool data, bool super) const;
+    u32 pomJitAtcAccesses040(bool data) const {
+        return data ? mmu040AtcAccessD : mmu040AtcAccessI;
+    }
+    struct PomJitAtcReplay040 {
+        static constexpr unsigned Accesses = 4;
+        static constexpr unsigned SnapshotBytes =
+            sizeof(Mmu040AtcEntry) * MMU040_ATC_ENTRIES + sizeof(u32) + 2;
+        u32 active, fetches, routes, access;
+        alignas(8) u8 opaque[SnapshotBytes * 2];
+        // Do not initialize opaque bytes: most blocks never call an exact
+        // thunk, and their private ATC snapshots are captured lazily.
+        PomJitAtcReplay040() noexcept : active(0), fetches(0), routes(0), access(0) {}
+    };
+    void pomJitAtcReplayBegin040(PomJitAtcReplay040& replay, u32 addr,
+                                 bool data, unsigned access) noexcept;
+    void pomJitAtcReplayAbort040(PomJitAtcReplay040& replay) noexcept;
+
+#endif
+
+private:
     void mmu040AtcFlushAll();
     void mmu040AtcFlushNonGlobal();
-    void mmu040AtcFlushPage(u32 addr, bool nonGlobalOnly);
-    void mmu040AtcTouch(Mmu040AtcEntry* arr, int& mruCount, int i);
+    // space: -1 = both (PFLUSH), 0 = instruction, 1 = data (PTEST).
+    void mmu040AtcFlushPage(u32 addr, bool nonGlobalOnly, bool super, int space = -1);
+    unsigned mmu040AtcSet(u32 addr) const {
+        return ((addr >> ((reg.tc040 & 0x4000) ? 13 : 12)) & 15) * MMU040_ATC_WAYS;
+    }
     int  mmu040AtcLookup(bool data, u32 addr, bool write, bool super);
     void mmu040AtcFill(bool data, u32 addr, u32 status, bool super);
 
@@ -2414,7 +2528,10 @@ private:
     void pomCache040Touch(bool data, u32 pa, bool write, int cm, int szCode);
     u32  pomCache040ReadValue(u32 pa, bool data, int bytes);
     void pomCache040WriteValue(u32 pa, u32 val, bool data, int bytes);
-    Cache040::Line *pomCache040Fill(Cache040 &cache, u32 pa);
+    // A read may return its completed bytes in `partial` after an unused
+    // fill beat aborts. readBytes=0 carries a pending write-allocate store.
+    Cache040::Line *pomCache040Fill(Cache040 &cache, u32 pa, int readBytes,
+                                   Cache040::Line *partial = nullptr);
     void pomCache040Writeback(u32 base, const Cache040::Line &line);
     void pomCache040Writeback(u32 base, const Cache040::Evicted &line);
     void pomCache040PushHit(u32 pa);
@@ -2558,6 +2675,10 @@ private:
 #include "MoiraDataflow.h"
 #include "MoiraExceptions.h"
 #include "MoiraDasm.h"
+
+    // Per-instance arithmetic scratch, opaque to clients and excluded from
+    // instruction-boundary archives. Gates: fpu_context_test, moira_state_test.
+    std::unique_ptr<::float_status> fpuFloatStatus;
 };
 
 }

@@ -8,7 +8,7 @@
 #define AVAILABILITY(core) \
 if constexpr ((core) == Core::C68010) { static_assert(C != Core::C68000); } \
 if constexpr ((core) == Core::C68020) { static_assert(C != Core::C68000 && C != Core::C68010); } \
-if constexpr (C == Core::C68020) cp = 0; \
+if constexpr (C == Core::C68020) { cp = 0; mmuPreparePlain020(opcode); } \
 if constexpr (MOIRA_WILL_EXECUTE) willExecute(__func__, I, M, S, opcode);
 
 #define FINALIZE \
@@ -1698,7 +1698,7 @@ Moira::execCas(u16 opcode)
     // POM68K O4 slice 3: CAS drives a locked read-modify-write cycle on
     // the 68030 (SSW RM bit, RWM-only TT matching, write-probed ATC)
     if constexpr (C == Core::C68020) {
-        if (cpuModel == Model::M68030) [[unlikely]] mmuRmw = true;
+        if (mmuPlain020() || cpuModel == Model::M68030) [[unlikely]] mmuRmw = true;
         // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K Q3: 68040 locked RMW — reads translate as writes and
         // faults carry SSW.LK (WinUAE uae_mmu_get_lrmw)
@@ -1715,6 +1715,14 @@ Moira::execCas(u16 opcode)
 
     if (!reg.sr.z) {
 
+        // [B] MC68040UM-1993 §7.4.5: failed CAS still writes the value
+        // read to terminate the locked sequence. Earlier cores do not.
+        // [D] WinUAE cpuemu_31.c op_0ad0/op_0cd0/op_0ed0 @ Hatari e77819f7:
+        // the terminal write precedes Dc's update and is a final store.
+        // POM68K: keep the normal write path, including /BERR and WB3.
+        if constexpr (C == Core::C68020) {
+            if (cpuModel >= Model::M68EC040) [[unlikely]] writeM<C, M, S>(ea, data);
+        }
         writeD(dc, CLEAR<S>(compare) | data);
 
         //           00  10  20        00  10  20        00  10  20
@@ -1768,6 +1776,17 @@ Moira::execCas2(u16 opcode)
 
     u32 ea1 = reg.r[rn1];
     u32 ea2 = reg.r[rn2];
+    // [B] MC68020UM-1992 §6.2.2: CAS2 faults are RMW, not single-cycle
+    // software completions. POM68K: exclude them from the 020 data latch.
+    if constexpr (C == Core::C68020) {
+        if (mmuPlain020()) mmuRmw = true;
+    }
+    // [B] MC68040UM-1993 §7.4.5: CAS2 operands are locked, implicitly
+    // noncacheable, and resolve matching dirty data before the read.
+    // POM68K: use the same write-permission/SSW/cache path as TAS/CAS.
+    if constexpr (C == Core::C68020) {
+        if (cpuModel >= Model::M68EC040) [[unlikely]] mmu040Lrmw = true;
+    }
     u32 data1 = readM<C, M, S>(ea1);
     u32 data2 = readM<C, M, S>(ea2);
 
@@ -1790,6 +1809,18 @@ Moira::execCas2(u16 opcode)
             CYCLES_68020 (15);
             return;
         }
+    }
+
+    // [B] MC68040UM-1993 §7.4.5: failed CAS2 writes only the second
+    // operand read, including when comparison 1 failed.
+    // [D] WinUAE gencpu.c i_CAS2 @ Hatari e77819f7 omits this write;
+    // the primary rule above takes precedence.
+    // [F] CAS2's register commit and frame-PC sequencing on this new
+    // write fault follows CAS's write-before-Dc/final-store model, not a
+    // silicon capture. Settled by: a real 040 terminal-write /BERR trace.
+    // POM68K: preserve the captured EA/data before compare registers change.
+    if constexpr (C == Core::C68020) {
+        if (cpuModel >= Model::M68EC040) [[unlikely]] writeM<C, M, S>(ea2, data2);
     }
 
     if (MOIRA_MIMIC_MUSASHI) {
@@ -4016,12 +4047,12 @@ Moira::execMovemEaRg(u16 opcode)
             logSave = mmuLogging;
             mmuLogging = false;
         }
-        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // POM68K Q3: 68040 MOVEM latch (WinUAE mmu040_movem) —
-        // a fault stacks EA = saved EA and consumes the latch into SSW.CM.
-        // The current RTE does not re-arm it (TODO: Justesse 68040).
+        // [B] MC68040UM-1993 §§8.4.6.2/8.4.6.7: RTE restores the
+        // saved EA for indexed/PC-relative modes; all transfers repeat.
+        // POM68K: a further fault consumes the latch into SSW.CM again.
         if (cpuModel >= Model::M68EC040) [[unlikely]] {
-            if (mmu040MovemArmed) ea = mmu040MovemEa;
+            if constexpr (M == Mode::IX || M == Mode::DIPC || M == Mode::IXPC)
+                if (mmu040MovemArmed) ea = mmu040MovemEa;
             mmu040MovemArmed = true;
             mmu040MovemEa = ea;
         }
@@ -4138,7 +4169,6 @@ Moira::execMovemRgEa(u16 opcode)
         // only written at the end, and the base-in-list value is
         // initial - S without the mid-loop writeA below
         if (m040) {
-            if (mmu040MovemArmed) ea = mmu040MovemEa;
             mmu040MovemArmed = true;
             mmu040MovemEa = ea;
         }
@@ -4211,7 +4241,11 @@ Moira::execMovemRgEa(u16 opcode)
 
         // POM68K Q3: 68040 restart latch (see the -(An) branch)
         if (m040) {
-            if (mmu040MovemArmed) ea = mmu040MovemEa;
+            // [B] MC68040UM-1993 §8.4.6.2 limits saved-EA reuse to
+            // indexed/PC-relative modes, unlike the oracle's blanket reuse.
+            // [D] WinUAE cpuemu_31.c MOVEM @ Hatari e77819f7: all modes.
+            if constexpr (M == Mode::IX)
+                if (mmu040MovemArmed) ea = mmu040MovemEa;
             mmu040MovemArmed = true;
             mmu040MovemEa = ea;
         }
@@ -6221,16 +6255,22 @@ Moira::execRte(u16 opcode)
                     // WinUAE op_4e73_31 frame 0x7 + m68k_do_rte_mmu040
                     // (cpummu.c:1621-1642): SSW.CT copies the frame's raw
                     // SR/PC and the +8 long to the popped position above
-                    // (a continuation mini-frame). SSW.CM is not replayed
-                    // into the MOVEM latch here; the older Q3 comment
-                    // claimed it was (TODO: Justesse 68040).
+                    // (a continuation mini-frame).
                     u32 base = reg.sp;
                     newsr = (u16)pop<C, Word>();
                     newpc = pop<C, Long>();
                     (void)pop<C, Word>();               // format | vector
-                    (void)pop<C, Long>();               // effective address
+                    u32 savedEa040 = pop<C, Long>();     // effective address
                     u16 ssw040 = (u16)pop<C, Word>();   // special status word
                     for (int i = 0; i < 23; i++) (void)pop<C, Word>();
+
+                    // [B] MC68040UM-1993 §8.4.6.7: after a successful
+                    // format-$7 unstack, restore the MOVEM continuation.
+                    // POM68K: use the frame's EA, including a handler edit.
+                    if (ssw040 & 0x1000) {
+                        mmu040MovemEa = savedEa040;
+                        mmu040MovemArmed = true;
+                    }
 
                     if (ssw040 & 0x2000) {              // MMU_SSW_CT
                         u32 dst = base + 60;
@@ -6332,8 +6372,9 @@ Moira::execRte(u16 opcode)
                     // Data output buffer
                     (void)pop<C, Long>();
 
-                    // Internal registers
-                    (void)pop<C, Long>();
+                    // POM68K: the plain 020 saves its original instruction
+                    // PC here; the 030 retains its existing EA scratch word.
+                    u32 replayPc020 = pop<C, Long>();
                     (void)pop<C, Long>();
 
                     // Stage B address
@@ -6360,10 +6401,14 @@ Moira::execRte(u16 opcode)
                     // Moira.h; WinUAE m68k_do_rte_mmu030, RM excluded —
                     // WinUAE treats RMW+cleared-DF as instruction done,
                     // which Moira's restart model cannot express).
+                    // [B] MC68020UM-1992 §6.2.1 and §6.2.2: DF clear
+                    // completes a data cycle; bit 9 is reserved on the 020.
+                    // POM68K: its data FC qualifies the one-shot retry,
+                    // without the oracle-private marker used by the 030.
                     if constexpr (C == Core::C68020) {
-                        if (cpuModel == Model::M68030
-                            && (ssw & 0x0200) && !(ssw & 0x0100)
-                            && !(ssw & 0x0080)) {
+                        if (((cpuModel == Model::M68030 && (ssw & 0x0200)) ||
+                             (mmuPlain020() && (ssw & 1) && newpc == replayPc020)) &&
+                            !(ssw & 0x0100) && !(ssw & 0x0080)) {
                             mmuRteSubstArmed = true;
                             mmuRteSubstWrite = !(ssw & 0x0040);
                             mmuRteSubstAddr = faultAddr;
@@ -6854,7 +6899,7 @@ Moira::execTasEa(u16 opcode)
 
         // POM68K O4 slice 3: TAS = locked RMW cycle on the 68030
         if constexpr (C == Core::C68020) {
-            if (cpuModel == Model::M68030) [[unlikely]] mmuRmw = true;
+            if (mmuPlain020() || cpuModel == Model::M68030) [[unlikely]] mmuRmw = true;
             // POM68K Q3: 68040 locked RMW (see CAS)
             if (cpuModel >= Model::M68EC040) [[unlikely]] mmu040Lrmw = true;
         }

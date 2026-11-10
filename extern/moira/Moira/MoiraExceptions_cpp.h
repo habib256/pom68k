@@ -476,12 +476,22 @@ Moira::execMmuBusError()
 
     u32 currpc;
 
-    // POM68K Phase C: on the plain 68020/EC020 core (no mode-5 loop) the
-    // mmuOpcodeV/mmuState/mmuCcrSave/fixup latches are stale — restoring
-    // them would corrupt live registers. Stack a $B frame at pc0 as-is.
+    // POM68K: AVAILABILITY seeds plain-020 restart state before the
+    // handler can prefetch and advance pc0. Roll back the replay's CCR/EA
+    // adjustments before exposing the exception handler; no 030 private
+    // fixup encoding is needed in this model's frame.
     const bool mode5 = (cpuModel == Model::M68030);
 
-    if (!mode5) {
+    if (mmuPlain020()) {
+
+        currpc = mmuLastWritePc;
+        if (mmuSsw & 1) {
+            setCCR(u8(mmuCcrSave));
+            for (int i = 0; i < 2; ++i)
+                if (mmuFixupReg[i]) reg.a[mmuFixupReg[i] & 7] = mmuFixupVal[i];
+        }
+
+    } else if (!mode5) {
 
         currpc = reg.pc0;
 
@@ -519,6 +529,10 @@ Moira::execMmuBusError()
     if (mode5 && (mmuState[1] & 0x0100)) {      // stale latch on plain core
         writeStackFrameShortBusFault<C>(status, currpc);
     } else {
+        // POM68K: retain the original PC in each plain-020 frame's private
+        // internal words, including nested faults. A handler that redirects
+        // the stacked PC must not lend its completed cycle to a new opcode.
+        if (mmuPlain020()) mmuDispStore[0] = currpc;
         writeStackFrameLongBusFault<C>(status, currpc);
     }
 

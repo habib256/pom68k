@@ -17,19 +17,21 @@ carry `tools/gate_execution_census.py`'s executed/soft-skipped pair: quote the
 pair, never the green total alone — a soft-skipped gate exited 0 and proved
 nothing about the behaviour it names.
 
-## Union across hosts — 551 gates
+## Union across hosts — 564 gates
 
 | `ctest -L` | selects |
 |---|---|
+| `cpu-vectors` | 4 |
 | `etalon` | 324 |
 | `etalon-core` | 16 |
 | `gui` | 3 |
+| `interp-only` | 7 |
 | `jit` | 49 |
 | `jit-fast` | 8 |
 | `m030` | 141 |
 | `m040` | 102 |
 | `smoke` | 9 |
-| `unit` | 178 |
+| `unit` | 191 |
 | `wasm` | 46 |
 
 `-L` is a regex over each label: `jit` also selects `jit-fast`, `etalon`
@@ -38,51 +40,51 @@ scheduling slots are per-host manifest facts and live in the sections below.
 
 ## Registered on aarch64
 
-546 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
+559 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
 
 | dimension | value | gates |
 |---|---|---|
-| assets | none | 139 |
+| assets | none | 152 |
 | assets | optional | 26 |
 | assets | required | 381 |
 | host | a64 | 4 |
-| host | any | 536 |
+| host | any | 549 |
 | host | native | 6 |
-| scope | component | 151 |
+| scope | component | 164 |
 | scope | engine | 21 |
 | scope | profile | 370 |
 | scope | repository | 4 |
-| tier | daily | 139 |
+| tier | daily | 152 |
 | tier | full | 391 |
 | tier | platform | 16 |
-| slots_src | assumed | 426 |
+| slots_src | assumed | 439 |
 | slots_src | measured | 120 |
 
-Scheduling cost if every gate ran at once: 781 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 794 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## Registered on x86_64
 
-547 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
+560 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
 
 | dimension | value | gates |
 |---|---|---|
-| assets | none | 138 |
+| assets | none | 151 |
 | assets | optional | 26 |
 | assets | required | 383 |
-| host | any | 536 |
+| host | any | 549 |
 | host | native | 6 |
 | host | x64 | 5 |
-| scope | component | 151 |
+| scope | component | 164 |
 | scope | engine | 22 |
 | scope | profile | 370 |
 | scope | repository | 4 |
-| tier | daily | 138 |
+| tier | daily | 151 |
 | tier | full | 393 |
 | tier | platform | 16 |
-| slots_src | assumed | 434 |
+| slots_src | assumed | 447 |
 | slots_src | measured | 113 |
 
-Scheduling cost if every gate ran at once: 906 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 919 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## PRODUCT_LLE on aarch64
 
@@ -234,3 +236,5 @@ overwrites it, including a one-gate `ctest -R`.
 | Nov 09 06:56 +04 | aarch64 | default | 138 | 138 | 0 | 0 | Manual citation audit and physical CINV/CPUSH: full rebuild; all asset-none gates executed. FC2 reproduction remains separate and expected-failing. |
 | Nov 09 16:44 +04 | aarch64 | default | 139 | 139 | 0 | 0 | FC2-tagged 68040 ATCs: complete rebuild, permanent 44-sequence gate, all asset-none gates executed; PFLUSH/PTEST and geometry remain open. |
 | Nov 09 16:46 +04 | aarch64 | default | 4 | 4 | 0 | 0 | FC2 correction: the three present CPU corpora and Quadra 605 boot executed; no extended-corpus replay claimed. |
+| Nov 10 12:15 +04 | aarch64 | default | 8 | 8 | 0 | 0 | ASan+UBSan: public CPU vectors, SoftFloat primitives, 030/040 corpora and FPU/state contexts |
+| Nov 10 12:17 +04 | aarch64 | default | 24 | 24 | 0 | 0 | Final normal build: 24 CPU/JIT/state/docs gates, public vectors and SoftFloat boundary regressions |

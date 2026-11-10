@@ -65,7 +65,7 @@ Consequences, stated plainly:
 |---|---|---|
 | CINV/CPUSH | `MoiraExec_cpp.h` (`execCinv/execCpush`) | push dirty bytes to physical memory and invalidate the selected line/page/cache |
 | CACR | `Cpu040::didChangeCACR` (`src/Cpu040.cpp`) | bit 15/11 drive the **throughput** i-cache overlay + JIT flushAll; **since M1** DE/IE also gate the tag model (read at touch time, no hook needed) |
-| CM bits | `Moira::Mmu040AtcEntry::status` (`Moira.h:2353-2359` — "WP\|G\|S\|CM\|M\|R…") | descriptor CM bits ride into every ATC entry already — the probe and M2 read them from there, no new walk work |
+| CM bits | `Moira::Mmu040AtcEntry::status` (`Moira.h:2494-2500` — "WP\|G\|S\|CM\|M\|R…") | descriptor CM bits ride into every ATC entry already — the probe and M2 read them from there, no new walk work |
 | TTR cache fields | `mmu040MatchTTR` | TTR CM bits reachable the same way |
 | JIT contract | `pomJitFetch`, `pomJitProbeCode/Data`, `pomJitData` | page-to-host-RAM data windows are refused; validated sole reads and write-authorized copyback hits may use the resident physical D-cache line; native writes publish the exact dirty-longword mask; every fetched byte and a native block's whole embedded range require resident byte-for-byte I-cache identity; native links return to that guard between blocks |
 | Snoop hook | `pomSnoop040Read/Write` | alternate-master read supply, invalidate and write-sink/MI behaviour; callable even while DC is disabled |
@@ -138,7 +138,9 @@ As landed:
   peek walk, so a /BERR can never roll back an older, legitimate span.
 - Save states keep the house convention (caches flushed, never
   serialized): `pomFlushAtcs` — the restore seam — now also empties
-  both tag stores.
+  both tag stores. **Superseded for data-bearing caches by format v30,
+  2026-11-09:** the M1 tag-only rule loses architectural bytes in M2;
+  the current contract below preserves them.
 - Two accepted M1 approximations, both to revisit in M2: split
   sub-accesses reuse the full access's SSW size, so a page-crossing
   misaligned write can over-mark one longword dirty; and the JIT's
@@ -184,7 +186,7 @@ so the API is pinned synthetically and is ready for the deferred IIfx
 SCSIDMA rather than wired to CPU-driven pseudo-DMA.
 
 **Timing — DONE 2026-08-16.** `PomCache040Timing` separates a cache hit,
-a four-beat line fill and each dirty longword push. Defaults are 0, 8 and
+a four-beat line fill and each transferred longword of a push. Defaults are 0, 8 and
 2 core cycles respectively, matching zero-wait external bus beats; board
 callbacks continue to add their own memory/device wait states. This is an
 architectural transaction model, not a pin-level BCLK/TA waveform model.
@@ -276,6 +278,299 @@ CINV/CPUSH scopes, stale copyback memory, dirty eviction, disabled-cache
 snooping, write-sink/invalidate behaviour, cross-line snoops and exact
 configured hit/miss charges. `sst68040` remains the ISA/MMU regression
 wall; the standard real-ROM etalons retain their calibrated cacheless mode,
-while cache-on CPU/JIT locksteps are the integration gate. Save states keep
-the project convention: derived cache contents are flushed rather than
-serialized.
+while cache-on CPU/JIT locksteps are the integration gate.
+
+**Save states, 2026-11-09 (format v30).** `Cache040::visit` preserves the
+replacement phase and every valid line's tag, dirty mask and 16 bytes in
+both caches; `Moira::pomVisitState` also carries the cache-model mode.
+Inactive retained lines matter: switching CACR or the host model off need
+not discard their bytes. Invalid data and diagnostic counters are omitted.
+Saving leaves RAM, dirty bits and guest time untouched; loading first
+drops old ATC/JIT state, then restores the saved caches. Draining only dirty
+lines would lose clean stale instruction bytes and alter the bus/clock.
+Versions through v29 are refused before mutation.
+
+The initial six bare-CPU regressions (68LC040/68040, active/CACR-off/model-off)
+failed 24 checks before this fix. They resume stale instruction fetches and
+copyback reads, then force the same dirty victim as an uninterrupted CPU.
+`moira_state_test` also holds invalid-slot canonicalization.
+`savestate_040_test` covers full containers and both engines on Q605,
+Centris, Q700, Q900 and Q630, including continued execution and transactional
+rollback after a truncated CPU payload. This is a persistence contract,
+not evidence for the remaining hardware replacement/timing questions.
+
+
+**Implicitly noncacheable operands, 2026-11-09.** The primary contract is
+MC68040UM-1993 §§4.3.2, 7.4.1, 7.4.3 and especially 7.4.5 (PDF p. 168):
+RMW starts after a matching dirty line has been pushed; a clean match is
+invalidated. Setting `pomCache040Enabled=false` for MOVES/TAS/CAS suppressed
+that step as well as cache service. `pomCache040Touch` now retains the CACR
+enable state and sets `pomCache040Cm=CM_NC` for these accesses. No new
+allocation is allowed, and the next ordinary reference gets its own CM.
+CAS2 now arms the same locked marker before either operand read, including
+on the cacheless path, so write permission and SSW.LK follow TAS/CAS.
+
+The initial **630 executed sequences fail 1 351 checks** before the fix:
+EC/LC/full 040; transparent copyback or 4K/8K paging aliases; missing, clean
+or dirty physical lines; MOVES.B/W/L reads/writes with SFC/DFC 1/2/5/6;
+TAS and successful CAS.B/W/L or CAS2.W/L. Exact bus traces pin the push of
+a line with two dirty longwords before operand transfers, preservation of dirty
+neighbours, clean-line invalidation, no new allocation, and resumed normal
+caching on the next instruction. Three CACR-off/on controls distinguish
+retention from access inhibition. Sixteen CAS2 protection cases cover either
+operand, both page sizes and both cache-model modes, including comparisons
+that would fail without a write-permission fault.
+
+The failed-comparison terminal transfer and dirty-push fault stamping are
+covered below. The CACR-disabled locked-hit/next-miss quirk in §4.3.3
+remains open. No LOCK/LOCKE waveform fidelity is claimed.
+
+
+**Failed-comparison terminal transfer, 2026-11-09.** The §7.4.5 bus-protocol
+item above is implemented: CAS.B/W/L writes the operand read; either failed
+CAS2.W/L comparison writes only its second operand. Both use the regular
+`writeM` path before compare-register updates, restricted to EC/LC/full 040.
+A longword is still two host `write16` callbacks; this is not a new pin-level
+bus implementation. The initial 1 814 sequences fail 3 752 checks, while all
+78 legacy no-write controls pass. The 1 736 040 cases cover both privilege
+modes, flat/4K/8K mappings, cache off/missing/clean/dirty state, CAS auto-update
+addressing, both CAS2 mismatch branches and terminal-write /BERR on each
+host beat. The handler witness completes WB3 then RTEs without re-reading
+the operands. Current flags, compare-register update order, logical frame
+addresses and original read-value WB3 data are held alongside bus traces.
+
+WinUAE @ Hatari e77819f7 writes before Dc on failed CAS and marks it as a
+final store; the fork follows that reading. Its CAS2 generator omits the
+write entirely, so the fork follows the primary manual there (D31 in
+`oracle/README.md`). CAS2's final-store/next-PC and deferred-Dc fault policy
+is an analogy with CAS, explicitly F pending a real 040 write-fault capture.
+The data-transfer requirement has primary evidence; no silicon pipeline or
+LOCK/LOCKE waveform fidelity is inferred from the software tests.
+
+
+**MOVE16 fault descriptors and successful pushes, 2026-11-09.**
+`mmu040GetMove16/PutMove16` now own the aligned logical line descriptor
+before translating or touching the host bus: data space, source/read or
+destination/write, line size and initial line address. The destination also
+sets the EA needed by the existing WB2 capture. Reusing a fetch stamp
+previously mislabeled external errors as program reads and left WB2 with
+stale addresses. `pomCache040Writeback` separately saves/restores the
+caller's five stamp fields on normal return, so a subsequent MOVES/TAS
+read fault no longer looks like the preceding physical push. A push that
+itself faults still needs a full physical-TM/WB1A/PD implementation.
+
+The primary stamp rules are MC68040UM-1993 §§8.4.6.2/8.4.6.4 (PDF pp.
+237/239). The existing WB2/PD/restart convention remains the fork's
+WinUAE-derived pipeline model. The initial 3 810 MOVE16 sequences and 70
+post-push read faults fail 5 230 checks: all five MOVE16 forms, unaligned
+cursors, EC/LC/full 040, both privileges, flat/4K/8K mappings, instruction
+window and cache-miss paths, every external host beat and both MMU fault
+stages. Traces pin completed prefixes, frames retain the initial logical
+line and destination WB2/PD data, and safe-RAM repair/RTE retries complete
+with postincrements once. MOVES.B/W/L and TAS witnesses distinguish a
+successful dirty push from the following operand read's /BERR.
+
+No cached MOVE16 hit is admitted by this matrix. The §4.3.3 read-hit rule
+(cache supplies valid/dirty data) and write-hit invalidation need separate
+coherency witnesses. Write-allocate unused-beat delivery and simultaneous
+pipeline buffers also remain open. Retry tests use safe RAM;
+they do not establish whether a peripheral tolerates repeated MOVE16 reads.
+
+
+**Read-fill faults, 2026-11-09.** MC68040UM-1993 §§4.6.1/7.6.1 distinguish
+requested longwords from unused fill beats; §§8.4.6.2/8.4.6.4 retain the
+original size and logical initial address in a demanded fault. The initial
+4 872 data-read plus 224 program-fetch sequences fail 7 936 checks: physical
+longword stamps, unconditional exceptions and premature dirty pushes all
+violate those contracts.
+
+`pomCache040Fill` now receives the caller's requested chunk and scratch
+line. A private probe sentinel makes `extBusError040` raise an internal
+abort before constructing any frame or consuming continuation state. The
+fill controller restores the size immediately, invalidates the new line,
+and restores a dirty victim. It constructs a read fault only if the aborted
+longword intersects the requested chunk. Otherwise, completed bytes survive
+in the caller's scratch buffer while no architectural cache line is valid.
+The scratch copy precedes victim restoration so it cannot return the old
+victim's data. Failed fills cannot publish a resident native read line.
+
+For read replacement, the new line is read before pushing a dirty victim
+(§4.6.2). An aborted read therefore retains dirty cache bytes and stale RAM
+instead of prematurely writing the victim. The data matrix covers B/W/L,
+misalignment within and across lines, wrapped fills, either host half,
+missing/clean/dirty victims, WT/CB mappings, both privileges and 4K/8K aliases.
+The instruction matrix holds word-size program faults and unused beats
+under the fork's existing two-word lookahead. Exact bus order, returned
+bytes, logical frames and repair/RTE on safe RAM are checked.
+
+The private sentinel adds no CPU member and is never live at a snapshot
+boundary. Fixed fill-latency charges stay approximate. Push-fault frames
+and new-line retention are covered by the following push milestone.
+Deferred instruction-prefetch fault delivery/branch cancellation remains
+open. Ordinary page-split MA qualification is covered below.
+
+**Write-allocate pending stores, 2026-11-09.** The initial 14 616 sequences
+fail 35 112 checks. The same private probes now
+protect the original store descriptor during a write-miss fill. A reported
+read error keeps its logical initial address and original B/W/L size,
+sets SSW.RW and leaves WB1/WB2 invalid. WB3 contains the pending store's
+size/space, logical address and register-aligned value. This follows the
+permitted read-error frame combination in MC68040UM-1993 §8.4.6/Table 8-6
+(PDF pp. 242–244); assigning this synchronous model's store to WB3 remains
+F until a real write-miss frame is captured. The existing final-store
+next-PC/CCR/EA policy is unchanged.
+
+Write replacements also read before pushing (§4.6.2). An aborted fill
+restores a dirty victim without modifying its RAM; successful fills leave
+the store descriptor intact for subsequent transfers. `cache040_test`
+holds 14 616 MOVE.B/W/L sequences, including `(An)`, `(An)+`, `-(An)`,
+line crossings, either host word, missing/clean/dirty victims, both
+privileges and flat/4K/8K aliases. Software consumes the actual WB3 value,
+then RTE reaches the next instruction without another operand read or
+repeated EA adjustment. The cache-visible operand and untouched neighbours
+are checked together, including a first-line store before a second-line
+fault. These are safe-RAM completion tests.
+
+Every write-fill beat error is still reported conservatively. Suppression
+of unused write-fill errors and completion of the outstanding store when
+the allocation aborts without an exception remain open; the read-fill
+scratch-buffer rule alone cannot preserve an outstanding write. The next
+milestone supplies push-fault PD frames and new-line retention. No CPU
+member or snapshot format change was required by the pending-store correction.
+
+
+**Push faults and transfer width, 2026-11-09.** The initial 5 733 sequences
+fail 15 848 checks. Pushes were ordinary FC=1/5 writes with only dirty
+longwords transferred, no full PD image, no physical WB1A, and a shared
+FA/WB3A. A push error also restored a displaced dirty victim over a new
+line already read successfully. CPUSH incorrectly retained its faulted line.
+
+MC68040UM-1993 §4.6.2 requires a longword push for one dirty longword and
+a full-line push for two or more. §§8.4.6.2/8.4.6.4–8.4.6.6 and Table 8-6
+require write/TM=0/TT=0, physical FA=WB1A and all four PD words even for
+a single-longword push, with WB1 invalid. §7.6.1 retains a new replacement
+line on push failure and invalidates a line explicitly selected by CPUSH.
+The reviewed PDF locators include p. 180 and pp. 239–240/244.
+
+A private push probe catches the host /BERR before ordinary fault handling
+can replace a logical pending store with a physical beat. The controller
+keeps the existing continuation/LK/pending-store policy, then constructs
+the push SSW, physical addresses and complete victim PD image. WB3A now
+has its own fault-to-frame scratch field. It is consumed before the
+instruction boundary, so it adds no snapshot field or format version.
+A completed fill is not rolled back after a subsequent push fault.
+CPUSH/NC drains invalidate first while passing a local saved line to the
+sink; the frame owns the dirty image after a fault.
+
+The expanded 12 285 sequences cover CPUSH line/page/all, replacement
+reads and B/W/L writes, NC reads and B/W/L writes, locked TAS, every
+host half, each single-dirty position and multi-dirty masks, both privileges
+and flat/4K/8K aliases. Software consumes the stacked PD first, then
+completes WB3 through architectural memory, including a retained new
+copyback line. RTE advances a final store or retries a read/CPUSH without
+another completed push or replacement fill. Bytes, neighbours, flags and
+single EA updates are checked together on safe RAM. Earlier coherency
+matrices now expect full-line transfers for multi-dirty pushes.
+
+The base-first full-line push order is a model convention; initial-beat
+selection needs a hardware capture before any pin-level admission.
+This is not a new asynchronous pipeline: the ordinary store's WB3 stage
+assignment remains the fork's model choice. Simultaneous WB2/WB3 and
+pending MOVE16 writebacks need separate witnesses. Invalidation on a
+faulted NC-hit push follows the synchronous drain policy; the manual's
+explicit fault-state text names replacement and CPUSH, so an NC hardware
+capture remains open. Ordinary data/fill page-split MA is qualified below.
+
+
+**Split-page MA, 2026-11-09.** The initial 8 592 sequences fail 2 016
+frame checks: a later physical data/fill fault incorrectly sets MA.
+MC68040UM-1993 §8.4.6.2 (PDF p. 238) reserves MA for an ATC fault on the
+second page. §8.4.6.4 (PDF p. 239) separately keeps the initial logical FA
+for every misaligned fault. `mmu040Fault` therefore still restores FA
+unconditionally, while only its MA assignment is gated by `atc`.
+
+This is a deliberate primary-manual ruling, D32, over the pinned WinUAE
+`misalignednotfirst` helper, which sets MA on every later-fragment error.
+No oracle patch or corpus exception is added. The matrix covers .W/.L
+reads/stores, all boundary-crossing alignments and aligned first-page
+controls, `(An)`, `(An)+`, `-(An)`, both privileges, EC040 flat controls and
+LC/full 040 flat/4K/8K aliases. Cache-off, active NC, active WT reads and
+CB write allocation distinguish physical data/fill errors from nonresident,
+write-protected and supervisor-only ATC faults. Exact transfer prefixes,
+trap origins, frames, partial store visibility, software WB3 completion,
+RTE, flags, single EA updates and untouched neighbours are held together.
+Completion targets safe RAM.
+
+The change introduces no CPU/snapshot state and leaves the existing
+WB3/final-store/restart policy intact. The next milestone qualifies ordinary
+descriptor-cycle /BERR; the new ATC controls here use validity/protection faults. Unused write-fill delivery and
+asynchronous push-buffer combinations also remain open.
+
+
+**Descriptor bus errors and history order, 2026-11-09.** The initial
+13 632 cases fail 30 144 checks, covering original-access ATC/MA frames,
+negative ATC retention, table prefixes and history already committed.
+The expanded 14 112-case matrix adds resident-M=0 write re-walk controls.
+It can be run alone with `build/cache040_test --descriptor-faults`.
+
+Ordinary translation now scopes raw descriptor reads/writes as a table
+search. A private /BERR abort is caught before touching the operand's
+logical descriptor; the context is cleared, an R=0 ATC entry is created,
+and the normal builder reports the original access with ATC and, when
+appropriate, MA. PTEST still returns MMUSR.B with no frame. The search
+context is cleared on every exit. A subsequent TTR-served physical /BERR
+before any other walk proves it cannot leak into operand callbacks.
+
+MC68040UM-1993 §3.5 (PDF p. 79) describes retry through an ATC entry whose
+failed table search aborts the access. §8.4.6.2 supplies the ATC/frame
+qualification. Figure 3-10 (PDF p. 60) explicitly places a scheduled
+table-descriptor U write after reading the next descriptor. The walker
+now retains the previous descriptor and follows that order, unlike the
+eager writes in the pinned oracle (D33). Physical table longword reads
+also sequence high/low host words so an early abort cannot read ahead.
+
+The cases cover LC/full 040, 4K/8K pages, both privileges, cache-off/NC/
+WT-read/CB-write paths, B/W/L reads/stores, actual program fetches and
+PTEST R/W in both domains. Direct/indirect descriptors, every read/U/M
+write half, cold and post-split faults, and resident M=0 re-walks are held
+with exact table traces and partial history. No operand/code transfer can
+reach the faulted page. Repair without PFLUSH must retain the failure;
+after flush, PTEST or software WB3 completion/RTE succeeds. The diagnostic
+cleanup test discards only its own nested frame, leaving the original
+stacked frame to drive the actual safe-RAM recovery.
+
+The ordinary pending-store/restart policy stays unchanged. Descriptor
+LOCK/RMW pin waveforms remain separate. Ordinary validity/protection
+failure retention is covered next. No new CPU/snapshot state or native admission.
+
+
+**Validity/protection failure retention, 2026-11-09.** The initial 8 192
+sequences fail 33 488 checks. Ordinary cold faults did not publish the
+walk result, so a descriptor repair could discard R/W/S denial or change
+the cached PA without PFLUSH. Even PTEST-created S=1/M=0 entries could be
+discarded by a user write before the S check. Initial fault frames and
+allowed M controls already passed; the failures include consequences of
+incorrectly permitted diagnostic writes during repair/recovery.
+
+MC68040UM-1993 §§3.3/3.5 require entry creation before retry through its
+attributes. The normal walk now fills the ATC before validity/protection
+checks. A protected resident page retains its old readable mapping and
+W/S bits; an invalid root/pointer/page/indirect chain retains R=0. Both
+last-entry and scanned lookup now check S denial before an M=0 write
+re-walk. Only a permitted unmodified write can re-walk, update M and
+observe a repaired descriptor; a modified write retains the old mapping.
+
+`build/mmu040_atc_test --failure-retention` runs the focused matrix. Its
+LC/full 040, 4K/8K, cache-off/NC/WT/CB and privilege cases cover B/W/L data,
+actual code fetches, PTEST data/code R/W and locked TAS. Descriptor repairs
+point to different physical pages. Unrelated accesses exercise scanned
+lookup, and the opposite FC2 domain must observe its own repaired mapping.
+Cached denials emit no table cycles or operand writes; WP still permits
+reads from its original PA. After PFLUSH, the original frame drives safe-RAM
+WB3/RTE completion or read/TAS/code retry with one EA update. The complete
+registered ATC gate includes the matrix and all earlier cases.
+
+The existing pending-store and restart model is preserved, including its
+hardware-capture limitations. Descriptor LOCK/RMW waveforms remain separate.
+No new CPU/snapshot field, history order, cache replacement rule, corpus
+exception or native admission is involved.

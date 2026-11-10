@@ -10,6 +10,7 @@
 #include "MoiraMacros.h"
 
 #include <cstdio>
+#include <cstring>
 #include <algorithm>
 #include <cmath>
 #include <bit>
@@ -36,8 +37,10 @@ using namespace Flag;
 #include "StrWriter_cpp.h"
 #include "MoiraDasm_cpp.h"
 
-Moira::Moira()
+Moira::Moira() : fpuFloatStatus(std::make_unique<::float_status>())
 {
+    fpuFloatStatus->floatx80_internal_precision = 80;
+    fpuFloatStatus->floatx80_internal_mode = float_round_nearest_even;
     exec = new ExecPtr[65536];
     loop = new ExecPtr[65536];
     if (MOIRA_BUILD_INSTR_INFO_TABLE) info = new InstrInfo[65536];
@@ -249,7 +252,7 @@ Moira::reset()
     // POM68K Q3: 68040 MMU fault capture + MOVEM latch + MOVE16 buffer
     mmu040FaultAddr = mmu040EffAddr = 0;
     mmu040Ssw = 0;
-    mmu040Wb3Data = 0;
+    mmu040Wb3Address = mmu040Wb3Data = 0;
     mmu040Wb3Status = mmu040Wb2Status = 0;
     mmu040Wb2Address = 0;
     for (auto &m : mmu040Move16) m = 0;
@@ -266,6 +269,7 @@ Moira::reset()
     for (auto &r : mmuAtcLast) r[0] = r[1] = 0;
     // POM68K Q8: 040 I/D ATCs
     mmu040AtcFlushAll();
+    mmu040AtcAccessI = mmu040AtcAccessD = 0;
     mmuState[0] = mmuState[1] = mmuState[2] = 0;
     mmuIdx = mmuIdxDone = 0;
     for (auto &v : mmuAd) v = 0;
@@ -276,6 +280,7 @@ Moira::reset()
     mmuFixupReg[0] = mmuFixupReg[1] = 0;
     mmuLogging = false;
     mmuRmw = false;
+    mmuRteSubstArmed = false;            // reset cancels a pending RTE retry
     mmuPipeCnt = 0;                     // POM68K O6: prefetch-pipe carry
 
     // [B] MC68881UM-1989 §10.2 and §6.4.2.1: FPCP reset state.
@@ -321,7 +326,7 @@ Moira::reset()
 }
 
 bool
-Moira::pomJitExecOne()
+Moira::executeFastOne()
 {
     // POM68K 030 extension (2026-07-28): the SAME seam serves the 68030 —
     // its mode-5 loop head (mmuExecuteStart: POLL_IPL, per-instruction MMU
@@ -330,6 +335,7 @@ Moira::pomJitExecOne()
     // copy, both cores, so the src/jit engine drives either without
     // knowing which it holds.
     if (cpuModel == Model::M68030) {
+#if MOIRA_ENABLE_JIT
         if (pomJitTimingProbe) [[unlikely]] {
             const i64 start = clock;
             const i64 misses = pomIcache.misses;
@@ -371,6 +377,8 @@ Moira::pomJitExecOne()
             pomJitTiming.valid = true;
             return retired;
         }
+
+#endif
 
         if (!mmuExecuteStart<Core::C68020>()) return false;
 
@@ -476,6 +484,7 @@ Moira::execute()
     // Check the integrity of the program counter
     assert(reg.pc0 == reg.pc);
 
+#if MOIRA_ENABLE_JIT
     // POM68K: the interpreter-owned fetch window on the cores without an
     // MMU loop head (68000/68010/68020 — the 68030 and 68040 arm theirs in
     // mmuExecuteStart / mmu040InstrStart). Their opcode words come from the
@@ -485,6 +494,8 @@ Moira::execute()
     if (pomInterpWindowOn && cpuModel != Model::M68030 &&
         cpuModel < Model::M68EC040 && !pomJitCovers(reg.pc)) [[unlikely]]
         pomInterpArm(reg.pc);
+
+#endif
 
     // Take the fast path or the slow path
     if (!flags) {
@@ -501,7 +512,7 @@ Moira::execute()
             // POM68K JIT: both MMU cores' fast paths live in
             // pomJitExecOne() so that the src/jit block replayer runs the
             // SAME code, not a hand-copied twin. Same TU, still inlined.
-            pomJitExecOne();
+            executeFastOne();
             return;
         }
 
@@ -942,6 +953,7 @@ Moira::setCAAR(u32 val)
     didChangeCAAR(val);
 }
 
+#if MOIRA_ENABLE_JIT
 u8 *
 Moira::pomJitDataSlow(u32 addr, u32 want, bool w) noexcept
 {
@@ -972,8 +984,11 @@ Moira::pomJitDataSlow(u32 addr, u32 want, bool w) noexcept
     PomJitDataPage &c = w ? pomJitDataW1 : pomJitDataR1;
     c.tag = want;
     c.host = e.host;
+    c.atc040 = e.atc040;
     return e.host;
 }
+
+#endif
 
 void
 Moira::setSupervisorMode(bool s)
@@ -1304,6 +1319,7 @@ Moira::setIPL(u8 val)
 void
 Moira::pollIpl()
 {
+#if MOIRA_ENABLE_JIT
     if (pomJitTimingProbe) [[unlikely]] {
         if (pomJitTiming.iplPolls < 8) {
             const u32 pos = pomJitTiming.dataAccesses > 15
@@ -1313,6 +1329,8 @@ Moira::pollIpl()
         }
         pomJitTiming.iplPolls++;
     }
+
+#endif
 
     // Feature OFF (défaut) : comportement Moira d'origine, byte-identique
     // (étalons 19/0 vérifiés). POLL_IPL ≡ reg.ipl = ipl.
