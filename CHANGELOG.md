@@ -271,6 +271,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### CPU cores, MMU/FPU, and the WinUAE oracle
 
+- **Which status byte of a 68030 $B frame carries a faulting MOVES (An)+ fixup?** → [The second fixup slot](#2026-11-10-moves-fixup-slot)
 - **Why did a memory bit field read a whole longword, and could a faulting fifth byte make BFCHG invert twice?** → [Bit fields touch only their bytes](#2026-11-10-bitfield-bytes)
 - **Does a clean CI checkout execute any oracle CPU vector?** → [Public, reproducible CPU vectors](#2026-11-10-cpu-vectors)
 - **Can an FPU context be shared if every instruction rearms FPCR?** → [Nested and parallel CPUs keep their own arithmetic context](#2026-11-10-fpu-context)
@@ -555,6 +556,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-10 (seventh)** — [A faulting 68030 MOVES (An)± reports its fixup in wb3](#2026-11-10-moves-fixup-slot)
 - **2026-11-10 (sixth)** — [Memory bit fields touch only their bytes and read before they write](#2026-11-10-bitfield-bytes)
 - **2026-11-10 (fifth)** — [A clean checkout executes 256 reproducible CPU vectors](#2026-11-10-cpu-vectors)
 - **2026-11-10 (fourth)** — [FPU rounding, exceptions and intermediate captures belong to each CPU](#2026-11-10-fpu-context)
@@ -1305,6 +1307,29 @@ Newest first.
 
 ---
 
+<a id="2026-11-10-moves-fixup-slot"></a>
+## 2026-11-10 (seventh) — A faulting 68030 MOVES (An)± reports its fixup in wb3
+
+The fresh sweep of the previous entry left one 68030 vector no earlier
+corpus held: `MOVES.L (A4)+,D0` whose read faults
+(`fuzz030.py --family core --mmu identity --strict-fpu --n 1000 --seed
+9117`, #575). The format-$B frame differed at offset $34: the oracle stores
+the pending (A4)+ fixup (`$54`: A4, long, post-increment, valid) in the wb3
+status byte, the fork stored it in wb2 ($36). WinUAE's generator emits the
+destination EA of both MOVES directions, so the memory-to-register fixup is
+its second slot (`gencpu.c` i_MOVES @ Hatari e77819f7). These are internal
+words the manual leaves undefined, so the oracle's reading stands ([D]); what a
+real 68030 stores there stays [F]. The fork's restore walks both slots, so
+A4 and the retry were already right; only the frame byte changes.
+
+`execMoves` moves the armed fixup to the second slot on the 68030
+(`POM68K_VENDOR.md` row 80). Gate: `moira_rules_test` "68030 MOVES fixup
+slot" (an external /BERR on the read; with the move disabled it reports wb3
+`00`, wb2 `54`). The sweep's 68030 file now replays 11 997 / 12 000; every
+`sst68030*` corpus and `cpu_vectors030_test` are unchanged.
+
+---
+
 <a id="2026-11-10-bitfield-bytes"></a>
 ## 2026-11-10 (sixth) — Memory bit fields touch only their bytes and read before they write
 
@@ -1370,7 +1395,7 @@ fault and random families, identity and tt, seeds 9101–9124): 68040
 12 000/12 000 (two bit-field failures on the previous core); 68030
 11 996/12 000, the same four failures before and after the change — MOVEM.L
 to an odd address, FBcc to an odd target (D28), and a new `MOVES.L (A4)+`
-frame byte, now named in `TODO.md`.
+frame byte, fixed in the next entry.
 
 ---
 

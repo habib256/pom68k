@@ -4580,6 +4580,23 @@ Moira::execMoves(u16 opcode)
             throw exc;
         }
 
+        // [D] WinUAE gencpu.c i_MOVES @ Hatari e77819f7: the generator
+        // emits the destination genamode of BOTH directions, so the
+        // memory-to-register (An)± fixup is its second slot, mmufixup[1]:
+        // a $B frame carries it in the wb3 status byte (offset $34), not in
+        // wb2 (offset $36). These are internal words the manual leaves
+        // undefined; the restore walks both slots either way.
+        // [F] What a real 68030 stores there. Settled by: a format-$B frame
+        // stacked by a real 68030 for a faulting MOVES (An)+,Dn.
+        // Gate: moira_rules_test (MOVES fixup slot), fresh sweep seed 9117.
+        if constexpr (C == Core::C68020) {
+            if (cpuModel == Model::M68030 && mmuFixupReg[0] && !mmuFixupReg[1]) {
+                mmuFixupReg[1] = mmuFixupReg[0];
+                mmuFixupVal[1] = mmuFixupVal[0];
+                mmuFixupReg[0] = 0;
+            }
+        }
+
         // Make the SFC register visible on the FC pins
         fcSource = 1;
 

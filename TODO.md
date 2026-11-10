@@ -338,11 +338,6 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   une cible impaire, quatrième reste du balayage, est devenu la décision
   D28 : le fork garde l'erreur d'adresse, comme pour Bcc et comme le
   manuel ; l'oracle n'en lève jamais.)
-  Un cinquième, trouvé par le balayage neuf du 2026-11-10 et présent
-  avant le correctif des champs de bits : `MOVES.L (A4)+,D0` (`$0E9C
-  $0000`) dont l'accès faute — un octet de la frame diffère
-  (`fuzz030.py --family core --mmu identity --strict-fpu --n 1000 --seed
-  9117`, #575, RAM `$17D8` : `$00` contre `$54`).
 - [ ] **Stocker le résultat non masqué dans le tampon de sortie d'une
   frame $A de SUB/SUBI.** Onze vecteurs de `sst68030_rmw`
   (`tests/sst68030_rmw.known`) : après un SUB ou SUBI vers la mémoire dont

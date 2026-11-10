@@ -1144,6 +1144,35 @@ void fpuIgnoredOn68000And68010()
 // TT0/TT1 map program and data space below $01000000 transparently, so the
 // code, the vectors and the stack never walk; $40000000 does, through a
 // two-level 4 KB table whose first descriptor sits on the /BERR hole.
+void movesFixupSlot030()
+{
+    // MOVES.L (A4)+,D0 whose read takes /BERR on a 68030: the frame's
+    // pending (A4)+ fixup is wb3 status ($34: A4, long, post-increment,
+    // valid = $54), wb2 ($36 high byte) stays zero. [D] WinUAE gencpu i_MOVES
+    // @ Hatari e77819f7 allocates the memory-to-register fixup as its second
+    // slot; the manual leaves these internal words undefined (POM68K_VENDOR.md
+    // row 80). Found by the fresh sweep "core/identity seed=9117 #575".
+    TestCpu c(moira::Model::M68030);
+    p32(c, 2 * 4, kHandler);
+    p16(c, kHandler, kNop);
+    stage(c, 0x0e9c, 0);                            // MOVES.L (A4)+,D0
+    p16(c, kCode + 2, 0x0000);
+    c.setIRC(0x0000);
+    c.setSFC(1);
+    c.setA(4, kHole);
+    c.holeArmed = true;
+    const bool contained = executeContained(c);
+    const uint32_t sp = c.getSP();
+    const uint16_t format = g16(c, sp + 6);
+    CHECK(contained && c.getPC0() == kHandler && (format >> 12) == 0xb &&
+          c.mem[(sp + 0x34) & 0xfffff] == 0x54 && c.mem[(sp + 0x36) & 0xfffff] == 0 &&
+          c.getA(4) == kHole + 4,
+          "68030 MOVES.L (A4)+,D0 /BERR: PC0=%08X format %04X, wb3 status %02X "
+          "(want $54), wb2 status %02X (want $00), A4 %08X (want %08X)",
+          c.getPC0(), format, c.mem[(sp + 0x34) & 0xfffff],
+          c.mem[(sp + 0x36) & 0xfffff], c.getA(4), kHole + 4);
+}
+
 void tableSearchBusError030()
 {
     constexpr uint32_t kTc  = 0x80000000u | 0xCu << 20 | 0xAu << 12 | 0xAu << 8;
@@ -1217,6 +1246,7 @@ int main(int argc, char** argv)
     ptestFlagsInvalidAtTheLimit();
     fpuIgnoredOn68000And68010();
     tableSearchBusError030();
+    movesFixupSlot030();
     ec030UsesPlain020Path();
 
     if (failures) {
@@ -1229,7 +1259,7 @@ int main(int argc, char** argv)
                 "shapes, five-bit FBcc predicate, 68040 FPU store fault, 68040 TTR "
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
-                "during a table search, 68EC030 plain-020 path with a 68030 "
+                "during a table search, 68030 MOVES fixup slot, 68EC030 plain-020 path with a 68030 "
                 "MMU/cache control\n");
     return 0;
 }
