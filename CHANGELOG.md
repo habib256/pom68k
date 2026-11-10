@@ -272,6 +272,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 ### CPU cores, MMU/FPU, and the WinUAE oracle
 
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
+
+- **How is the Moira fork shipped to someone outside POM68K, and what does upstream have that the fork does not?** → [The standalone release and the upstream review](#2026-11-10-moira-release)
 - **What does a faulting 68030 ADD/SUB to memory stack as its pending write?** → [The unmasked 32-bit result](#2026-11-10-addsub-buffer)
 - **Why did a faulting 68030 FScc stack $FFFFFFFF as its pending byte?** → [FScc's byte is unsigned](#2026-11-10-fscc-buffer)
 - **Which PC does a 68030 stack when JMP lands on an odd address?** → [Indexed modes stack the running pc + 2](#2026-11-10-jmp-odd-pc)
@@ -561,6 +563,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-10 (thirteenth)** — [The Moira fork and its JIT build and test outside POM68K; upstream's CACR fix taken, the dead 040 i-cache overlay removed](#2026-11-10-moira-release)
 - **2026-11-10 (twelfth)** — [The 68040 cache replacement counter advances on accesses, through every path](#2026-11-10-cache040-counter)
 - **2026-11-10 (eleventh)** — [A faulting 68030 ADD/SUB to memory stacks its unmasked result; `sst68030_rmw` has no known list](#2026-11-10-addsub-buffer)
 - **2026-11-10 (tenth)** — [A faulting 68030 FScc stacks its byte unsigned; the 60 000-vector sweep is clean](#2026-11-10-fscc-buffer)
@@ -1316,6 +1319,78 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-10-moira-release"></a>
+## 2026-11-10 (thirteenth) — The Moira fork and its JIT build and test outside POM68K; upstream's CACR fix taken, the dead 040 i-cache overlay removed
+
+**A release the core can travel in.** `tools/moira_release.py` cuts
+`moira-pom68k-<date>-<sha>.tar.gz` from a named commit: the core
+(`extern/moira`), the SoftFloat behind its FPU, the JIT (`src/jit`), six
+header-only adapters its gates include, and every gate that links no
+Macintosh. Each file keeps its POM68K path and bytes (`MANIFEST.sha256`);
+only `CMakeLists.txt`, `README.md` and `LICENSES.md` (templates under
+`tools/moira_release/`) and the generated `RELEASE.txt` are release-specific.
+`--upstream <clone>` adds `patches/moira-vs-upstream.patch`, the diff against
+upstream at the fork's origin `1efd6946` (17 files, +13 051 −423 lines on
+this tree), after checking the clone's HEAD. `--verify` builds the extracted
+archive and runs its `unit|jit` labels, failing on any soft-skip.
+`moira_release_test` (scope repository) holds the cheap half on every tier:
+each exported path is tracked and each quoted `#include` resolves inside the
+export.
+
+Measured on the M4, from the worktree export: AArch64 30/30 (`unit|jit`, the
+a64 store guard included), x86-64 under Rosetta with the x64 generator
+29/29, `threaded` 22/22, none soft-skipped, no compiler warning. The
+`corpus` label against `tests/data`: sst68000 1 000 058/1 000 058 (bus order
+and timing), sst68040 7 200/7 200, every 030/040 FPU and fault cell green
+with its `.known` list; the only red is `sst_corpora_lock_test` on the
+`sst68040_fpuh` files regenerated today, the open item `TODO.md` § Moteur ›
+Justesse 68040 already names. Two defects of the first draft were found by
+this run: `--output-log` keeps no output of passing tests, so the skip check
+read nothing (it reads `LastTest.log` now); and on a `threaded` build the
+three native-code gates passed by `SKIP` — they are now absent there, the
+rule `cmake/Pom68kJitGates.cmake` already applies to `jit_store_guard_a64_test`.
+Licences, decided by the author: the core stays MIT, the JIT GPL-3.0, and
+`LICENSES.md` states that any binary of this core carries SoftFloat's
+GPL-2.0-or-later.
+
+**The first upstream change taken under the fork contract.** Reading
+upstream's eleven commits after the pin found `f7844ac`: the 68030 CACR mask
+$3313. [B] MC68030UM-1989 §6.3.1.3/.4 (PDF p. 320, read from the pinned
+file): CD and CED are "always read as a zero", like CI and CEI; WinUAE's
+`m68k_movec2` reads through $3313. The fork kept them readable ($3F13).
+Vendor row 86; `moira_rules_test` cell "CACR strobes read as zero" (68020,
+68EC030, 68030; red with $3F13 on both 030 rows); four reviewed locators
+added to `tests/core_manuals.lock`. The other ten commits are classified in
+`extern/moira/NEOST_VENDOR.md` § *Upstream origin and the three-way diff*:
+`f90fc50` already ported, the DoubleFault rethrow already fixed by NeoST,
+the 68020 i-cache (`a4c273b`) left for an evaluation (`TODO.md` § Moteur ›
+Convergence), the rest cosmetic.
+
+**The 68040 i-cache overlay was dead and is gone.** `pomIcacheFetch` runs on
+the 030 fetch paths only, and the 040 CACR mask cannot set the bit it tests;
+the four 040 wrappers still armed it, reset it and tested CACR bit 11 for it,
+and `POM68K_Q605_ICACHE_MISS` was a product knob with no effect. Removed
+with the knob (146 startup options now); `DEV.md`, `docs/CACHE_040.md`,
+`docs/LLE_VS_HLE.md` and `Cpu040.h` no longer describe it as live. The
+`Cpu040.cpp` comment claiming a bare `FPUModel::NONE` dies in SysError 90
+was stale (`q605_barefpu_boot_etalon`) and now says so. Upstream's leftover
+test-runner `extern/moira/CMakeLists.txt`, naming a `Runner/` absent since
+the first commit, is deleted.
+
+Evidence, AArch64 (M4) unless stated. Repository: `asset-none` 152/152.
+Release archive, extracted and built alone: `unit|jit` 30/30 (a64 backend),
+29/29 on x86-64 under Rosetta (x64 backend), 22/22 with
+`MOIRA_POM68K_JIT_BACKENDS=threaded`; zero soft-skips, zero compiler
+warnings. Its `corpus` label against `tests/data`: sst68000 1 000 058/1 000 058
+(bus order and timing), sst68030 3078/3082 with the four known, sst68040
+7200/7200, the FPU cells green with their known lists; only
+`sst_corpora_lock_test` fails, on the `sst68040_fpuh` files regenerated
+earlier today (pre-existing, `TODO.md` › reproducible fpuh). ROM tiers:
+`m040` 102/102 (one soft-skip, `q605_serial_etalon`, then run alone with the
+serial probe built: hello 1, reply 1, exact 1); `m030` 141/141 executed,
+zero skips, on the binary carrying the $3313 mask. Both runs are recorded in
+`STATUS.md`.
 
 <a id="2026-11-10-cache040-counter"></a>
 ## 2026-11-10 (twelfth) — The 68040 cache replacement counter advances on accesses, through every path

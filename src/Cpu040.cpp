@@ -27,12 +27,12 @@ Cpu040::Cpu040(Q605Memory& mem, const jit::ResolvedConfig& jitConfig,
     // on. With it present, Mac OS 8.1 runs the ROM's FPU init
     // (`$408E9AC0 fmove.l fpcr,D0`) and boots.
     //
-    // POM68K_Q605_NOFPU selects the LC 475 CPU identity (M68LC040) but keeps
-    // Moira's external-68882 semantics as a SoftwareFPU-equivalent. Bare
-    // FPUModel::NONE still
-    // reaches SysError 90 (dsNoFPU): Mac OS installs PACK 4's F-line glue,
-    // which does not replace FPSP for raw 040 FPU opcodes. True NONE + FPSP
-    // remains a follow-up; the soft-FPU path is what makes LC040 Finder-usable.
+    // POM68K_Q605_NOFPU=1 selects the LC 475 CPU identity (M68LC040) with
+    // Moira's external-68882 semantics attached — a combination no real
+    // board has, kept as the product default of the LC040 profiles until
+    // TODO.md § Moteur › Justesse 68040 decides it. POM68K_Q605_NOFPU=2 is
+    // the silicon: bare FPUModel::NONE, which boots to the Finder
+    // (q605_barefpu_boot_etalon; the earlier SysError 90 is gone).
     if (cpuConfig.q605Fpu != pom68k::Q605FpuMode::Integrated) {
         setModel(moira::Model::M68LC040);
         if (cpuConfig.q605Fpu == pom68k::Q605FpuMode::None) {
@@ -57,11 +57,6 @@ Cpu040::Cpu040(Q605Memory& mem, const jit::ResolvedConfig& jitConfig,
     if (cacheBoost_ < 1) cacheBoost_ = 1;
     boostShift_ = (cacheBoost_ & (cacheBoost_ - 1)) == 0
                 ? __builtin_ctz(unsigned(cacheBoost_)) : -1;
-    if (cpuConfig.q605IcacheMiss)
-        icacheMiss_ = *cpuConfig.q605IcacheMiss;
-    // This remains only the legacy throughput scaler. Moira's distinct
-    // PomCache040 model owns architectural I/D contents and coherency.
-    armIcacheOverlay(icacheMiss_);
 }
 
 void Cpu040::hardReset() {
@@ -69,7 +64,6 @@ void Cpu040::hardReset() {
     lastPeriphClock_ = getClock();
     periphAccum_ = 0;
     schedulePeriphDeadline();
-    pomIcache.reset();
     jit_.flushAll();
     reset();                                 // SSP/PC from $0 (ROM overlay)
 }
@@ -122,10 +116,7 @@ void Cpu040::stall(int cycles) {
     catchUp();
 }
 
-void Cpu040::didChangeCACR(moira::u32 value) {
-    // 040 CACR: bit 15 = enable i-cache, bit 11 = clear i-cache (approx.
-    // the strobes System uses). Flush the throughput model conservatively.
-    if (value & 0x0800) pomIcache.reset();
+void Cpu040::didChangeCACR(moira::u32) {
     // CINV/CPUSH is the guest announcing that it just wrote code.
     jit_.flushAll();
 }

@@ -342,8 +342,8 @@ Twelve wrappers, one per platform: `Cpu68k` (the compacts, cycle-exact
   in 2026-07-25. The now-orphaned `viaDiv()`/`kViaDiv` helpers were deleted.
   Verified: all four 040 boards boot (`q605_`, `centris650_`,
   `quadra800_`, `q700_`, `q630_boot_etalon`) and the `unit` tier was green.
-- **the legacy i-cache boost is a throughput overlay**:
-  `cacheBoost_` scales Moira cycles in `flushTicks` (`Cpu040.h:90`, default
+- **the legacy i-cache boost is a throughput scaler**:
+  `cacheBoost_` scales Moira cycles in `flushTicks` (`Cpu040.h`, default
   **4**; `POM68K_Q605_CACHE_BOOST` overrides 1–64). Separately, the 040 has
   an opt-in architectural I/D cache behind `POM68K_040_DCACHE=1`: line data,
   WT/CB/NC policy, dirty writeback, CPUSH/CINV, snooping and transaction
@@ -1364,8 +1364,8 @@ correctness it buys:
 session-wide registry of the HLE modules a machine actually fell back to
 (`src/LleSession.h`: `activateHle` / `qualified()`), locks the native engine
 once the session qualifies (`engineChangeAllowed`, called by the four 040 CPU
-wrappers — `Cpu040.cpp:202`, `CentrisCpu.cpp:90`, `Q630Cpu.cpp:113`,
-`Q700Cpu.cpp:114`; the GUI's CPU menu greys itself on the same condition,
+wrappers — `Cpu040.cpp:193`, `CentrisCpu.cpp:87`, `Q630Cpu.cpp:110`,
+`Q700Cpu.cpp:111`; the GUI's CPU menu greys itself on the same condition,
 `GuiShellMenu.cpp:88-121`), verifies firmware by size +
 SHA-256 against `assets.lock`, and stamps that provenance into the save
 state (`SaveStateMachines.cpp:165`). Restoring a snapshot that carries an

@@ -181,7 +181,13 @@ Moira::cacrMask() const
     switch (cpuModel) {
 
         case Model::M68020: case Model::M68EC020: return 0x0003;
-        case Model::M68030: case Model::M68EC030: return 0x3F13;
+        // [B] MC68030UM-1989 §6.3.1 — CD (bit 11) and CED (bit 10) are
+        // command strobes, "always read as a zero" (§6.3.1.3/.4), like CI and
+        // CEI. The raw MOVEC value still reaches didChangeCACR().
+        // [D] WinUAE @ Hatari e77819f7 — newcpu_common.c m68k_movec2, 68030
+        // read mask $3313; upstream Moira f7844ac made the same change.
+        // POM68K: was $3F13 (POM68K_VENDOR.md row 86, moira_rules_test).
+        case Model::M68030: case Model::M68EC030: return 0x3313;
 
         // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K Q2: 68040 CACR = DE (bit 31) | IE (bit 15) — WinUAE

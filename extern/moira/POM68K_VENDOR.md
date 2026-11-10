@@ -17,9 +17,10 @@ towards upstream had quietly expired while the file still read as if a rebase
 were the plan.
 
 What forced it, measured on this tree rather than remembered (re-measured
-2026-11-10 with rows 79–85 (memory bit fields touch only their bytes,
+2026-11-10 with rows 79–86 (memory bit fields touch only their bytes,
 MOVES fixup slot, MOVEM extension log, JMP odd-target PC, FScc and ADD/SUB
-buffers, access-counted cache replacement); before that 2026-11-10 with rows 76–78 (compile-time acceleration seam, plain-020
+buffers, access-counted cache replacement, 68030 CACR strobes read as
+zero); before that 2026-11-10 with rows 76–78 (compile-time acceleration seam, plain-020
 RTE completion and instance-owned FPU arithmetic); before that
 2026-11-09 with rows 60 to 75: ATC operations, MOVEP fault restart,
 data-bearing cache snapshots, implicit-NC coherency, failed-CAS terminal
@@ -43,12 +44,12 @@ pair):
 | | | how to re-measure |
 |---|---|---|
 | distinct `pom*` extension identifiers | **107** (63 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **525** | `grep -rn POM68K Moira/ \| wc -l` |
+| `POM68K`-marked lines | **526** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **16 of 26** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **85** | this file |
+| patch groups in the inventory below | **86** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h`, `MoiraState.h` | — |
 
-Seventy-eight patch groups, two of which (the JIT seam, row 22, and the ATC
+Eighty-six patch groups, two of which (the JIT seam, row 22, and the ATC
 performance work, row 16) are not patches over upstream's design but a second
 consumer of it. A re-sync is no longer a merge with conflicts; it is a port.
 
@@ -239,8 +240,9 @@ gate in the last column of each row.
 | 83 | **68030 FScc stacks its pending byte unsigned** — new `MMU_RAWBUF` write flag (named `MMU_ZEXT` until row 84); FScc's memory store uses it, so the 030 data buffer (wb3_data) holds $000000FF, not $FFFFFFFF | `MoiraTypes.h`, `MoiraExecMMU_cpp.h`, `MoiraExecFPU_cpp.h` | the integer core sign-extends byte and word operands into the buffer because gencpu passes them signed; fpp.c's `fpuop_scc` passes `cc ? 0xff : 0x00` as an unsigned int, while its FMOVE .B/.W stores keep signed casts ([D] fpp.c @ Hatari e77819f7; the buffer contents are internal, [F] silicon). The last 60 000-sweep leftover ("fpu/identity seed=811 #1003") and the listed open defect `fpuraw/identity seed=722 #1890` | `moira_rules_test` (FScc write buffer), `sst68030_fpuraw` (194 known) |
 | 84 | **68030 ADD/SUB to memory stack their unmasked result** — `execAddRgEa`, `execAddiEa` and `execAddqEa` store with `MMU_RAWBUF`, so a faulting store's data output buffer is the 32-bit `addsub` result | `MoiraExec_cpp.h`, `MoiraExecMMU_cpp.h`, `MoiraTypes.h` | gencpu's flag_add/flag_sub form `uae_u32 newv = (uN)dst ± (uN)src` and pass it to the store unmasked ([D] @ Hatari e77819f7; internal, [F] silicon); the fork re-sign-extended the operand-sized value. Closes the eleven SUB/SUBI vectors of `tests/sst68030_rmw.known` (now empty); a fresh rmw sweep (seeds 9301-9302, 6 000 vectors) passes, including 12 ADD faults whose raw and sign-extended buffers differ | `moira_rules_test` (ADD/SUB write buffer), `sst68030_rmw` |
 | 85 | **68040 cache replacement counted on accesses** — `Cache040::allocate` only reads `rot`; reads count the half-lines they touch (I and D), copyback writes their lines, write-through writes their bus transfers, a miss counts after selecting its victim and even if its fill aborts; the interpreter's fetch window and both native generators (I: fetch words per retired instruction; D: line-hit deltas, deferred for cache-only probes) count the accesses they bypass | `MoiraCache040.h`, `MoiraExecMMU_cpp.h`, `Moira.h`, `src/jit/backends/*` | [B] MC68040UM-1993 §4.1 (counter incremented per access, rules per cache) and §7.3 (aligned transfers); [F] the victim/count order, the fork's word-granular instruction fetch and the greedy transfer split. Previously the counter advanced on replacement only. The model stays opt-in (`POM68K_040_DCACHE`). The real Quadra 605 boot exposed three more native gaps, now closed: a conditional branch's stream words differ per path (`branchFetchWords040`, also correcting the I-ATC count), a thunk's own I-side access (JSR target, program-space read) must see the instruction's stream words first (staged in `PomJitAtcReplay040::cacheFetches`, committed by `pomJitAtcReplayBegin040`, restored on replay), and a block's I-cache residency proof must include the lookahead word after its last instruction | `cache040_test` part 5 (per-rule deltas, victim choice), `jit_atc040_cases` (I/D counters compared through windows, threaded and native on A64 and x64; each native count mutation-tested), `jit_lockstep_a64_coarse_test` (counters compared every checkpoint; `POM68K_JIT_LOCKSTEP_CACHE=1` compares every line), `moira_state_test` |
+| 86 | **68030 CACR clear strobes read as zero** — `cacrMask()` for M68030/M68EC030 is $3313, not $3F13: CD (bit 11) and CED (bit 10) join CI/CEI as write-only command strobes; the raw MOVEC value still reaches `didChangeCACR()` | `Moira.cpp` | [B] MC68030UM-1989 §6.3.1 (§6.3.1.3/.4: "always read as a zero"); [D] WinUAE `m68k_movec2` @ Hatari e77819f7 reads through $3313; cherry-picked deliberately from upstream Moira `f7844ac` (2026-08-25), the first upstream change taken under the fork contract. No corpus vector writes a clear bit and reads CACR back | `moira_rules_test` (CACR strobes) |
 
-Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54, 56, 59-75 and 79-85 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
+Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54, 56, 59-75 and 79-86 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
 when nothing arms them); rows 48 and 55 are performance alone, with no architectural effect. Row 58 is evidence documentation only. The ten files carrying no `POM68K` marker at all —
 `MoiraDasm.h`, `MoiraDasmFPU_cpp.h`, `MoiraDasmMMU_cpp.h`, `StrWriter*` (2), `MoiraDebugger.h`, `MoiraMacros.h`,
 `MoiraALU.h`, `MoiraExceptions.h`, `MoiraInit.h` — are where an upstream fix can

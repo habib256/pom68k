@@ -313,8 +313,7 @@ foreach(t IN LISTS pom68k_tests)
     get_test_property(${t} LABELS gate_contract_labels)
     if(t MATCHES "etalon$")   # wasm_<boot gate> included: a profile replay
         set(gate_scope profile)
-    elseif(t STREQUAL "docs_test" OR t STREQUAL "config_test" OR
-           t STREQUAL "store_inventory_test" OR t STREQUAL "core_grades_test")
+    elseif(t MATCHES "^(docs|config|store_inventory|core_grades|moira_release)_test$")
         set(gate_scope repository)
     elseif(t MATCHES "^jit_")
         set(gate_scope engine)

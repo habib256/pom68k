@@ -41,7 +41,7 @@ public:
     moira::i64 machineClock() const { return clock / cacheBoost_; }
 
     // ── Save states (chunk "CPU ") — the Cpu030 wrapper pattern ─────────
-    // cacheBoost_/icacheMiss_ are environment tuning, not guest state.
+    // cacheBoost_ is environment tuning, not guest state.
     template <class Ar> void visit(Ar& ar) {
         visitCpuCommon(ar);
         ar(lastPeriphClock_, periphAccum_, periphDeadline_);
@@ -56,7 +56,6 @@ private:
     // Same ceiling as Cpu040 (see the note there): the old boost-1 pin was
     // a stale Q605 SCSI symptom, lifted 2026-07-25.
     int cacheBoost_ = 4;
-    int icacheMiss_ = 0;
     moira::i64 periphAccum_ = 0;
     moira::i64 periphDeadline_ = 0;
 };

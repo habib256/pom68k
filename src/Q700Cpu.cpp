@@ -31,14 +31,12 @@ Q700Cpu::Q700Cpu(Q700Memory& mem, const jit::ResolvedConfig& jitConfig,
     if (cacheBoost_ < 1) cacheBoost_ = 1;
     boostShift_ = (cacheBoost_ & (cacheBoost_ - 1)) == 0
                 ? __builtin_ctz(unsigned(cacheBoost_)) : -1;
-    armIcacheOverlay(icacheMiss_);
 }
 
 void Q700Cpu::hardReset() {
     mem_.reset();
     lastPeriphClock_ = getClock();
     periphAccum_ = 0;
-    pomIcache.reset();
     jit_.flushAll();
     reset();
 }
@@ -64,8 +62,7 @@ void Q700Cpu::stall(int cycles) {
     catchUp();
 }
 
-void Q700Cpu::didChangeCACR(moira::u32 value) {
-    if (value & 0x0800) pomIcache.reset();
+void Q700Cpu::didChangeCACR(moira::u32) {
     // CINV/CPUSH is the guest announcing that it just wrote code.
     jit_.flushAll();
 }

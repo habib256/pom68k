@@ -140,7 +140,10 @@ private:
         m[a & 0xfffff] = moira::u8(v >> 8); m[(a + 1) & 0xfffff] = moira::u8(v);
     }
     bool illegalOpcodeHook(moira::u16) override { return handleIllegal; }
+    void didChangeCACR(moira::u32 value) override { cacrWritten = value; }
 public:
+    // CACR read-back cell: the raw MOVEC value the board receives.
+    moira::u32 cacrWritten = 0;
     // Cell "bus error during a table search": the 68030 PMMU registers,
     // set directly (after stage(), whose reset() clears them).
     void mmu030(moira::u32 tc, moira::u64 crp, moira::u32 tt0, moira::u32 tt1) {
@@ -1314,6 +1317,39 @@ void aluWriteBuffer030()
     }
 }
 
+// The CACR clear bits are command strobes that read back as zero.
+// [B] MC68030UM-1989 §6.3.1 — CI, CEI (§6.3.1.8/.9), CD and CED
+// (§6.3.1.3/.4) are "always read as a zero"; WinUAE's 68030 read mask is
+// $3313 and upstream Moira adopted it in f7844ac. The fork kept CD/CED
+// readable ($3F13) until POM68K_VENDOR.md row 86. On the 68020 only E and F
+// remain. The raw value must still reach the board, which acts on the
+// strobes (didChangeCACR). No corpus vector writes a clear bit and reads
+// CACR back.
+void cacrStrobesReadZero()
+{
+    static const struct { moira::Model model; const char* name; uint32_t want; } rows[] = {
+        { moira::Model::M68020,   "68020",   0x00000003 },
+        { moira::Model::M68EC030, "68EC030", 0x00003313 },
+        { moira::Model::M68030,   "68030",   0x00003313 },
+    };
+    for (const auto& r : rows) {
+        TestCpu c(r.model);
+        stage(c, 0x4e7b, 0);                   // MOVEC D0,CACR
+        p16(c, kCode + 2, 0x0002);
+        p16(c, kCode + 4, 0x4e7a);             // MOVEC CACR,D1
+        p16(c, kCode + 6, 0x1002);
+        p16(c, kCode + 8, kNop);
+        c.setIRC(0x0002);
+        c.setD(0, 0xffffffff);
+        c.setD(1, 0x5a5a5a5a);
+        const bool contained = executeContained(c) && executeContained(c);
+        CHECK(contained && c.getPC0() == kCode + 8 && c.getD(1) == r.want &&
+                  c.cacrWritten == 0xffffffff,
+              "%s MOVEC CACR read-back: D1=%08X (want %08X), board saw %08X, PC0=%08X",
+              r.name, c.getD(1), r.want, c.cacrWritten, c.getPC0());
+    }
+}
+
 void tableSearchBusError030()
 {
     constexpr uint32_t kTc  = 0x80000000u | 0xCu << 20 | 0xAu << 12 | 0xAu << 8;
@@ -1393,6 +1429,7 @@ int main(int argc, char** argv)
     fsccWriteBuffer030();
     aluWriteBuffer030();
     ec030UsesPlain020Path();
+    cacrStrobesReadZero();
 
     if (failures) {
         std::printf("[moira_rules_test] FAIL: %d check(s)\n", failures);
@@ -1405,6 +1442,6 @@ int main(int argc, char** argv)
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68EC030 plain-020 path with a 68030 "
-                "MMU/cache control\n");
+                "MMU/cache control, CACR strobes read as zero\n");
     return 0;
 }

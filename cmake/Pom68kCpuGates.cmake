@@ -113,6 +113,9 @@ add_test(NAME sst68040_fpuh
 add_test(NAME core_grades_test
          COMMAND python3 tests/core_grades_test.py
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+# The standalone Moira/JIT release builds without POM68K: its include closure.
+add_test(NAME moira_release_test COMMAND python3 tools/moira_release.py --check
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
 # Corpus identity: present files must match tests/sst_corpora.lock; absent ones skip.
 add_test(NAME sst_corpora_lock_test

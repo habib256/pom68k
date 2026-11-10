@@ -560,12 +560,12 @@ int main() {
                                           pom68k::StartupDomain::Jit))
             ++jitOptionCount;
     check(sizeof(pom68k::startup_option::kAll) /
-                  sizeof(pom68k::startup_option::kAll[0]) == 147 &&
+                  sizeof(pom68k::startup_option::kAll[0]) == 146 &&
               jitOptionCount == 44 &&
               jitDecoder.find("option::JitProfile") != std::string::npos &&
               jitDecoder.find("kConfigurationKeys") == std::string::npos &&
               jitDecoder.find("\"POM68K_") == std::string::npos,
-          "the unified startup schema owns all 41 typed JIT options");
+          "the unified startup schema owns all 44 typed JIT options");
     check(productDecoder.find("ProductStartupView values") !=
                   std::string::npos &&
               coreDecoder.find("CoreStartupView values") !=

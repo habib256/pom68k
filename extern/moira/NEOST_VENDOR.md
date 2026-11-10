@@ -170,3 +170,38 @@ la trame lui-même.)*
 *(NeoST's original closing line — "toute modif future d'un fichier `Moira/` se
 commit normalement dans NeoST" — is superseded in this repo: see the POM68K
 note at the top.)*
+
+## Upstream origin and the three-way diff (POM68K, 2026-11-10)
+
+The upstream commit both forks start from is
+**`1efd69467ca13b27b2fb40febd5cb31dbecdea5f`** of
+`github.com/dirkwhoffmann/Moira` ("Added .nojekyll", 2025-09-11). NeoST
+recovered it on 2026-08-28 from its own submodule gitlink (NeoST
+`6e7ab7a`, the first integration, before any local patch; NeoST's
+`NEOST_VENDOR.md` § *Pin d'origine* has the table and the command). This
+tree copied NeoST at `47d6c39` (2026-07-11). The diff therefore has three
+corners, and each one is reachable:
+
+```sh
+git clone --filter=blob:none --no-checkout https://github.com/dirkwhoffmann/Moira moira-upstream
+git -C moira-upstream sparse-checkout set --no-cone /Moira/ /LICENSE /README.md
+git -C moira-upstream checkout 1efd69467ca13b27b2fb40febd5cb31dbecdea5f
+diff -ruN moira-upstream/Moira extern/moira/Moira          # this fork vs upstream
+diff -ruN <neost>/extern/moira/Moira extern/moira/Moira    # this fork vs NeoST
+```
+
+The sparse checkout leaves out upstream's `Cputester/` (~713 MB).
+`tools/moira_release.py --upstream moira-upstream` writes the first diff
+into a release as `patches/moira-vs-upstream.patch`, after checking that the
+checkout is at the pin.
+
+Re-checked on 2026-11-10: the pin is still reachable from upstream `master`
+(`ce28239`, eleven commits later). Their status in this fork:
+
+| Upstream | Change | Here |
+|---|---|---|
+| `f90fc50` | DIVU/DIVS prefetch timing | ported through NeoST (`POM68K_VENDOR.md` row 40) |
+| `426e4a3` | DoubleFault rethrow; 68020 cycle budget; `didLogInstruction` | the rethrow defect was already fixed by NeoST's guarded `processException`; the rest is not taken |
+| `f7844ac` | 68030 CACR mask $3313 | taken (row 86, `moira_rules_test`) |
+| `a4c273b` | 68020 instruction cache (vAmiga) | not taken: it changes 68020 cycle counts the Mac II boot gates pin |
+| `20e6015`, `eb9529c`, `4146111`, `e05882a`, `832052a`, `9ca9ca0` | footprint, `isize` in `Guards`, MSVC `constexpr`, `version()`/`build()`, cleanups | not taken |
