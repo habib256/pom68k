@@ -219,7 +219,6 @@ POM68K_PROBE_WWATCH	test	owner:tests/adb_key_probe.cpp
 POM68K_Q605_CACHE_BOOST	product	gate:q605_boot_etalon
 POM68K_Q605_EVENT_SCC	product	gate:q605_event_scheduler_test
 POM68K_Q605_EVENT_SCSI	product	gate:q605_event_scheduler_test
-POM68K_Q605_ICACHE_MISS	product	gate:q605_boot_etalon
 POM68K_Q605_ID	product	gate:lc475_boot_etalon,lc575_boot_etalon
 POM68K_Q605_NOFPU	product	gate:q605_nofpu_boot_etalon,q605_barefpu_boot_etalon
 POM68K_Q630_BAREFPU	product	gate:q630_boot_etalon

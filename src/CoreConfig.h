@@ -30,7 +30,6 @@ struct CoreCpuConfig {
 
     Q605FpuMode q605Fpu = Q605FpuMode::Integrated;
     std::optional<int> q605CacheBoost;
-    std::optional<int> q605IcacheMiss;
 
     bool centrisFull040 = false;
     bool centrisBareFpu = false;

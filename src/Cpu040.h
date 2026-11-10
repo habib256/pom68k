@@ -5,8 +5,8 @@
 // Moira at 25 MHz on the MEMCjr/PrimeTime bus (Q5). The Q2-Q4 core provides
 // the integer ISA, the 040 MMU (TTR + URP/SRP walks, format $7 faults) and
 // the no-FPU format $4 F-line; external /BERR raises through
-// Moira::extBusError040. Q8 adds a separate I/D ATC (Moira) and a
-// throughput overlay transposed from the 030 Cpu030 model, plus Moira's
+// Moira::extBusError040. Q8 adds a separate I/D ATC (Moira) and the
+// `cacheBoost_` throughput scaler shared with the 030 wrappers, plus Moira's
 // data-bearing 4 KB I/D caches, copyback, snooping and bus-beat timing.
 // Timing adjustments: VIA E-clock sync and TurboSCSI wait states via
 // Q605Memory::stall().
@@ -45,7 +45,7 @@ public:
                     const pom68k::CoreDiagnosticConfig& diagnostics);
     ~Cpu040();
 
-    void hardReset();                       // overlay + CPU reset
+    void hardReset();                       // board + CPU reset
     void runCycles(moira::i64 n);
     // ── JIT engine (src/jit/POM68K_JIT.md) ─────────────────────────────
     // The second execution engine, ON by default for this validated 68040.
@@ -87,7 +87,7 @@ public:
     std::function<void(const char*, const LockstepDebug&)> onLockstepEvent;
 
     // ── Save states (chunk "CPU ") — the Cpu030 wrapper pattern ─────────
-    // cacheBoost_/icacheMiss_ are environment tuning, not guest state.
+    // cacheBoost_ is environment tuning, not guest state.
     template <class Ar> void visit(Ar& ar) {
         visitCpuCommon(ar);
         ar(lastPeriphClock_, periphAccum_, periphDeadline_);
@@ -114,7 +114,6 @@ private:
     // POM68K_Q605_CACHE_BOOST. flushTicks() scales Moira cycles back down.
     int cacheBoost_ = 4;
     int boostShift_ = 2;                    // log2(cacheBoost_), −1 if not a power of two
-    int icacheMiss_ = 0;                    // POM68K_Q605_ICACHE_MISS
     moira::i64 periphAccum_ = 0;
     moira::i64 periphDeadline_ = 0;
 };

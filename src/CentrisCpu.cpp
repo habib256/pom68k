@@ -28,14 +28,12 @@ CentrisCpu::CentrisCpu(CentrisMemory& mem,
     if (cpuConfig.mmu040Walk) setMmu040AtcArmed(false);
     if (cpuConfig.centrisCacheBoost)
         cacheBoost_ = *cpuConfig.centrisCacheBoost;
-    armIcacheOverlay(icacheMiss_);
 }
 
 void CentrisCpu::hardReset() {
     mem_.reset();
     lastPeriphClock_ = getClock();
     periphAccum_ = 0;
-    pomIcache.reset();
     jit_.flushAll();
     reset();
 }
@@ -53,8 +51,7 @@ void CentrisCpu::stall(int cycles) {
     catchUp();
 }
 
-void CentrisCpu::didChangeCACR(moira::u32 value) {
-    if (value & 0x0800) pomIcache.reset();
+void CentrisCpu::didChangeCACR(moira::u32) {
     // CINV/CPUSH is the guest announcing that it just wrote code.
     jit_.flushAll();
 }

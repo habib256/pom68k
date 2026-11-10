@@ -144,8 +144,6 @@ concept IntegerStartupOption =
       startup_policy::Presence)                                              \
     X(Q605CacheBoost, "POM68K_Q605_CACHE_BOOST", StartupDomain::Core,      \
       startup_policy::autoBounded(1, 64))                                    \
-    X(Q605ICacheMiss, "POM68K_Q605_ICACHE_MISS", StartupDomain::Core,      \
-      startup_policy::autoBounded(0, 64))                                    \
     X(CentrisFpu, "POM68K_CENTRIS_FPU", StartupDomain::Core,               \
       startup_policy::Presence)                                              \
     X(CentrisBareFpu, "POM68K_CENTRIS_BAREFPU", StartupDomain::Core,       \

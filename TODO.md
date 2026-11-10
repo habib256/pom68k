@@ -291,10 +291,18 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   `fullPrefetch` et `pomJitFetch000` : ce dernier réimplémente la séquence
   de `SYNC` sans hook par accès, donc la fenêtre et un arbitrage de bus par
   cycle (blitter, Shifter) s'excluraient.
-- [ ] **Rafraîchir `extern/moira/NEOST_VENDOR.md` et noter le pin amont.**
-  Notre copie fait 119 lignes contre 315 chez NeoST ; le pin amont retrouvé
-  (`1efd6946…`) et les deux points de divergence rendent mécanique un diff
-  à trois voies.
+- [ ] **Évaluer le cache d'instructions 68020 de l'amont (`a4c273b`).**
+  Seul commit amont postérieur au pin qui change un comportement et que le
+  fork n'a pas (`NEOST_VENDOR.md` § *Upstream origin*) : un i-cache 68020
+  repris de vAmiga, avec un budget de cycles fractionnaire (`426e4a3`). Il
+  déplace les cycles 68020 que tiennent les boots Mac II ; à mesurer contre
+  le modèle actuel avant de le prendre ou de le refuser par écrit.
+- [ ] **Rafraîchir le texte NeoST de `extern/moira/NEOST_VENDOR.md`.**
+  Notre copie garde le texte de NeoST du 2026-07-11 ; la sienne a doublé
+  depuis. Le pin amont, la recette du diff à trois voies et l'état des
+  onze commits amont postérieurs y sont notés depuis le 2026-11-10
+  (§ *Upstream origin and the three-way diff*) ; reste à reprendre ses
+  sections postérieures, ou à renvoyer vers elles.
 
 ### Justesse 68030, 68020 et 6888x
 
@@ -437,8 +445,7 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
 - [ ] **Décider l'hybride 68LC040 + 68882 logiciel.** Défaut produit des
   LC 475/575/580 et Centris 610/650, combinaison qui n'existe pas en
   matériel ; un vrai `NONE` boote déjà le Quadra 605
-  (`q605_barefpu_boot_etalon`). Le commentaire de `Cpu040.cpp` qui dit le
-  contraire est périmé.
+  (`q605_barefpu_boot_etalon`).
 
 ### Temps — le modèle de débit 030/040
 
@@ -488,12 +495,6 @@ par `cacheBoost` ; le reste est correction locale.
   (Egret, `CHANGELOG` 2026-07-17). Garder, retirer ou remplacer par le
   modèle de latence IPL de NeoST — après la calibration, ou sur trace
   matérielle.
-- [ ] **Retirer ou câbler l'overlay i-cache mort du 68040.**
-  `pomIcacheFetch` n'est appelé que sur les chemins 030 et exige un bit de
-  CACR que le masque 040 ne peut pas poser : `armIcacheOverlay`,
-  `POM68K_Q605_ICACHE_MISS` (classé produit dans `config_knobs.tsv`) et le
-  test de `didChangeCACR` des quatre wrappers 040 sont sans effet, alors
-  que `DEV.md`, `docs/CACHE_040.md` et `Cpu040.h` le décrivent vivant.
 - [ ] **Affiner le temps du 6888x.** Le 68881 du Mac II est facturé aux
   tables du 68882 ; la concurrence du 68882 n'est pas modélisée
   (`fpuRunBusy` bloque le processeur par quanta de 8 cycles) ; les cycles

@@ -172,7 +172,8 @@ finding they applied to five. They are here, not in a platform section,
 because that is the mistake they encode.
 
 **Bus time is charged in machine cycles, never in boosted core cycles.**
-The 030/040 CPUs carry an i-cache/throughput overlay (`POM68K_*_CACHE_BOOST`),
+The 030/040 CPUs carry a throughput scaler (`POM68K_*_CACHE_BOOST`; the 030s
+add an i-cache timing overlay on top of it),
 so the *core* clock is a multiple of the real one. Anything a device can
 observe — VIA E-clock alignment (`viaSync`), `stall()`, SWIM C15M sync —
 must run off `machineClock()` and be scaled by the boost. The **Mac IIsi**
@@ -723,7 +724,7 @@ and the `q605_*` rigs (`tests/Q605Profile.h`, the Quadra 605) both read it.
   and restartable MMU faults. `sst68040` pins **7 200/7 200** vectors
   across integer, random and MMU families. Q8 adds separate I/D ATCs (64
   entries each in sixteen four-way sets since vendor row 75;
-  `POM68K_MMU040_WALK` disables them), an i-cache/throughput overlay,
+  `POM68K_MMU040_WALK` disables them), the `cacheBoost_` throughput scaler,
   and data-bearing 4 KB I/D caches with WT/CB/NC modes, dirty writeback,
   CPUSH/CINV, snooping and bus-transaction timing. Pin-level BCLK/TA
   waveforms are not modelled.
@@ -2240,8 +2241,7 @@ defaulted policy parameter. Only the Q605 pair was documented before 2026-07-31:
 | knob | effect |
 |---|---|
 | `POM68K_Q605_NOFPU` | 1 = 68LC040 + soft 68882, 2 = bare `FPUModel::NONE` |
-| `POM68K_Q605_CACHE_BOOST` | i-cache throughput overlay, default **4** |
-| `POM68K_Q605_ICACHE_MISS` | i-cache miss cost for that overlay |
+| `POM68K_Q605_CACHE_BOOST` | throughput scaler (guest cycles per machine cycle), default **4** |
 | `POM68K_CENTRIS_FPU` / `_BAREFPU` / `_CACHE_BOOST` | the same three for `CentrisCpu` |
 | `POM68K_Q700_LC040` / `_BAREFPU` / `_CACHE_BOOST` | …and for `Q700Cpu` |
 | `POM68K_Q630_LC040` / `_BAREFPU` / `_CACHE_BOOST` | …and for `Q630Cpu` |

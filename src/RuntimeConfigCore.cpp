@@ -67,8 +67,6 @@ pom68k::CoreConfig parseCoreStartup(
             ? pom68k::Q605FpuMode::None : pom68k::Q605FpuMode::Soft68882;
     options.cpu.q605CacheBoost =
         values.integer(startup_option::Q605CacheBoost);
-    options.cpu.q605IcacheMiss =
-        values.integer(startup_option::Q605ICacheMiss);
     options.cpu.centrisFull040 = values.present(startup_option::CentrisFpu);
     options.cpu.centrisBareFpu = values.present(startup_option::CentrisBareFpu);
     options.cpu.centrisCacheBoost =
