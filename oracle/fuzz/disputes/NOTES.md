@@ -773,11 +773,18 @@ page descriptor comes back Used. One vector.
 Recorded here so that they are not rediscovered; each is in `TODO.md`.
 - `core/identity seed=802 #139`, `core/tt seed=803 #635`: MOVEM.L to an odd,
   faulting address — the $B frame's access counter reads $11, the oracle
-  $22, and the saved-access slots differ.
+  $22, and the saved-access slots differ. **Fixed 2026-11-10**: the fork
+  stopped logging before the EA extension word (`POM68K_VENDOR.md` row 81);
+  even addresses were affected too.
 - `random/off seed=807 #681`: JMP (d8,A3,D4.L*8) to an odd target — the
-  address-error frame stacks PC+2, the oracle PC+6.
+  address-error frame stacks PC+2, the oracle PC+6. **Followed 2026-11-10**
+  (`POM68K_VENDOR.md` row 82): the 68030 now uses the rule its 68040 path
+  already had, running pc + 2 for the indexed modes; the manual is silent.
 - `fpu/identity seed=811 #1003`: `F26E 0017`, an undefined opmode with a
-  faulting EA — two bytes of the $B frame's tail differ.
+  faulting EA — two bytes of the $B frame's tail differ. **Fixed 2026-11-10**: `F26E` is FScc
+  (d16,A6), not an undefined opmode; fpp.c passes its byte unsigned, so the
+  data buffer is $000000FF (`POM68K_VENDOR.md` row 83). With row 81 and
+  row 82, seeds 802, 803, 807 and 811 now replay 8 000 / 8 000.
 - `random/tt seed=809 #7, #1854, #1999`: FBcc taken to an odd target — the
   fork raises the address error inside the branch (as for Bcc), the oracle
   only sets the PC.

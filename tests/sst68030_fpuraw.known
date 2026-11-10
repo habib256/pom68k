@@ -212,7 +212,3 @@ fpuraw/tt seed=723 #1456
 fpuraw/tt seed=723 #1614
 fpuraw/tt seed=723 #1921
 fpuraw/tt seed=723 #1922
-
-# Open defect, not a ruling (TODO.md § Moteur › Justesse 68030): two bytes of
-# the $B frame's tail for an FPU instruction whose EA faults.
-fpuraw/identity seed=722 #1890

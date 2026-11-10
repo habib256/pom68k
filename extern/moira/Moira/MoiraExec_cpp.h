@@ -2925,11 +2925,21 @@ Moira::execJmp(u16 opcode)
     // POM68K O4 slice 4: 68030 odd instruction-flow target — WinUAE's
     // mmu030 handlers raise vector 3 with a format $B frame; see
     // execAddressError030.
-    // Stacked PC = instruction address + 2 for every JMP EA mode; the EA
+    // Stacked PC = instruction address + 2 for the plain EA modes; the
+    // indexed modes advance the pc per consumed extension word first
+    // (get_disp_ea_020_mmu030 uses next_iword), so their stacked PC is the
+    // running pc + 2 — the 040 rule below, on the same oracle mechanism
+    // ("random/off seed=807 #681": PC+6 for JMP (d8,A3,D4.L*8)). The EA
     // extension words were logged at consumption (readExt/skipExt).
+    // [F] MC68030UM-1989 §8.1.3/§8.2 leave the stacked PC of an
+    // instruction-flow address error unstated, and the oracle's two rules
+    // (abs.L: PC+2, (bd.W,An,Xn): PC+8, both six bytes long) read as its own
+    // bookkeeping. Settled by: the frame a real 68030 stacks for
+    // JMP (d8,An,Xn) to an odd target.
     if constexpr (C == Core::C68020) {
         if (cpuModel == Model::M68030 && (ea & 1)) {
-            execAddressError030<C>(ea, reg.pc0 + 2);
+            execAddressError030<C>(ea, (M == Mode::IX || M == Mode::IXPC)
+                                           ? reg.pc + 2 : reg.pc0 + 2);
             FINALIZE
             return;
         }
@@ -4292,7 +4302,13 @@ Moira::execMovemRgEa(u16 opcode)
 
     } else {
 
+        // [D] WinUAE cpuemu_34.c op_48e8_34_ff @ Hatari e77819f7: the
+        // extension words of the EA are fetched through the logged accessor
+        // (get_iword_mmu030c_state) like the mask; only the transfers are
+        // unlogged. A $B frame therefore counts them in idx/idx_done.
+        if (mmu030) mmuLogging = logSave;
         u32 ea = computeEA<C, M, S, MMU_NOFIXUP>(dst);
+        if (mmu030) mmuLogging = false;
 
         // POM68K Q3: 68040 restart latch (see the -(An) branch)
         if (m040) {

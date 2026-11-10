@@ -271,6 +271,9 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### CPU cores, MMU/FPU, and the WinUAE oracle
 
+- **Why did a faulting 68030 FScc stack $FFFFFFFF as its pending byte?** → [FScc's byte is unsigned](#2026-11-10-fscc-buffer)
+- **Which PC does a 68030 stack when JMP lands on an odd address?** → [Indexed modes stack the running pc + 2](#2026-11-10-jmp-odd-pc)
+- **Why did a faulting 68030 MOVEM.L report one logged access where the oracle reports two?** → [MOVEM logs its EA extension words](#2026-11-10-movem-extension-log)
 - **Which status byte of a 68030 $B frame carries a faulting MOVES (An)+ fixup?** → [The second fixup slot](#2026-11-10-moves-fixup-slot)
 - **Why did a memory bit field read a whole longword, and could a faulting fifth byte make BFCHG invert twice?** → [Bit fields touch only their bytes](#2026-11-10-bitfield-bytes)
 - **Does a clean CI checkout execute any oracle CPU vector?** → [Public, reproducible CPU vectors](#2026-11-10-cpu-vectors)
@@ -556,6 +559,9 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-10 (tenth)** — [A faulting 68030 FScc stacks its byte unsigned; the 60 000-vector sweep is clean](#2026-11-10-fscc-buffer)
+- **2026-11-10 (ninth)** — [A 68030 JMP to an odd target stacks the 68040's PC rule](#2026-11-10-jmp-odd-pc)
+- **2026-11-10 (eighth)** — [A faulting 68030 MOVEM to memory logs its EA extension words](#2026-11-10-movem-extension-log)
 - **2026-11-10 (seventh)** — [A faulting 68030 MOVES (An)± reports its fixup in wb3](#2026-11-10-moves-fixup-slot)
 - **2026-11-10 (sixth)** — [Memory bit fields touch only their bytes and read before they write](#2026-11-10-bitfield-bytes)
 - **2026-11-10 (fifth)** — [A clean checkout executes 256 reproducible CPU vectors](#2026-11-10-cpu-vectors)
@@ -1304,6 +1310,88 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-11-10-fscc-buffer"></a>
+## 2026-11-10 (tenth) — A faulting 68030 FScc stacks its byte unsigned; the 60 000-vector sweep is clean
+
+The last leftover, "fpu/identity seed=811 #1003", was filed as "an
+undefined opmode with a faulting EA". It is `F26E 0017`, FScc (d16,A6)
+with predicate $17. Its true-predicate store of $FF faults, and the frame's
+pending-write buffer differed: $000000FF in the oracle, $FFFFFFFF here.
+The fork sign-extends byte and word operands into the 68030 write buffer
+because WinUAE's gencpu passes them as signed variables. FScc is not
+generated: `fpp.c` `fpuop_scc` passes `cc ? 0xff : 0x00` as an unsigned
+int (its FMOVE .B/.W stores keep signed casts). The buffer contents are
+internal ([D]; [F] for silicon).
+
+A new `MMU_ZEXT` write flag keeps the operand unsigned; FScc's memory store
+uses it (`POM68K_VENDOR.md` row 83). The same defect was listed as an open
+item in `tests/sst68030_fpuraw.known` (`fpuraw/identity seed=722 #1890`),
+which now passes and leaves the list (194 known, all rulings). Gate:
+`moira_rules_test` "68030 FScc write buffer" ($FFFFFFFF with the flag
+removed).
+
+With the seventh to tenth entries, the 68030 leftovers recorded since the
+60 000-vector sweep are gone. The four reproducer seeds (802, 803, 807, 811)
+replay 8 000 / 8 000, and the fresh 12 000-vector 68030 sweep 11 998 / 12 000.
+The two left are ruling D28 (FBcc to an odd target, the fork keeps the
+manual's address error).
+
+Tiers with the seventh to tenth entries together: `asset-none` 152/152,
+every `sst68030*`/`sst68040*` corpus and `cpu_vectors*` 14/14, `m030` with
+the ROMs and system media 141/141.
+
+---
+
+<a id="2026-11-10-jmp-odd-pc"></a>
+## 2026-11-10 (ninth) — A 68030 JMP to an odd target stacks the 68040's PC rule
+
+The third leftover of the 60 000-vector sweep, "random/off seed=807 #681":
+`JMP (d8,A3,D4.L*8)` to an odd address. Both sides take a format-$B
+address error. The oracle stacks PC+6, the fork stacked PC+2. Twenty-two
+targeted vectors (JMP and JSR, every control mode, generated against the
+oracle in scratch) show the oracle's rule. The plain modes stack PC+2
+whatever their length (abs.L included). The indexed modes stack the running
+pc + 2: PC+6 for (d8,An,Xn) and (d8,PC,Xn), PC+8 for (bd.W,An,Xn), PC+10 for
+(bd.L,An,Xn). That is how WinUAE's indexed EA advances the pc before the
+fault, and the fork's 68040 path has followed it since Q2. MC68030UM-1989
+§8.1.3 and §8.2 leave the stacked PC of an instruction-flow address error
+unstated, and the oracle's frames carry no stage addresses that could
+arbitrate. Under the 2026-11-06 rule (manual silent: the oracle stands), the
+68030 now uses the same rule ([D]). The value stays [F]: abs.L and
+(bd.W,An,Xn) are both six bytes yet differ, which reads as bookkeeping.
+
+`POM68K_VENDOR.md` row 82. Gate: `moira_rules_test` "68030 JMP odd-target
+PC" (two plain, two indexed; the indexed ones fail with the fix reverted).
+All 22 targeted vectors, the reproducer and every `sst68030*` corpus pass.
+JSR to an odd target takes no address error within the step on either side.
+
+---
+
+<a id="2026-11-10-movem-extension-log"></a>
+## 2026-11-10 (eighth) — A faulting 68030 MOVEM to memory logs its EA extension words
+
+`TODO.md` carried, since the 60 000-vector sweep, "MOVEM.L to an odd,
+faulting address: the $B frame's access counter reads $11, the oracle $22"
+(seeds 802 #139 and 803 #635), and the fresh sweep of the sixth entry met it
+again (seed 9123 #401). The cause is not the odd address. WinUAE fetches the
+mask and every EA extension word through the logged accessor and leaves only
+the transfers unlogged (`cpuemu_34.c` op_48e8_34_ff @ Hatari e77819f7).
+`execMovemRgEa` switched logging off before `computeEA`, so the d16 word was
+not counted. Even addresses were affected too; the sweeps only happened to
+fault at odd ones.
+
+Logging now stops after the EA is computed (`POM68K_VENDOR.md` row 81). The
+RTE retry replays the extra logged word. Gate: `moira_rules_test` "68030
+MOVEM extension log" (MOVEM.L D0-D1,16(A0) with /BERR on the first store at
+an even and an odd address). It checks the version word ($22; $11 with the
+fix reverted), then RTE and retry: both registers stored, A0 unchanged, PC
+after the instruction. All three reproducers pass; every `sst68030*`
+corpus, `berr030_test`, `berr020_test` and `moira_state_test` are unchanged.
+The fresh 68030 sweep now replays 11 998 / 12 000: the two left are FBcc to
+an odd target, ruling D28.
 
 ---
 

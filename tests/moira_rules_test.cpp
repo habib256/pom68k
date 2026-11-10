@@ -1173,6 +1173,113 @@ void movesFixupSlot030()
           c.mem[(sp + 0x36) & 0xfffff], c.getA(4), kHole + 4);
 }
 
+void movemExtensionLog030()
+{
+    // MOVEM.L D0-D1,d16(A0) whose first store takes /BERR on a 68030 (not the
+    // last write, so a format-$B frame): both extension
+    // words (mask, d16) are logged accesses, so the $B frame's version word
+    // reports idx = idx_done = 2 ($37 = $22). [D] WinUAE cpuemu_34.c
+    // op_48e8_34_ff @ Hatari e77819f7 (get_iword_mmu030c_state); the fork
+    // stopped logging before the d16 fetch and reported $11 (POM68K_VENDOR.md
+    // row 81; "core/identity seed=802 #139", "core/tt seed=803 #635").
+    for (uint32_t odd : {0u, 1u}) {
+        TestCpu c(moira::Model::M68030);
+        p32(c, 2 * 4, kHandler);
+        p16(c, kHandler, kNop);
+        stage(c, 0x48e8, 0);                        // MOVEM.L D0-D1,d16(A0)
+        p16(c, kCode + 2, 0x0003);                  // D0 faults, D1 still due
+        p16(c, kCode + 4, 0x0010);
+        p16(c, kCode + 6, kNop);
+        c.setIRC(0x0003);
+        c.setA(0, kHole - 0x10 + odd);
+        c.holeAt = kHole + odd;
+        c.holeArmed = true;
+        const bool contained = executeContained(c);
+        const uint32_t sp = c.getSP();
+        CHECK(contained && c.getPC0() == kHandler && (g16(c, sp + 6) >> 12) == 0xb &&
+              c.mem[(sp + 0x37) & 0xfffff] == 0x22,
+              "68030 MOVEM.L D0-D1,16(A0) /BERR at %s address: PC0=%08X format %04X, "
+              "idx/idx_done %02X (want $22)", odd ? "an odd" : "an even",
+              c.getPC0(), g16(c, sp + 6), c.mem[(sp + 0x37) & 0xfffff]);
+
+        // The handler returns at once (RTE, DF still set): the retry replays
+        // the two logged extension words and finishes both stores.
+        p16(c, kHandler, 0x4e73);                   // RTE
+        c.holeArmed = false;
+        c.setD(0, 0x11223344); c.setD(1, 0x55667788);
+        c.execute();                                // RTE
+        bool retried = executeContained(c);         // MOVEM again
+        const uint32_t at = kHole + odd;
+        retried &= g32(c, at) == 0x11223344 && g32(c, at + 4) == 0x55667788 &&
+                   c.getA(0) == kHole - 0x10 + odd && c.getPC0() == kCode + 6;
+        CHECK(retried,
+              "68030 MOVEM.L D0-D1,16(A0) retry after RTE at %s address: stored "
+              "%08X %08X, A0 %08X, PC0 %08X (want the registers, A0 unchanged, "
+              "PC0 %08X)", odd ? "an odd" : "an even", g32(c, at), g32(c, at + 4),
+              c.getA(0), c.getPC0(), kCode + 6);
+    }
+}
+
+void jmpOddTargetPc030()
+{
+    // JMP to an odd target on a 68030: format-$B address error whose stacked
+    // PC is instruction + 2 for the plain modes and the running pc + 2 for the
+    // indexed ones, the oracle's rule and the fork's 040 rule ([D] WinUAE
+    // get_disp_ea_020_mmu030 @ Hatari e77819f7; [F] silicon, POM68K_VENDOR.md
+    // row 82; "random/off seed=807 #681").
+    static const struct { uint16_t opcode; uint16_t ext[2]; unsigned words;
+                          uint32_t a0; uint32_t want; const char* what; } cases[] = {
+        { 0x4ed0, {0, 0},           0, 0x3001,        kCode + 2, "JMP (A0)" },
+        { 0x4ee8, {0x0010, 0},      1, 0x3001 - 0x10, kCode + 2, "JMP 16(A0)" },
+        { 0x4ef0, {0x1004, 0},      1, 0x3001 - 4,    kCode + 6, "JMP 4(A0,D1.W)" },
+        { 0x4ef0, {0x1120, 0x0010}, 2, 0x3001 - 0x10, kCode + 8, "JMP (16.W,A0,D1)" },
+    };
+    for (const auto& k : cases) {
+        TestCpu c(moira::Model::M68030);
+        p32(c, 3 * 4, kHandler);
+        p16(c, kHandler, kNop);
+        stage(c, k.opcode, 0);
+        for (unsigned i = 0; i < 2; i++) p16(c, kCode + 2 + 2 * i, i < k.words ? k.ext[i] : kNop);
+        p16(c, kCode + 2 + 2 * k.words, kNop);
+        c.setIRC(k.words ? k.ext[0] : kNop);
+        c.setA(0, k.a0);
+        c.setD(1, 0);
+        const bool contained = executeContained(c);
+        const uint32_t sp = c.getSP();
+        CHECK(contained && c.getPC0() == kHandler && g16(c, sp + 6) == 0xb00c &&
+              g32(c, sp + 2) == k.want,
+              "68030 %s to an odd target: PC0=%08X format %04X, stacked PC %08X "
+              "(want %08X)", k.what, c.getPC0(), g16(c, sp + 6), g32(c, sp + 2), k.want);
+    }
+}
+
+void fsccWriteBuffer030()
+{
+    // FScc.B (A0) with a true predicate whose store takes /BERR on a 68030 +
+    // 68882: the bus-fault frame's data output buffer ($18) holds the pending
+    // byte. [D] WinUAE fpp.c fpuop_scc @ Hatari e77819f7 passes
+    // it unsigned: $000000FF, where the integer core's signed operands give
+    // $FFFFFFFF (POM68K_VENDOR.md row 83; "fpu/identity seed=811 #1003",
+    // "fpuraw/identity seed=722 #1890").
+    TestCpu c(moira::Model::M68030);
+    c.setFPUModel(moira::FPUModel::M68882);
+    p32(c, 2 * 4, kHandler);
+    p16(c, kHandler, kNop);
+    stage(c, 0xf250, 0);                            // FScc.B (A0)
+    p16(c, kCode + 2, 0x000f);                      // predicate T
+    c.setIRC(0x000f);
+    c.setA(0, kHole);
+    c.holeArmed = true;
+    const bool contained = executeContained(c);
+    const uint32_t sp = c.getSP();
+    const uint16_t format = g16(c, sp + 6);
+    const uint32_t buffer = g32(c, sp + 0x18);       // data output buffer, $A and $B
+    CHECK(contained && c.getPC0() == kHandler && (format & 0xfff) == 8 &&
+          buffer == 0x000000ff,
+          "68030 FScc.B (A0) /BERR: PC0=%08X format %04X, pending byte in the "
+          "frame %08X (want $000000FF)", c.getPC0(), format, buffer);
+}
+
 void tableSearchBusError030()
 {
     constexpr uint32_t kTc  = 0x80000000u | 0xCu << 20 | 0xAu << 12 | 0xAu << 8;
@@ -1247,6 +1354,9 @@ int main(int argc, char** argv)
     fpuIgnoredOn68000And68010();
     tableSearchBusError030();
     movesFixupSlot030();
+    movemExtensionLog030();
+    jmpOddTargetPc030();
+    fsccWriteBuffer030();
     ec030UsesPlain020Path();
 
     if (failures) {
@@ -1259,7 +1369,7 @@ int main(int argc, char** argv)
                 "shapes, five-bit FBcc predicate, 68040 FPU store fault, 68040 TTR "
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
-                "during a table search, 68030 MOVES fixup slot, 68EC030 plain-020 path with a 68030 "
+                "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68EC030 plain-020 path with a 68030 "
                 "MMU/cache control\n");
     return 0;
 }

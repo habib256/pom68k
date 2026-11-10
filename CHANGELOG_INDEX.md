@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 755 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 758 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -9,7 +9,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | Subsystem | Entries |
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 98 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 106 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 109 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 37 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 31 |
@@ -230,9 +230,12 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-09 (third)** — [68040 MMU register writes keep resident translations until an explicit flush](CHANGELOG.md#2026-11-09-atc-register-retention)
 - **2026-11-09 (thirteenth)** — [68040 split-page MA marks ATC faults, not external data errors](CHANGELOG.md#2026-11-09-split-page-ma)
 - **2026-11-09 (twelfth)** — [68040 push faults export physical frames and retain completed replacement lines](CHANGELOG.md#2026-11-09-cache-push-faults)
+- **2026-11-10 (eighth)** — [A faulting 68030 MOVEM to memory logs its EA extension words](CHANGELOG.md#2026-11-10-movem-extension-log)
 - **2026-11-10 (fifth)** — [A clean checkout executes 256 reproducible CPU vectors](CHANGELOG.md#2026-11-10-cpu-vectors)
 - **2026-11-10 (fourth)** — [FPU rounding, exceptions and intermediate captures belong to each CPU](CHANGELOG.md#2026-11-10-fpu-context)
+- **2026-11-10 (ninth)** — [A 68030 JMP to an odd target stacks the 68040's PC rule](CHANGELOG.md#2026-11-10-jmp-odd-pc)
 - **2026-11-10 (seventh)** — [A faulting 68030 MOVES (An)± reports its fixup in wb3](CHANGELOG.md#2026-11-10-moves-fixup-slot)
+- **2026-11-10 (tenth)** — [A faulting 68030 FScc stacks its byte unsigned; the 60 000-vector sweep is clean](CHANGELOG.md#2026-11-10-fscc-buffer)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E
 

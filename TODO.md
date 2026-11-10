@@ -328,16 +328,6 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
 - [ ] **Généraliser le report du pipe de préfetch.** `mmuCapturePipe`
   capture quatre mots après PMOVE TC/CRP/SRP seulement, pour un idiome de
   la ROM LC II ; PFLUSH, une écriture de TT ou une cible de saut n'ont rien.
-- [ ] **Résorber les quatre restes 68030 du balayage de 60 000
-  vecteurs.** Tous dans des frames de faute, reproducteurs nommés dans
-  `oracle/fuzz/disputes/NOTES.md` (graines 802, 803, 807, 809, 811) :
-  le compteur d'accès de la frame $B d'un MOVEM.L vers une adresse
-  impaire qui faute ($11 ici, $22 dans l'oracle) ; le PC empilé d'un JMP
-  indexé vers une cible impaire (PC+2 contre PC+6) ; deux octets de queue
-  de frame pour un opmode FPU indéfini à EA fautif. (Le FBcc pris vers
-  une cible impaire, quatrième reste du balayage, est devenu la décision
-  D28 : le fork garde l'erreur d'adresse, comme pour Bcc et comme le
-  manuel ; l'oracle n'en lève jamais.)
 - [ ] **Stocker le résultat non masqué dans le tampon de sortie d'une
   frame $A de SUB/SUBI.** Onze vecteurs de `sst68030_rmw`
   (`tests/sst68030_rmw.known`) : après un SUB ou SUBI vers la mémoire dont
