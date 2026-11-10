@@ -505,6 +505,7 @@ static constexpr u64 IMPL_DEC       = (1 << 14);  // Omit 2 cycle delay in -(An)
 
 // POM68K O4 slice 3 (68030 MMU bus layer)
 static constexpr u64 MMU_NOFIXUP    = (1 << 15);  // Suppress (An)± fixup arming (MOVEM)
+static constexpr u64 MMU_RAWBUF     = (1 << 16);  // 030 write buffer holds the value as passed (FScc, ADD/SUB)
 }
 
 //

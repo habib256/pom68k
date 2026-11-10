@@ -69,6 +69,7 @@ public:
 
     // Cell 2: the board asserts /BERR on kHole.
     bool holeArmed = false;
+    bool holeWritesOnly = false;        // the hole answers reads, faults writes
     uint32_t holeAt = kHole;
     mutable unsigned holeTrips = 0;
     bool recordMovem = false;
@@ -80,8 +81,21 @@ public:
     mutable std::string events;
     mutable int faults = 0;
     mutable moira::u32 faultAddr = 0;
+    // Cell "bit field memory accesses": every data callback inside
+    // [busBase, busBase + 16), as <kind><offset>: b/w a byte/word read,
+    // B/W a byte/word write (a longword is two word callbacks).
+    bool traceBus = false;
+    uint32_t busBase = 0;
+    mutable std::string bus;
 
 private:
+    void traceAccess(char kind, moira::u32 a) const {
+        if (!traceBus || a < busBase || a >= busBase + 16) return;
+        if (!bus.empty()) bus += ' ';
+        bus += kind;
+        bus += std::to_string(a - busBase);
+    }
+
     moira::Model model_;
 
     // The board's /BERR, through the entry point of the model's core.
@@ -101,22 +115,26 @@ private:
     }
 
     moira::u8 read8(moira::u32 a) const override {
-        if (hole(a)) berr(a, false);
+        traceAccess('b', a);
+        if (hole(a) && !holeWritesOnly) berr(a, false);
         events += 'r';
         return mem[a & 0xfffff];
     }
     moira::u16 read16(moira::u32 a) const override {
         observeMovem(a, false);
-        if (hole(a)) berr(a, false);
+        traceAccess('w', a);
+        if (hole(a) && !holeWritesOnly) berr(a, false);
         return moira::u16((mem[a & 0xfffff] << 8) | mem[(a + 1) & 0xfffff]);
     }
     void write8(moira::u32 a, moira::u8 v) const override {
+        traceAccess('B', a);
         if (hole(a)) berr(a, true);
         events += 'w';
         const_cast<TestCpu*>(this)->mem[a & 0xfffff] = v;
     }
     void write16(moira::u32 a, moira::u16 v) const override {
         observeMovem(a, true);
+        traceAccess('W', a);
         if (hole(a)) berr(a, true);
         auto& m = const_cast<TestCpu*>(this)->mem;
         m[a & 0xfffff] = moira::u8(v >> 8); m[(a + 1) & 0xfffff] = moira::u8(v);
@@ -903,6 +921,85 @@ void clrReadsOnlyOn68000()
     }
 }
 
+void bitfieldMemoryAccesses()
+{
+    // A memory bit field reads only the bytes it spans — 1, 2, 2+1, 4 or
+    // 4+1 — finishes every read before its first write, and writes back the
+    // same shape. [B] MC68030UM-1989 §11.6.14: one operand cycle below five
+    // bytes, two at five. [D] WinUAE get_bitfield/put_bitfield @ Hatari
+    // e77819f7 for the byte decomposition (POM68K_VENDOR.md, row 79). The
+    // longword-always core read and rewrote bytes outside the field and
+    // wrote the first four bytes before reading the fifth.
+    constexpr uint32_t kField = 0x3000;
+    struct Case {
+        uint16_t opcode, ext; const char* what; const char* want;
+        uint8_t before[5], after[5]; uint32_t d1;
+    };
+    static const Case cases[] = {
+        { 0xe9d0, 0x1008, "BFEXTU (A0){0:8},D1", "b0",
+          {0xa5}, {0xa5}, 0xa5 },
+        { 0xe9d0, 0x1108, "BFEXTU (A0){4:8},D1", "w0",
+          {0x12, 0x34}, {0x12, 0x34}, 0x23 },
+        { 0xe9d0, 0x1110, "BFEXTU (A0){4:16},D1", "w0 b2",
+          {0x12, 0x34, 0x56}, {0x12, 0x34, 0x56}, 0x2345 },
+        { 0xe9d0, 0x1000, "BFEXTU (A0){0:32},D1", "w0 w2",
+          {1, 2, 3, 4}, {1, 2, 3, 4}, 0x01020304 },
+        { 0xe9d0, 0x1040, "BFEXTU (A0){1:32},D1", "w0 w2 b4",
+          {0x80, 0, 0, 0, 0x80}, {0x80, 0, 0, 0, 0x80}, 0x00000001 },
+        { 0xead0, 0x00de, "BFCHG (A0){3:30}", "w0 w2 b4 W0 W2 B4",
+          {0}, {0x1f, 0xff, 0xff, 0xff, 0x80}, 0 },
+        { 0xefd0, 0x1304, "BFINS D1,(A0){12:4}", "b1 B1",
+          {0xff, 0xff, 0xff}, {0xff, 0xfa, 0xff}, 0xa },
+    };
+    static const struct { moira::Model model; const char* name; } models[] = {
+        { moira::Model::M68020, "68020" }, { moira::Model::M68030, "68030" },
+        { moira::Model::M68LC040, "68LC040" },
+    };
+    for (const auto& m : models) {
+        for (const Case& k : cases) {
+            TestCpu c(m.model);
+            stage(c, k.opcode, 0);
+            p16(c, kCode + 2, k.ext);
+            c.setIRC(k.ext);
+            for (unsigned i = 0; i < 8; i++) c.mem[kField + i] = i < 5 ? k.before[i] : 0;
+            c.setA(0, kField);
+            const bool readsD1 = (k.opcode & 0xffc0) == 0xefc0;
+            c.setD(1, readsD1 ? k.d1 : 0xdeadbeef);
+            c.traceBus = true; c.busBase = kField;
+            c.execute();
+            bool memoryOk = true;
+            for (unsigned i = 0; i < 5; i++) memoryOk &= c.mem[kField + i] == k.after[i];
+            const bool extracts = (k.opcode & 0xffc0) == 0xe9c0;
+            CHECK(c.bus == k.want && memoryOk && c.getPC0() == kCode + 4 &&
+                  (!extracts || c.getD(1) == k.d1),
+                  "%s %s: bus \"%s\" (want \"%s\"), memory %s, D1 %08X, PC0 %08X",
+                  m.name, k.what, c.bus.c_str(), k.want,
+                  memoryOk ? "ok" : "wrong", c.getD(1), c.getPC0());
+        }
+
+        // The fifth byte answers /BERR: nothing may have been written.
+        TestCpu c(m.model);
+        p32(c, 2 * 4, kHandler);
+        p16(c, kHandler, kNop);
+        stage(c, 0xead0, 0);                        // BFCHG (A0){4:32}
+        p16(c, kCode + 2, 0x0100);
+        c.setIRC(0x0100);
+        const uint32_t base = kHole - 4;
+        for (unsigned i = 0; i < 4; i++) c.mem[base + i] = uint8_t(0x11 * (i + 1));
+        c.setA(0, base);
+        c.holeArmed = true;
+        c.traceBus = true; c.busBase = base;
+        const bool contained = executeContained(c);
+        bool unchanged = true;
+        for (unsigned i = 0; i < 4; i++) unchanged &= c.mem[base + i] == uint8_t(0x11 * (i + 1));
+        CHECK(contained && c.holeTrips == 1 && unchanged &&
+              c.bus.find_first_of("BW") == std::string::npos,
+              "%s BFCHG (A0){4:32} with /BERR on the fifth byte: bus \"%s\", "
+              "first four bytes %s, %u trip(s)", m.name, c.bus.c_str(),
+              unchanged ? "unchanged" : "WRITTEN", c.holeTrips);
+    }
+}
+
 void ptestFlagsInvalidAtTheLimit()
 {
     // PTESTR #5,(A0),#1 with the level-1 descriptor invalid (DT = 0): the
@@ -1048,6 +1145,175 @@ void fpuIgnoredOn68000And68010()
 // TT0/TT1 map program and data space below $01000000 transparently, so the
 // code, the vectors and the stack never walk; $40000000 does, through a
 // two-level 4 KB table whose first descriptor sits on the /BERR hole.
+void movesFixupSlot030()
+{
+    // MOVES.L (A4)+,D0 whose read takes /BERR on a 68030: the frame's
+    // pending (A4)+ fixup is wb3 status ($34: A4, long, post-increment,
+    // valid = $54), wb2 ($36 high byte) stays zero. [D] WinUAE gencpu i_MOVES
+    // @ Hatari e77819f7 allocates the memory-to-register fixup as its second
+    // slot; the manual leaves these internal words undefined (POM68K_VENDOR.md
+    // row 80). Found by the fresh sweep "core/identity seed=9117 #575".
+    TestCpu c(moira::Model::M68030);
+    p32(c, 2 * 4, kHandler);
+    p16(c, kHandler, kNop);
+    stage(c, 0x0e9c, 0);                            // MOVES.L (A4)+,D0
+    p16(c, kCode + 2, 0x0000);
+    c.setIRC(0x0000);
+    c.setSFC(1);
+    c.setA(4, kHole);
+    c.holeArmed = true;
+    const bool contained = executeContained(c);
+    const uint32_t sp = c.getSP();
+    const uint16_t format = g16(c, sp + 6);
+    CHECK(contained && c.getPC0() == kHandler && (format >> 12) == 0xb &&
+          c.mem[(sp + 0x34) & 0xfffff] == 0x54 && c.mem[(sp + 0x36) & 0xfffff] == 0 &&
+          c.getA(4) == kHole + 4,
+          "68030 MOVES.L (A4)+,D0 /BERR: PC0=%08X format %04X, wb3 status %02X "
+          "(want $54), wb2 status %02X (want $00), A4 %08X (want %08X)",
+          c.getPC0(), format, c.mem[(sp + 0x34) & 0xfffff],
+          c.mem[(sp + 0x36) & 0xfffff], c.getA(4), kHole + 4);
+}
+
+void movemExtensionLog030()
+{
+    // MOVEM.L D0-D1,d16(A0) whose first store takes /BERR on a 68030 (not the
+    // last write, so a format-$B frame): both extension
+    // words (mask, d16) are logged accesses, so the $B frame's version word
+    // reports idx = idx_done = 2 ($37 = $22). [D] WinUAE cpuemu_34.c
+    // op_48e8_34_ff @ Hatari e77819f7 (get_iword_mmu030c_state); the fork
+    // stopped logging before the d16 fetch and reported $11 (POM68K_VENDOR.md
+    // row 81; "core/identity seed=802 #139", "core/tt seed=803 #635").
+    for (uint32_t odd : {0u, 1u}) {
+        TestCpu c(moira::Model::M68030);
+        p32(c, 2 * 4, kHandler);
+        p16(c, kHandler, kNop);
+        stage(c, 0x48e8, 0);                        // MOVEM.L D0-D1,d16(A0)
+        p16(c, kCode + 2, 0x0003);                  // D0 faults, D1 still due
+        p16(c, kCode + 4, 0x0010);
+        p16(c, kCode + 6, kNop);
+        c.setIRC(0x0003);
+        c.setA(0, kHole - 0x10 + odd);
+        c.holeAt = kHole + odd;
+        c.holeArmed = true;
+        const bool contained = executeContained(c);
+        const uint32_t sp = c.getSP();
+        CHECK(contained && c.getPC0() == kHandler && (g16(c, sp + 6) >> 12) == 0xb &&
+              c.mem[(sp + 0x37) & 0xfffff] == 0x22,
+              "68030 MOVEM.L D0-D1,16(A0) /BERR at %s address: PC0=%08X format %04X, "
+              "idx/idx_done %02X (want $22)", odd ? "an odd" : "an even",
+              c.getPC0(), g16(c, sp + 6), c.mem[(sp + 0x37) & 0xfffff]);
+
+        // The handler returns at once (RTE, DF still set): the retry replays
+        // the two logged extension words and finishes both stores.
+        p16(c, kHandler, 0x4e73);                   // RTE
+        c.holeArmed = false;
+        c.setD(0, 0x11223344); c.setD(1, 0x55667788);
+        c.execute();                                // RTE
+        bool retried = executeContained(c);         // MOVEM again
+        const uint32_t at = kHole + odd;
+        retried &= g32(c, at) == 0x11223344 && g32(c, at + 4) == 0x55667788 &&
+                   c.getA(0) == kHole - 0x10 + odd && c.getPC0() == kCode + 6;
+        CHECK(retried,
+              "68030 MOVEM.L D0-D1,16(A0) retry after RTE at %s address: stored "
+              "%08X %08X, A0 %08X, PC0 %08X (want the registers, A0 unchanged, "
+              "PC0 %08X)", odd ? "an odd" : "an even", g32(c, at), g32(c, at + 4),
+              c.getA(0), c.getPC0(), kCode + 6);
+    }
+}
+
+void jmpOddTargetPc030()
+{
+    // JMP to an odd target on a 68030: format-$B address error whose stacked
+    // PC is instruction + 2 for the plain modes and the running pc + 2 for the
+    // indexed ones, the oracle's rule and the fork's 040 rule ([D] WinUAE
+    // get_disp_ea_020_mmu030 @ Hatari e77819f7; [F] silicon, POM68K_VENDOR.md
+    // row 82; "random/off seed=807 #681").
+    static const struct { uint16_t opcode; uint16_t ext[2]; unsigned words;
+                          uint32_t a0; uint32_t want; const char* what; } cases[] = {
+        { 0x4ed0, {0, 0},           0, 0x3001,        kCode + 2, "JMP (A0)" },
+        { 0x4ee8, {0x0010, 0},      1, 0x3001 - 0x10, kCode + 2, "JMP 16(A0)" },
+        { 0x4ef0, {0x1004, 0},      1, 0x3001 - 4,    kCode + 6, "JMP 4(A0,D1.W)" },
+        { 0x4ef0, {0x1120, 0x0010}, 2, 0x3001 - 0x10, kCode + 8, "JMP (16.W,A0,D1)" },
+    };
+    for (const auto& k : cases) {
+        TestCpu c(moira::Model::M68030);
+        p32(c, 3 * 4, kHandler);
+        p16(c, kHandler, kNop);
+        stage(c, k.opcode, 0);
+        for (unsigned i = 0; i < 2; i++) p16(c, kCode + 2 + 2 * i, i < k.words ? k.ext[i] : kNop);
+        p16(c, kCode + 2 + 2 * k.words, kNop);
+        c.setIRC(k.words ? k.ext[0] : kNop);
+        c.setA(0, k.a0);
+        c.setD(1, 0);
+        const bool contained = executeContained(c);
+        const uint32_t sp = c.getSP();
+        CHECK(contained && c.getPC0() == kHandler && g16(c, sp + 6) == 0xb00c &&
+              g32(c, sp + 2) == k.want,
+              "68030 %s to an odd target: PC0=%08X format %04X, stacked PC %08X "
+              "(want %08X)", k.what, c.getPC0(), g16(c, sp + 6), g32(c, sp + 2), k.want);
+    }
+}
+
+void fsccWriteBuffer030()
+{
+    // FScc.B (A0) with a true predicate whose store takes /BERR on a 68030 +
+    // 68882: the bus-fault frame's data output buffer ($18) holds the pending
+    // byte. [D] WinUAE fpp.c fpuop_scc @ Hatari e77819f7 passes
+    // it unsigned: $000000FF, where the integer core's signed operands give
+    // $FFFFFFFF (POM68K_VENDOR.md row 83; "fpu/identity seed=811 #1003",
+    // "fpuraw/identity seed=722 #1890").
+    TestCpu c(moira::Model::M68030);
+    c.setFPUModel(moira::FPUModel::M68882);
+    p32(c, 2 * 4, kHandler);
+    p16(c, kHandler, kNop);
+    stage(c, 0xf250, 0);                            // FScc.B (A0)
+    p16(c, kCode + 2, 0x000f);                      // predicate T
+    c.setIRC(0x000f);
+    c.setA(0, kHole);
+    c.holeArmed = true;
+    const bool contained = executeContained(c);
+    const uint32_t sp = c.getSP();
+    const uint16_t format = g16(c, sp + 6);
+    const uint32_t buffer = g32(c, sp + 0x18);       // data output buffer, $A and $B
+    CHECK(contained && c.getPC0() == kHandler && (format & 0xfff) == 8 &&
+          buffer == 0x000000ff,
+          "68030 FScc.B (A0) /BERR: PC0=%08X format %04X, pending byte in the "
+          "frame %08X (want $000000FF)", c.getPC0(), format, buffer);
+}
+
+void aluWriteBuffer030()
+{
+    // A byte ADD/SUB to memory whose store takes /BERR on a 68030 stacks the
+    // unmasked 32-bit result as its pending write ($18, format $A: the store
+    // is the last write). [D] WinUAE gencpu flag_add/flag_sub @ Hatari
+    // e77819f7: `uae_u32 newv = (uae_u8)dst ± (uae_u8)src`. The fork stacked
+    // the byte sign-extended (POM68K_VENDOR.md row 84; the eleven vectors that
+    // were listed in tests/sst68030_rmw.known).
+    static const struct { uint16_t opcode; uint8_t memory; uint32_t d1; uint32_t want;
+                          const char* what; } cases[] = {
+        { 0x9310, 0x10, 0xc5, 0xffffff4b, "SUB.B D1,(A0) $10-$C5" },
+        { 0xd310, 0x7f, 0x01, 0x00000080, "ADD.B D1,(A0) $7F+$01" },
+        { 0xd310, 0xff, 0xff, 0x000001fe, "ADD.B D1,(A0) $FF+$FF" },
+    };
+    for (const auto& k : cases) {
+        TestCpu c(moira::Model::M68030);
+        p32(c, 2 * 4, kHandler);
+        p16(c, kHandler, kNop);
+        stage(c, k.opcode, 0);
+        c.mem[kHole] = k.memory;
+        c.setA(0, kHole);
+        c.setD(1, k.d1);
+        c.holeArmed = true;
+        c.holeWritesOnly = true;
+        const bool contained = executeContained(c);
+        const uint32_t sp = c.getSP();
+        CHECK(contained && c.getPC0() == kHandler && (g16(c, sp + 6) & 0xfff) == 8 &&
+              g32(c, sp + 0x18) == k.want,
+              "68030 %s /BERR on the store: PC0=%08X format %04X, pending write %08X "
+              "(want %08X)", k.what, c.getPC0(), g16(c, sp + 6), g32(c, sp + 0x18), k.want);
+    }
+}
+
 void tableSearchBusError030()
 {
     constexpr uint32_t kTc  = 0x80000000u | 0xCu << 20 | 0xAu << 12 | 0xAu << 8;
@@ -1117,9 +1383,15 @@ int main(int argc, char** argv)
     ordinaryStoreStillAdvances040();
     ttrTableFollowsRegisters();
     clrReadsOnlyOn68000();
+    bitfieldMemoryAccesses();
     ptestFlagsInvalidAtTheLimit();
     fpuIgnoredOn68000And68010();
     tableSearchBusError030();
+    movesFixupSlot030();
+    movemExtensionLog030();
+    jmpOddTargetPc030();
+    fsccWriteBuffer030();
+    aluWriteBuffer030();
     ec030UsesPlain020Path();
 
     if (failures) {
@@ -1130,9 +1402,9 @@ int main(int argc, char** argv)
                 "68000 external /BERR, host hooks, DIVx.L operand fault, "
                 "68040 CHK2/CMP2 flags, 68040 FPU trap priority, 68LC040 F-line "
                 "shapes, five-bit FBcc predicate, 68040 FPU store fault, 68040 TTR "
-                "table, CLR without its read from the 68020 up, PTEST at its level "
+                "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
-                "during a table search, 68EC030 plain-020 path with a 68030 "
+                "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68EC030 plain-020 path with a 68030 "
                 "MMU/cache control\n");
     return 0;
 }

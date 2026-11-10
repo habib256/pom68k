@@ -235,14 +235,39 @@ int main() {
         const auto bfextuRead = bfextuUse.access(
             jit::MemoryDirection::Read, jit::MemoryOperand::Operand,
             4, 2, 0);
+        // A Dn width selects 1..4 bytes at run time: a longword proof span,
+        // never an exact/MMIO thunk (Moira reads only the spanned bytes).
         check(bfextuRead.valid() && bfextuUse.complete() &&
-              bfextuMemory.memory.count == 1,
-              "zero-offset memory BFEXTU refines to one exact longword read");
+              bfextuMemory.memory.count == 1 && bfextuRead.proofSpan &&
+              !bfextuRead.exactThunk,
+              "zero-offset dynamic-width BFEXTU refines to one longword proof span");
         bfextuMemory.extensions[0] = 0x5848; // D1 offset, immediate width 8
         bfextuMemory.memory = jit::describeMemory(bfextuMemory.opcode, false);
         jit::refineMemoryFromExtensions(bfextuMemory, false);
-        check(bfextuMemory.memory.count == 1,
-              "dynamic-offset width-8 BFEXTU stays within one longword");
+        check(bfextuMemory.memory.count == 1 &&
+              bfextuMemory.memory.access[0].proofSpan &&
+              !jit::memoryBitfieldMaySpanThreeBytes(0x5848),
+              "dynamic-offset width-8 BFEXTU stays within one proof span of at most two bytes");
+        bfextuMemory.extensions[0] = 0x2000; // immediate {0:32}
+        bfextuMemory.memory = jit::describeMemory(bfextuMemory.opcode, false);
+        jit::refineMemoryFromExtensions(bfextuMemory, false);
+        auto wholeUse = jit::instructionMemoryPlan(bfextuMemory.memory,
+                                                   exact040);
+        const auto wholeRead = wholeUse.access(
+            jit::MemoryDirection::Read, jit::MemoryOperand::Operand,
+            4, 2, 0);
+        check(wholeRead.valid() && !wholeRead.proofSpan &&
+              wholeRead.exactThunk &&
+              jit::memoryBitfieldStaticSpan(0x2000) == 4,
+              "static four-byte BFEXTU keeps one exact longword read");
+        check(jit::memoryBitfieldStaticSpan(0x2110) == 3 &&
+              jit::memoryBitfieldMaySpanThreeBytes(0x2110) &&
+              jit::memoryBitfieldStaticSpan(0x2008) == 1 &&
+              jit::memoryBitfieldStaticSpan(0x2108) == 2 &&
+              jit::memoryBitfieldStaticSpan(0x2040) == 5 &&
+              jit::memoryBitfieldMaySpanThreeBytes(0x2820) &&
+              !jit::memoryBitfieldMaySpanThreeBytes(0x2000),
+              "memory bit field spans follow Moira's 1/2/2+1/4/4+1 shapes");
         bfextuMemory.extensions[0] = 0x2060; // immediate bit offset 1
         bfextuMemory.memory = jit::describeMemory(bfextuMemory.opcode, false);
         jit::refineMemoryFromExtensions(bfextuMemory, false);
@@ -278,8 +303,10 @@ int main() {
         check(bfinsMemory.memory.count == 2 &&
               bfinsMemory.memory.lastWrite == 1 &&
               jit::memoryRmwAccessPair(bfinsRead, bfinsWrite) &&
+              bfinsRead.proofSpan && bfinsWrite.proofSpan &&
+              !bfinsRead.cache && !bfinsWrite.cache &&
               bfinsUse.complete(),
-              "tailless BFINS publishes one proved read4/write4 RMW pair");
+              "two-byte BFINS publishes one proved read/write longword proof-span pair");
         bfinsMemory.extensions[0] = 0x01C0; // offset 7, width 32: fifth byte
         bfinsMemory.memory = jit::describeMemory(bfinsMemory.opcode, true);
         jit::refineMemoryFromExtensions(bfinsMemory, true);
@@ -301,10 +328,11 @@ int main() {
               bfinsMemory.memory.count == 4 &&
               bfinsMemory.memory.lastWrite == 3 &&
               jit::memoryRmwTailAccessSequence(
-                  bfinsLongRead, bfinsLongWrite,
-                  bfinsTailRead, bfinsTailWrite) &&
+                  bfinsLongRead, bfinsTailRead,
+                  bfinsLongWrite, bfinsTailWrite) &&
+              !bfinsLongRead.proofSpan && !bfinsLongWrite.proofSpan &&
               bfinsTailUse.complete(),
-              "five-byte BFINS publishes proved read4/write4/read1/write1");
+              "five-byte BFINS publishes proved read4/read1/write4/write1");
 
         const auto write030 = jit::describeMemory(0x2140, true); // MOVE.L D0,d16(A0)
         jit::MemoryProofOptions proof030;

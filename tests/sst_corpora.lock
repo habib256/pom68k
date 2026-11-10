@@ -30,7 +30,7 @@
 #   off, identity, tt, seeds 721 to 723:
 #         oracle/fuzz/fuzz030.py --a liboracle_uae.so --family fpuraw --mmu M
 #         --strict-fpu --n 2000 --seed S --out fpuraw_M.json
-#   Replayed with `sst68030 --known tests/sst68030_fpuraw.known`: 198 of
+#   Replayed with `sst68030 --known tests/sst68030_fpuraw.known`: 194 of
 #   them are rulings the fork does not follow the oracle on (D23b, D26-D29).
 # sst68030_fpu2 — TWO instructions per vector ("steps": 2) on the 68030 +
 #   68882, strict oracle: an FPU instruction, then one that decides when a
@@ -48,8 +48,8 @@
 #   vectors: identity seed 1201, tt seed 1202:
 #         oracle/fuzz/fuzz030.py --a liboracle_uae.so --family rmw --mmu M
 #         --strict-fpu --n 3000 --seed S --out rmw_M.json
-#   Replayed with `sst68030 --known tests/sst68030_rmw.known` (11 vectors:
-#   the data output buffer of a faulting SUB/SUBI).
+#   Replayed with `sst68030 --known tests/sst68030_rmw.known` (empty since
+#   2026-11-10: the SUB/SUBI data output buffer is unmasked, row 84).
 # sst68040 — generated here by oracle/fuzz (gen040.py, fuzz040.py) against the
 #   same oracle in 68040 mode, 68LC040 (no FPU). 7 200 vectors.
 # sst68040_8k — the same, with 8 KB pages (TC.P = 1), generated 2026-11-06.

@@ -396,6 +396,7 @@ private:
     uint8_t atcRoutes040_ = 0;
     void beginAtcInstruction040(size_t i);
     void recordAtcRoute040(AtcRoute route, Reg entry, bool cache);
+    void doubleAtcRoute040(uint8_t mask);
     void prepareAtcThunk040(unsigned access, Reg argument);
     void commitAtcInstruction040();
     void memProbe(Reg addr, int bytes, bool write, Label& miss, AtcRoute route,
@@ -3801,8 +3802,11 @@ bool Emitter::emitDivideLong(size_t i) {
 // destination mask are all immediates. Memory forms cover both a field
 // contained in one longword and the optional fifth-byte tail after the signed
 // byte-displacement adjust, with static or dynamic o/w. Crossing writes
-// consume the shared read4/write4/read1/write1 contract and prove both
-// writable translations before exposing either read.
+// consume the shared read4/read1/write4/write1 contract and prove both
+// writable translations before exposing either read. A field Moira reads as
+// fewer bytes is a longword proof span (plain RAM only); a three-byte one,
+// which Moira splits into a word and a byte, counts its 040 data-ATC route
+// twice.
 // Dynamic register forms use CL-counted shifts and keep their entire body
 // call-free. A live 040 D-cache remains on the exact fallback until it has a
 // two-line transactional protocol.
@@ -3822,6 +3826,9 @@ bool Emitter::emitBitfield(size_t i) {
         // transaction. The promoted tail path is the cacheless 030; a live
         // 040 cache keeps replaying until the IR can publish that protocol.
         if (possibleTail && L_.cache040Live) return false;
+        const unsigned staticSpan = memoryBitfieldStaticSpan(memExt);
+        const bool threeByteAtRuntime =
+            staticSpan == 0 && memoryBitfieldMaySpanThreeBytes(memExt);
         const bool dynOffset = (memExt & 0x0800) != 0;
         const bool dynWidth = (memExt & 0x0020) != 0;
         if ((dynOffset || dynWidth) && !dynamicRegisterBitfieldEnabled())
@@ -3852,13 +3859,17 @@ bool Emitter::emitBitfield(size_t i) {
             (!readOnly && !possibleTail &&
              !memoryRmwAccessPair(read, write)) ||
             (!readOnly && possibleTail &&
-             !memoryRmwTailAccessSequence(read, write, tail, tailWrite)) ||
+             !memoryRmwTailAccessSequence(read, tail, write, tailWrite)) ||
             (readOnly && possibleTail &&
              (!tail.valid() || !read.preflight || !tail.preflight ||
               read.protocol != MemoryProofProtocol::PreflightAll ||
               tail.protocol != MemoryProofProtocol::PreflightAll ||
               read.exactThunk || tail.exactThunk || read.cache || tail.cache)) ||
             !memory.complete()) return false;
+        // A longword proof span under a live 040 D-cache would allocate
+        // lines and set dirty longwords Moira's narrower access leaves alone.
+        if (L_.cache040Live && (read.proofSpan || write.proofSpan))
+            return false;
 
         // Same fixed 68020/68030 table as A64. A sole exact-required read may
         // carry live device delay above it; a two-read tail is plain-memory
@@ -3872,6 +3883,7 @@ bool Emitter::emitBitfield(size_t i) {
             unsigned(memoryCycles[kind][eaColumn]);
         MemoryAccessPlan timedRead = read;
         const bool soleReadTiming = readOnly && !possibleTail &&
+            !read.proofSpan &&
             admitSoleReadTiming(i, timedRead, opcodeCycles);
         if (traced030(i) != opcodeCycles && !soleReadTiming) return false;
         const unsigned oImm = (memExt >> 6) & 31, oReg = (memExt >> 6) & 7;
@@ -3947,6 +3959,37 @@ bool Emitter::emitBitfield(size_t i) {
         } else {
             memRmwLoad(RAX, 2, RDI, read, write);
             a_.movMR(Sz::L, F(kFSaveV), RDI);       // pristine destination
+        }
+
+        // A three-byte field is Moira's word + byte in each direction: its
+        // proved longword recorded one data-ATC access per slot. RDI/R8 are
+        // live; RCX/RDX are rebuilt below.
+        if (!L_.is030 && (staticSpan == 3 || threeByteAtRuntime)) {
+            const uint8_t mask =
+                uint8_t(read.mask() | (readOnly ? 0 : write.mask()));
+            Label& single = *a_.fresh();
+            if (threeByteAtRuntime) {
+                if (dynOffset) {
+                    a_.movRM(Sz::L, RCX, D(int(oReg)));
+                    a_.aluRI(Asm::Op::AND, Sz::L, RCX, 7);
+                } else {
+                    a_.movRI(RCX, oImm & 7);
+                }
+                if (dynWidth) {
+                    a_.movRM(Sz::L, RDX, D(int(wReg)));
+                    a_.aluRI(Asm::Op::SUB, Sz::L, RDX, 1);
+                    a_.aluRI(Asm::Op::AND, Sz::L, RDX, 31);
+                    a_.aluRI(Asm::Op::ADD, Sz::L, RDX, 1);
+                } else {
+                    a_.movRI(RDX, wImm);
+                }
+                a_.aluRR(Asm::Op::ADD, Sz::L, RCX, RDX);
+                a_.aluRI(Asm::Op::SUB, Sz::L, RCX, 17);
+                a_.aluRI(Asm::Op::CMP, Sz::L, RCX, 7);
+                a_.jcc(Cc::A, single);
+            }
+            doubleAtcRoute040(mask);
+            a_.bind(single);
         }
 
         // A miss called out and clobbered every caller-saved register, so
@@ -4051,11 +4094,10 @@ bool Emitter::emitBitfield(size_t i) {
             if (!possibleTail) {
                 memRmwStore(2, RDI, read, write);
             } else {
-                // Both stores target pointers proved before either read.
-                // Plain RAM makes the reordered read4/read1/write4/write1
-                // sequence effect-equivalent to Moira's architectural
-                // read4/write4/read1/write1 transaction, while any MMIO or
-                // faulting mapping has already selected the pristine replay.
+                // Both stores target pointers proved before either read:
+                // Moira's read4/read1/write4/write1 order on plain RAM, while
+                // any MMIO or faulting mapping has already selected the
+                // pristine replay.
                 a_.movRM(Sz::Q, RSI, F(kFPointerHost));
                 a_.bswap(RDI);
                 a_.movMR(Sz::L, mem(RSI, 0), RDI);

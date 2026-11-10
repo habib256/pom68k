@@ -2128,7 +2128,11 @@ Moira::execFScc(u16 opcode)
         // fpuop_scc, fpp.c:2299-2304; (An)+ updates after the write and
         // arms nothing)
         if constexpr (M == Mode::PD) { fpuArmFixup(n); writeA(n, ea); }
-        writeM<C, M, Byte>(ea, cc ? 0xff : 0x00);
+        // [D] WinUAE fpp.c fpuop_scc @ Hatari e77819f7: the byte goes out as
+        // an unsigned int, so a faulting 68030 store stacks wb3_data $000000FF
+        // where the integer core's signed operands stack $FFFFFFFF
+        // ("fpu/identity seed=811 #1003"; POM68K_VENDOR.md row 83).
+        writeM<C, M, Byte, MMU_RAWBUF>(ea, cc ? 0xff : 0x00);
         if constexpr (M == Mode::PI) writeA(n, ea + (n == 7 ? 2 : 1));
     }
 

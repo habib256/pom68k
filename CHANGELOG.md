@@ -271,6 +271,12 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### CPU cores, MMU/FPU, and the WinUAE oracle
 
+- **What does a faulting 68030 ADD/SUB to memory stack as its pending write?** → [The unmasked 32-bit result](#2026-11-10-addsub-buffer)
+- **Why did a faulting 68030 FScc stack $FFFFFFFF as its pending byte?** → [FScc's byte is unsigned](#2026-11-10-fscc-buffer)
+- **Which PC does a 68030 stack when JMP lands on an odd address?** → [Indexed modes stack the running pc + 2](#2026-11-10-jmp-odd-pc)
+- **Why did a faulting 68030 MOVEM.L report one logged access where the oracle reports two?** → [MOVEM logs its EA extension words](#2026-11-10-movem-extension-log)
+- **Which status byte of a 68030 $B frame carries a faulting MOVES (An)+ fixup?** → [The second fixup slot](#2026-11-10-moves-fixup-slot)
+- **Why did a memory bit field read a whole longword, and could a faulting fifth byte make BFCHG invert twice?** → [Bit fields touch only their bytes](#2026-11-10-bitfield-bytes)
 - **Does a clean CI checkout execute any oracle CPU vector?** → [Public, reproducible CPU vectors](#2026-11-10-cpu-vectors)
 - **Can an FPU context be shared if every instruction rearms FPCR?** → [Nested and parallel CPUs keep their own arithmetic context](#2026-11-10-fpu-context)
 - **Why did a plain 68020 repeat a data cycle whose handler cleared DF?** → [The 020/EC020 retry context](#2026-11-10-rte020-completion)
@@ -554,6 +560,12 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-10 (eleventh)** — [A faulting 68030 ADD/SUB to memory stacks its unmasked result; `sst68030_rmw` has no known list](#2026-11-10-addsub-buffer)
+- **2026-11-10 (tenth)** — [A faulting 68030 FScc stacks its byte unsigned; the 60 000-vector sweep is clean](#2026-11-10-fscc-buffer)
+- **2026-11-10 (ninth)** — [A 68030 JMP to an odd target stacks the 68040's PC rule](#2026-11-10-jmp-odd-pc)
+- **2026-11-10 (eighth)** — [A faulting 68030 MOVEM to memory logs its EA extension words](#2026-11-10-movem-extension-log)
+- **2026-11-10 (seventh)** — [A faulting 68030 MOVES (An)± reports its fixup in wb3](#2026-11-10-moves-fixup-slot)
+- **2026-11-10 (sixth)** — [Memory bit fields touch only their bytes and read before they write](#2026-11-10-bitfield-bytes)
 - **2026-11-10 (fifth)** — [A clean checkout executes 256 reproducible CPU vectors](#2026-11-10-cpu-vectors)
 - **2026-11-10 (fourth)** — [FPU rounding, exceptions and intermediate captures belong to each CPU](#2026-11-10-fpu-context)
 - **2026-11-10 (third)** — [Plain 020 software-completed bus faults survive RTE and restore](#2026-11-10-rte020-completion)
@@ -1300,6 +1312,206 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-11-10-addsub-buffer"></a>
+## 2026-11-10 (eleventh) — A faulting 68030 ADD/SUB to memory stacks its unmasked result; `sst68030_rmw` has no known list
+
+`tests/sst68030_rmw.known` carried eleven SUB/SUBI vectors as an open
+defect. Their format-$A data output buffer held the operand-sized result
+sign-extended here and the unmasked 32-bit difference in the oracle
+(`$FFFFFF4B` for `$10 - $C5`). WinUAE's flag_add/flag_sub form
+`uae_u32 newv = (uN)dst ± (uN)src` and pass it to the store as is. The
+fork's `addsub` already returns that value; `mmuWrite` re-sign-extended it.
+
+The FScc flag of the previous entry became `MMU_RAWBUF` (the buffer holds the
+value as the caller passes it). ADD/SUB/ADDI/SUBI/ADDQ/SUBQ to memory use it
+(`POM68K_VENDOR.md` row 84). The buffer is internal ([D]; [F] for silicon),
+and the bus store is unchanged. All eleven vectors pass and the known list is
+empty: `sst68030_rmw` 6 000 / 6 000. ADD follows the same generator form, and
+no pinned vector held it. A fresh rmw sweep (seeds 9301–9302, 6 000 vectors)
+passes 6 000 / 6 000, including 12 ADD faults whose raw and sign-extended
+buffers differ. Gate: `moira_rules_test` "68030 ADD/SUB write buffer" (one
+SUB, two ADD; with the flag ignored all three fail, and so does FScc). The
+rig gained a write-only /BERR hole for it.
+
+Tiers: `asset-none` 152/152, the 24 CPU gates (every SST corpus,
+`cpu_vectors*`, `moira_*`), `m030` with the ROMs and system media 141/141.
+
+---
+
+<a id="2026-11-10-fscc-buffer"></a>
+## 2026-11-10 (tenth) — A faulting 68030 FScc stacks its byte unsigned; the 60 000-vector sweep is clean
+
+The last leftover, "fpu/identity seed=811 #1003", was filed as "an
+undefined opmode with a faulting EA". It is `F26E 0017`, FScc (d16,A6)
+with predicate $17. Its true-predicate store of $FF faults, and the frame's
+pending-write buffer differed: $000000FF in the oracle, $FFFFFFFF here.
+The fork sign-extends byte and word operands into the 68030 write buffer
+because WinUAE's gencpu passes them as signed variables. FScc is not
+generated: `fpp.c` `fpuop_scc` passes `cc ? 0xff : 0x00` as an unsigned
+int (its FMOVE .B/.W stores keep signed casts). The buffer contents are
+internal ([D]; [F] for silicon).
+
+A new write flag (`MMU_ZEXT`, renamed `MMU_RAWBUF` in the next entry) keeps
+the operand unsigned; FScc's memory store uses it (`POM68K_VENDOR.md` row 83). The same defect was listed as an open
+item in `tests/sst68030_fpuraw.known` (`fpuraw/identity seed=722 #1890`),
+which now passes and leaves the list (194 known, all rulings). Gate:
+`moira_rules_test` "68030 FScc write buffer" ($FFFFFFFF with the flag
+removed).
+
+With the seventh to tenth entries, the 68030 leftovers recorded since the
+60 000-vector sweep are gone. The four reproducer seeds (802, 803, 807, 811)
+replay 8 000 / 8 000, and the fresh 12 000-vector 68030 sweep 11 998 / 12 000.
+The two left are ruling D28 (FBcc to an odd target, the fork keeps the
+manual's address error).
+
+Tiers with the seventh to tenth entries together: `asset-none` 152/152,
+every `sst68030*`/`sst68040*` corpus and `cpu_vectors*` 14/14, `m030` with
+the ROMs and system media 141/141.
+
+---
+
+<a id="2026-11-10-jmp-odd-pc"></a>
+## 2026-11-10 (ninth) — A 68030 JMP to an odd target stacks the 68040's PC rule
+
+The third leftover of the 60 000-vector sweep, "random/off seed=807 #681":
+`JMP (d8,A3,D4.L*8)` to an odd address. Both sides take a format-$B
+address error. The oracle stacks PC+6, the fork stacked PC+2. Twenty-two
+targeted vectors (JMP and JSR, every control mode, generated against the
+oracle in scratch) show the oracle's rule. The plain modes stack PC+2
+whatever their length (abs.L included). The indexed modes stack the running
+pc + 2: PC+6 for (d8,An,Xn) and (d8,PC,Xn), PC+8 for (bd.W,An,Xn), PC+10 for
+(bd.L,An,Xn). That is how WinUAE's indexed EA advances the pc before the
+fault, and the fork's 68040 path has followed it since Q2. MC68030UM-1989
+§8.1.3 and §8.2 leave the stacked PC of an instruction-flow address error
+unstated, and the oracle's frames carry no stage addresses that could
+arbitrate. Under the 2026-11-06 rule (manual silent: the oracle stands), the
+68030 now uses the same rule ([D]). The value stays [F]: abs.L and
+(bd.W,An,Xn) are both six bytes yet differ, which reads as bookkeeping.
+
+`POM68K_VENDOR.md` row 82. Gate: `moira_rules_test` "68030 JMP odd-target
+PC" (two plain, two indexed; the indexed ones fail with the fix reverted).
+All 22 targeted vectors, the reproducer and every `sst68030*` corpus pass.
+JSR to an odd target takes no address error within the step on either side.
+
+---
+
+<a id="2026-11-10-movem-extension-log"></a>
+## 2026-11-10 (eighth) — A faulting 68030 MOVEM to memory logs its EA extension words
+
+`TODO.md` carried, since the 60 000-vector sweep, "MOVEM.L to an odd,
+faulting address: the $B frame's access counter reads $11, the oracle $22"
+(seeds 802 #139 and 803 #635), and the fresh sweep of the sixth entry met it
+again (seed 9123 #401). The cause is not the odd address. WinUAE fetches the
+mask and every EA extension word through the logged accessor and leaves only
+the transfers unlogged (`cpuemu_34.c` op_48e8_34_ff @ Hatari e77819f7).
+`execMovemRgEa` switched logging off before `computeEA`, so the d16 word was
+not counted. Even addresses were affected too; the sweeps only happened to
+fault at odd ones.
+
+Logging now stops after the EA is computed (`POM68K_VENDOR.md` row 81). The
+RTE retry replays the extra logged word. Gate: `moira_rules_test` "68030
+MOVEM extension log" (MOVEM.L D0-D1,16(A0) with /BERR on the first store at
+an even and an odd address). It checks the version word ($22; $11 with the
+fix reverted), then RTE and retry: both registers stored, A0 unchanged, PC
+after the instruction. All three reproducers pass; every `sst68030*`
+corpus, `berr030_test`, `berr020_test` and `moira_state_test` are unchanged.
+The fresh 68030 sweep now replays 11 998 / 12 000: the two left are FBcc to
+an odd target, ruling D28.
+
+---
+
+<a id="2026-11-10-moves-fixup-slot"></a>
+## 2026-11-10 (seventh) — A faulting 68030 MOVES (An)± reports its fixup in wb3
+
+The fresh sweep of the previous entry left one 68030 vector no earlier
+corpus held: `MOVES.L (A4)+,D0` whose read faults
+(`fuzz030.py --family core --mmu identity --strict-fpu --n 1000 --seed
+9117`, #575). The format-$B frame differed at offset $34: the oracle stores
+the pending (A4)+ fixup (`$54`: A4, long, post-increment, valid) in the wb3
+status byte, the fork stored it in wb2 ($36). WinUAE's generator emits the
+destination EA of both MOVES directions, so the memory-to-register fixup is
+its second slot (`gencpu.c` i_MOVES @ Hatari e77819f7). These are internal
+words the manual leaves undefined, so the oracle's reading stands ([D]); what a
+real 68030 stores there stays [F]. The fork's restore walks both slots, so
+A4 and the retry were already right; only the frame byte changes.
+
+`execMoves` moves the armed fixup to the second slot on the 68030
+(`POM68K_VENDOR.md` row 80). Gate: `moira_rules_test` "68030 MOVES fixup
+slot" (an external /BERR on the read; with the move disabled it reports wb3
+`00`, wb2 `54`). The sweep's 68030 file now replays 11 997 / 12 000; every
+`sst68030*` corpus and `cpu_vectors030_test` are unchanged.
+
+---
+
+<a id="2026-11-10-bitfield-bytes"></a>
+## 2026-11-10 (sixth) — Memory bit fields touch only their bytes and read before they write
+
+`execBitFieldEa` read and rewrote a whole longword for every memory field,
+then a fifth byte when the field crossed bit 31. Two defects followed, on
+the 68020, 68030 and 68040 alike:
+
+- up to three bytes outside the field were read and written back — a
+  spurious ATC fault, /BERR or device access past a page or register end,
+  and the wrong SSW size in a fault frame (`fuzz040.py --family random
+  --mmu identity --page 8k --seed 405`, #174 and #281);
+- the first four bytes were written **before** the fifth was read. A fault
+  on that read left them modified, and the restarted BFCHG inverted them a
+  second time.
+
+The core now reads 1, 2, 2+1, 4 or 4+1 bytes (byte, word, word+byte, long,
+long+byte), finishes both reads before the first write, and writes the same
+shape back. Evidence: [B] MC68030UM-1989 §11.6.14 (one operand cycle below
+five bytes, two at five; locator added to `tests/core_manuals.lock` after
+reading PDF page 589); [D] WinUAE `get_bitfield`/`put_bitfield` and `i_BF*`
+@ Hatari e77819f7 for the decomposition; [F] the three-byte field, one
+operand cycle with SIZ = 3 in the manual against a word and a byte in the
+oracle and here, now an open `TODO.md` item settled by a bus capture.
+`POM68K_VENDOR.md` row 79.
+
+The JIT contract followed. A field Moira now reads as one, two or three
+bytes is published as a longword **proof span**
+(`MemoryAccess::proofSpan`): valid only on proved plain RAM, where the wider
+load/store is effect-equivalent, never given an exact/MMIO thunk or a live
+040 cache token, and refused by both generators under a live D-cache (dirty
+longwords and line allocation would differ). Before this change a
+read-only tailless field could take the exact thunk and issue a 32-bit
+device read where Moira now issues a byte. Statically four- and five-byte
+fields remain exact; the crossing write is published in Moira's
+read4/read1/write4/write1 order. A three-byte field is two data-ATC accesses
+per direction in Moira (`mmu040AtcLookup` counts each), so both generators
+double the recorded route, statically or after a runtime test.
+
+Gates:
+
+- `moira_rules_test` gains bus traces for seven field shapes on the 68020,
+  68030 and 68LC040, plus a /BERR on the fifth byte that must leave the
+  first four untouched. On the previous core every shape and the fault case
+  fail ("w0 w2" for a one-byte field; "first four bytes WRITTEN").
+- `jit_atc040_cases` (inside `jit_asset_free_lockstep_test`) runs static
+  and runtime three-byte BFEXTU/BFINS/BFCHG under translation: 432 cases.
+  With the route doubling disabled, the native case fails at checkpoint 55
+  on A64 and on x64 (Rosetta build `build-x64-proof`).
+- `jit_backend_test` pins the published shapes, proof-span flags and the
+  span helpers.
+
+Replays, all executed, none soft-skipped: `sst68030` 3 078/3 082 (the four
+listed), `sst68040` 7 200/7 200, and the nine optional corpora regenerated
+from their recipes — `sst68030_solo` 5 592/5 592, `_fpuraw` 5 805/6 000,
+`_fpu2` 6 000/6 000, `_rmw` 5 989/6 000, `sst68040_8k` 4 000/4 000,
+`_fline` 4 500/4 500, `_fpu` 7 456/7 500, `_fpu2` 6 000/6 000, `_fpuh`
+5 988/6 000, each with its unchanged known list. Eight match
+`tests/sst_corpora.lock`; the three regenerated `sst68040_fpuh` files differ
+from their pins by 30 to 268 bytes (regenerated here with NumPy; the cause
+was not investigated), so that replay is a regression run, not the pinned
+claim. A fresh sweep of 24 000 vectors (core,
+fault and random families, identity and tt, seeds 9101–9124): 68040
+12 000/12 000 (two bit-field failures on the previous core); 68030
+11 996/12 000, the same four failures before and after the change — MOVEM.L
+to an odd address, FBcc to an odd target (D28), and a new `MOVES.L (A4)+`
+frame byte, fixed in the next entry.
 
 ---
 

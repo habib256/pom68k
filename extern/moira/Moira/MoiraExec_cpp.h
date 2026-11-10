@@ -397,7 +397,10 @@ Moira::execAddRgEa(u16 opcode)
     // carry chain ran that way. [D] SingleStepTests/680x0 v1 transactions
     // (ADD.l, SUB.l to memory); `sst68000 --transactions`.
     pomLastWrite030<C>();   // POM68K: the store below ends the instruction
-    writeM<C, M, S, C == Core::C68000 ? REVERSE : 0>(ea, result);
+    // [D] WinUAE gencpu flag_add/flag_sub @ Hatari e77819f7: the stored
+    // value is `uae_u32 newv = (uN)dst ± (uN)src`, so a faulting 68030 store
+    // stacks the unmasked 32-bit result (addsub returns it) as wb3_data.
+    writeM<C, M, S, (C == Core::C68000 ? REVERSE : 0) | MMU_RAWBUF>(ea, result);
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -518,8 +521,9 @@ Moira::execAddiEa(u16 opcode)
     result = addsub<C, I, S>(src, data);
     prefetch<C>();
 
-    // POM68K: low word first on the 68000 (see execAddRgEa).
-    writeOp<C, M, S, POLL | (C == Core::C68000 ? REVERSE : 0)>(dst, ea, result);
+    // POM68K: low word first on the 68000 (see execAddRgEa). MMU_RAWBUF:
+    // the unmasked result is the 68030 write buffer (see execAddRgEa).
+    writeOp<C, M, S, POLL | (C == Core::C68000 ? REVERSE : 0) | MMU_RAWBUF>(dst, ea, result);
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -596,8 +600,9 @@ Moira::execAddqEa(u16 opcode)
     result = addsub<C, I, S>(src, data);
     prefetch<C, POLL>();
 
-    // POM68K: low word first on the 68000 (see execAddRgEa).
-    writeOp<C, M, S, C == Core::C68000 ? REVERSE : 0>(dst, ea, result);
+    // POM68K: low word first on the 68000 (see execAddRgEa). MMU_RAWBUF:
+    // the unmasked result is the 68030 write buffer (see execAddRgEa).
+    writeOp<C, M, S, (C == Core::C68000 ? REVERSE : 0) | MMU_RAWBUF>(dst, ea, result);
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -1335,27 +1340,84 @@ Moira::execBitFieldEa(u16 opcode)
     auto mask = u32(baseMask >> 32);
     auto mask8 = u8(baseMask >> 24);
 
-    u32 data = readM<C, M, S>(ea);
+    // POM68K: a memory field touches only the bytes it spans, and every read
+    // precedes the first write.
+    // [B] MC68030UM-1989 §11.6.14 (bit field timing table and its note): a
+    //     field spanning fewer than five bytes takes one operand cycle, a
+    //     five-byte field two, in each direction.
+    // [D] WinUAE get_bitfield/put_bitfield (newcpu_common.c) and the i_BF*
+    //     generator (gencpu.c) @ Hatari e77819f7: 1, 2, 2+1, 4 or 4+1 bytes,
+    //     both reads before either write; BFINS reads too.
+    // [F] A three-byte field: the manual counts one operand cycle and the
+    //     68020/68030 bus has a three-byte SIZ; the oracle and this core issue
+    //     a word and a byte. Settled by: a bus capture of BFEXTU (An){0:24}.
+    // The previous longword-always access read and rewrote bytes outside the
+    // field (a spurious fault or device access past a page or register end)
+    // and wrote the longword before reading the fifth byte, so a fault on
+    // that read made the restarted BFCHG toggle the first four bytes twice.
+    // Gates: moira_rules_test (bit field access trace), sst68040 seed 405.
+    const int span = (offset + width + 7) >> 3;
+    u32 data;               // the spanned bytes, left-aligned in a longword
+    u32 tail = 0;           // the fifth byte of a five-byte field
+    switch (span) {
+        case 1:
+            data = readM<C, M, Byte>(ea) << 24;
+            break;
+        case 2:
+            data = readM<C, M, Word>(ea) << 16;
+            break;
+        case 3:
+            data = readM<C, M, Word>(ea) << 16;
+            data |= readM<C, M, Byte>(ea + 2) << 8;
+            break;
+        case 4:
+            data = readM<C, M, Long>(ea);
+            break;
+        default:
+            data = readM<C, M, Long>(ea);
+            tail = readM<C, M, Byte>(ea + 4);
+            break;
+    }
+    auto writeField = [&](u32 value, u32 tailValue) {
+        switch (span) {
+            case 1:
+                writeM<C, M, Byte>(ea, value >> 24);
+                break;
+            case 2:
+                writeM<C, M, Word>(ea, value >> 16);
+                break;
+            case 3:
+                writeM<C, M, Word>(ea, value >> 16);
+                writeM<C, M, Byte>(ea + 2, (value >> 8) & 0xFF);
+                break;
+            case 4:
+                writeM<C, M, Long>(ea, value);
+                break;
+            default:
+                writeM<C, M, Long>(ea, value);
+                writeM<C, M, Byte>(ea + 4, tailValue & 0xFF);
+                break;
+        }
+    };
 
     switch (I) {
 
         case Instr::BFCHG:
         case Instr::BFCLR:
         case Instr::BFSET:
-
+        {
             result = bitfield<I>(data, offset, width, mask);
-            writeM<C, M, S>(ea, result);
 
-            if((width + offset) > 32) {
+            u32 tailResult = tail;
+            if (span == 5) {
 
-                data = readM<C, M, Byte>(ea + 4);
+                if constexpr (I == Instr::BFCHG) tailResult = tail ^ mask8;
+                if constexpr (I == Instr::BFCLR) tailResult = tail & ~mask8;
+                if constexpr (I == Instr::BFSET) tailResult = tail | mask8;
 
-                if constexpr (I == Instr::BFCHG) writeM<C, M, Byte>(ea + 4, data ^ mask8);
-                if constexpr (I == Instr::BFCLR) writeM<C, M, Byte>(ea + 4, data & ~mask8);
-                if constexpr (I == Instr::BFSET) writeM<C, M, Byte>(ea + 4, data | mask8);
-
-                reg.sr.z &= ZERO<Byte>(data & mask8);
+                reg.sr.z &= ZERO<Byte>(tail & mask8);
             }
+            writeField(result, tailResult);
 
             //           00  10  20        00  10  20        00  10  20
             //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -1365,14 +1427,14 @@ Moira::execBitFieldEa(u16 opcode)
             CYCLES_AW   ( 0,  0,  0,        0,  0,  0,        0,  0, 24)
             CYCLES_AL   ( 0,  0,  0,        0,  0,  0,        0,  0, 24)
             break;
-
+        }
         case Instr::BFEXTS:
         case Instr::BFEXTU:
 
             data = CLIP<Long>(data << offset);
 
-            if((offset + width) > 32) {
-                data |= (readM<C, M, Byte>(ea + 4) << offset) >> 8;
+            if (span == 5) {
+                data |= (tail << offset) >> 8;
             }
 
             result = bitfield<I>(data, offset, width, mask);
@@ -1393,9 +1455,9 @@ Moira::execBitFieldEa(u16 opcode)
 
             data = CLIP<Long>(data << offset);
 
-            if((offset + width) > 32) {
+            if (span == 5) {
 
-                data |= (readM<C, M, Byte>(ea + 4) << offset) >> 8;
+                data |= (tail << offset) >> 8;
             }
 
             result = bitfield<I>(data, oldOffset, width, mask);
@@ -1422,15 +1484,14 @@ Moira::execBitFieldEa(u16 opcode)
             reg.sr.v = 0;
             reg.sr.c = 0;
 
-            writeM<C, M, S>(ea, (data & ~mask) | insert >> offset);
+            u32 tailResult = tail;
+            if (span == 5) {
 
-            if((width + offset) > 32) {
-
-                data = readM<C, M, Byte>(ea + 4);
                 u8 insert8 = u8(readD(dn) << (8 - ((width + offset) - 32)));
-                writeM<C, M, Byte>(ea + 4, (data & ~mask8) | insert8);
+                tailResult = (tail & ~mask8) | insert8;
                 reg.sr.z &= ZERO<Byte>(insert8);
             }
+            writeField((data & ~mask) | insert >> offset, tailResult);
 
             //           00  10  20        00  10  20        00  10  20
             //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -1445,10 +1506,9 @@ Moira::execBitFieldEa(u16 opcode)
 
             (void)bitfield<I>(data, offset, width, mask);
 
-            if((width + offset) > 32) {
+            if (span == 5) {
 
-                u8 data2 = u8(readM<C, M, Byte>(ea + 4));
-                reg.sr.z &= ZERO<Byte>(data2 & mask8);
+                reg.sr.z &= ZERO<Byte>(tail & mask8);
             }
 
             //           00  10  20        00  10  20        00  10  20
@@ -2870,11 +2930,21 @@ Moira::execJmp(u16 opcode)
     // POM68K O4 slice 4: 68030 odd instruction-flow target — WinUAE's
     // mmu030 handlers raise vector 3 with a format $B frame; see
     // execAddressError030.
-    // Stacked PC = instruction address + 2 for every JMP EA mode; the EA
+    // Stacked PC = instruction address + 2 for the plain EA modes; the
+    // indexed modes advance the pc per consumed extension word first
+    // (get_disp_ea_020_mmu030 uses next_iword), so their stacked PC is the
+    // running pc + 2 — the 040 rule below, on the same oracle mechanism
+    // ("random/off seed=807 #681": PC+6 for JMP (d8,A3,D4.L*8)). The EA
     // extension words were logged at consumption (readExt/skipExt).
+    // [F] MC68030UM-1989 §8.1.3/§8.2 leave the stacked PC of an
+    // instruction-flow address error unstated, and the oracle's two rules
+    // (abs.L: PC+2, (bd.W,An,Xn): PC+8, both six bytes long) read as its own
+    // bookkeeping. Settled by: the frame a real 68030 stacks for
+    // JMP (d8,An,Xn) to an odd target.
     if constexpr (C == Core::C68020) {
         if (cpuModel == Model::M68030 && (ea & 1)) {
-            execAddressError030<C>(ea, reg.pc0 + 2);
+            execAddressError030<C>(ea, (M == Mode::IX || M == Mode::IXPC)
+                                           ? reg.pc + 2 : reg.pc0 + 2);
             FINALIZE
             return;
         }
@@ -4237,7 +4307,13 @@ Moira::execMovemRgEa(u16 opcode)
 
     } else {
 
+        // [D] WinUAE cpuemu_34.c op_48e8_34_ff @ Hatari e77819f7: the
+        // extension words of the EA are fetched through the logged accessor
+        // (get_iword_mmu030c_state) like the mask; only the transfers are
+        // unlogged. A $B frame therefore counts them in idx/idx_done.
+        if (mmu030) mmuLogging = logSave;
         u32 ea = computeEA<C, M, S, MMU_NOFIXUP>(dst);
+        if (mmu030) mmuLogging = false;
 
         // POM68K Q3: 68040 restart latch (see the -(An) branch)
         if (m040) {
@@ -4523,6 +4599,23 @@ Moira::execMoves(u16 opcode)
 
             exc.stackFrame.ird = old;
             throw exc;
+        }
+
+        // [D] WinUAE gencpu.c i_MOVES @ Hatari e77819f7: the generator
+        // emits the destination genamode of BOTH directions, so the
+        // memory-to-register (An)± fixup is its second slot, mmufixup[1]:
+        // a $B frame carries it in the wb3 status byte (offset $34), not in
+        // wb2 (offset $36). These are internal words the manual leaves
+        // undefined; the restore walks both slots either way.
+        // [F] What a real 68030 stores there. Settled by: a format-$B frame
+        // stacked by a real 68030 for a faulting MOVES (An)+,Dn.
+        // Gate: moira_rules_test (MOVES fixup slot), fresh sweep seed 9117.
+        if constexpr (C == Core::C68020) {
+            if (cpuModel == Model::M68030 && mmuFixupReg[0] && !mmuFixupReg[1]) {
+                mmuFixupReg[1] = mmuFixupReg[0];
+                mmuFixupVal[1] = mmuFixupVal[0];
+                mmuFixupReg[0] = 0;
+            }
         }
 
         // Make the SFC register visible on the FC pins

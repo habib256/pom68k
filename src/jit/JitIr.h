@@ -386,6 +386,12 @@ struct MemoryAccess {
     FaultPhase fault = FaultPhase::RestartInstruction;
     uint8_t cache = MemoryCacheNone;
     bool exactRequired = false; // model/device timing requires the exact path
+    // The slot names a native PROOF span wider than the architectural access:
+    // a memory bit field whose 1-, 2- or 3-byte shape is selected at run time
+    // (or is narrower than the slot) is proved, loaded and stored as a
+    // longword. That is effect-equivalent only on proved plain RAM: such a
+    // slot never receives an exact/MMIO thunk or a live-cache token.
+    bool proofSpan = false;
 };
 
 struct MemoryContract {
@@ -459,6 +465,7 @@ struct MemoryAccessPlan {
     bool exactThunk = false;
     bool exactRequired = false;
     bool cache = false;
+    bool proofSpan = false;
 
     bool valid() const { return index < MemoryContract::MaxAccesses; }
     uint8_t mask() const { return valid() ? uint8_t(1u << index) : 0; }
@@ -1051,15 +1058,15 @@ inline MemoryProofPlan memoryProofPlan(const MemoryContract& c,
         if (c.count != MemoryContract::MaxAccesses ||
             c.order != MemoryOrder::Sequential || c.lastWrite != 3 ||
             c.access[0].direction != MemoryDirection::Read ||
-            c.access[1].direction != MemoryDirection::Write ||
-            c.access[2].direction != MemoryDirection::Read ||
+            c.access[1].direction != MemoryDirection::Read ||
+            c.access[2].direction != MemoryDirection::Write ||
             c.access[3].direction != MemoryDirection::Write ||
             c.access[0].operand != MemoryOperand::Operand ||
             c.access[1].operand != MemoryOperand::Operand ||
             c.access[2].operand != MemoryOperand::Operand ||
             c.access[3].operand != MemoryOperand::Operand ||
-            c.access[0].bytes != 4 || c.access[1].bytes != 4 ||
-            c.access[2].bytes != 1 || c.access[3].bytes != 1 ||
+            c.access[0].bytes != 4 || c.access[1].bytes != 1 ||
+            c.access[2].bytes != 4 || c.access[3].bytes != 1 ||
             c.access[1].eaMode != c.access[0].eaMode ||
             c.access[2].eaMode != c.access[0].eaMode ||
             c.access[3].eaMode != c.access[0].eaMode ||
@@ -1067,7 +1074,7 @@ inline MemoryProofPlan memoryProofPlan(const MemoryContract& c,
             c.access[2].eaReg != c.access[0].eaReg ||
             c.access[3].eaReg != c.access[0].eaReg ||
             c.access[0].fault != FaultPhase::RestartInstruction ||
-            c.access[1].fault != FaultPhase::PartialWriteCommitted ||
+            c.access[1].fault != FaultPhase::RestartInstruction ||
             c.access[2].fault != FaultPhase::PartialWriteCommitted ||
             c.access[3].fault != FaultPhase::LastWrite)
             return p;
@@ -1078,6 +1085,7 @@ inline MemoryProofPlan memoryProofPlan(const MemoryContract& c,
 
     const auto thunkAllowed = [&](unsigned i) {
         const MemoryAccess& a = c.access[i];
+        if (a.proofSpan) return false;
         if (a.exactRequired) return true;
         if (a.direction == MemoryDirection::Read) return o.exactReads;
         // A 030 non-restartable LASTWRITE cannot use a post-access thunk and
@@ -1088,7 +1096,7 @@ inline MemoryProofPlan memoryProofPlan(const MemoryContract& c,
     };
     const auto cacheAllowed = [&](unsigned i) {
         const MemoryAccess& a = c.access[i];
-        if (a.exactRequired) return false;
+        if (a.exactRequired || a.proofSpan) return false;
         return a.direction == MemoryDirection::Read
             ? o.cacheReads && (a.cache & MemoryCacheRead)
             : o.cacheWrites && (a.cache & MemoryCacheWrite);
@@ -1167,6 +1175,7 @@ inline MemoryAccessPlan memoryAccessPlan(const MemoryContract& c,
         result.exactThunk = (proof.exactThunkMask & bit) != 0;
         result.exactRequired = a.exactRequired;
         result.cache = (proof.cacheMask & bit) != 0;
+        result.proofSpan = a.proofSpan;
     }
     return result;
 }
@@ -1235,15 +1244,17 @@ inline bool memoryRmwAccessPair(const MemoryAccessPlan& read,
            uint8_t(read.mask() | write.mask()) == 3;
 }
 
-// The exact architectural order for a crossing memory-bitfield mutation is
-// read4/write4/read1/write1. All mappings must be proved before access zero;
-// no exact thunk or cache token is valid for this transaction yet.
+// The architectural order for a five-byte memory-bitfield mutation is
+// read4/read1/write4/write1: every read precedes the first write (Moira
+// execBitFieldEa, POM68K_VENDOR.md row 79). All mappings must be proved
+// before access zero; no exact thunk or cache token is valid for this
+// transaction yet.
 inline bool memoryRmwTailAccessSequence(const MemoryAccessPlan& readLong,
-                                        const MemoryAccessPlan& writeLong,
                                         const MemoryAccessPlan& readTail,
+                                        const MemoryAccessPlan& writeLong,
                                         const MemoryAccessPlan& writeTail) {
     const MemoryAccessPlan* access[] = {
-        &readLong, &writeLong, &readTail, &writeTail
+        &readLong, &readTail, &writeLong, &writeTail
     };
     for (unsigned i = 0; i < MemoryContract::MaxAccesses; i++) {
         if (!access[i]->valid() || access[i]->index != i ||
@@ -1253,8 +1264,8 @@ inline bool memoryRmwTailAccessSequence(const MemoryAccessPlan& readLong,
             return false;
     }
     return readLong.direction == MemoryDirection::Read &&
-           writeLong.direction == MemoryDirection::Write &&
            readTail.direction == MemoryDirection::Read &&
+           writeLong.direction == MemoryDirection::Write &&
            writeTail.direction == MemoryDirection::Write &&
            readLong.operand == MemoryOperand::Operand &&
            writeLong.operand == readLong.operand &&
@@ -1263,8 +1274,8 @@ inline bool memoryRmwTailAccessSequence(const MemoryAccessPlan& readLong,
            readLong.bytes == 4 && writeLong.bytes == 4 &&
            readTail.bytes == 1 && writeTail.bytes == 1 &&
            readLong.fault == FaultPhase::RestartInstruction &&
+           readTail.fault == FaultPhase::RestartInstruction &&
            writeLong.fault == FaultPhase::PartialWriteCommitted &&
-           readTail.fault == FaultPhase::PartialWriteCommitted &&
            writeTail.fault == FaultPhase::LastWrite;
 }
 
@@ -1511,9 +1522,9 @@ inline void describeEffectiveAddresses(Instr& in) {
             add(OperandRole::Operand, s.eaMode, s.eaReg, s.sizeIndex, 1);
             break;
         case SemanticOp::Bitfield:
-            // Memory bitfields always begin with a longword access. Extension
-            // refinement below publishes a possible fifth-byte read as the
-            // second preflighted slot.
+            // The EA itself is long-sized. The bytes a memory field touches
+            // (1, 2, 2+1, 4 or 4+1) depend on the extension word and are
+            // published by refineMemoryFromExtensions.
             add(OperandRole::Operand, s.eaMode, s.eaReg, 2, 1);
             break;
         case SemanticOp::DivideWord:
@@ -1565,12 +1576,37 @@ inline bool memoryBitfieldFitsLongword(uint16_t ext) {
     return maxBitOffset + maxWidth <= 32;
 }
 
+// Bytes spanned by a memory field with an immediate offset and width, from
+// its base byte (offset/8): 1..5. Zero when either is taken from a register.
+inline unsigned memoryBitfieldStaticSpan(uint16_t ext) {
+    if (ext & 0x0820) return 0;
+    const unsigned offset = (ext >> 6) & 7;
+    const unsigned width = unsigned(((ext & 31) - 1u) & 31u) + 1u;
+    return (offset + width + 7) / 8;
+}
+
+// True when some runtime offset/width selects a three-byte field. Moira then
+// issues a word and a byte in each direction, two accesses a single
+// longword proof cannot stand for (each one advances the 040 ATC's
+// replacement state), so native code must leave that shape to Moira.
+inline bool memoryBitfieldMaySpanThreeBytes(uint16_t ext) {
+    const unsigned minOffset = (ext & 0x0800) ? 0u : unsigned((ext >> 6) & 7);
+    const unsigned maxOffset = (ext & 0x0800) ? 7u : minOffset;
+    const unsigned minWidth = (ext & 0x0020)
+        ? 1u : unsigned(((ext & 31) - 1u) & 31u) + 1u;
+    const unsigned maxWidth = (ext & 0x0020) ? 32u : minWidth;
+    return minOffset + minWidth <= 24 && maxOffset + maxWidth >= 17;
+}
+
 // Some 68020 extension words refine the memory shape beyond what the opcode
-// alone can say. A memory bitfield normally spans four OR five bytes, so the
-// generic contract must distinguish a guaranteed single longword from a
-// possible longword-plus-tail-byte sequence. Read-only forms can publish
-// both exactly: the second slot is the maximum runtime path and a backend
-// must still branch around it when the selected field does not cross bit 31.
+// alone can say. Moira touches only the bytes a memory field spans — 1, 2,
+// 2+1, 4 or 4+1 — and finishes its reads before its first write
+// (execBitFieldEa, POM68K_VENDOR.md row 79). A statically four- or five-byte
+// field is published exactly. Every other shape is published as a longword
+// PROOF span (MemoryAccess::proofSpan): plain RAM only, where loading and
+// storing the whole longword is effect-equivalent to Moira's narrower
+// accesses. A possible fifth byte is the second read slot; a backend must
+// still branch around it when the selected field does not cross bit 31.
 inline void refineMemoryFromExtensions(Instr& in, bool is030) {
     const InstructionSemantics& s = in.semantics;
     if (in.extensionCount == 0) return;
@@ -1592,56 +1628,56 @@ inline void refineMemoryFromExtensions(Instr& in, bool is030) {
         const uint16_t ext = in.extensionWord(0);
         const bool readOnly = s.action == 0 || s.action == 1 ||
                               s.action == 3 || s.action == 5;
+        const unsigned span = memoryBitfieldStaticSpan(ext);
+        const bool possibleTail = !memoryBitfieldFitsLongword(ext);
+        // The head slot is exact only when the field is statically four
+        // bytes, or when it can only exist alongside a fifth byte.
+        const bool headSpan = span != 4 && span != 5;
+        const auto access = [&](MemoryDirection direction, uint8_t bytes,
+                                FaultPhase fault, bool proofSpan) {
+            MemoryAccess a = memoryAccess(direction, MemoryOperand::Operand,
+                                          bytes, s.eaMode, s.eaReg, is030,
+                                          fault);
+            a.proofSpan = proofSpan;
+            return a;
+        };
+        MemoryContract c;
+        c.described = true;
         if (!readOnly) {
-            // The tailless write actions are read4/write4. A possible
-            // crossing publishes Moira's full read4/write4/read1/write1
-            // order. Native code may consume that shape only after proving
-            // every writable plain-RAM mapping before access zero; MMIO,
-            // faults and live-cache mappings therefore fall back untouched.
-            const bool possibleTail = !memoryBitfieldFitsLongword(ext);
-            MemoryContract c;
-            c.described = true;
+            // Tailless write actions are read/write of one span; a possible
+            // fifth byte publishes read4/read1/write4/write1. Native code may
+            // consume that shape only after proving every writable plain-RAM
+            // mapping before access zero; MMIO, faults and live-cache
+            // mappings therefore fall back untouched.
             c.count = possibleTail ? 4 : 2;
             c.order = possibleTail ? MemoryOrder::Sequential
                                    : MemoryOrder::ReadModifyWrite;
-            c.access[0] = memoryAccess(MemoryDirection::Read,
-                                       MemoryOperand::Operand, 4,
-                                       s.eaMode, s.eaReg, is030,
-                                       FaultPhase::RestartInstruction);
-            c.access[1] = memoryAccess(MemoryDirection::Write,
-                                       MemoryOperand::Operand, 4,
-                                       s.eaMode, s.eaReg, is030,
-                                       possibleTail
-                                           ? FaultPhase::PartialWriteCommitted
-                                           : FaultPhase::LastWrite);
+            c.access[0] = access(MemoryDirection::Read, 4,
+                                 FaultPhase::RestartInstruction, headSpan);
             if (possibleTail) {
-                c.access[2] = memoryAccess(MemoryDirection::Read,
-                                           MemoryOperand::Operand, 1,
-                                           s.eaMode, s.eaReg, is030,
-                                           FaultPhase::PartialWriteCommitted);
-                c.access[3] = memoryAccess(MemoryDirection::Write,
-                                           MemoryOperand::Operand, 1,
-                                           s.eaMode, s.eaReg, is030,
-                                           FaultPhase::LastWrite);
+                c.access[1] = access(MemoryDirection::Read, 1,
+                                     FaultPhase::RestartInstruction, false);
+                c.access[2] = access(MemoryDirection::Write, 4,
+                                     FaultPhase::PartialWriteCommitted,
+                                     headSpan);
+                c.access[3] = access(MemoryDirection::Write, 1,
+                                     FaultPhase::LastWrite, false);
+            } else {
+                c.access[1] = access(MemoryDirection::Write, 4,
+                                     FaultPhase::LastWrite, headSpan);
             }
             c.lastWrite = possibleTail ? 3 : 1;
             in.memory = c;
             return;
         }
 
-        MemoryContract c;
-        c.described = true;
-        c.count = memoryBitfieldFitsLongword(ext) ? 1 : 2;
+        c.count = possibleTail ? 2 : 1;
         c.order = c.count == 1 ? MemoryOrder::Single : MemoryOrder::Sequential;
-        c.access[0] = memoryAccess(MemoryDirection::Read,
-                                   MemoryOperand::Operand, 4,
-                                   s.eaMode, s.eaReg, is030,
-                                   FaultPhase::RestartInstruction);
+        c.access[0] = access(MemoryDirection::Read, 4,
+                             FaultPhase::RestartInstruction, headSpan);
         if (c.count == 2)
-            c.access[1] = memoryAccess(MemoryDirection::Read,
-                                       MemoryOperand::Operand, 1,
-                                       s.eaMode, s.eaReg, is030,
-                                       FaultPhase::RestartInstruction);
+            c.access[1] = access(MemoryDirection::Read, 1,
+                                 FaultPhase::RestartInstruction, false);
         in.memory = c;
         return;
     }

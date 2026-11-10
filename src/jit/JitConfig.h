@@ -114,7 +114,8 @@ struct ResolvedConfig {
 
     // 68030 memory bitfields through (An)/d16(An). Read-only forms preflight
     // an optional fifth-byte tail before the first load; tailless writes use
-    // the shared read4/write4 RMW proof. ON after the cross-backend directed
+    // the shared longword RMW proof (a proof span when Moira's field is
+    // narrower, JitIr.h). ON after the cross-backend directed
     // 030 oracle, four real locksteps and the Speedometer E9D4 census
     // (2026-08-31). The explicit knob remains as an attribution/veto arm.
     bool memBitfield030 = true;

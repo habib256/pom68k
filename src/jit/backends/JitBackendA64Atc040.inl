@@ -46,6 +46,19 @@ void recordAtcRoute040(Asm& a, const Layout& L, AtcRoute route,
         if (route.mask & (1u << i)) a.strB(12, 1, kAtcRoutes040 + i);
 }
 
+// Moira splits a three-byte memory bit field into a word and a byte: two
+// data-ATC accesses per direction where the longword proof span recorded
+// one (Moira::mmu040AtcLookup counts every access).
+void doubleAtcRoute040(Asm& a, const Layout& L, uint8_t mask) {
+    if (L.is030 || !(gAtcRoutes040 & mask)) return;
+    for (unsigned i = 0; i < AtcReplay040::Accesses; ++i)
+        if (mask & (1u << i)) {
+            a.ldrB(12, 1, kAtcRoutes040 + i);
+            a.addW(12, 12, 12);
+            a.strB(12, 1, kAtcRoutes040 + i);
+        }
+}
+
 void prepareAtcThunk040(Asm& a, const Layout& L, unsigned access,
                          unsigned argument) {
     if (L.is030) { a.movX(argument, 0); return; }
