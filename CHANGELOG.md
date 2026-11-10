@@ -1382,6 +1382,12 @@ leg (Rosetta) passes `jit_asset_free_lockstep_test`, `cache040_test`,
 `moira_state_test` and `jit_backend_test`. The touched targets build
 warning-free under `-Werror`.
 
+The previous Nightly (run 42802857141) had timed out `cache040_test` under
+ASan/UBSan at the 600 s default. The test now prints each passing assertion
+once and a failing case's parameters only on failure (590 689 lines down to
+308). It also declares a 1 800 s ceiling, since its fault matrices take
+~20 s in Release and 243 s under ASan/UBSan on the M4.
+
 ---
 
 <a id="2026-11-10-addsub-buffer"></a>

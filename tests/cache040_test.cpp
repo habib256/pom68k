@@ -29,7 +29,10 @@
 #include "MoiraCache040.h"
 
 #include <cstdint>
+#include <cstdarg>
 #include <cstdio>
+#include <set>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -39,9 +42,28 @@ namespace {
 
 int gFails = 0;
 
+// The matrices run tens of thousands of cases. Each assertion prints once
+// when it first passes and every time it fails, after the case line that
+// caseContext() recorded — 590 000 lines of "ok" made the ASan/UBSan
+// nightly leg time out (run 42802857141).
+char gCase[256] = {};
+std::set<std::string> gPassed;
+
+void caseContext(const char* fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    std::vsnprintf(gCase, sizeof gCase, fmt, args);
+    va_end(args);
+}
+
 void check(bool ok, const char* what) {
-    std::printf("  %-58s %s\n", what, ok ? "ok" : "FAIL");
-    if (!ok) gFails++;
+    if (ok) {
+        if (gPassed.insert(what).second) std::printf("  %-58s ok\n", what);
+        return;
+    }
+    if (gCase[0]) std::fputs(gCase, stdout);
+    std::printf("  %-58s FAIL\n", what);
+    gFails++;
 }
 
 // ---------------------------------------------------------------- part 1
@@ -727,7 +749,7 @@ void testImplicitNoncacheable() {
         cpu.setSFC(fc); cpu.setDFC(fc);
         const auto fills = cpu.pomCache040Data().fills;
         cpu.recording = true; cpu.execute(); cpu.recording = false;
-        std::printf("  implicit NC model=%u map=%u resident=%u op=%u fc=%u\n",
+        caseContext("  implicit NC model=%u map=%u resident=%u op=%u fc=%u\n",
                     unsigned(model), mapping, resident, op, fc);
         check(cpu.getPC0() == next && !cpu.isHalted(), "implicit NC: instruction completes");
         check(cpu.transfers == bus, "implicit NC: dirty pushes precede exact external operand transfers");
@@ -873,7 +895,7 @@ void testCasMismatchTerminalWrite() {
         cpu.skipWrites = cache == 3 && cpu.failBytes == 2 ? 1 : 0;
         if (fault < 0 && is040) cpu.failWrite = ~0u;
         cpu.recording = true; cpu.execute(); cpu.recording = false;
-        std::printf("  terminal CAS%s bytes=%u model=%u map=%u cache=%u super=%u mode=%u first=%u fault=%d\n",
+        caseContext("  terminal CAS%s bytes=%u model=%u map=%u cache=%u super=%u mode=%u first=%u fault=%d\n",
                     cas2 ? "2" : "", bytes, unsigned(model), mapping, cache, super, mode, failFirst, fault);
         check(cpu.transfers == bus, "terminal write: exact operand order, width and original read value");
         check(cpu.getCCR() == 0x19 && cpu.getA(0) == la + (mode == 1 ? bytes : 0),
@@ -980,7 +1002,7 @@ void testMove16FaultContext() {
         const unsigned completed = kind == 0 ? 16 : kind == 2 ? 2 * beat : 0;
         for (unsigned i = 0; i < completed; ++i) expectedDest[i] = sourceBytes[i];
         cpu.recording = true; cpu.execute(); cpu.recording = false;
-        std::printf("  MOVE16 model=%u map=%u super=%u path=%u form=%u kind=%u beat=%u\n",
+        caseContext("  MOVE16 model=%u map=%u super=%u path=%u form=%u kind=%u beat=%u\n",
                     unsigned(model), mapping, super, path, form, kind, beat);
         check(cpu.transfers == bus && cpu.busErrors == ((kind == 1 || kind == 2) ? 1u : 0u),
               "MOVE16: exact read/write prefix and bus-error position");
@@ -1074,7 +1096,7 @@ void testFaultAfterSuccessfulPush() {
         auto lng = [&](uint32_t a) { return uint32_t(word(a)) << 16 | word(a + 2); };
         const uint32_t sp = cpu.getSP();
         const uint16_t ssw = uint16_t(fc | (bytes == 1 ? 0x20 : bytes == 2 ? 0x40 : 0) | (tas ? 0x200 : 0x100));
-        std::printf("  post-push fault model=%u map=%u fc=%u op=%u beat=%u\n", unsigned(model), mapping, fc, op, beat);
+        caseContext("  post-push fault model=%u map=%u fc=%u op=%u beat=%u\n", unsigned(model), mapping, fc, op, beat);
         check(cpu.transfers == bus && cpu.busErrors == 1 && lng(0x8000) == 0x11223344 &&
               lng(0x8008) == 0xDEADBEEF && !cpu.pomCache040Data().lookup(0x8000),
               "post-push fault: push completes before the operand read fails");
@@ -1177,7 +1199,7 @@ void testReadFillFaults() {
             if (aborted && demanded) break;
         }
         cpu.recording = true; cpu.execute(); cpu.recording = false;
-        std::printf("  read fill model=%u map=%u super=%u size=%u off=%u victim=%u fault=%d demanded=%u\n",
+        caseContext("  read fill model=%u map=%u super=%u size=%u off=%u victim=%u fault=%d demanded=%u\n",
                     unsigned(model), mapping, super, size, off, victim, fault, demanded);
         check(cpu.transfers == bus && cpu.busErrors == (fault < 0 ? 0u : 1u),
               "read fill: wrapped read prefix precedes any successful dirty push");
@@ -1289,7 +1311,7 @@ void testWriteAllocateFaults() {
             }
         }
         cpu.recording = true; cpu.execute(); cpu.recording = false;
-        std::printf("  write fill model=%u map=%u super=%u size=%u off=%u victim=%u mode=%u fault=%d\n",
+        caseContext("  write fill model=%u map=%u super=%u size=%u off=%u victim=%u mode=%u fault=%d\n",
                     unsigned(model), mapping, super, size, off, victim, mode, fault);
         check(cpu.transfers == bus && cpu.busErrors == (fault < 0 ? 0u : 1u),
               "write fill: wrapped read precedes dirty push, failed read does not push");
@@ -1431,7 +1453,7 @@ void testPushFaults() {
             }
         }
         cpu.recording = true; cpu.execute(); cpu.recording = false;
-        std::printf("  push fault model=%u map=%u super=%u kind=%u size=%u mode=%u dirty=%x fault=%d\n",
+        caseContext("  push fault model=%u map=%u super=%u kind=%u size=%u mode=%u dirty=%x fault=%d\n",
                     unsigned(model), mapping, super, kind, size, mode, dirty, fault);
         check(cpu.transfers == bus && cpu.busErrors == (fault < 0 ? 0u : 1u), "push fault: exact read/push prefix, longword versus full-line width");
         check(!cpu.pomCache040Data().lookup(victim) &&
@@ -1592,7 +1614,7 @@ void testDescriptorFaults() {
         if (indirect) cycle(leaf, targetPa | attributes, false);
         cycle(leaf, targetPa | cm | (write ? 0x19 : 9), true);
         cpu.recordTables = cpu.recording = true; cpu.execute(); cpu.recording = false;
-        std::printf("  descriptor fault model=%u 8k=%u cache=%u super=%u access=%u bytes=%u later=%u indirect=%u kind=%u half=%u warmM=%u\n",
+        caseContext("  descriptor fault model=%u 8k=%u cache=%u super=%u access=%u bytes=%u later=%u indirect=%u kind=%u half=%u warmM=%u\n",
                     unsigned(model), page8k, cache, super, access, bytes, later, indirect, kind, half, warmTarget);
         std::vector<CoherenceCpu::Transfer> actual;
         for (auto t : cpu.transfers) if (t.address >= 0x4000 && t.address < 0x5000) actual.push_back(t);
@@ -1803,7 +1825,7 @@ void testPageSplitFaults() {
                 }
             }
             cpu.recording = true; cpu.execute(); cpu.recording = false;
-            std::printf("  page split model=%u map=%u cache=%u super=%u write=%u bytes=%u gap=%u mode=%u kind=%u page=%u pa=%x\n",
+            caseContext("  page split model=%u map=%u cache=%u super=%u write=%u bytes=%u gap=%u mode=%u kind=%u page=%u pa=%x\n",
                         unsigned(model), mapping, cache, super, write, bytes, gap, mode, fault.kind, fault.page, fault.pa);
             check(cpu.transfers == bus && cpu.busErrors == unsigned(fault.kind == 1), "page split: exact transferred prefix and trap origin");
             auto peek = [&](uint32_t a) {
@@ -1906,7 +1928,7 @@ void testInstructionFillFaults() {
             }
         }
         cpu.recording = true; cpu.execute(); cpu.recording = false;
-        std::printf("  instruction fill model=%u map=%u super=%u off=%u demanded=%u half=%u\n",
+        caseContext("  instruction fill model=%u map=%u super=%u off=%u demanded=%u half=%u\n",
                     unsigned(model), mapping, super, off, demanded, half);
         check(cpu.transfers == bus && cpu.busErrors == (demanded ? 1u : 2u) &&
               !cpu.pomCache040Inst().lookup(0x8000),

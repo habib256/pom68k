@@ -28,6 +28,12 @@ foreach(cpu_gate IN ITEMS
     add_test(NAME ${cpu_gate} COMMAND ${cpu_gate})
 endforeach()
 target_link_libraries(fpu_context_test PRIVATE ${POM68K_CPU_CONTEXT_THREADS})
+# cache040_test's fault matrices take ~20 s in Release but 243 s under
+# ASan/UBSan on the M4 (2026-11-10), and the Linux nightly leg (GCC ASan,
+# `-j nproc`) timed out at the 600 s default (run 42802857141). 1800 is the
+# instrumented cost with margin, as for jit_asset_free_lockstep_test; the
+# plain tiers finish it in ~20 s.
+set_tests_properties(cache040_test PROPERTIES TIMEOUT 1800)
 
 # The 68030 against WinUAE alone, all fourteen cells: the pinned sst68030
 # keeps, in several cells, only the vectors a retired second oracle agreed
