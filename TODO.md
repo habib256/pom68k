@@ -306,6 +306,20 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
 
 ### Justesse 68030, 68020 et 6888x
 
+- [ ] **FBcc vers une cible impaire sur 68030 + 68882.** Balayage de
+  graines fraîches du 2026-11-11 (`fuzz030.py --family random --strict-fpu
+  --n 2000`) : `random/identity seed=6107 #242`, `#1118`, `random/tt
+  seed=6108 #1748`, `#1835` (FBcc.W/.L, opcodes $F2D6, $F2B6, $F2EE,
+  $F286). L'oracle retire le branchement, PC impair, sans exception dans
+  le pas ; le fork prend l'erreur d'adresse dans le FBcc (frame $B). Même
+  question que le JSR du 2026-11-11 : à qui appartient la faute, et quel
+  PC la frame empile. À trancher avec des vecteurs à deux pas.
+- [ ] **Octets internes de la frame $B d'un MOVE.W à EA full-format qui
+  faute.** `random/identity seed=6107 #1726` (`32B2 553A 09FB 95F2`) :
+  PC, SR et A7 égaux à l'oracle, sept octets internes diffèrent ($3B et
+  les six derniers, où l'oracle range les mots d'extension décalés d'un
+  mot). Même balayage ; 9 995 / 10 000 sur `random` MMU active, les autres
+  familles (core, mmu, fault, rmw) 23 937 / 23 937.
 - [ ] **Trois octets internes de la frame $B après un JSR vers une page
   fautive.** Vecteur à deux pas (JSR puis faute de fetch à la cible,
   68030, MMU identité) : la frame du fork égale celle de l'oracle sauf
