@@ -633,7 +633,7 @@ uint16_t MacIIMemory::read16Mapped(uint32_t addr) {
     return uint16_t(read8Decoded(addr) << 8) | read8Decoded(addr + 1);
 }
 
-void MacIIMemory::write8(uint32_t addr, uint8_t v) {
+void MacIIMemory::write8Mapped(uint32_t addr, uint8_t v) {
     write8Decoded(physAddr(addr), v);
 }
 
@@ -713,7 +713,7 @@ void MacIIMemory::write8Decoded(uint32_t addr, uint8_t v) {
     }
 }
 
-void MacIIMemory::write16(uint32_t addr, uint16_t v) {
+void MacIIMemory::write16Mapped(uint32_t addr, uint16_t v) {
     addr = physAddr(addr);
     if (addr >= 0x50000000u && addr < 0x60000000u) {
         uint32_t ioOff = 0;

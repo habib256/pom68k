@@ -106,8 +106,28 @@ public:
     }
     uint8_t  read8Mapped(uint32_t addr);
     uint16_t read16Mapped(uint32_t addr);
-    void     write8(uint32_t addr, uint8_t v);
-    void     write16(uint32_t addr, uint16_t v);
+    // The write twin of the inline reads. noteRam() is the guard call of
+    // write8Decoded()'s RAM case, both views of an 8 MiB board included.
+    void write8(uint32_t addr, uint8_t v) {
+        if (!overlay_ && !is030()) [[likely]] {
+            const uint32_t a = hmmu24_ ? addr & 0x00FFFFFFu : addr;
+            if (a < fastRamEnd()) { noteRam(a); ram_[a] = v; return; }
+        }
+        write8Mapped(addr, v);
+    }
+    void write16(uint32_t addr, uint16_t v) {
+        if (!overlay_ && !is030()) [[likely]] {
+            const uint32_t a = hmmu24_ ? addr & 0x00FFFFFFu : addr;
+            if (a + 1 < fastRamEnd()) {
+                noteRam(a);     ram_[a] = uint8_t(v >> 8);
+                noteRam(a + 1); ram_[a + 1] = uint8_t(v);
+                return;
+            }
+        }
+        write16Mapped(addr, v);
+    }
+    void     write8Mapped(uint32_t addr, uint8_t v);
+    void     write16Mapped(uint32_t addr, uint16_t v);
     uint8_t  peek8(uint32_t addr) const;
 
     void setCpu(Cpu020* cpu) { cpu_ = cpu; }
@@ -360,6 +380,14 @@ private:
     void refreshVia2PortA();
     void updateHmmuFromVia2();
     uint32_t physAddr(uint32_t addr) const;
+    void noteRam(uint32_t a) {
+        if (!jitGuard_) return;
+        jitGuard_->note(a, 1);
+        if (ramSize_ == 0x800000) {
+            if (a < 0x400000)       jitGuard_->note(a + 0x800000, 1);
+            else if (a >= 0x800000) jitGuard_->note(a - 0x800000, 1);
+        }
+    }
     uint32_t fastRamEnd() const {
         return hmmu24_ && ramSize_ > 0x800000u ? 0x800000u : ramSize_;
     }

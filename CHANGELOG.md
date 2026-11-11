@@ -275,6 +275,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
+- **How much faster did each bench get on 2026-11-11, and what was refused?** → [RAM writes, and the day's totals](#2026-11-11-ram-write-path)
 - **What did NeoST change in its 68000 core after 2026-10-20, and what is missing from the fork?** → [The fetch-window call, and the NeoST reading](#2026-11-11-fetch-window-inline)
 - **Why did the Mac II decode every RAM word twice, and what replaced it?** → [Inline RAM reads on the GLUE board](#2026-11-11-macii-ram-path)
 - **Can the Plus's video contention be charged without a loop, and RAM read without the address decoder?** → [Closed-form contention and inline RAM reads](#2026-11-11-compact-ram-path)
@@ -1335,6 +1336,59 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-11-ram-write-path"></a>
+## 2026-11-11 (twelfth) — RAM writes past the decoder on the Plus and the Mac II: 4-6 % and 3 % more; the day's totals
+
+The write twins of the inline reads of entries (ninth) and (tenth).
+`MacMemory::write8`/`write16` store to low RAM inline when the overlay
+is down — the JIT guard told first, as the decoder does; with the
+overlay down the decoder's overlay-clearing branch cannot fire.
+`MacIIMemory::write8`/`write16` do the same on the 68020 boards, through
+`noteRam()`, the guard call of the decoder's RAM case with both views of
+an 8 MiB board. Everything else takes `write8Decoded`/`write8Mapped`,
+the former functions.
+
+| bench (interpreter) | 3 000 frames | 6 000 frames | fingerprint |
+|---|---|---|---|
+| Mac Plus | 0.580 → 0.546 s, **-5.9 %** | 1.237 → 1.187 s, **-4.0 %** | same |
+| Mac II | 2.499 → 2.433 s, **-2.6 %** | 4.998 → 4.844 s, **-3.1 %** | same |
+
+Means of six runs per arm, interleaved A B B A, idle host (floor 1.1 %).
+
+Gates: `contention_test` and `macii_ram_read_test`, extended. A twin
+board takes every write through the decoder; the board under test takes
+it through the inline path; RAM is compared byte for byte after each
+mode (overlay up, overlay down, and on the Mac II the 24-bit map).
+Mutation-checked, four of five fail: the Plus word limit moved onto
+$3FFFFF, the overlay test dropped on either board, a wrong byte in the
+Mac II word store. The fifth — the 24-bit fold dropped from the Mac II's
+`write8` — is an equivalent mutant: an unfolded address above RAM falls
+to the full map, which folds it. Two of these mutations first passed and
+showed two holes in the new cells, closed before this count: a later
+store overwrote the evidence at $000000, and each mode rewrote the
+addresses of the previous one.
+
+**Measured and left alone.** Forcing `Moira::pomJitFetch` inline at its
+fetch sites (it is 8-13 % of the interpreter profiles as a symbol): Plus
+0.580 → 0.575 s, Mac II 2.507 → 2.505 s, Quadra 605 identical, LC II
+3.755 → 3.720 s — all inside the floor. Not kept.
+
+**The day, on this host** (M4, a64; 3 000 / 6 000 frames; morning tree
+→ this one; every fingerprint unchanged):
+
+| bench | morning | now | |
+|---|---|---|---|
+| Mac Plus, interpreter | 2.480 / 5.270 s | 0.546 / 1.187 s | **-78 % / -77 %** |
+| Mac II, interpreter | 3.010 / 6.040 s | 2.433 / 4.844 s | **-19 % / -20 %** |
+| Quadra 605, JIT a64 | 2.650 / 12.200 s | 2.052 / 10.147 s | **-23 % / -17 %** |
+| LC II, JIT a64 | 4.560 / 8.670 s | 3.756 / 7.098 s | **-18 % / -18 %** |
+
+The morning column is the baseline of entry (fourth); the columns were
+not measured in one interleaved session, so the last digit is not a
+claim.
+
+Tiers on the final tree (M4): `unit|jit` 210 / 210; the compact and GLUE families together 123 / 123; `etalon-core` 16 / 16. `m030`/`m040` not rerun: the 68030 boards of the GLUE family take the unchanged full-map path, and nothing else shares the code. The x86-64 host was not run.
 
 <a id="2026-11-11-fetch-window-inline"></a>
 ## 2026-11-11 (eleventh) — The fetch window's cache-model test no longer costs a call: Mac Plus 7-9 %, Mac II 3-4 %; what NeoST changed since the last back-port

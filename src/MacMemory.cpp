@@ -506,7 +506,7 @@ uint8_t MacMemory::read8Decoded(uint32_t addr) {
     return 0xFF;                                             // open bus
 }
 
-void MacMemory::write8(uint32_t addr, uint8_t v) {
+void MacMemory::write8Decoded(uint32_t addr, uint8_t v) {
     addr &= 0xFFFFFF;
     switch (addr >> 20) {
         case 0x0: case 0x1: case 0x2: case 0x3:
@@ -570,7 +570,7 @@ uint16_t MacMemory::read16Decoded(uint32_t addr) {
     return uint16_t(hi << 8) | read8Decoded(addr + 1);
 }
 
-void MacMemory::write16(uint32_t addr, uint16_t v) {
-    write8(addr, uint8_t(v >> 8));
-    write8(addr + 1, uint8_t(v));
+void MacMemory::write16Decoded(uint32_t addr, uint16_t v) {
+    write8Decoded(addr, uint8_t(v >> 8));
+    write8Decoded(addr + 1, uint8_t(v));
 }
