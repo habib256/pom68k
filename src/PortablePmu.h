@@ -12,6 +12,16 @@ public:
     bool active() const { return active_; }
     void reset();
     void tick(int cycles);
+    // Host cycles until tick() next runs an MCU instruction. Before that
+    // cycle a tick only accumulates, so a board may hand the Power Manager
+    // any number of shorter ticks and the instruction still starts on the
+    // same host cycle (PortableCpu::runCycles, while the CPU is held).
+    int cyclesToNextStep() const {
+        if(!active_) return 0x7fffffff;
+        constexpr int64_t mcuHz=983040;
+        const int64_t need=(int64_t(debt_)+1)*hostHz_-acc_;
+        return need<=0 ? 1 : int((need+mcuHz-1)/mcuHz);
+    }
     void vblank() { mcu_.setInterrupt(0,true); }
     void setRequest(bool level) { request_=level; }
     bool request() const { return request_; }

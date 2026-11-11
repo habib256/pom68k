@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 780 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 781 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -12,7 +12,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 116 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 37 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
-| [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 31 |
+| [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 32 |
 | [Sound](#sound) | 14 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 27 |
 | [Save states](#save-states) | 11 |
@@ -433,6 +433,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-10-19 (eleventh)** — [PowerBook 180c runs its color LCD through Pangola and the real video ROM](CHANGELOG.md#2026-10-19-pb180c-pangola)
 - **2026-10-19 (ninth)** — [PowerBook 160 brings Niagra and the GSC grayscale panel to the product](CHANGELOG.md#2026-10-19-pb160-niagra)
 - **2026-10-20 (second)** — [PowerBook slot E gets its 512 KB RGB display and two-screen public replay](CHANGELOG.md#2026-10-20-pb030-external-video)
+- **2026-11-11 (fourteenth)** — [The Portable and the PowerBook 100 no longer depend on host slicing; the PB100's pinned screen was a product of it and is re-pinned](CHANGELOG.md#2026-11-11-portable-slicing)
 
 ## Sound
 

@@ -39,6 +39,10 @@ public:
     void write16(uint32_t a,uint16_t v);
     uint8_t peek8(uint32_t a) const;
     void tick(int cycles);
+    // Cycles until tick() next does something a longer tick would do at a
+    // different instant: a Power Manager instruction, the frame edge (CA1
+    // and the PMU's vertical-blank input) or the end of the CA1 pulse.
+    int cyclesToNextEvent() const;
     void setCpu(PortableCpu* cpu) {cpu_=cpu;}
     bool cpuHeld() const {return pmu_.cpuHeld();}
     bool consumeReset() {bool result=resetPending_;resetPending_=false;return result;}
