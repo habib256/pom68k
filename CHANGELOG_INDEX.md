@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 765 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 766 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,7 +8,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 99 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 100 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 114 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 37 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
@@ -125,6 +125,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-09 (second)** — [The 68040 ATC distinguishes user and supervisor translations, including MOVES and JIT publications](CHANGELOG.md#2026-11-09-atc-fc2)
 - **2026-11-10** — [The JIT consumes host-independent policy without POM68K startup headers](CHANGELOG.md#2026-11-10-jit-startup-boundary)
 - **2026-11-10 (thirteenth)** — [The Moira fork and its JIT build and test outside POM68K; upstream's CACR fix taken, the dead 040 i-cache overlay removed](CHANGELOG.md#2026-11-10-moira-release)
+- **2026-11-11 (fifth)** — [The Egret/Cuda MCU runs ahead through its internal instructions: the board wakes at port accesses only; Quadra 605 11-19 % and LC II 15-16 % faster in JIT](CHANGELOG.md#2026-11-11-mcu-run-ahead)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 

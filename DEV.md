@@ -1852,6 +1852,14 @@ Cuda 2.35, **341S0788** = 2.37, **341S0060** = 2.40; Egret flavours
 - **Clock drift**: `CudaLle::tick` must carry `M68hc05::run` overshoot as
   `mcuDebt_`, or the MCU overclocks ~37 % and the guest's RTC drifts. Boot
   gates do not see this; `lcii_soak_etalon` does.
+- **Run-ahead**: past its slice the MCU keeps executing the instructions
+  that touch neither a port, a DDR nor /IRQ (`M68hc05::nextIsInternal`),
+  up to `CudaLle::kRunAhead` cycles, and carries them as debt. The board
+  is then woken at the next *port* instruction instead of at every
+  instruction; port accesses stay on their exact MCU cycle and the
+  instruction rate is unchanged. `CudaLle::tick` enters `run()` even when
+  the debt covers the slice — that is what makes the state independent of
+  the slicing. Gate: `m68hc05_runahead_test`.
 - **The DFAC2 I2C slave** (`CudaLle::setI2cDfac`) is not optional on the
   boards that have it: without the ACK, Cuda 2.35 takes its DFAC-error path
   after one aborted probe and never completes the next host VIA session —

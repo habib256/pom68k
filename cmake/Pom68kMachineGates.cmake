@@ -221,6 +221,12 @@ target_link_libraries(m68hc05_test PRIVATE pom68k_core)
 add_test(NAME m68hc05_test COMMAND m68hc05_test
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
+# M68hc05 run-ahead (CudaLle::tick): internal instructions executed early
+# move no port access, whatever the slicing. Synthetic ROMs, no dump.
+add_executable(m68hc05_runahead_test tests/m68hc05_runahead_test.cpp)
+target_link_libraries(m68hc05_runahead_test PRIVATE pom68k_core)
+add_test(NAME m68hc05_runahead_test COMMAND m68hc05_runahead_test)
+
 # Blueprint step 2: the firmware behind the Quadra VIA (POM68K_CUDA_LLE;
 # reset release + PRAM install + /TREQ idle; soft-skips).
 add_executable(cuda_lle_test tests/cuda_lle_test.cpp)

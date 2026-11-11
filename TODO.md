@@ -102,18 +102,24 @@ LLE 5 %, repli interpréteur 5 %. Donc, par ordre de rendement attendu :
 5. **Le code généré lui-même (22–33 %)** : la qualité d'émission, mais
    c'est le poste le plus coûteux à améliorer et il faut un profil par
    bloc.
-6. **Ne réveiller à chaque instruction du MCU que ce que le MCU voit.**
-   Profils M4 du 2026-11-11 (`CHANGELOG` 2026-11-11 (fourth)) : sur les
-   deux bancs JIT toute la carte est réveillée une fois par instruction
-   68HC05 (27,3 M `mem.tick` pour 50 s invitées sur le Q605). DAFB,
-   lecteurs, pompe CD, ASC et CA1 — que le MCU n'observe pas — pèsent
-   ~19 % du profil Q605. Les avancer à leur propre échéance ou à l'accès
-   (la recette de dette du SCC/SCSI, généralisée) demande un flush devant
-   chaque observateur côté hôte et une décision de format de save-state
-   (champ de dette, ou flush avant sauvegarde). Même gisement sur les
-   cartes 68000, où la marche des périphériques est ~80 % du temps du
-   Plus après le SCC au repos : `MacMemory::tick` 23 %, `SonyDrive` 9 %,
-   `Iwm` 8 %, `CdAudioPump` 8 %, `MacMouse` 5 %.
+6. **Ne réveiller à chaque instruction du MCU que ce que le MCU voit —
+   première moitié FAITE le 2026-11-11 (`CHANGELOG` (fifth)).** Le 68HC05
+   court en avance sur ses instructions internes ; la carte n'est plus
+   réveillée qu'aux accès de port (Q605 27,3 M → 7,6 M `mem.tick` pour
+   3 000 trames, −11 à −19 % ; LC II −15 à −16 %). Restent :
+   - la même recette sur les autres MCU en LLE qui bornent la tranche à
+     l'instruction : PG&E (`PgePmu`, « CudaLle debt pattern »), M50753
+     (`Pb030Pmu`, `PortablePmu`), 65C02 des IOP (`ApplePic`), PIC1654S des
+     Centris — aucun n'a de banc à budget fixe, il en faut un d'abord ;
+   - les périphériques que personne n'observe entre deux échéances (DAFB,
+     lecteurs, pompe CD, ASC, CA1) avancés à l'accès : flush devant chaque
+     observateur côté hôte et décision de format de save-state ; à
+     re-profiler, le gisement a fondu avec les réveils ;
+   - `M68hc05::nextIsInternal` lui-même (~3 % du profil) : une table de
+     classes par octet de ROM, calculée au chargement ;
+   - cartes 68000 : la marche des périphériques reste ~80 % du temps du
+     Plus après le SCC au repos (`MacMemory::tick` 23 %, `SonyDrive` 9 %,
+     `Iwm` 8 %, `CdAudioPump` 8 %, `MacMouse` 5 %).
 
 ## Statut
 
