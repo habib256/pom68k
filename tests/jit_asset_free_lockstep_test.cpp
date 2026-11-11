@@ -439,6 +439,30 @@ void installLateIplLoop(SyntheticCpu& c) {
     put16(c, kIrqHandler + 12, 0x4E73);// RTE
 }
 
+// LINK samples the interrupt pin BEFORE its push: every poll of the
+// instruction precedes its one data access. The frame it builds and the
+// handler's stacked PC are both compared, with the pin raised by the device
+// read two instructions earlier.
+void installHeadPollLinkLoop(SyntheticCpu& c) {
+    installVectors(c);
+    put32(c, 26 * 4, kIrqHandler);     // level-2 autovector
+    put16(c, kCode + 0, 0xC029);       // AND.B $800(A1),D0   raises the pin
+    put16(c, kCode + 2, 0x0800);
+    put16(c, kCode + 4, 0x4E56);       // LINK A6,#-8
+    put16(c, kCode + 6, 0xFFF8);
+    put16(c, kCode + 8, 0x2D41);       // MOVE.L D1,-4(A6)
+    put16(c, kCode + 10, 0xFFFC);
+    put16(c, kCode + 12, 0x4E5E);      // UNLK A6
+    put16(c, kCode + 14, 0x5281);      // ADDQ.L #1,D1
+    put16(c, kCode + 16, 0x60EE);      // BRA.S kCode
+    put16(c, kIrqHandler + 0, 0x26EF); // MOVE.L 2(A7),(A3)+  stacked PC
+    put16(c, kIrqHandler + 2, 0x0002);
+    put16(c, kIrqHandler + 4, 0x13FC); // MOVE.B #0,kIrqDev   acknowledge
+    put16(c, kIrqHandler + 6, 0x0000);
+    put32(c, kIrqHandler + 8, kIrqDev);
+    put16(c, kIrqHandler + 12, 0x4E73);// RTE
+}
+
 void installAddressSourceAluLoop(SyntheticCpu& c) {
     installVectors(c);
     put16(c, kCode + 0, 0xD089);       // ADD.L A1,D0
@@ -1569,6 +1593,68 @@ bool runLateIplPoll() {
     // The interpreter's answer is architectural: the interrupt follows the
     // AND. Pin it, so a generator and an interpreter that drifted TOGETHER
     // would still be caught.
+    return ref.irqAcks != 0 && get32(ref, kData) == kCode + 4 &&
+           s.instrs > warm.instrs;
+}
+
+bool runHeadPollLink() {
+    const auto refOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& native = *nativeOwner;
+    installHeadPollLinkLoop(ref);
+    installHeadPollLinkLoop(native);
+    resetCpu(ref);
+    resetCpu(native);
+    for (SyntheticCpu* c : {&ref, &native}) {
+        c->setD(0, 0x5A);
+        c->setA(1, kDevice);
+        c->setA(3, kData);
+        c->setA(6, 0x00123456);
+        c->setSR(0x2000);
+    }
+    native.jit.setEnabled(true);
+    auto run = [&](const char* phase) {
+        for (int step = 0; step < 96; step++) {
+            const int64_t target = ref.getClock() + 37;
+            ref.executeUntil(target);
+            native.jit.executeUntil(target);
+            if (!sameCpu(ref, native, true) ||
+                !sameMemory(ref, native, kData, 0x400, true) ||
+                !sameMemory(ref, native, kStack - 128, 128, true) ||
+                ref.irqAcks != native.irqAcks) {
+                std::printf("    head-poll LINK divergence, %s checkpoint %d: "
+                            "A6 %08X/%08X SP %08X/%08X acks %u/%u\n", phase, step,
+                            ref.getA(6), native.getA(6), ref.getSP(), native.getSP(),
+                            ref.irqAcks, native.irqAcks);
+                return false;
+            }
+        }
+        return true;
+    };
+    // Unarmed: LINK, the frame store and UNLK must all be generated code, or
+    // the armed phase would compare the interpreter with itself.
+    if (!run("warm-up")) return false;
+    const auto warm = native.jit.stats().snapshot();
+    if (warm.blocksCompiled == 0 || warm.blocksRun == 0 || warm.slowInstrs != 0) {
+        std::printf("    head-poll LINK loop did not run native: compiled=%llu "
+                    "runs=%llu slow=%llu\n",
+                    (unsigned long long)warm.blocksCompiled,
+                    (unsigned long long)warm.blocksRun,
+                    (unsigned long long)warm.slowInstrs);
+        return false;
+    }
+    ref.irqArmed = native.irqArmed = true;
+    if (!run("armed")) return false;
+    const auto s = native.jit.stats().snapshot();
+    std::printf("    head-poll LINK compiled=%llu runs=%llu native=%llu slow=%llu "
+                "acks=%u first stacked PC=%08X\n",
+                (unsigned long long)s.blocksCompiled,
+                (unsigned long long)s.blocksRun, (unsigned long long)s.instrs,
+                (unsigned long long)s.slowInstrs, native.irqAcks,
+                get32(native, kData));
+    // Architectural, from the interpreter: the device read's interrupt is
+    // taken before the LINK that follows it.
     return ref.irqAcks != 0 && get32(ref, kData) == kCode + 4 &&
            s.instrs > warm.instrs;
 }
@@ -3532,6 +3618,8 @@ int main(int argc, char** argv) {
           "exact MMIO source + preflighted RAM destination stays native and exact");
     check(runLateIplPoll(),
           "an MMIO read that raises the pin interrupts after its own instruction");
+    check(runHeadPollLink(),
+          "LINK, whose polls all precede its push, is native and interrupts land the same");
     check(runAddressSourceAluLockstep(),
           "ADD.L address-register source preserves value and flags natively");
     check(runBriefIndexedLockstep(),
