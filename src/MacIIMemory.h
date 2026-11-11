@@ -85,8 +85,27 @@ public:
     // its declaration ROM (linear, byteLanes $0F — no Toby descrambling).
     bool installSe30Video(const std::string& vromPath = {});
 
-    uint8_t  read8(uint32_t addr);
-    uint16_t read16(uint32_t addr);
+    // Plain RAM on the 68020 boards with the overlay down is nearly every
+    // read: served here through the same GLUE view physAddr() and ramAt()
+    // give (24-bit mode folds the address; RAM never reaches $800000
+    // there). The 68030 boards keep the full path — their PMMU decides
+    // whether the GLUE remap runs at all.
+    uint8_t read8(uint32_t addr) {
+        if (!overlay_ && !is030()) [[likely]] {
+            const uint32_t a = hmmu24_ ? addr & 0x00FFFFFFu : addr;
+            if (a < fastRamEnd()) return ram_[a];
+        }
+        return read8Mapped(addr);
+    }
+    uint16_t read16(uint32_t addr) {
+        if (!overlay_ && !is030()) [[likely]] {
+            const uint32_t a = hmmu24_ ? addr & 0x00FFFFFFu : addr;
+            if (a + 1 < fastRamEnd()) return uint16_t(ram_[a] << 8 | ram_[a + 1]);
+        }
+        return read16Mapped(addr);
+    }
+    uint8_t  read8Mapped(uint32_t addr);
+    uint16_t read16Mapped(uint32_t addr);
     void     write8(uint32_t addr, uint8_t v);
     void     write16(uint32_t addr, uint16_t v);
     uint8_t  peek8(uint32_t addr) const;
@@ -341,6 +360,9 @@ private:
     void refreshVia2PortA();
     void updateHmmuFromVia2();
     uint32_t physAddr(uint32_t addr) const;
+    uint32_t fastRamEnd() const {
+        return hmmu24_ && ramSize_ > 0x800000u ? 0x800000u : ramSize_;
+    }
     uint8_t read8Decoded(uint32_t addr);
     void write8Decoded(uint32_t addr, uint8_t v);
     void nubusSlotIrq(int slot, bool active);

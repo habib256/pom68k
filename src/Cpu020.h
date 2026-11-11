@@ -59,7 +59,8 @@ private:
     bool eventDriven_ = false;
     moira::u16 read16OnReset(moira::u32 addr) const override;
     void didChangeCACR(moira::u32 value) override;
-    void catchUp();
+    // Inline: this is the tail of every sync() charge (MoiraCpu::sync).
+    void catchUp() { if (clock >= periphDeadline_) [[unlikely]] flushTicks(); }
 
     moira::i64 periphDeadline_ = 0;
     void schedulePeriphDeadline();

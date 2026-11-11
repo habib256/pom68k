@@ -112,6 +112,10 @@ add_test(NAME demo_screenshot COMMAND demo_screenshot --frames 30)
 add_executable(contention_test tests/contention_test.cpp)
 target_link_libraries(contention_test PRIVATE pom68k_core)
 add_test(NAME contention_test COMMAND contention_test)
+# MacIIMemory's inline RAM read against the full GLUE map (synthetic ROM).
+add_executable(macii_ram_read_test tests/macii_ram_read_test.cpp)
+target_link_libraries(macii_ram_read_test PRIVATE pom68k_core)
+add_test(NAME macii_ram_read_test COMMAND macii_ram_read_test)
 
 # M4 gate: real-ROM boot to the blinking-? (soft-skips without a ROM).
 add_executable(rom_boot_etalon tests/rom_boot_etalon.cpp)
