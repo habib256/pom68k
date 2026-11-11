@@ -275,6 +275,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
+- **Why did the Mac II decode every RAM word twice, and what replaced it?** → [Inline RAM reads on the GLUE board](#2026-11-11-macii-ram-path)
 - **Can the Plus's video contention be charged without a loop, and RAM read without the address decoder?** → [Closed-form contention and inline RAM reads](#2026-11-11-compact-ram-path)
 - **Why is a Mac Plus's board no longer ticked at every bus access, and what proves it is the same machine?** → [Compact-board deadlines](#2026-11-11-compact-deadline)
 - **What does the MCU run-ahead cost per instruction, and how was it cut?** → [The verdict table built at firmware load](#2026-11-11-mcu-ahead-table)
@@ -1333,6 +1334,42 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-11-macii-ram-path"></a>
+## 2026-11-11 (tenth) — Mac II: RAM reads past the GLUE decoder and an inline catch-up: 12 % faster in the interpreter
+
+The Mac II profile (interpreter, 1 kHz) after the day's other work:
+`MacIIMemory::read8Decoded` 9 %, `read16` 7 %, `Cpu020::catchUp` 7 % —
+a function call at the tail of every `sync()` charge to compare two
+integers, and two full decodes behind a `physAddr()` call for every word
+read from RAM. The LC II and Quadra 605 boards already had word fast
+paths (2026-07-17); this board never got one.
+
+`MacIIMemory::read8`/`read16` are inline for plain RAM on the 68020
+boards with the overlay down: the address through the same GLUE view
+`physAddr()` gives (24-bit mode folds it; RAM stops at $800000 there),
+then `ram_[a]` as `ramAt()` would. The bank mirror at 8-12 MiB, the
+overlay, ROM, I/O, NuBus and every 68030 board (whose PMMU decides
+whether the GLUE remap runs at all) go to `read8Mapped`/`read16Mapped`,
+the former functions. `Cpu020::catchUp` moves into the header.
+
+| Mac II, interpreter | 3 000 frames | 6 000 frames | fingerprint |
+|---|---|---|---|
+| inline RAM reads + inline catch-up | 2.922 → 2.583 s, **-11.6 %** | 5.882 → 5.145 s, **-12.5 %** | same |
+
+Means of six runs per arm, interleaved A B B A, idle host (floor 1.1 %).
+
+Gate: `macii_ram_read_test`, synthetic ROM, no asset. `read8`/`read16`
+against `read8Mapped`/`read16Mapped` over RAM, the bank mirror, both ROM
+windows and the edges between them — overlay up, overlay down in 32-bit
+mode, then 24-bit mode (reached through VIA2 PB3, and checked reached) —
+on a Mac II with 8 MiB, a Mac II with 2 MiB and a Mac IIx. Mutation-
+checked, three of three fail: the word limit one byte too far (an
+out-of-bounds read, caught as a crash), the overlay test dropped from
+`read8`, the 24-bit fold applied in 32-bit mode. `ComponentGates` ceiling
+661 → 665 for the registration.
+
+Tiers on the final tree (M4): `unit|jit` 210 / 210; `m030` 141 / 141 with no soft-skip line (it holds the Mac II, IIx, IIcx and SE/30 gates), `-j4`, 47 min; `etalon-core` 16 / 16; the 34 gates matching the GLUE family 34 / 34. `m040` was not rerun: no shared code is touched. The x86-64 host was not run.
 
 <a id="2026-11-11-compact-ram-path"></a>
 ## 2026-11-11 (ninth) — Mac Plus: the contention charge in closed form on a cached scan line, and RAM reads past the decoder: 10-11 % more

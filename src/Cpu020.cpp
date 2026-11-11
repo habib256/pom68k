@@ -75,11 +75,6 @@ moira::u16 Cpu020::read16OnReset(moira::u32 addr) const {
     }
 }
 
-void Cpu020::catchUp() {
-    if (clock < periphDeadline_) return;
-    flushTicks();
-}
-
 // min(next observable device bound, the historical batch). The cap is what
 // makes this safe to land: every device without a deadline API keeps exactly
 // its former cadence, so the change can only ever wake the fan-out EARLIER

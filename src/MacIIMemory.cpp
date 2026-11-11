@@ -548,7 +548,7 @@ void MacIIMemory::jitMapChanged() {
     if (cpu_) cpu_->pomJitDtlbFlush();
 }
 
-uint8_t MacIIMemory::read8(uint32_t addr) {
+uint8_t MacIIMemory::read8Mapped(uint32_t addr) {
     return read8Decoded(physAddr(addr));
 }
 
@@ -613,7 +613,7 @@ uint8_t MacIIMemory::read8Decoded(uint32_t addr) {
     return 0xFF;                                 // unmapped: open bus
 }
 
-uint16_t MacIIMemory::read16(uint32_t addr) {
+uint16_t MacIIMemory::read16Mapped(uint32_t addr) {
     addr = physAddr(addr);
     if (addr >= 0x50000000u && addr < 0x60000000u) {
         uint32_t ioOff = 0;
