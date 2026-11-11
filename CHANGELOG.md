@@ -1380,12 +1380,30 @@ still differ at 9 000 frames, 150 s of guest time. Bisected on the
 branch: reverting the reset change alone restores the pinned screen;
 none of the STOP changes moves it. So a two-cycle shift of the CPU clock
 from power-on changes what this machine does for ever. That is a
-phase dependence in the PB100 model (its M50753 Power Manager is the
-obvious suspect), not evidence against fx68k — and not something to
-re-pin over. The reset change is left out of the branch's code and
-recorded in `TODO.md` with this reproduction.
+phase dependence in the PB100 model, not evidence against fx68k — and
+not something to re-pin over. The reset change is left out of the code
+and recorded in `TODO.md` with this reproduction.
 
-Tiers on the branch (M4): `unit|jit` 210 / 210 (it holds `moira_state_test` and the save-state gates on the new format); the 121 gates matching the 68000 machines, the save-state family, `sst68000` and the Moira gates 121 / 121, the four PB100 gates included. `m030` and `m040` were NOT run on this branch, and the change touches `Moira::execute()` for every core: they are owed before a merge. The x86-64 host was not run.
+**Why, found the same night.** The PB100 is not stuck. Steady state is
+the same in both variants — the same system traps at the same rates, the
+same code pages, the same 739 SCSI commands — and only the last cursor
+call differs: near frame 1948 an `InitCursor` is followed one to three
+ticks later by a `SetCursor` of the wristwatch from `$7ABEFA`, and
+nothing asks for the arrow again, mouse moved or not. On the unmodified
+reset that second call does not happen. And the unmodified reset gives
+the very same wristwatch screen (`cc4a869f52d960ad`) as soon as the host
+runs the machine one instruction per call instead of one frame per call:
+the outcome depends on host slicing. `PortableCpu::runCycles` advances
+the whole board in lumps of up to 256 cycles while the Power Manager
+holds the CPU, measured from where the host call began, so the M50753
+runs several instructions at once and its exchanges with the VIA are not
+interleaved where they belong. With the Power Manager's lines polled on
+absolute boundaries and the held time fed one cycle at a time, all four
+combinations — reset at 2 or 4 cycles, frame or instruction slicing —
+give one screen, and it is the wristwatch: the pinned arrow is a product
+of the lumps. The fix and the re-pin are a separate change (`TODO.md`).
+
+Tiers on the branch (M4): `unit|jit` 210 / 210 (it holds `moira_state_test` and the save-state gates on the new format); the 121 gates matching the 68000 machines, the save-state family, `sst68000` and the Moira gates 121 / 121, the four PB100 gates included. `m030` 141 / 141 and `m040` 102 / 102, no soft-skip line in either, run concurrently at `-j3` each, 68 min — owed because the change touches `Moira::execute()` for every core. The x86-64 host was not run.
 
 <a id="2026-11-11-ram-write-path"></a>
 ## 2026-11-11 (twelfth) — RAM writes past the decoder on the Plus and the Mac II: 4-6 % and 3 % more; the day's totals

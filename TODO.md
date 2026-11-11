@@ -71,10 +71,15 @@ une optimisation côté hôte POM68K ne rapproche pas de NeoST.
 Porté seul, il laisse le PowerBook 100 au Finder avec le curseur montre
 pour toujours (91 pixels, encore à 9 000 trames) ; les 111 autres gates
 des machines 68000 ne bougent pas. Ce n'est pas une empreinte à
-ré-épingler : trouver d'abord pourquoi 2 cycles de phase à la mise sous
-tension changent le PB100 (Power Manager M50753 en premier suspect ;
-reproduction : `SYNC(C == Core::C68000 ? 4 : 2)` dans `Moira::reset`,
-puis `portable_boot_etalon --pb100` avec `POM68K_DUMP=1`). À ne pas
+ré-épingler tel quel. **Cause trouvée** (`CHANGELOG` (thirteenth)) : la
+carte Portable dépend du découpage hôte — `PortableCpu::runCycles`
+avance la carte par paquets de 256 cycles pendant que le Power Manager
+tient le processeur, et n'interroge ses lignes qu'aux frontières de ces
+paquets. À corriger d'abord (interrogation à chaque instruction, tenue
+avancée exactement jusqu'à la prochaine instruction du M50753, gate
+d'indépendance au découpage, `pb100_boot_etalon` ré-épinglé sur l'écran
+commun `cc4a869f52d960ad`), puis porter le reset
+(`SYNC(C == Core::C68000 ? 4 : 2)` dans `Moira::reset`). À ne pas
 reprendre : `71b92cc` (retard d'échantillonnage IPL, non tranché côté
 NeoST).
 
