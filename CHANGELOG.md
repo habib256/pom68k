@@ -273,6 +273,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
+- **Where does a Mac Plus spend its host time, and which optimisations were measured and refused on the M4?** → [The quiet SCC and five null results](#2026-11-11-scc-quiet-tick)
 - **What happens when the target page of a JSR is not mapped (68030/68040)?** → [The JSR retires; the next fetch faults with the target as PC](#2026-11-11-jsr-target-fault)
 - **Why did `sst68040_fpuh` not regenerate to its pinned hashes, and what were its twelve known divergences?** → [Host stack bytes in the oracle's packed path](#2026-11-11-oracle-packed-stack)
 - **How is the Moira fork shipped to someone outside POM68K, and what does upstream have that the fork does not?** → [The standalone release and the upstream review](#2026-11-10-moira-release)
@@ -565,6 +566,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-11 (fourth)** — [An idle SCC no longer costs a call per slice: Mac Plus 19-20 % faster; five other levers measured and left alone](#2026-11-11-scc-quiet-tick)
 - **2026-11-11 (third)** — [The 68030 sweep's five vectors: one defect fixed (long displacements in the access log), four were ruling D28, one residue ruled D36](#2026-11-11-030-sweep-leftovers)
 - **2026-11-11 (later)** — [A fault on a JSR's target fetch belongs to the next instruction on the 68030/68040; the 68040 frame no longer stacks the return address](#2026-11-11-jsr-target-fault)
 - **2026-11-11** — [The twelve "known" `sst68040_fpuh` vectors were host stack bytes in the oracle; the corpus is reproducible and its known list is empty](#2026-11-11-oracle-packed-stack)
@@ -1324,6 +1326,93 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-11-scc-quiet-tick"></a>
+## 2026-11-11 (fourth) — An idle SCC no longer costs a call per slice: Mac Plus 19-20 % faster; five other levers measured and left alone
+
+A search for host-time optimisations on the M4 (AArch64), after the CPU
+work of the day. Profiles at 1 kHz (`sample`) of the four fixed-budget
+benches, 3 000 frames, on the tree of the entry below. The bench binaries
+in `build/` dated from 2026-10-02 — they are not in the default target —
+and the first profile was of that stale code; everything here is from
+rebuilt binaries.
+
+**Where the time goes.** Quadra 605, JIT a64: generated code 41 %, the
+68HC05 (Cuda) 21 %, the device march 20 %. LC II, JIT a64: generated
+code about 7 %, 68HC05 (Egret) 17 %, interpreter/window path 17 %, device
+march 20 %, engine runtime 11 %. Mac II, interpreter: the CPU dominates.
+**Mac Plus, interpreter: the device march is about 80 %, `Scc8530::tick`
+alone 24 %** — on the 68000 boards the board's `tick()` is the bus-access
+path.
+
+**The one change.** `Scc8530::tick` is inline and short-circuits while
+the chip is *quiet*: no transmitter running, no frame queued or playing,
+no relatch countdown, no peer-hold window, no pending /RTS release. Then
+a tick only advances the two SDLC line clocks. `quiet_` is proved at the
+end of the complete tick (`tickSlow`) and cleared by every other
+non-const entry point; it is derived, not serialized, and a load clears
+it. No save-state change.
+
+| bench (default engine) | 3 000 frames | 6 000 frames | fingerprint |
+|---|---|---|---|
+| Mac Plus, interpreter | 2.480 → 2.000 s, **-19.4 %** | 5.270 → 4.220 s, **-19.9 %** | same |
+| LC II, JIT a64 | 4.560 → 4.470 s, -2.0 % | 8.670 → 8.510 s, -1.8 % | same |
+| Mac II, interpreter | 3.010 → 2.970 s, -1.3 % | 6.040 → 5.935 s, -1.7 % | same |
+| Quadra 605, JIT a64 | 2.650 → 2.630 s, -0.8 % | 12.200 → 12.185 s, -0.1 % | same |
+
+Medians of six runs per arm, two binaries interleaved A B B A after a
+discarded pair, one process per run — not `bench::compare`, which cannot
+hold a source change in one process. Host floor 1.1 %: the Plus, LC II
+and Mac II figures are claims, the Quadra 605 one is not (its SCC is
+already event-driven).
+
+Gate: `scc_quiet_tick_test` — two chips on one random stream of register
+accesses, driver-shaped mode writes, frame and byte injections, DCD edges,
+resets and 1.12 M ticks of random length; the reference is woken before
+every tick so it always runs the complete one. Every serialized byte, the
+tick's return value, the interrupt line and the next-event bound are
+compared after each of 1.6 M operations; 203 216 ticks took the short
+path. Mutation-checked: dropping either line clock from the short path,
+or the relatch, queue, playing-frame, peer-hold or transmitter term from
+the proof, or the wake of `writeCtl` or `injectRxFrame`, each fails the
+gate. Three mutations pass and mark conservative code, not a hole: the
+/RTS term of the proof, and the wakes of `setDcd` and `readData`.
+
+Tiers on the final tree (M4, a64 backend): `asset-none|jit-fast|unit`
+191 / 191; the 18 SCC, LocalTalk and serial gates; `etalon-core`, one boot
+etalon per platform, 16 / 16 with no soft-skip line; `m030` 141 / 141 (no
+soft-skip line) and `m040` 102 / 102 (skip lines not counted), run
+concurrently at `-j3` each, 66 min. The x86-64 host was not run.
+
+**Measured and left alone** (same host, same day; fingerprints identical
+in every pair):
+
+- *68HC05 ROM/RAM reads inline*: 2.67 s against 2.67 s on the Quadra 605.
+  The MCU never waits (26.1 M instructions, 0 WAIT steps per 50 s of
+  guest time) and each of its instructions bounds a machine slice, which
+  is the exactness rule of that file, not an inefficiency.
+- *68030 profit score on a64* (default 64, set in August on a much slower
+  generator): 0, 8 and 16 gain 2-5 % over the first 3 000 frames and lose
+  it back by 6 000 (0: -5.0 % then -1.1 %; 8: -3.2 % then -0.4 %; 16:
+  -2.2 % then +1.4 %; 32: nothing). The trend is the answer
+  (`MEASURING.md` R3): 64 stays. With score 0 the writes into pages
+  holding translated code double (28 313 → 54 960), which is the
+  mechanism.
+- *CHECK_IRQ only when an SR write lowers the mask*: exact, and it removes
+  a quarter of the LC II's "cpu flags" exits (5.53 M → 4.13 M; only
+  33 864 of 6.56 M flagged episodes had a level above the mask) — for no
+  measurable time (4.56 s both ways, 8.68 against 8.675 s). Not kept.
+- *`POM68K_JIT_EDGE_CELLS=1`* on the LC II: -1.0 % and -0.6 %, inside the
+  floor. *`POM68K_JIT_REG_CACHE=1`*: +1.4 % and +1.1 %, slower.
+
+**Not attempted, with the number that argues for it.** On both JIT
+benches the whole device fan-out is woken once per MCU instruction
+(27.3 M `mem.tick` per 50 s on the Quadra 605, 45.8 machine cycles each).
+The devices the MCU cannot observe — DAFB, floppy, CD pump, ASC, CA1 —
+are about 19 % of the Quadra 605 profile. Advancing them only at their
+own deadline or on access is the SCC/SCSI debt recipe generalised; it
+needs every host-side observer to flush first and either a save-state
+field or a flush before saving, which is a format decision.
 
 <a id="2026-11-11-030-sweep-leftovers"></a>
 ## 2026-11-11 (third) — The 68030 sweep's five vectors: one defect fixed (long displacements in the access log), four were ruling D28, one residue ruled D36

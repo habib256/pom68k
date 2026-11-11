@@ -280,6 +280,12 @@ add_executable(scc_ext_test tests/scc_ext_test.cpp)
 target_link_libraries(scc_ext_test PRIVATE pom68k_core)
 add_test(NAME scc_ext_test COMMAND scc_ext_test)
 
+# Scc8530::tick's quiet short-circuit against the complete tick, on a random
+# stream of accesses, injections and slices (every serialized byte compared).
+add_executable(scc_quiet_tick_test tests/scc_quiet_tick_test.cpp)
+target_link_libraries(scc_quiet_tick_test PRIVATE pom68k_core)
+add_test(NAME scc_quiet_tick_test COMMAND scc_quiet_tick_test)
+
 include(${CMAKE_CURRENT_LIST_DIR}/Pom68kLlapGates.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/Pom68kSerialGates.cmake)
 # In-process AppleTalk stack gates (AtalkStack + AFP/PAP/MacIP services)

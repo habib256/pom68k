@@ -1267,7 +1267,7 @@ peer; the moment a real peer transmits (`RxFrameKind::Peer` or the prompt
 becomes a live terminated network whose idle is clean flags, and the abort
 drops for a `kPeerHold` (~2 s) window refreshed per peer frame. A solo boot
 never refreshes it, so the no-peer LAP timeout that lets the boot etalons
-proceed is unchanged. `Scc8530::openLine()` (`Scc8530.h:365`) = `abortIdle_ &&
+proceed is unchanged. `Scc8530::openLine()` (`Scc8530.h:427`) = `abortIdle_ &&
 lineDriven_ && peerHold_ <= 0`. Gate `llap_loop_test`.
 
 ## 4.2 The 16-step migration plan is finished
