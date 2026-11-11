@@ -10,6 +10,7 @@
 #include "MoiraMacros.h"
 
 #include <cstdio>
+#include <cstdlib>   // POM68K: explicit for std::getenv (NeoST c9925da, Emscripten 7)
 #include <cstring>
 #include <algorithm>
 #include <cmath>
@@ -252,6 +253,7 @@ Moira::reset()
     fcl = 2;
     fcSource = 0;
     irqDelay = 0;                  // POM68K: clear the SR-write IRQ delay too
+    stopGraceUntil = -1;           // POM68K: no STOP iteration in flight
     trace040Pending = false;       // POM68K Q2: 68040 trace machinery
     tracePc040 = 0;
 
@@ -591,7 +593,20 @@ Moira::execute()
         }
 
         // Process pending interrupt (if any)
-        if (flags & CHECK_IRQ) {
+        // POM68K (back-port of NeoST 993ce5e / 2fc53a8, see stopGraceUntil):
+        // during a 68000 STOP the interrupt is taken at the end of a STOP
+        // ITERATION, every 4 cycles from its start, the first iteration
+        // having tested with the old mask. The pin is still polled every
+        // cycle; only the instant of the take is quantised — by ADVANCING
+        // to the boundary (the clock moves by bus slots; waiting to land on
+        // it exactly would leave the CPU stopped). stopGraceUntil is only
+        // ever set by a 68000 STOP, so the other cores never enter here.
+        if ((flags & CHECK_IRQ) && !((flags & STOPPED) && clock < stopGraceUntil)) {
+
+            if ((flags & STOPPED) && stopGraceUntil >= 0) {
+                const i64 mis = (clock - stopGraceUntil) & 3;
+                if (mis) sync(int(4 - mis));
+            }
 
             // POM68K: honour the one-instruction delay armed by a mask-
             // lowering SR-write — run the next instruction before taking

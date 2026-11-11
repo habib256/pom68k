@@ -35,7 +35,7 @@ template<class Ar> void Moira::pomVisitState(Ar& ar)
     // hang rather than a clean failure.
     ar(queue.irc, queue.ird, irqMode, ipl,
        iplPrev, iplChangeClock, iplChangeClockPrev,
-       iplDelay4, iplDelay2, iplDeferred, irqDelay);
+       iplDelay4, iplDelay2, iplDeferred, irqDelay, stopGraceUntil);
 
     // cp is a per-instruction EA penalty, reset by AVAILABILITY on C68020.
     // It is not maintained by the JIT. Leaving it out keeps snapshots

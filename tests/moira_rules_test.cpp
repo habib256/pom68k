@@ -1295,6 +1295,69 @@ void jsrTargetFetchFault()
     }
 }
 
+void stop68000()
+{
+    // [B] M68000UM Rev 8 § 8.11: STOP is 4(0/0).
+    // [D] fx68k @ 0602ee46 — back-port of NeoST 993ce5e, 2fc53a8, 9f20046.
+    // A 68000 STOP makes no bus access and costs 4 cycles; an interrupt its
+    // operand unmasks is taken at STOP+8 (the first iteration tested the old
+    // mask); a later interrupt is taken on a 4-cycle boundary counted from
+    // the STOP. The 68020 keeps upstream's STOP, prefetch included.
+    constexpr uint16_t kStop = 0x4e72;
+    auto stop = [&](TestCpu& c, uint16_t sr) {
+        p32(c, 27 * 4, kHandler);                       // level-3 autovector
+        p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
+        stage(c, kStop, 0);
+        p16(c, kCode + 2, sr); c.setIRC(sr);
+    };
+    {   // no bus cycle, 4 cycles, PC past the operand
+        TestCpu c(moira::Model::M68000);
+        stop(c, 0x2700);
+        p32(c, 2 * 4, kHandler + 0x40);                 // a prefetch would land here
+        c.holeArmed = true; c.holeAt = kCode + 4;
+        const moira::i64 c0 = c.getClock();
+        c.execute();
+        CHECK(c.holeTrips == 0 && c.isStopped() && c.getClock() - c0 == 4 &&
+              c.getPC() == kCode + 4,
+              "68000 STOP: %u access(es) past the operand, %lld cycles, PC=%08X "
+              "(want none, 4, %08X)", c.holeTrips,
+              (long long)(c.getClock() - c0), c.getPC(), kCode + 4);
+    }
+    {   // an interrupt already pending, unmasked by the operand: STOP+8
+        TestCpu c(moira::Model::M68000);
+        stop(c, 0x2000);
+        c.setIPL(3);
+        const moira::i64 c0 = c.getClock();
+        c.execute();                                    // STOP
+        const moira::i64 afterStop = c.getClock() - c0;
+        for (int i = 0; i < 16 && c.isStopped(); i++) c.execute();   // held, then taken
+        TestCpu ref(moira::Model::M68000);              // the same exception, no STOP
+        p32(ref, 27 * 4, kHandler);
+        p16(ref, kHandler, kNop); p16(ref, kHandler + 2, kNop);
+        stage(ref, kNop, 0);
+        ref.setSR(0x2000);
+        ref.setIPL(3);
+        const moira::i64 r0 = ref.getClock();
+        ref.execute();                                  // NOP, then the interrupt
+        ref.execute();
+        const moira::i64 plain = ref.getClock() - r0 - 4;   // exception alone
+        CHECK(afterStop == 4 && c.getPC0() == kHandler &&
+              c.getClock() - c0 == 8 + plain,
+              "68000 STOP with a pending interrupt: handler at +%lld, want +%lld "
+              "(STOP+8 plus the %lld-cycle exception); PC0=%08X",
+              (long long)(c.getClock() - c0), (long long)(8 + plain),
+              (long long)plain, c.getPC0());
+    }
+    {   // the 68020 still prefetches
+        TestCpu c(moira::Model::M68020);
+        stop(c, 0x2700);
+        c.holeArmed = true; c.holeAt = kCode + 4;
+        executeContained(c);
+        CHECK(c.holeTrips != 0, "68020 STOP lost its prefetch (%u accesses past "
+              "the operand)", c.holeTrips);
+    }
+}
+
 #if MOIRA_ENABLE_JIT
 // The 68040 ATCs are private to the core; this is the seam Moira.h befriends.
 struct moira::PomAtcProbe {
@@ -1588,6 +1651,7 @@ int main(int argc, char** argv)
 #if MOIRA_ENABLE_JIT
     atcReplayCopyOnWrite040();
 #endif
+    stop68000();
 
     if (failures) {
         std::printf("[moira_rules_test] FAIL: %d check(s)\n", failures);
@@ -1600,6 +1664,6 @@ int main(int argc, char** argv)
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68EC030 plain-020 path with a 68030 "
-                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, 68030 long-displacement access log, 68040 ATC replay copy-on-write\n");
+                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle\n");
     return 0;
 }

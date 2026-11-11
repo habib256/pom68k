@@ -6907,7 +6907,19 @@ Moira::execStop(u16 opcode)
 
     SUPERVISOR_MODE_ONLY
 
-    u16 src = (u16)readI<C, Word>();
+    // The M68000 User's Manual (Rev 8, instruction timing tables) gives
+    // STOP as 4(0/0) — no bus cycle.
+    // [D] fx68k @ 0602ee46 (nanowords 0x3A2/0x327 without an access);
+    //     Hatari op_4e72_13_ff, do_cycles_stop(4) @ f0736b24 ("STOP does
+    //     not prefetch anything").
+    // POM68K (back-port of NeoST 2fc53a8 / 9f20046): on the 68000 the
+    // operand is taken from IRC; readI would also have prefetched the next
+    // word on the bus. The 4 cycles are charged here, since the prefetch
+    // that carried them is gone. Leaving STOP (exception, then RTE) reloads
+    // the queue, so the stale IRC is never used.
+    u16 src;
+    if constexpr (C == Core::C68000) { src = queue.irc; reg.pc += 2; SYNC(4); }
+    else                              { src = (u16)readI<C, Word>(); }
 
     setSR(src);
     flags |= State::STOPPED;
@@ -6916,6 +6928,10 @@ Moira::execStop(u16 opcode)
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
     CYCLES_IP   ( 0,  0,  0,        4,  4,  8,        0,  0,  0)
+
+    // POM68K: the first iteration tested the interrupt with the OLD mask
+    // (Moira.h § stopGraceUntil).
+    if constexpr (C == Core::C68000) stopGraceUntil = clock + 4;
 
     FINALIZE
 }

@@ -104,6 +104,17 @@ protected:
     // la valeur POLLÉE à la frontière SUIVANTE (rotation ipl[0]=ipl[1] de la run
     // loop, newcpu.c:5693). −1 = rien en attente.
     int iplDeferred {-1};
+    // [D] fx68k @ 0602ee46 (rInterrupt latched at the same T3 as pswI);
+    //     Hatari @ f0736b24, generated STOP handler (checkint() before
+    //     regs.sr = sr) — both as NeoST read them.
+    // POM68K (back-port of NeoST 993ce5e / 2fc53a8): a 68000 STOP tests the
+    // interrupt BEFORE it writes the new mask, then re-executes every
+    // 4 cycles, so an interrupt unmasked by the operand leaves at STOP+8,
+    // not STOP+4. Clock until which checkForIrq is held after a STOP, and
+    // the phase its 4-cycle iterations are counted from; -1 = none.
+    // [F] Hatari takes it at STOP+12; the two readings of the silicon
+    //     disagree on this segment. Settled by: a capture on a 68000.
+    i64 stopGraceUntil {-1};
 
     // POM68K: one-instruction interrupt-recognition delay after a mask-
     // lowering SR-write (see setSR / the run loop). 68020+ only.
