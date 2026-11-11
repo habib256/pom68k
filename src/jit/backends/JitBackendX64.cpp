@@ -5052,7 +5052,12 @@ bool Emitter::emit() {
                 in.iplPollPosValid &&
                 n >= 1 && n <= MemoryContract::MaxAccesses &&
                 in.iplPollMask == uint8_t(1u << (n - 1));
-            if (!lateIplPoll) {
+            // Polls that all precede the first data access see what the
+            // head sample saw (JitBackendA64.cpp, same rule and reasoning;
+            // LINK is the case). Oracle: runHeadPollLink, asset-free test.
+            const bool headPollsOnly = !L_.cache040Live &&
+                in.iplPollPosValid && in.iplPollMask == 0;
+            if (!lateIplPoll && !headPollsOnly) {
                 a_.jmp(staticStub(i));
                 emitted = i + 1;
                 continue;
