@@ -138,6 +138,28 @@ LLE 5 %, repli interpréteur 5 %. Donc, par ordre de rendement attendu :
      dans `tick()` et que son HLE borne à 1 ; et la disquette en cours de
      lecture (IWM non indépendant du découpage).
 
+7. **Profils du soir du 2026-11-11, après les douze entrées du jour**
+   (`sample` 1 kHz, binaires de `main`, machine chargée : proportions
+   seulement).
+   - *Quadra 605, trames 4 000-9 000* : runtime du moteur JIT 29 %
+     (`executeUntil`, dispatch, `record`, `armWindow`), chemin
+     interpréteur MMU/ATC 27 %, helpers JIT de Moira 9 %, carte mémoire
+     7,5 %, interpréteur 7 %, 68HC05 6 %, marche des périphériques 5 % —
+     et **presque aucun échantillon dans le code généré**. Dans cette
+     phase les blocs sortent 1 fois toutes les 29 instructions, le cache
+     de dispatch ne répond qu'à 46 %, et 25,8 M d'instructions passent par
+     `pom68kJitStep` (membres FPU rejoués exactement). Le gisement du 040
+     est là : FPU natif ou pas-à-pas moins cher, pas l'émission.
+   - *LC II* : un symbole replié par l'éditeur de liens
+     (`<deduplicated_symbol>`) pèse 9 % à lui seul — à identifier (carte
+     de liens) avant toute chose ; 68HC05 17 %, runtime JIT 16 %, chemin
+     MMU 11,5 %.
+   - *À faire sans réfléchir* : `Cpu030::catchUp` (et vérifier
+     `Cpu040`) est hors ligne comme l'était `Cpu020::catchUp` ; le mettre
+     dans l'en-tête a fait partie des −12 % du Mac II.
+   - *Refusé le même soir* : `pomJitFetch` forcé en ligne (dans le bruit
+     sur les quatre bancs).
+
 ## Statut
 
 - **En tête : le programme § Moteur** (priorité décidée le 2026-11-06,
