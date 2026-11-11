@@ -170,9 +170,9 @@ LLE 5 %, repli interpréteur 5 %. Donc, par ordre de rendement attendu :
    - Le poste dominant est donc bien l'émission elle-même, que `sample`
      ne détaille pas : il faut un profil par bloc (compteurs du moteur)
      avant d'y toucher.
-   - *Fait le 2026-11-12* : `LINK` natif sur le 68040 (a64), replis en
-     bloc 25,8 M → 1,75 M. **Reste le backend x64**, qui porte la même
-     restriction (`positioned-ipl-poll`) et n'a pas pu être essayé ici.
+   - *Fait le 2026-11-12* : `LINK` natif sur le 68040, a64 puis x64
+     (replis en bloc 25,8 M → 1,75 M sur a64). La jambe x86-64 se joue
+     sur cet hôte sous Rosetta (`build-x64-proof`) : `unit|jit` 211 / 211.
    - *Petit, pas prioritaire* : `Cpu030::catchUp` et `Cpu040::catchUp`
      sont hors ligne comme l'était `Cpu020::catchUp`, mais sur ces cœurs
      `SYNC` ne coûte rien et l'appel est rare (3,9 M pour 3 000 trames du
