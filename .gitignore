@@ -107,3 +107,8 @@ build-universal-deps/
 # rule; the two toolchain trees need naming)
 dev/Retro68/
 dev/Retro68-build/
+
+# Disk write-back journals (DiskTimeline): they hold blocks of the image
+# they sit beside — private media, and a test in flight leaves one in the
+# working directory. Never tracked.
+*.pomundo
