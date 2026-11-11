@@ -273,6 +273,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
+- **Why did `sst68040_fpuh` not regenerate to its pinned hashes, and what were its twelve known divergences?** → [Host stack bytes in the oracle's packed path](#2026-11-11-oracle-packed-stack)
 - **How is the Moira fork shipped to someone outside POM68K, and what does upstream have that the fork does not?** → [The standalone release and the upstream review](#2026-11-10-moira-release)
 - **What does a faulting 68030 ADD/SUB to memory stack as its pending write?** → [The unmasked 32-bit result](#2026-11-10-addsub-buffer)
 - **Why did a faulting 68030 FScc stack $FFFFFFFF as its pending byte?** → [FScc's byte is unsigned](#2026-11-10-fscc-buffer)
@@ -563,6 +564,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-11** — [The twelve "known" `sst68040_fpuh` vectors were host stack bytes in the oracle; the corpus is reproducible and its known list is empty](#2026-11-11-oracle-packed-stack)
 - **2026-11-10 (thirteenth)** — [The Moira fork and its JIT build and test outside POM68K; upstream's CACR fix taken, the dead 040 i-cache overlay removed](#2026-11-10-moira-release)
 - **2026-11-10 (twelfth)** — [The 68040 cache replacement counter advances on accesses, through every path](#2026-11-10-cache040-counter)
 - **2026-11-10 (eleventh)** — [A faulting 68030 ADD/SUB to memory stacks its unmasked result; `sst68030_rmw` has no known list](#2026-11-10-addsub-buffer)
@@ -1319,6 +1321,61 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-11-oracle-packed-stack"></a>
+## 2026-11-11 — The twelve "known" `sst68040_fpuh` vectors were host stack bytes in the oracle; the corpus is reproducible and its known list is empty
+
+Two open items had one cause. `sst68040_fpuh` did not regenerate to its
+pinned hashes (`fpuh_off`: 54 380 200 and 54 380 191 bytes on two tries
+against 54 380 267 pinned), and twelve of its vectors sat in
+`tests/sst68040_fpuh.known` as "the oracle tags the source 4 where the fork
+writes the packed marker 7".
+
+**Reproduced first.** Same command, same seed, twice: 100 vectors are
+byte-identical (with and without NumPy), 2 000 are not (`fpuh_tt`,
+seed 1303: 117 529 924 then 117 529 927 bytes). A vector-by-vector diff of
+the two runs finds three vectors, `#674`, `#1758`, `#1779` — the three `tt`
+names of the known list — and four bytes in each, in the FSAVE frame the
+handler pushed: frame offset $58 reads $C1 in one run and $81 in the other,
+offsets $60-$62 read `05 85 21` and `02 EC A1`. The "STAG = 4" of the known
+list was one draw of that byte.
+
+**Cause, read in the oracle** (`oracle/uae/upstream/fpp.c`, Hatari
+e77819f7). `fpuop_arithmetic2` declares `fpdata src, dst;` uninitialised.
+A packed source on the strict 68040 returns from `get_fp_value` through
+`fault_if_no_packed_support`: the datatype trap is captured with the packed
+words (STAG 7) and `src` is never written. The caller then runs the
+destination check of a dyadic instruction; when FPn is denormal or unnormal
+it calls `fp_unimp_datatype` again with that `src`, which resets the frame
+and fills ETEMP and STAG from the stack slot. Three steps later the planted
+`FSAVE -(A7)` writes them to guest RAM. `fpu2` never showed it: no FSAVE
+reads the frame.
+
+**Fix: oracle patches 13 and 14** (`oracle/uae/VENDOR.md`). 13 keeps the
+first capture (the destination check is skipped while a packed trap is
+pending) and zeroes `src`/`dst`. 14 extends the per-vector reset hook to
+two states that also survived `oracle_set_state`: softfloat's
+`floatx80_internal_*` intermediate result and `fpu_mmu_fixup`. This is a
+[D] source being repaired, not a ruling against it: the bytes it produced
+were not a reading of the hardware by anyone.
+
+**Evidence** (M4, AArch64, one generation at a time). The three `fpuh`
+files regenerate twice to the same hashes; against the previous files only
+the twelve listed vectors differ. The fork passes 6 000 / 6 000 with an
+empty known list — the packed marker it wrote was the oracle's own first
+capture. With both patches the other FPU corpora regenerate to their
+pinned hashes, 21 files: `sst68040_fpu2`, `_fpu` (fpu and fpuraw),
+`_fline`, `sst68030_fpu2`, `_fpuraw`, and the three fpu cells of
+`sst68030_solo`; with patch 13 alone, also `core_identity_8k`,
+`fault_tt_8k` of `sst68040_8k` and `core_off` of `sst68030_solo`.
+`tests/sst_corpora.lock` carries the new `fpuh` hashes.
+
+**Memory, measured** because a 24 GB host went down the day before under
+two parallel regenerations and a build: one 2 000-vector `fpuh` generation
+peaks at 1.3 GB RSS (14 s with NumPy, about 33 min without — the pure
+Python `ram_diff` scans 16 MB per vector); loading two 117 MB files to
+compare them peaks at 3.1 GB. The generation alone does not explain the
+crash. NumPy now lives in `build-oracle/venv`.
 
 <a id="2026-11-10-moira-release"></a>
 ## 2026-11-10 (thirteenth) — The Moira fork and its JIT build and test outside POM68K; upstream's CACR fix taken, the dead 040 i-cache overlay removed

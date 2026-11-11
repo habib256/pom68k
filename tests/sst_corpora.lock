@@ -83,12 +83,15 @@
 # sst68040_fpuh — THREE steps per vector on the full 68040: an FPU
 #   instruction, an FNOP, and `FSAVE -(A7)` planted as the first word of the
 #   handlers of vectors 48 to 55, so that the state frame a handler reads is
-#   in the vector. Generated 2026-11-07, 6 000 vectors: for each mmu in off,
-#   identity, tt, seeds 1301 to 1303:
+#   in the vector. Generated 2026-11-07 and regenerated 2026-11-11 with
+#   oracle patch 13 (oracle/uae/VENDOR.md): twelve vectors, a dyadic
+#   instruction with a packed source, held host stack bytes in their state
+#   frame and changed on every run. 6 000 vectors, reproducible from the
+#   tree: for each mmu in off, identity, tt, seeds 1301 to 1303:
 #         oracle/fuzz/fuzz040.py --a liboracle_uae.so --family fpuh --mmu M
 #         --steps 3 --n 2000 --seed S --out fpuh_M.json
-#   Replayed with `sst68040 --fpu --known tests/sst68040_fpuh.known` (12
-#   vectors: the source tag of a dyadic instruction with a packed operand).
+#   Replayed with `sst68040 --fpu --known tests/sst68040_fpuh.known` (no
+#   vector listed at present).
 #
 # corpus | file | size | sha256
 sst68000 | ABCD.json | 7962994 | 25cc175c1c4e539519e88a4122dc7cc6f6aa0b9336bbb428fdaed84fb601ceac
@@ -291,6 +294,6 @@ sst68040_fpu2 | fpu2_identity.json | 117539099 | aadd9a68ea331dfc485024bf69441e3
 sst68040_fpu2 | fpu2_off.json | 54274998 | 4b88ae74618c875c44eeec861c8d2924d61155def9c4714fdc34532946294609
 sst68040_fpu2 | fpu2_tt.json | 117446131 | c1e97672b9d947b7ee2d43f0e6aff9ed790dc30ec4da701125995c94d51df157
 
-sst68040_fpuh | fpuh_identity.json | 117626304 | 3ae5b7b4710ca2a2d8c42ea4f45c7b39961aefb21a4ee9b82920d5622e94ab18
-sst68040_fpuh | fpuh_off.json | 54380267 | 10012ccbf1937bf00d4060cfb6547914e915d601082f80b010ec48f56953c7f1
-sst68040_fpuh | fpuh_tt.json | 117529960 | 50f91f88c8cfa6d9eb9e5d707fe2e601219424d98ffab64160acdc2d27c44844
+sst68040_fpuh | fpuh_identity.json | 117626190 | 9da783ef60c2a95618d36dcd875094b1547d31d4daae5765c667204c15155b81
+sst68040_fpuh | fpuh_off.json | 54380043 | e04bce8403efcb38347e7ae3282adc796e2d4a520344c6868c0e4076d0538f9c
+sst68040_fpuh | fpuh_tt.json | 117529918 | cbe348c070c5a371390570d84d9f0b8b136bf68ec4ddc745ce0dd7d9b5a2697d

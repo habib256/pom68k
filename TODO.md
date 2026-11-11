@@ -354,13 +354,6 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
 
 ### Justesse 68040
 
-- [ ] **Tagger la source d'une instruction dyadique à opérande packed
-  comme l'oracle.** Douze vecteurs de `sst68040_fpuh`
-  (`tests/sst68040_fpuh.known`) : FDIV/FMUL/FSUB/FCMP/FSGLx .P avec une
-  destination qui demande elle-même la trappe de type ; la capture de
-  l'oracle repasse pour la destination et laisse STAG = 4 là où le fork
-  garde le marqueur packed 7. Artefact probable de l'ordre des deux
-  appels dans WinUAE ; à lire avant de suivre.
 - [ ] **Donner des vecteurs à plusieurs instructions aux autres états en
   vol.** `fuzz030.py`/`fuzz040.py --steps` et le champ `steps` des
   vecteurs existent (2026-11-07) ; ils tiennent D24 (`sst68040_fpu2`) et
@@ -411,13 +404,6 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   ne décrit pas cette séquence périphérique ; la reprise actuelle est un
   choix de modèle grade D, pas une preuve de silicium (`CHANGELOG`
   2026-11-09, cinquième). *Bloqué : capture d'un vrai 68040/68LC040.*
-- [ ] **Rendre `sst68040_fpuh` reproductible depuis l'arbre.** Ses trois
-  fichiers régénérés le 2026-11-10 selon la recette de
-  `tests/sst_corpora.lock` ne retrouvent pas les empreintes épinglées, ni
-  avec NumPy ni sans (`fpuh_off` : 54 380 200 et 54 380 191 octets contre
-  54 380 267 épinglés) ; le rejeu reste vert avec ses 12 divergences
-  connues. Trouver ce qui a changé depuis l'épinglage (générateur, oracle,
-  branche `engine/next`), puis régénérer ou corriger la recette.
 - [ ] **Trancher les erreurs tardives de write-allocate 040.** Distinguer
   les portions demandées des battements inutiles, puis terminer une
   écriture dont le remplissage avorte sans exception, sans perdre les
