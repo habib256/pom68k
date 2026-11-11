@@ -273,6 +273,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
+- **What happens when the target page of a JSR is not mapped (68030/68040)?** → [The JSR retires; the next fetch faults with the target as PC](#2026-11-11-jsr-target-fault)
 - **Why did `sst68040_fpuh` not regenerate to its pinned hashes, and what were its twelve known divergences?** → [Host stack bytes in the oracle's packed path](#2026-11-11-oracle-packed-stack)
 - **How is the Moira fork shipped to someone outside POM68K, and what does upstream have that the fork does not?** → [The standalone release and the upstream review](#2026-11-10-moira-release)
 - **What does a faulting 68030 ADD/SUB to memory stack as its pending write?** → [The unmasked 32-bit result](#2026-11-10-addsub-buffer)
@@ -564,6 +565,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-11 (later)** — [A fault on a JSR's target fetch belongs to the next instruction on the 68030/68040; the 68040 frame no longer stacks the return address](#2026-11-11-jsr-target-fault)
 - **2026-11-11** — [The twelve "known" `sst68040_fpuh` vectors were host stack bytes in the oracle; the corpus is reproducible and its known list is empty](#2026-11-11-oracle-packed-stack)
 - **2026-11-10 (thirteenth)** — [The Moira fork and its JIT build and test outside POM68K; upstream's CACR fix taken, the dead 040 i-cache overlay removed](#2026-11-10-moira-release)
 - **2026-11-10 (twelfth)** — [The 68040 cache replacement counter advances on accesses, through every path](#2026-11-10-cache040-counter)
@@ -1321,6 +1323,51 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-11-jsr-target-fault"></a>
+## 2026-11-11 (later) — A fault on a JSR's target fetch belongs to the next instruction on the 68030/68040; the 68040 frame no longer stacks the return address
+
+Found by sweeping fresh seeds with the repaired oracle (entry below):
+9 `fpuh` + 9 `fpu2` files and one seed of each integer family (core, mmu,
+random, fault, sysraw, rmw, three MMU modes), 72 000 vectors, all green
+but one — `040 random/identity seed=3945 #676`, a `JSR $67374E71` whose
+target page is unmapped.
+
+**The defect.** `execJsr` pushes the return address, then reads the first
+word of the target. Every other jump defers that fetch to the next
+instruction start on the 68030/68040 models (`fullPrefetch`); JSR kept its
+read because the 68040 I-cache model and the JIT's JSR transaction account
+for it. When the read faulted, the fault was processed inside the JSR. On
+the 68040 the format-$7 frame then stacked the "last write" PC — the
+return address — so a handler that maps the page and RTEs resumed AFTER the
+call: the callee was skipped. The oracle retires the JSR and faults at the
+next fetch with the target as stacked PC; every other byte of the frame
+already matched.
+
+**Fix** (vendor row 87): the read stays, so the I-cache fill, ATC
+accounting, cycles and terminal queue the JIT gates pin are unchanged; an
+`MmuBusError` raised by it is dropped, and the next instruction start
+refetches the target and takes the fault there. `pomJitJsr040` follows the
+same rule. A first attempt removed the read on those models: correct
+against the oracle, but nine JIT/lockstep gates pin its accounting, so it
+was withdrawn.
+
+**Evidence.** Targeted vectors against the oracle, JSR abs.L / (A0) /
+d16(A0) and BSR.L, random, near and low targets, one and two steps, three
+MMU modes: 68040 853 / 962 before, 962 / 962 after; 68030 949 / 950 before
+and after (one two-step vector: before, the fault was taken a step early;
+after, three internal bytes of the format-$B frame differ — `TODO.md`
+› Justesse 68030). `moira_rules_test` cell `jsrTargetFetchFault` (68030,
+68LC040, 68040; red without the fix on every row);
+`jit_copyback_write_040_test` now checks the JSR retires, then compares
+the frame of the following fetch, PC = target, interpreter against native.
+[D] only: no manual passage or capture was consulted for this entry.
+
+Tiers on the M4 (AArch64, a64 backend): `asset-none|jit-fast|unit`
+190 / 190; `m040` 102 / 102 (62 min at `-j3`, peak RSS 1.9 GB) — run on the
+tree before a comment-only edit of `MoiraExecMMU_cpp.h`; `m030` 141 / 141
+(63 min, peak RSS 3.1 GB) on the final tree. No soft-skip line in either
+ROM log. The x86-64 backend was not run.
 
 <a id="2026-11-11-oracle-packed-stack"></a>
 ## 2026-11-11 — The twelve "known" `sst68040_fpuh` vectors were host stack bytes in the oracle; the corpus is reproducible and its known list is empty

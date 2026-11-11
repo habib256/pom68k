@@ -3070,6 +3070,24 @@ Moira::execJsr(u16 opcode)
             // Jump to new address
             reg.pc = ea;
 
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading ("040
+            // random/identity seed=3945 #676"). POM68K: on the 68030 and
+            // 68040 a fault on the target fetch is not the JSR's. The JSR
+            // has retired (return address pushed, PC at the target); the
+            // next instruction start refetches the target and takes the
+            // fault there, with the target as stacked PC, so the handler's
+            // RTE restarts the callee. Taken here, the 040 frame stacked
+            // the return address and an RTE skipped the call.
+            // Gate: moira_rules_test (jsrTargetFetchFault).
+            if constexpr (C == Core::C68020) {
+                if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) {
+                    try {
+                        queue.irc = (u16)read<C, AddrSpace::PROG, Word>(ea);
+                    } catch (const MmuBusError &) { }
+                    prefetch<C>();
+                    break;
+                }
+            }
             queue.irc = (u16)read<C, AddrSpace::PROG, Word>(ea);
             prefetch<C>();
             break;

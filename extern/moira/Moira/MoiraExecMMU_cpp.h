@@ -2843,8 +2843,9 @@ Moira::pomJitReadProg(u32 addr, u16 &out) noexcept
 // Generated code may compute the EA (and, for a future full-format
 // admission, perform its pointer read) while the instruction is pristine.
 // From the first stack mutation onward this helper owns the transaction so
-// that a later target fetch fault is handled with the push and I-cache state
-// exactly where the interpreter left them.
+// that the push and I-cache state stand exactly where the interpreter leaves
+// them. A target fetch fault is not processed here: the JSR has retired and
+// the next instruction start takes it (execJsr).
 bool
 Moira::pomJitJsr040(u32 instructionPc, u32 returnAddress, u32 target,
                     u16 opcode) noexcept
@@ -2871,7 +2872,11 @@ Moira::pomJitJsr040(u32 instructionPc, u32 returnAddress, u32 target,
         // faults, execMmu040BusError stacks the post-push/next-PC frame.
         push<Core::C68020, Long, POLL>(returnAddress);
         reg.pc = target;
-        queue.irc = u16(read<Core::C68020, AddrSpace::PROG, Word>(target));
+        // execJsr: a fault on the target fetch belongs to the next
+        // instruction start, not to the retired JSR.
+        try {
+            queue.irc = u16(read<Core::C68020, AddrSpace::PROG, Word>(target));
+        } catch (const MmuBusError &) { }
         prefetch<Core::C68020>();
         return true;
     } catch (const std::exception &exc) {

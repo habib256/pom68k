@@ -1257,6 +1257,44 @@ void jmpOddTargetPc030()
     }
 }
 
+void jsrTargetFetchFault()
+{
+    // [D] WinUAE @ Hatari e77819f7 — "040 random/identity seed=3945 #676":
+    // JSR to a target the bus refuses. On the 68030 and 68040 the JSR
+    // retires (return address pushed, PC at the target, no exception); the
+    // fault is the NEXT instruction's fetch and stacks the target as its
+    // PC, so an RTE restarts the callee. The fork took the fault inside the
+    // JSR and the 68040 frame stacked the return address.
+    static const struct { uint16_t opcode; uint16_t ext; uint32_t a0; const char* what; } cases[] = {
+        { 0x4e90, kNop,   kHole,        "JSR (A0)" },
+        { 0x4ea8, 0x0010, kHole - 0x10, "JSR 16(A0)" },
+    };
+    for (auto model : {moira::Model::M68030, moira::Model::M68LC040, moira::Model::M68040})
+    for (const auto& k : cases) {
+        TestCpu c(model);
+        p32(c, 2 * 4, kHandler);
+        p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
+        stage(c, k.opcode, 0);
+        p16(c, kCode + 2, k.ext); c.setIRC(k.ext);
+        c.setA(0, k.a0);
+        c.holeArmed = true;
+        const uint32_t ret = kCode + (k.ext == kNop ? 2 : 4);
+        bool contained = executeContained(c);
+        CHECK(contained && c.getPC() == kHole && c.getSP() == 0x8000 - 4 &&
+              g32(c, 0x8000 - 4) == ret,
+              "%s model=%u: PC=%08X SP=%08X pushed=%08X (want the JSR retired "
+              "at its target, return %08X pushed, no exception)", k.what,
+              unsigned(model), c.getPC(), c.getSP(), g32(c, 0x8000 - 4), ret);
+        contained = executeContained(c);
+        const uint32_t sp = c.getSP();
+        CHECK(contained && c.getPC0() == kHandler && g32(c, sp + 2) == kHole &&
+              g32(c, 0x8000 - 4) == ret,
+              "%s model=%u, next fetch: PC0=%08X stacked PC %08X (want the "
+              "target %08X)", k.what, unsigned(model), c.getPC0(),
+              g32(c, sp + 2), kHole);
+    }
+}
+
 void fsccWriteBuffer030()
 {
     // FScc.B (A0) with a true predicate whose store takes /BERR on a 68030 +
@@ -1430,6 +1468,7 @@ int main(int argc, char** argv)
     aluWriteBuffer030();
     ec030UsesPlain020Path();
     cacrStrobesReadZero();
+    jsrTargetFetchFault();
 
     if (failures) {
         std::printf("[moira_rules_test] FAIL: %d check(s)\n", failures);
@@ -1442,6 +1481,6 @@ int main(int argc, char** argv)
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68EC030 plain-020 path with a 68030 "
-                "MMU/cache control, CACR strobes read as zero\n");
+                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040\n");
     return 0;
 }

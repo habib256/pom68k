@@ -377,10 +377,12 @@ void checkJsrTargetReadTransaction() {
           "native JSR committed the target and return-address push once");
 
     // The target fetch is after the push. Aim an already-compiled JSR at a
-    // /BERR line: the native helper must process the fault in place, retain
-    // the copyback push, and stack the same format-$7 frame as Moira. A
-    // pristine fallback here would execute the push twice or lose its cache
-    // state, which is the transaction this gate exists to prevent.
+    // /BERR line: the JSR retires in the native helper with its copyback
+    // push, and the fault is the next instruction's fetch, which stacks the
+    // same format-$7 frame as Moira with the target as its PC
+    // (moira_rules_test jsrTargetFetchFault). A pristine fallback here would
+    // execute the push twice or lose its cache state, which is the
+    // transaction this gate exists to prevent.
     const auto faultRefOwner = std::make_unique<GateCpu>();
     GateCpu& faultRef = *faultRefOwner;
     const auto faultNativeOwner = std::make_unique<GateCpu>();
@@ -418,8 +420,17 @@ void checkJsrTargetReadTransaction() {
     check(faultAfter.blocksRun == faultBefore.blocksRun + 1 &&
           faultAfter.slowInstrs == faultBefore.slowInstrs,
           "post-push target fault exited native code without replay");
+    check(faultRef.getPC() == kHole && faultNative.getPC() == kHole &&
+          faultRef.getA(7) == kData + 4 && faultNative.getA(7) == kData + 4,
+          "JSR to a /BERR target retires before the fault is taken");
+    faultRef.executeUntil(faultRef.getClock() + 1);
+    faultNative.jit.executeUntil(faultNative.getClock() + 1);
     const uint32_t refSp = faultRef.getA(7), nativeSp = faultNative.getA(7);
     check(refSp == kStack - 60 && nativeSp == refSp &&
+          (uint32_t(faultRef.mem[refSp + 2]) << 24 |
+           uint32_t(faultRef.mem[refSp + 3]) << 16 |
+           uint32_t(faultRef.mem[refSp + 4]) << 8 | faultRef.mem[refSp + 5]) ==
+              kHole &&
           std::memcmp(faultRef.mem.data() + refSp,
                       faultNative.mem.data() + nativeSp, 60) == 0,
           "post-push target faults build byte-identical format-$7 frames");
