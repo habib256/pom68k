@@ -275,6 +275,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
+- **What did NeoST change in its 68000 core after 2026-10-20, and what is missing from the fork?** → [The fetch-window call, and the NeoST reading](#2026-11-11-fetch-window-inline)
 - **Why did the Mac II decode every RAM word twice, and what replaced it?** → [Inline RAM reads on the GLUE board](#2026-11-11-macii-ram-path)
 - **Can the Plus's video contention be charged without a loop, and RAM read without the address decoder?** → [Closed-form contention and inline RAM reads](#2026-11-11-compact-ram-path)
 - **Why is a Mac Plus's board no longer ticked at every bus access, and what proves it is the same machine?** → [Compact-board deadlines](#2026-11-11-compact-deadline)
@@ -1334,6 +1335,45 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-11-fetch-window-inline"></a>
+## 2026-11-11 (eleventh) — The fetch window's cache-model test no longer costs a call: Mac Plus 7-9 %, Mac II 3-4 %; what NeoST changed since the last back-port
+
+`Moira::pomJitCache040Match` showed up in every profile of the day — 3 %
+of the Mac Plus's, 6 % of the Mac II's — on machines that have no 68040.
+Its first line returns `true` when the cache model is off or the CPU is
+below the 68EC040, but the compiler kept the whole function out of line,
+so each windowed fetch paid a call to learn that. The test is now an
+inline wrapper; the former body is `pomJitCache040MatchLive`. No
+behaviour is involved.
+
+| bench | 3 000 frames | 6 000 frames | fingerprint |
+|---|---|---|---|
+| Mac Plus, interpreter | 0.633 → 0.578 s, **-8.7 %** | 1.330 → 1.243 s, **-6.5 %** | same |
+| Mac II, interpreter | 2.581 → 2.502 s, **-3.1 %** | 5.175 → 4.987 s, **-3.6 %** | same |
+| Quadra 605, JIT a64 | 2.058 → 2.052 s | 10.169 → 10.147 s | same |
+| LC II, JIT a64 | 3.724 → 3.756 s | 7.037 → 7.098 s | same |
+
+Means of six runs per arm, interleaved A B B A, idle host. The two JIT
+rows are inside the 1.1 % floor in both directions and claim nothing.
+Tiers: `unit|jit` 210 / 210 (it holds `cache040_test` and the cache-on
+lockstep gates, which are the only callers of the live path),
+`etalon-core` 16 / 16. `m030`/`m040` not rerun for a call-site split.
+
+**NeoST, read the same evening.** NeoST wrote down what it expects of
+this core before swapping its own Moira for it (`docs/CPU_SWAP_GATE.md`,
+NeoST `b624bf4`, 2026-11-10). Against the fork: the fx68k bus-order
+changes of NeoST `9f20046` are already here or held by `sst68000`, which
+compares order, address, function code and value of every bus cycle
+(DBcc, MOVEM.l, MOVEM.w and JSR rerun: 8 065 / 8 065 each); the hooks and
+members of the contract exist. Missing: the 68000 STOP rework (no
+prefetch bus read, 4 cycles, interrupt held until STOP+8 through
+`stopGraceUntil`, wake quantised by 4 cycles — NeoST `993ce5e`,
+`2fc53a8`, `9f20046`), two more cycles between the two prefetch reads
+of a 68000 reset (`9f20046`), and an explicit `<cstdlib>` (`c9925da`).
+None is ported here: the reset change moves every 68000 machine's clock
+by two cycles from power-on, which is a re-pinning decision, not an
+optimisation. Recorded in `TODO.md`.
 
 <a id="2026-11-11-macii-ram-path"></a>
 ## 2026-11-11 (tenth) — Mac II: RAM reads past the GLUE decoder and an inline catch-up: 12 % faster in the interpreter
