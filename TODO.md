@@ -141,24 +141,24 @@ LLE 5 %, repli interpréteur 5 %. Donc, par ordre de rendement attendu :
      lecture (IWM non indépendant du découpage).
 
 7. **Profils du soir du 2026-11-11, après les douze entrées du jour**
-   (`sample` 1 kHz, binaires de `main`, machine chargée : proportions
-   seulement).
-   - *Quadra 605, trames 4 000-9 000* : runtime du moteur JIT 29 %
-     (`executeUntil`, dispatch, `record`, `armWindow`), chemin
-     interpréteur MMU/ATC 27 %, helpers JIT de Moira 9 %, carte mémoire
-     7,5 %, interpréteur 7 %, 68HC05 6 %, marche des périphériques 5 % —
-     et **presque aucun échantillon dans le code généré**. Dans cette
-     phase les blocs sortent 1 fois toutes les 29 instructions, le cache
-     de dispatch ne répond qu'à 46 %, et 25,8 M d'instructions passent par
-     `pom68kJitStep` (membres FPU rejoués exactement). Le gisement du 040
-     est là : FPU natif ou pas-à-pas moins cher, pas l'émission.
-   - *LC II* : 68HC05 17 %, runtime JIT 16 %, interpréteur environ 14 %
-     (dont 9 % sous l'étiquette `<deduplicated_symbol>` : ce n'est pas une
-     fonction mais l'ensemble des handlers d'instruction de Moira repliés
-     par l'éditeur de liens — cinq grappes d'adresses distinctes dans le
-     profil), chemin MMU 11,5 %. Le poids de l'interpréteur vient des
-     blocs sous le score de rentabilité (4 % des instructions), mesuré et
-     laissé à 64 le matin même.
+   (`sample` 1 kHz, binaires de `main`). *Corrigé le soir même* : une
+   première version de cette note comptait seulement les échantillons
+   dont le sommet de pile est symbolisé ; `sample` ne remonte pas la pile
+   depuis le code JIT, et ces échantillons — la moitié — manquaient. Parts
+   sur le total des échantillons du fil :
+   - *Quadra 605, après le boot* : code généré environ 52 %, runtime du
+     moteur JIT 14 % (`executeUntil` 4 %, `armWindow` 2 %, dispatch,
+     `record`), chemin interpréteur MMU/ATC 13 %, helpers JIT de Moira
+     4,5 %, carte mémoire 3,7 %, interpréteur 3,3 %, 68HC05 3 %, marche
+     des périphériques 2,5 %. 2,2 % des instructions passent hors du code
+     natif (drapeaux CPU, recul d'armement, traçage) et coûtent le quart
+     du temps.
+   - *LC II* : code généré environ 52 %, 68HC05 8 %, runtime JIT 8 %,
+     interpréteur 7 % (les handlers de Moira apparaissent repliés sous
+     `<deduplicated_symbol>`), chemin MMU 5,5 %.
+   - Le poste dominant est donc bien l'émission elle-même, que `sample`
+     ne détaille pas : il faut un profil par bloc (compteurs du moteur)
+     avant d'y toucher.
    - *Petit, pas prioritaire* : `Cpu030::catchUp` et `Cpu040::catchUp`
      sont hors ligne comme l'était `Cpu020::catchUp`, mais sur ces cœurs
      `SYNC` ne coûte rien et l'appel est rare (3,9 M pour 3 000 trames du
