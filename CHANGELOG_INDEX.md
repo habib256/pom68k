@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 781 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 782 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -9,7 +9,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | Subsystem | Entries |
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 105 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 116 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 117 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 37 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 32 |
@@ -246,6 +246,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-10 (tenth)** — [A faulting 68030 FScc stacks its byte unsigned; the 60 000-vector sweep is clean](CHANGELOG.md#2026-11-10-fscc-buffer)
 - **2026-11-10 (twelfth)** — [The 68040 cache replacement counter advances on accesses, through every path](CHANGELOG.md#2026-11-10-cache040-counter)
 - **2026-11-11** — [The twelve "known" `sst68040_fpuh` vectors were host stack bytes in the oracle; the corpus is reproducible and its known list is empty](CHANGELOG.md#2026-11-11-oracle-packed-stack)
+- **2026-11-11 (fifteenth)** — [NeoST's 68000 reset timing back-ported, now that nothing depends on it](CHANGELOG.md#2026-11-11-neost-reset-port)
 - **2026-11-11 (later)** — [A fault on a JSR's target fetch belongs to the next instruction on the 68030/68040; the 68040 frame no longer stacks the return address](CHANGELOG.md#2026-11-11-jsr-target-fault)
 - **2026-11-11 (third)** — [The 68030 sweep's five vectors: one defect fixed (long displacements in the access log), four were ruling D28, one residue ruled D36](CHANGELOG.md#2026-11-11-030-sweep-leftovers)
 - **2026-11-11 (thirteenth)** — [NeoST's 68000 STOP back-ported (format v31); its reset timing is not, because two cycles at power-on leave the PowerBook 100 busy for ever](CHANGELOG.md#2026-11-11-neost-stop-port)
