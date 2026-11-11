@@ -39,6 +39,8 @@ bool M68hc05::loadRom(const std::vector<uint8_t>& data) {
     if (data.size() != sizeof(rom_)) return false;   // 0x1100 @ $0F00
     std::memcpy(rom_, data.data(), sizeof(rom_));
     romLoaded_ = true;
+    for (unsigned i = 0; i < sizeof(rom_); i++)      // run-ahead verdicts
+        aheadClass_[i] = uint8_t(classify(0x0F00 + i, &aheadXoff_[i]));
     return true;
 }
 
@@ -475,31 +477,45 @@ int M68hc05::execOne() {
 // Contract: the integrator does not drive /IRQ while run-ahead is on (no
 // Egret or Cuda board wires it).
 // Gate: tests/m68hc05_runahead_test.cpp.
-bool M68hc05::nextIsInternal() const {
-    if (waiting_ && !(pending_ && !(cc_ & CC_I))) return true;   // idle step
-    unsigned pc = pc_ & 0x1FFF;
-    if (pending_ && !(cc_ & CC_I)) {                 // serviceInterrupts()
-        const unsigned vec = (pending_ & INT_IRQ) ? 0x1FFA
-                           : (pending_ & INT_TIMER) ? 0x1FF8 : 0x1FF6;
-        pc = (unsigned(rom_[vec - 0x0F00]) << 8 | rom_[vec + 1 - 0x0F00]) & 0x1FFF;
-    }
-    if (pc < 0x0F00 || pc > 0x1FFD) return false;
+// The verdict for the instruction at `pc` as far as the ROM alone decides
+// it: 0 = external or refused, 1 = internal, 2 = internal iff the operand
+// at (X + *xoff) & $1FFF lies above $0006.
+int M68hc05::classify(unsigned pc, uint16_t* xoff) const {
+    *xoff = 0;
+    if (pc < 0x0F00 || pc > 0x1FFD) return 0;
     const uint8_t* p = &rom_[pc - 0x0F00];
     const uint8_t op = p[0];
-    if (kCycles[op] == 0) return false;
-    auto internal = [](unsigned ea) { return (ea & 0x1FFF) > 0x0006; };
+    if (kCycles[op] == 0) return 0;
+    auto fixed = [](unsigned ea) { return (ea & 0x1FFF) > 0x0006 ? 1 : 0; };
     switch (op >> 4) {
         case 0x0: case 0x1: case 0x3: case 0xB:      // dir
-            return internal(p[1]);
-        case 0x2: return (op & 0xF) < 0xE;           // BIL/BIH sample /IRQ
-        case 0x6: case 0xE:                          // ix1
-            return internal(unsigned(x_) + p[1]);
-        case 0x7: case 0xF: return internal(x_);     // ix
-        case 0xC: return internal(unsigned(p[1]) << 8 | p[2]);       // ext
+            return fixed(p[1]);
+        case 0x2: return (op & 0xF) < 0xE ? 1 : 0;   // BIL/BIH sample /IRQ
+        case 0x6: case 0xE: *xoff = p[1]; return 2;  // ix1
+        case 0x7: case 0xF: return 2;                // ix
+        case 0xC: return fixed(unsigned(p[1]) << 8 | p[2]);          // ext
         case 0xD:                                    // ix2
-            return internal(uint16_t(x_ + (unsigned(p[1]) << 8 | p[2])));
-        default: return true;                        // inherent, imm, stack
+            *xoff = uint16_t(unsigned(p[1]) << 8 | p[2]); return 2;
+        default: return 1;                           // inherent, imm, stack
     }
+}
+
+bool M68hc05::nextIsInternal() const {
+    unsigned pc = pc_ & 0x1FFF;
+    if (pending_ || waiting_) [[unlikely]] {
+        const bool taken = pending_ && !(cc_ & CC_I);
+        if (waiting_ && !taken) return true;         // idle step
+        if (taken) {                                 // serviceInterrupts()
+            const unsigned vec = (pending_ & INT_IRQ) ? 0x1FFA
+                               : (pending_ & INT_TIMER) ? 0x1FF8 : 0x1FF6;
+            pc = (unsigned(rom_[vec - 0x0F00]) << 8 | rom_[vec + 1 - 0x0F00]) & 0x1FFF;
+        }
+    }
+    if (pc < 0x0F00) return false;
+    const unsigned i = pc - 0x0F00;
+    const uint8_t c = aheadClass_[i];
+    if (c < 2) return c != 0;
+    return ((unsigned(x_) + aheadXoff_[i]) & 0x1FFF) > 0x0006;
 }
 
 int M68hc05::run(int budget) {

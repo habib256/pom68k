@@ -40,6 +40,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"m030 141 / 141 and m040 102 / 102" for the MCU run-ahead and the copy-on-write ATC (2026-11-11 (fifth), (sixth)) — those tiers ran with a mutant `M68hc05` object left by the mutation script, equivalent on these boards but not the commit; rerun on a forced rebuild** → [The verdict table, and the correction](#2026-11-11-mcu-ahead-table)
+
 - **Why did Linux CI fail while the ARM64 check passed after adding a common test?** → [The stale x86 registry section](#2026-11-09-x64-status-registry)
 
 - **The M1 cache gate required translating CINV/CPUSH operands; Motorola defines them as physical.** → [The physical-operand regression](#2026-11-08-physical-cache-operands)
@@ -273,6 +275,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
+- **What does the MCU run-ahead cost per instruction, and how was it cut?** → [The verdict table built at firmware load](#2026-11-11-mcu-ahead-table)
 - **Why does an exact native 68040 access no longer copy the whole ATC?** → [Copy-on-write ATC transaction](#2026-11-11-atc-replay-cow)
 - **Why is the whole board no longer woken at every Egret/Cuda instruction, and what keeps that exact?** → [The MCU runs ahead through its internal instructions](#2026-11-11-mcu-run-ahead)
 - **Where does a Mac Plus spend its host time, and which optimisations were measured and refused on the M4?** → [The quiet SCC and five null results](#2026-11-11-scc-quiet-tick)
@@ -1329,6 +1332,62 @@ Newest first.
 
 ---
 
+<a id="2026-11-11-mcu-ahead-table"></a>
+## 2026-11-11 (seventh) — The MCU run-ahead verdict comes from a table built when the firmware loads: LC II 2-4 %, Quadra 605 1-2.5 % faster in JIT
+
+`M68hc05::nextIsInternal` (entry (fifth)) decoded the next instruction
+on every step of the run-ahead and was about 3 % of both JIT profiles.
+What it decides depends on the ROM alone, except for the three indexed
+modes, which also need X. `classify()` now runs once per ROM byte in
+`loadRom` and leaves a class — external, internal, or "internal iff
+(X + offset) lies above $0006" — and the offset; the per-step test is
+one table read, plus an add for the indexed modes. A pending interrupt
+or a WAIT takes the same path as before, on the handler's first
+instruction.
+
+| bench (JIT a64) | 3 000 frames | 6 000 frames | fingerprint |
+|---|---|---|---|
+| LC II (Egret) | 3.821 → 3.728 s, **-2.4 %** | 7.276 → 6.985 s, **-4.0 %** | same |
+| Quadra 605 (Cuda) | 2.112 → 2.059 s, **-2.5 %** | 10.195 → 10.073 s, -1.2 % | same |
+
+Means of six runs per arm, interleaved A B B A, idle host (floor 1.1 %:
+the Quadra 605 figure at 6 000 frames is at the floor, not a claim). The
+LC II baseline binary predates the entry below, which does not touch the
+68030 path.
+
+Gate: `m68hc05_runahead_test`, unchanged in shape. Its program generator
+gained SEI and CLI: without them a WAIT never met an interrupt already
+pending, and the mutation "a WAITing MCU is always idle" passed — it had
+been reported caught in entry (fifth) and was not reproducible as such;
+with SEI/CLI it fails the gate. Mutations on the table code: eight of
+nine fail (each static mode declared internal, the indexed limit or the
+port limit lowered, the handler look-up removed, the WAIT case above).
+The one that passes drops the 8-bit offset of the ix1 mode: with X above
+$0006 the sum cannot fall back to a port, so that mutation only refuses
+more — conservative, not wrong.
+
+**Correction to entries (fifth) and (sixth): their tiers ran on a
+binary that was not the commit.** The mutation script restored the source
+within the same second as the mutant's compilation, so `make` kept the
+mutant object. The last mutation of entry (fifth) — BIL/BIH declared
+internal, the one that passes the gate — stayed linked into every test
+binary and into the bench binaries of both entries: the archived bench
+holds a 94-instruction `nextIsInternal`, the committed source compiles to
+81 and the BIL/BIH mutant to 94 (same flags, checked by disassembly). On
+these boards the two are equivalent (/IRQ is never driven, so BIL/BIH
+read a constant), which is why fingerprints and gates agreed; but the
+evidence of those two entries is evidence for the mutant. The Moira
+object of entry (sixth) was the committed one (its mutant would fail
+`moira_rules_test`, which passed). The same script then left a harmful
+mutant (direct-page operands declared internal) in the first tier run of
+this entry: `m68hc05_runahead_test`, `cuda_lle_test` and two boot etalons
+failed at once, which is how it was found. The script now sleeps and
+touches the source after restoring it, and the tiers below were run after
+a forced recompilation; they are the evidence for all three entries.
+
+Tiers on the final tree (M4, a64 backend): `unit|jit` 209 / 209; `m030` 141 / 141 and `m040` 102 / 102, no soft-skip line in either, run concurrently with the unit tier at `-j3` each, 64 min; the linked `nextIsInternal` was checked by disassembly to be the committed one. The x86-64 host was
+not run.
+
 <a id="2026-11-11-atc-replay-cow"></a>
 ## 2026-11-11 (sixth) — The 68040 ATC transaction of an exact native access copies entries only when one changes: Quadra 605 JIT 2-7 % faster
 
@@ -1382,6 +1441,8 @@ Tiers on the final tree (M4, a64 backend): `unit|jit` 209 / 209; `m040`
 Begin returns at once below the 68EC040 and the six `Touch` sites are in
 68040-only functions. The x86-64 host was not run; its emitter addresses
 the same fields and is untouched.
+
+*Corrected in entry (seventh): these tiers and bench binaries held a mutant `M68hc05` object, equivalent on these boards but not the commit; the tiers were rerun there.*
 
 <a id="2026-11-11-mcu-run-ahead"></a>
 ## 2026-11-11 (fifth) — The Egret/Cuda MCU runs ahead through its internal instructions: the board wakes at port accesses only; Quadra 605 11-19 % and LC II 15-16 % faster in JIT
@@ -1453,6 +1514,8 @@ green after; `m030` 141 / 141 with no soft-skip line — it holds
 three gates `DEV.md` § 3.7 names for any MCU timing change — and `m040`
 102 / 102 with no soft-skip line, run concurrently at `-j3` each, 63 min.
 The x86-64 host was not run.
+
+*Corrected in entry (seventh): these tiers and bench binaries held a mutant `M68hc05` object, equivalent on these boards but not the commit; the tiers were rerun there.*
 
 <a id="2026-11-11-scc-quiet-tick"></a>
 ## 2026-11-11 (fourth) — An idle SCC no longer costs a call per slice: Mac Plus 19-20 % faster; five other levers measured and left alone

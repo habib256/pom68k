@@ -134,6 +134,7 @@ private:
     void aluOp(int op, uint16_t ea, bool imm);       // SUB..STX group
     int execOne();                                   // one instruction → cycles
     bool nextIsInternal() const;                     // run-ahead admission
+    int classify(unsigned pc, uint16_t* xoff) const; // its per-ROM-byte half
 
     void sendPort(int p, uint8_t data);              // DDR/pullup mix out
 
@@ -170,6 +171,8 @@ private:
     uint8_t illegalOp_ = 0;
 
     int runAhead_ = 0;                               // setRunAhead
+    uint8_t aheadClass_[0x1100] = {};                // classify(), by ROM offset
+    uint16_t aheadXoff_[0x1100] = {};
 
     static const uint8_t kCycles[256];               // MAME s_hc_cycles
 };

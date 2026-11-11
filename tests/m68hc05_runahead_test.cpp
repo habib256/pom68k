@@ -97,7 +97,8 @@ std::vector<uint8_t> makeRom(uint64_t seed) {
             case 24: put({ 0x27, 0x00 }); break;                     // BEQ
             case 25: put({ 0x15, 0x05 }); break;                     // BCLR 2,DDRB
             case 26: put({ 0x14, 0x05 }); break;                     // BSET 2,DDRB
-            default: put({ 0x99 }); break;                           // SEC
+            default: put({ uint8_t(i % 3 == 0 ? 0x9B : i % 3 == 1 ? 0x9A
+                                                        : 0x99) }); break; // SEI/CLI/SEC
         }
     }
     put({ 0xCC, uint8_t(0x0F + (loop >> 8)), uint8_t(loop) });       // JMP loop

@@ -115,8 +115,6 @@ LLE 5 %, repli interpréteur 5 %. Donc, par ordre de rendement attendu :
      lecteurs, pompe CD, ASC, CA1) avancés à l'accès : flush devant chaque
      observateur côté hôte et décision de format de save-state ; à
      re-profiler, le gisement a fondu avec les réveils ;
-   - `M68hc05::nextIsInternal` lui-même (~3 % du profil) : une table de
-     classes par octet de ROM, calculée au chargement ;
    - cartes 68000 : la marche des périphériques reste ~80 % du temps du
      Plus après le SCC au repos (`MacMemory::tick` 23 %, `SonyDrive` 9 %,
      `Iwm` 8 %, `CdAudioPump` 8 %, `MacMouse` 5 %).
