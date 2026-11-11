@@ -150,10 +150,13 @@ LLE 5 %, repli interpréteur 5 %. Donc, par ordre de rendement attendu :
      de dispatch ne répond qu'à 46 %, et 25,8 M d'instructions passent par
      `pom68kJitStep` (membres FPU rejoués exactement). Le gisement du 040
      est là : FPU natif ou pas-à-pas moins cher, pas l'émission.
-   - *LC II* : un symbole replié par l'éditeur de liens
-     (`<deduplicated_symbol>`) pèse 9 % à lui seul — à identifier (carte
-     de liens) avant toute chose ; 68HC05 17 %, runtime JIT 16 %, chemin
-     MMU 11,5 %.
+   - *LC II* : 68HC05 17 %, runtime JIT 16 %, interpréteur environ 14 %
+     (dont 9 % sous l'étiquette `<deduplicated_symbol>` : ce n'est pas une
+     fonction mais l'ensemble des handlers d'instruction de Moira repliés
+     par l'éditeur de liens — cinq grappes d'adresses distinctes dans le
+     profil), chemin MMU 11,5 %. Le poids de l'interpréteur vient des
+     blocs sous le score de rentabilité (4 % des instructions), mesuré et
+     laissé à 64 le matin même.
    - *À faire sans réfléchir* : `Cpu030::catchUp` (et vérifier
      `Cpu040`) est hors ligne comme l'était `Cpu020::catchUp` ; le mettre
      dans l'en-tête a fait partie des −12 % du Mac II.
