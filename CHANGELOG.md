@@ -1378,6 +1378,12 @@ the proof, or the wake of `writeCtl` or `injectRxFrame`, each fails the
 gate. Three mutations pass and mark conservative code, not a hole: the
 /RTS term of the proof, and the wakes of `setDcd` and `readData`.
 
+Tiers on the final tree (M4, a64 backend): `asset-none|jit-fast|unit`
+191 / 191; the 18 SCC, LocalTalk and serial gates; `etalon-core`, one boot
+etalon per platform, 16 / 16 with no soft-skip line; `m030` 141 / 141 (no
+soft-skip line) and `m040` 102 / 102 (skip lines not counted), run
+concurrently at `-j3` each, 66 min. The x86-64 host was not run.
+
 **Measured and left alone** (same host, same day; fingerprints identical
 in every pair):
 
