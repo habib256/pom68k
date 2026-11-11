@@ -1359,6 +1359,24 @@ void stop68000()
     }
 }
 
+void reset68000()
+{
+    // [D] fx68k @ 0602ee46 — back-port of NeoST 9f20046: the 68000 reset
+    // spends 6 cycles between its two prefetch reads, two more than the
+    // 68010 path of this core.
+    TestCpu m000(moira::Model::M68000), m010(moira::Model::M68010);
+    for (TestCpu* c : { &m000, &m010 }) {
+        p32(*c, 0, 0x8000); p32(*c, 4, kCode);
+        p16(*c, kCode, kNop); p16(*c, kCode + 2, kNop);
+    }
+    const moira::i64 a0 = m000.getClock(), b0 = m010.getClock();
+    m000.reset(); m010.reset();
+    CHECK((m000.getClock() - a0) - (m010.getClock() - b0) == 2 &&
+          m000.getPC() == m010.getPC(),
+          "68000 reset: %lld cycles against the 68010's %lld (want +2)",
+          (long long)(m000.getClock() - a0), (long long)(m010.getClock() - b0));
+}
+
 #if MOIRA_ENABLE_JIT
 // The 68040 ATCs are private to the core; this is the seam Moira.h befriends.
 // Defined inside the namespace: the friend declaration does not make the name
@@ -1672,6 +1690,7 @@ int main(int argc, char** argv)
     atcReplayCopyOnWrite040();
 #endif
     stop68000();
+    reset68000();
 
     if (failures) {
         std::printf("[moira_rules_test] FAIL: %d check(s)\n", failures);
@@ -1684,6 +1703,6 @@ int main(int argc, char** argv)
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68EC030 plain-020 path with a 68030 "
-                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle\n");
+                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing\n");
     return 0;
 }

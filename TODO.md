@@ -88,10 +88,12 @@ avance la carte par paquets de 256 cycles pendant que le Power Manager
 tient le processeur, et n'interroge ses lignes qu'aux frontières de ces
 paquets. Corrigé sur la branche `fix/portable-slicing` (`CHANGELOG`
 (fourteenth)), **non fusionnée : elle ré-épingle `pb100_boot_etalon`**
-sur l'écran du Portable (`cc4a869f52d960ad`). Reste ensuite à porter le
-reset (`SYNC(C == Core::C68000 ? 4 : 2)` dans `Moira::reset`), et à
-comprendre pourquoi le Finder laisse la montre sur les deux machines
-(`InitCursor` puis `SetCursor` depuis `$7ABEFA`). À ne pas
+sur l'écran du Portable (`cc4a869f52d960ad`). Le reset de NeoST est
+porté par-dessus, branche `port/neost-68000-reset` (`CHANGELOG`
+(fifteenth)), 122 / 122 sur les machines 68000 : **fusionner les deux
+branches** est la décision en attente. Reste à comprendre pourquoi le
+Finder laisse la montre sur les deux machines (`InitCursor` puis
+`SetCursor` depuis `$7ABEFA`). À ne pas
 reprendre : `71b92cc` (retard d'échantillonnage IPL, non tranché côté
 NeoST).
 

@@ -318,7 +318,13 @@ Moira::reset()
         // Fill the prefetch queue
         SYNC(4);
         queue.irc = read16OnReset(reg.pc & addrMask<C>());
-        SYNC(2);
+        // [D] fx68k @ 0602ee46; microcode trap8 (read), trap9 (no bus), b
+        //     (read): 6 cycles between these two reads on a 68000, as at
+        //     the entry of an exception — 2 left of the bus cycle, 2 of
+        //     trap9. The M68000 User's Manual (Rev 8, exception timing
+        //     table) gives the total, 40(6/0), not this place.
+        // POM68K: back-port of NeoST 9f20046.
+        SYNC(C == Core::C68000 ? 4 : 2);
         prefetch<C>();
 
     } catch (const std::exception &) {

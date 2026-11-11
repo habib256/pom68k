@@ -279,6 +279,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **Do the changes of 2026-11-11/12 hold on the x86-64 backend, and how can this host check?** → [The x86-64 leg under Rosetta](#2026-11-12-x64-leg)
 - **What are the JIT's "not compilable" exits on an idle Mac, and which fixes for them worked?** → [Entries that cannot head a block](#2026-11-12-jit-unsafe-entry)
 - **Why did `LINK` run in the interpreter on the 68040, and what did admitting it change?** → [Head-position polls](#2026-11-12-jit-040-head-poll)
+- **Is NeoST's core-swap contract now complete in the fork?** → [The 68000 reset timing, last line of the contract](#2026-11-11-neost-reset-port)
 - **Why did a PowerBook 100 behave differently under the debugger's single step, and why did its pinned screen change?** → [The Portable board and host slicing](#2026-11-11-portable-slicing)
 - **Which NeoST 68000 changes were back-ported, and why not the reset timing?** → [STOP ported, the reset left out for the PowerBook 100](#2026-11-11-neost-stop-port)
 - **How much faster did each bench get on 2026-11-11, and what was refused?** → [RAM writes, and the day's totals](#2026-11-11-ram-write-path)
@@ -1757,6 +1758,33 @@ restriction and is not changed**: it cannot be run on this host.
 in the working directory by a test in flight was swept into `f9a29795`
 by a blanket `git add`. It is untracked and `*.pomundo` is ignored since
 `c5dc026c`. It remains in history.
+
+<a id="2026-11-11-neost-reset-port"></a>
+## 2026-11-11 (fifteenth) — NeoST's 68000 reset timing back-ported, now that nothing depends on it
+
+The last missing line of NeoST's core-swap contract: on the 68000,
+`Moira::reset` spends 6 cycles between its two prefetch reads, not 4
+(NeoST `9f20046`; fx68k @ 0602ee46, microcode trap8/trap9/b, as NeoST
+read it — the M68000 User's Manual gives only the total, 40(6/0)). The
+68010 and the 68020 family keep 4.
+
+Entry (thirteenth) had to leave this out: ported alone it moved the
+PowerBook 100's screen. Entry (fourteenth) removed the cause, the
+Portable board's dependence on host slicing. On top of it the same two
+cycles move nothing: the 122 gates of the 68000 machines, the save-state
+family, `sst68000` and the Moira gates are 122 / 122 — every compact,
+the Portable, the PowerBook 100 on its re-pinned screen, the slicing
+etalon — and `unit|jit` is 210 / 210. Gate for the timing itself:
+`moira_rules_test`, cell `reset68000` (the 68000 reset costs two cycles
+more than the 68010's, same PC).
+
+With this the contract's dated table is complete in the fork, except the
+IPL-sampling delay NeoST itself lists as undecided (`71b92cc`).
+
+Branch `port/neost-68000-reset`, on top of `fix/portable-slicing`.
+**Not merged**, for the same reason as the entry below. `m030`/`m040`
+not run: the change is inside `C == Core::C68000`. The x86-64 host was
+not run.
 
 <a id="2026-11-11-portable-slicing"></a>
 ## 2026-11-11 (fourteenth) — The Portable and the PowerBook 100 no longer depend on host slicing; the PB100's pinned screen was a product of it and is re-pinned
