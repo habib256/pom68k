@@ -1295,6 +1295,36 @@ void jsrTargetFetchFault()
     }
 }
 
+void fullEaLongDisplacementLog030()
+{
+    // [D] WinUAE cpummu030.c get_disp_ea_020_mmu030 @ Hatari e77819f7 —
+    // "random/identity seed=6107 #1726". MOVE.W ([bd.L,A2],od.W),(A1) whose
+    // pointer fetch takes /BERR on a 68030: the format-$B access log holds
+    // the extension word, the LONG base displacement as one entry, and the
+    // outer displacement; three done, the fourth in flight. The fork logged
+    // the base displacement as two words.
+    TestCpu c(moira::Model::M68030);
+    p32(c, 2 * 4, kHandler);
+    p16(c, kHandler, kNop);
+    stage(c, 0x32b2, 0);
+    p16(c, kCode + 2, 0x0172);              // full format, IS, bd.L, ([..],od.W)
+    p32(c, kCode + 4, kHole);
+    p16(c, kCode + 8, 0x0010);
+    p16(c, kCode + 10, kNop);
+    c.setIRC(0x0172);
+    c.setA(2, 0); c.setA(1, 0x3000);
+    c.holeArmed = true;
+    const bool contained = executeContained(c);
+    const uint32_t sp = c.getSP();
+    CHECK(contained && c.getPC0() == kHandler && g16(c, sp + 6) == 0xb008 &&
+          g32(c, sp + 0x58) == 0x0172 && g32(c, sp + 0x54) == kHole &&
+          g32(c, sp + 0x50) == 0x0010 && c.mem[sp + 0x37] == 0x34,
+          "68030 full-format EA log: format %04X, log %08X %08X %08X, "
+          "idx byte %02X (want 00000172 %08X 00000010, 34)",
+          g16(c, sp + 6), g32(c, sp + 0x58), g32(c, sp + 0x54),
+          g32(c, sp + 0x50), c.mem[sp + 0x37], kHole);
+}
+
 void fsccWriteBuffer030()
 {
     // FScc.B (A0) with a true predicate whose store takes /BERR on a 68030 +
@@ -1469,6 +1499,7 @@ int main(int argc, char** argv)
     ec030UsesPlain020Path();
     cacrStrobesReadZero();
     jsrTargetFetchFault();
+    fullEaLongDisplacementLog030();
 
     if (failures) {
         std::printf("[moira_rules_test] FAIL: %d check(s)\n", failures);
@@ -1481,6 +1512,6 @@ int main(int argc, char** argv)
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68EC030 plain-020 path with a 68030 "
-                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040\n");
+                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, 68030 long-displacement access log\n");
     return 0;
 }

@@ -565,6 +565,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- **2026-11-11 (third)** — [The 68030 sweep's five vectors: one defect fixed (long displacements in the access log), four were ruling D28, one residue ruled D36](#2026-11-11-030-sweep-leftovers)
 - **2026-11-11 (later)** — [A fault on a JSR's target fetch belongs to the next instruction on the 68030/68040; the 68040 frame no longer stacks the return address](#2026-11-11-jsr-target-fault)
 - **2026-11-11** — [The twelve "known" `sst68040_fpuh` vectors were host stack bytes in the oracle; the corpus is reproducible and its known list is empty](#2026-11-11-oracle-packed-stack)
 - **2026-11-10 (thirteenth)** — [The Moira fork and its JIT build and test outside POM68K; upstream's CACR fix taken, the dead 040 i-cache overlay removed](#2026-11-10-moira-release)
@@ -1323,6 +1324,41 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-11-030-sweep-leftovers"></a>
+## 2026-11-11 (third) — The 68030 sweep's five vectors: one defect fixed (long displacements in the access log), four were ruling D28, one residue ruled D36
+
+The fresh-seed sweep of the 68030 (`fuzz030.py --strict-fpu --n 2000`, one
+seed per family and MMU mode, 27 937 vectors) left five failures, all in
+`random` with the MMU on, and the JSR entry below left one residue. The
+three were written into `TODO.md` as open defects. Read one by one:
+
+**Fixed — a long displacement is one log entry** (vendor row 88).
+`random/identity seed=6107 #1726`, `MOVE.W ([bd.L,A2,D5.W*4],od.W),(A1)`
+whose pointer fetch faults: PC, SR and A7 matched, the format-$B access
+log did not. The oracle reads a long base or outer displacement through
+`next_ilong_mmu030_state` — one entry; `readExt<C, Long>` logged two
+words, so the frame held four entries where the oracle has three and an
+idx byte of $45 for $34. Invisible unless the fault lands inside the EA
+computation, because `computeEAdisp030` rewinds the log afterwards.
+`moira_rules_test` cell `fullEaLongDisplacementLog030` (red without the
+fix: log `00000172 00000008 00000000`, idx $45).
+
+**Not a defect — four FBcc to an odd target.** `seed=6107 #242`, `#1118`,
+`seed=6108 #1748`, `#1835`: this is ruling D28, taken on 2026-11-07 with
+114 pinned vectors in `tests/sst68030_fpuraw.known` — the fork takes the
+address error inside the branch, as the manual has it; the oracle never
+raises one. The TODO item written earlier today was wrong and is removed.
+A fresh seed has no known list, which is all these four show.
+
+**Ruled, fork kept — D36.** The three bytes of the two-step JSR frame are
+the previous instruction's access log: WinUAE resets its log indices after
+the opcode fetch, not before, and never clears the log. The fork's frame
+does not depend on what ran before, the only form the JIT can keep exact.
+The JSR fix itself is recorded as D35.
+
+Corrected count for the sweep: 27 933 / 27 937 with the fix, the four
+others being D28.
 
 <a id="2026-11-11-jsr-target-fault"></a>
 ## 2026-11-11 (later) — A fault on a JSR's target fetch belongs to the next instruction on the 68030/68040; the 68040 frame no longer stacks the return address

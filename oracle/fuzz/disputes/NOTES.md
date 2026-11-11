@@ -33,6 +33,37 @@ Oracle in service: **WinUAE** (`oracle/uae`, hatari e77819f7
 `cpummu030.c` + gencpu). Retired: **Musashi** (MAME 0.276 `m68kmmu.h` +
 kstenerud 4.60 core).
 
+## D36. Access-log bytes of a format-$B frame after a fetch fault [fork kept, 2026-11-11]
+
+Two-step vector, 68030: a JSR, then the opcode fetch at its target takes a
+bus fault. The oracle's frame carries idx/idx_done = $11 and the JSR's
+pushed return address in the first access-log slot; the fork stacks zeros
+(three bytes differ: frame offsets $37 and $59-$5B). WinUAE
+`m68k_run_mmu030` @ Hatari e77819f7 resets `mmu030_idx_done` and
+`mmu030_idx` only AFTER `x_prefetch(0)` returned, and never clears
+`mmu030_ad[]`: a fault on the opcode fetch stacks the log of the PREVIOUS
+instruction. Those bytes describe no access of the faulting fetch, and the
+oracle's RTE ignores them for this frame (opcode storage -1 restarts from
+the fetch). The fork resets the log before the fetch, so the frame does
+not depend on what ran before — which is also the only form the JIT can
+keep exact, since native blocks do not maintain the log.
+
+[F] MC68030UM-1989 §8.4 documents these words as internal; a real 68030
+puts something there that neither side models. No oracle patch, no corpus
+exception: single-step vectors are unaffected (`oracle_set_state` zeroes
+the log, VENDOR.md patch 6) and no pinned multi-step vector has this shape.
+
+## D35. A fault on a JSR's target fetch belongs to the next instruction [ruled: WinUAE, 2026-11-11]
+
+The fork read the first word of a JSR's target after the push and took a
+fault on that read inside the JSR; its 68040 format-$7 frame stacked the
+return address (the "last write" PC), so an RTE skipped the call. The
+oracle retires the JSR and faults at the next opcode fetch with the target
+as stacked PC. Fork changed (POM68K_VENDOR.md row 87): the read stays for
+its I-cache/ATC accounting, its fault is dropped and retaken by the next
+instruction start. 962 + 950 targeted vectors; `moira_rules_test`
+jsrTargetFetchFault. [D] only — no manual passage was consulted.
+
 ## D34. MOVEM CM reuses EA only for indexed/PC-relative modes [ruled: primary manual, 2026-11-09]
 
 MC68040UM-1993 §8.4.6.2 (PDF p. 238) explicitly limits stacked-EA reuse
