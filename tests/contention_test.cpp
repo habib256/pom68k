@@ -13,6 +13,7 @@
 #include <memory>
 #include <vector>
 #include <cstdio>
+#include <cstring>
 
 int main() {
     constexpr long kFrame = 130240;
@@ -64,6 +65,11 @@ int main() {
             return 1;
         }
         mem->reset();
+        // The twin takes every write through the decoder, both passes: the
+        // overlaid pass leaves RAM behind through the $600000 alias.
+        auto twin = std::make_unique<MacMemory>(pom68k::defaultCoreConfig());
+        twin->loadRom(rom);
+        twin->reset();
         for (int pass = 0; pass < 2; pass++) {
             if (pass == 1) {
                 mem->write8(0xE807FE, 0xFF);           // VIA DDRA
@@ -87,6 +93,30 @@ int main() {
                 same = same && check(a);
             if (!same) {
                 std::fprintf(stderr, "FAIL: inline RAM read differs from the "
+                                     "decoder (overlay %s)\n", pass ? "down" : "up");
+                return 1;
+            }
+            // Writes: the inline path on this board, the decoder on a twin,
+            // then every RAM byte compared. RAM, ROM window and alias only.
+            if (pass == 1) {
+                twin->write8Decoded(0xE807FE, 0xFF);
+                twin->write8Decoded(0xE81FFE, 0x00);
+                for (uint32_t a = 0; a < 0x400000; a += 0x101)
+                    twin->write8Decoded(a, uint8_t(a * 13 + (a >> 11)));
+            }
+            auto store = [&](uint32_t a, uint16_t v) {
+                mem->write8(a, uint8_t(v));          twin->write8Decoded(a, uint8_t(v));
+                mem->write16(a + 3, v);              twin->write16Decoded(a + 3, v);
+            };
+            for (uint32_t a = 0; a < 0x4FFFF0; a += 0x2B3) store(a, uint16_t(a * 31 + 7));
+            for (uint32_t a = 0x600000; a < 0x7FFFF0; a += 0x4C1) store(a, uint16_t(a ^ 0x5A5A));
+            // The top edge last: a word at $3FFFFF must not wrap into $000000,
+            // and nothing may overwrite the evidence afterwards.
+            for (uint32_t a : { 0x01000000u, 0x0FFFFCu, 0x3FFFFBu, 0x3FFFFDu, 0x3FFFFCu })
+                store(a, uint16_t(0xBEEF + a));
+            if (mem->overlay() != twin->overlay() ||
+                std::memcmp(mem->ram(), twin->ram(), mem->ramBytes()) != 0) {
+                std::fprintf(stderr, "FAIL: inline RAM write differs from the "
                                      "decoder (overlay %s)\n", pass ? "down" : "up");
                 return 1;
             }

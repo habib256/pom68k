@@ -149,8 +149,31 @@ public:
     }
     uint8_t  read8Decoded(uint32_t addr);
     uint16_t read16Decoded(uint32_t addr);
-    void     write8(uint32_t addr, uint8_t v);
-    void     write16(uint32_t addr, uint16_t v);
+    // The write twin of the inline reads: low RAM with the overlay down,
+    // the JIT guard told first as the decoder does. With the overlay down
+    // the decoder's overlay-clearing branch cannot fire.
+    void write8(uint32_t addr, uint8_t v) {
+        addr &= 0xFFFFFF;
+        if (addr < 0x400000 && !overlay_) [[likely]] {
+            if (jitGuard_) jitGuard_->note(addr, 1);
+            ram_[addr & (ramSize_ - 1)] = v;
+            return;
+        }
+        write8Decoded(addr, v);
+    }
+    void write16(uint32_t addr, uint16_t v) {
+        addr &= 0xFFFFFF;
+        if (addr < 0x3FFFFF && !overlay_) [[likely]] {
+            const uint32_t mask = ramSize_ - 1;
+            if (jitGuard_) { jitGuard_->note(addr, 1); jitGuard_->note(addr + 1, 1); }
+            ram_[addr & mask] = uint8_t(v >> 8);
+            ram_[(addr + 1) & mask] = uint8_t(v);
+            return;
+        }
+        write16Decoded(addr, v);
+    }
+    void     write8Decoded(uint32_t addr, uint8_t v);
+    void     write16Decoded(uint32_t addr, uint16_t v);
 
     // Side-effect-free read, the counterpart every other machine map already
     // carries (V8Memory, MacIIMemory, …). read8() cannot be used for
