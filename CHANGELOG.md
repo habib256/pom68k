@@ -275,6 +275,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
+- **Why did `LINK` run in the interpreter on the 68040, and what did admitting it change?** → [Head-position polls](#2026-11-12-jit-040-head-poll)
 - **Which NeoST 68000 changes were back-ported, and why not the reset timing?** → [STOP ported, the reset left out for the PowerBook 100](#2026-11-11-neost-stop-port)
 - **How much faster did each bench get on 2026-11-11, and what was refused?** → [RAM writes, and the day's totals](#2026-11-11-ram-write-path)
 - **What did NeoST change in its 68000 core after 2026-10-20, and what is missing from the fork?** → [The fetch-window call, and the NeoST reading](#2026-11-11-fetch-window-inline)
@@ -1337,6 +1338,72 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-12-jit-040-head-poll"></a>
+## 2026-11-12 — On the 68040, `LINK` ran in the interpreter inside every native block: one admission rule, in-block fallbacks 25.8 M → 1.75 M, Quadra 605 6 % faster after boot
+
+Two corrections to yesterday's notes first. The evening profile in
+`TODO.md` counted only samples whose top frame is symbolised; `sample`
+cannot unwind out of generated code, and half the samples were missing.
+Generated code is about 52 % of both JIT benches. And the question that
+profile raised — why 2.2 % of the Quadra 605's instructions cost a quarter
+of its time — has a one-line answer in the engine's own census
+(`POM68K_JIT_HISTO=1`): of 25 842 398 instructions that fell back to the
+interpreter *inside* a native block over 6 000 frames, 21 343 360 were
+one opcode, `4E56`, `LINK A6,#d16` — the prologue of nearly every
+compiled function. `POM68K_JIT_WATCH_OPCODE=4E56` names the refusal:
+`positioned-ipl-poll`.
+
+**The rule and its gap.** Since 2026-10-02 a 68040 instruction with a
+data access and more than one interrupt-pin sample is generated only if
+every sample after the loop head follows its FINAL data access; the body
+then re-samples the pin at its end. Any other placement goes to the
+interpreter, because device time can move between two samples. `LINK`
+samples the pin (`POLL_IPL` in `execLink`) and then pushes: its second
+sample precedes its only data access. The trace records that as position
+0, which sets no bit of the mask, and an empty mask was refused with
+everything else.
+
+A sample taken before the first data access sees what the head sample
+saw, provided nothing in between moves device time. With the cache model
+off, nothing does on this core: `SYNC` expands to nothing on
+`Core::C68020`, the 68040 wrapper arms no i-cache timing overlay, and an
+instruction-stream fetch reads plain memory or the instruction does not
+retire. It is the situation of an instruction with no data access at all,
+which that rule never restricted. The a64 backend now admits it
+(`headPollsOnly`); with the cache model on it stays refused, since an
+I-cache fill can charge time at the fetch.
+
+| Quadra 605, JIT a64 | 3 000 frames | 6 000 frames | fingerprint |
+|---|---|---|---|
+| head-position polls native | 2.050 → 2.025 s, -1.2 % | 10.082 → 9.433 s, **-6.4 %** | same |
+
+Means of six runs per arm, interleaved A B B A, idle host (floor 1.1 %:
+the 3 000-frame figure is at the floor). In-block fallbacks over 6 000
+frames: 25 842 398 → 1 750 906; what remains is led by a MOVE
+`d16(A5) → idx(A5)` at 123 280. The LC II is a 68030 and is not
+concerned: its 1.98 M in-block fallbacks are 96 % device accesses.
+
+Gate: `jit_asset_free_lockstep_test`, cell "LINK, whose polls all
+precede its push". A loop — a device read that raises the pin, `LINK
+A6,#-8`, a store into the frame, `UNLK`, a counter — on interpreter and
+generated code, compared every 37 cycles (registers, clock, the frame on
+the stack, the handler's log), 96 checkpoints unarmed and 96 with the
+interrupt armed. The unarmed phase must run with zero fallback; the
+interrupt must be taken before the `LINK` (stacked PC pinned from the
+interpreter). With the admission removed the cell fails: 110 fallbacks.
+
+Tiers on the final tree (M4, a64): `unit|jit` 209 / 210, the failure
+being `file_size_budget_test` (`JitBackendA64.cpp` 5 153 → 5 161 lines,
+ceiling raised in the same commit) — the tier holds every a64 lockstep
+gate; `m040` 102 / 102 with no soft-skip line, `-j4`, 46 min. `m030` not
+run: the rule is under `!L.is030`. **The x64 backend carries the same
+restriction and is not changed**: it cannot be run on this host.
+
+**Also this night, and not about speed:** a disk write-back journal left
+in the working directory by a test in flight was swept into `f9a29795`
+by a blanket `git add`. It is untracked and `*.pomundo` is ignored since
+`c5dc026c`. It remains in history.
 
 <a id="2026-11-11-neost-stop-port"></a>
 ## 2026-11-11 (thirteenth) — NeoST's 68000 STOP back-ported (format v31); its reset timing is not, because two cycles at power-on leave the PowerBook 100 busy for ever
