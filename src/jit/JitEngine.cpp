@@ -1366,6 +1366,25 @@ void Engine::executeUntil(int64_t clockTarget) {
 
         Block* bp = dispatchCache_.lookup(key(pc, super), blocksGen_);
         if (bp == nullptr) {
+        // An opcode that ends a block BEFORE itself can never head one:
+        // record() would probe twice, build an empty trace and cache
+        // nothing, on every visit (system traps, RTE, SR writes). Same
+        // statistics, same single interpreter step.
+        {
+            Kind entryKind = classify(cpu_.pomJitPeek(pc));
+            if (entryKind == Kind::Fpu && !config_.fpuMember)
+                entryKind = Kind::Unsafe;
+            if (endsBlock(entryKind)) {
+                stats_.bump(Exit::NotCompilable);
+                stats_.miss(Miss::Trace, 0);
+                cpu_.execute();
+                stats_.add(stats_.interpInstrs);
+                stats_.miss(Miss::Trace);
+                if (dispatchRingOn_) [[unlikely]]
+                    ring(3, pc, clockTarget, 0, 1);
+                continue;
+            }
+        }
         const uint64_t blockKey = dispatchBlockKey(pc, super);
         auto it = blocks_.find(blockKey);
         if (it != blocks_.end() && it->second.gen != blocksGen_) {
