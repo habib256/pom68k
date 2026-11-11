@@ -275,6 +275,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
+- **What are the JIT's "not compilable" exits on an idle Mac, and which fixes for them worked?** → [Entries that cannot head a block](#2026-11-12-jit-unsafe-entry)
 - **Why did `LINK` run in the interpreter on the 68040, and what did admitting it change?** → [Head-position polls](#2026-11-12-jit-040-head-poll)
 - **Which NeoST 68000 changes were back-ported, and why not the reset timing?** → [STOP ported, the reset left out for the PowerBook 100](#2026-11-11-neost-stop-port)
 - **How much faster did each bench get on 2026-11-11, and what was refused?** → [RAM writes, and the day's totals](#2026-11-11-ram-write-path)
@@ -1338,6 +1339,69 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-12-jit-unsafe-entry"></a>
+## 2026-11-12 (later) — The engine stopped trying to record a block at opcodes that can never head one: LC II 1-4 % faster; a native `MOVE SR,-(A7)` measured and refused
+
+**What the counters said.** "exit not compilable" was 13.1 M per 6 000
+LC II frames and 10.7 M per 6 000 Quadra 605 frames, and the engine's
+"tracing" attribution was the same number: not a retrace storm but
+single instructions. A temporary histogram by cause and opcode settled
+it — every one of them is the dispatcher arriving at an opcode that ends
+a block *before* itself. On the LC II: `ORI #imm,SR` 3.24 M,
+`MOVE (A7)+,SR` 1.65 M, `MOVE SR,-(A7)` 1.65 M, `MOVE D0,SR` 1.58 M, and
+three system traps (`A030`, `ABF7`, `A0DD`) at 1.58 M each — one idle
+loop of the system, masking and unmasking interrupts around its calls. On
+the Quadra 605 the same, plus `MOVE16` 1.14 M, `RTD` 0.55 M, `CAS`
+0.47 M and `JMP (d8,PC,Xn)` 0.47 M.
+
+**The change.** At such a pc `record()` looked the block up twice, built
+an empty trace, cached nothing and returned, and the caller stepped the
+interpreter once — on every visit. The dispatcher now classifies the
+entry opcode right after its cache miss and steps the interpreter
+directly, with the same statistics. The engine report is byte-identical
+(compared on the LC II at 3 000 frames), and so are the fingerprints.
+
+| bench (JIT a64) | 3 000 frames | 6 000 frames | fingerprint |
+|---|---|---|---|
+| LC II | 3.730 → 3.677 s, **-1.4 %** | 7.130 → 6.851 s, **-3.9 %** | same |
+| Quadra 605 | 2.028 → 2.024 s | 9.471 → 9.331 s, **-1.5 %** | same |
+
+Means of six runs per arm, interleaved A B B A, idle host (floor 1.1 %;
+the Quadra 605 at 3 000 frames claims nothing).
+
+Tiers on the final tree (M4, a64): `unit|jit` 209 / 210, the failure
+being `file_size_budget_test` (`JitEngine.cpp` 1 609 → 1 628 lines,
+ceiling raised in the same commit); `m030` 141 / 141 and `m040`
+102 / 102, no soft-skip line in either, concurrently at `-j3` each,
+65 min. The x86-64 host was not run; the code is engine-level and shared.
+
+**Measured and refused: `MOVE SR,-(A7)` as a native block member.** It
+changes no execution state, so it was the one SR instruction that could
+be generated without touching interrupt recognition: the a64 backend
+composed the status word as `MOVE SR,Dn` does and pushed it, in
+supervisor blocks only, behind a backend capability so the x64 backend
+kept its behaviour. It was exact — a lockstep cell green with zero
+fallback, three mutations caught, both bench fingerprints unchanged — and
+it removed 705 123 block exits per 3 000 LC II frames. It bought nothing:
+LC II 3.673 → 3.668 s and 6.879 → 6.878 s, Quadra 605 2.024 → 2.030 s
+and 9.433 → 9.359 s. The instruction after the push is the `ORI #,SR`
+that ends the block anyway; one interpreter step became one native
+instruction and nothing else moved. Not merged (branch
+`perf/jit-sr-push`, local).
+
+**Also measured tonight and left alone:** `POM68K_JIT_ARM_BACKOFF` at 8
+and at 2 against the default 32, both benches, both budgets — Quadra 605
+-0.4 % / -1.0 % either way, LC II +2.1 % / +1.8 % at 8 and -0.4 % /
++0.7 % at 2. Inside the floor or worse.
+
+**What would move these counters for real** is the SR *writes*: each
+sets `CHECK_IRQ`, so the instruction after it is interpreted too
+(13.1 M "cpu flags" exits on the LC II, one per write). `ORI #imm,SR` is
+the largest single opcode and only raises the mask in this loop, but on
+this core it also performs a data-space read of the following word
+(`execAndisr`), which a generated version would have to reproduce through
+the data ATC. Left for a day with an x86-64 host at hand.
 
 <a id="2026-11-12-jit-040-head-poll"></a>
 ## 2026-11-12 — On the 68040, `LINK` ran in the interpreter inside every native block: one admission rule, in-block fallbacks 25.8 M → 1.75 M, Quadra 605 6 % faster after boot
