@@ -4822,7 +4822,15 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
                 in.iplPollPosValid &&
                 n >= 1 && n <= MemoryContract::MaxAccesses &&
                 in.iplPollMask == uint8_t(1u << (n - 1));
-            if (!lateIplPoll) {
+            // Polls that all PRECEDE the first data access (empty mask) see
+            // what the head sample saw: with the cache model off, nothing
+            // from the loop head to that access moves device time on this
+            // core (SYNC is empty, no i-cache overlay, a stream fetch is
+            // plain memory). LINK is the instance that matters — 83 % of
+            // in-block fallbacks on the Quadra 605 (CHANGELOG 2026-11-12).
+            const bool headPollsOnly = !L.cache040Live &&
+                in.iplPollPosValid && in.iplPollMask == 0;
+            if (!lateIplPoll && !headPollsOnly) {
                 watchRefusal(L, ir, in, "positioned-ipl-poll");
                 a.b(slowStatic[i]);
                 continue;
