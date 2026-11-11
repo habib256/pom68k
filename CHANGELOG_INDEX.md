@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 763 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 764 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -9,7 +9,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | Subsystem | Entries |
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 99 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 113 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 114 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 37 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 31 |
@@ -241,6 +241,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-10 (twelfth)** — [The 68040 cache replacement counter advances on accesses, through every path](CHANGELOG.md#2026-11-10-cache040-counter)
 - **2026-11-11** — [The twelve "known" `sst68040_fpuh` vectors were host stack bytes in the oracle; the corpus is reproducible and its known list is empty](CHANGELOG.md#2026-11-11-oracle-packed-stack)
 - **2026-11-11 (later)** — [A fault on a JSR's target fetch belongs to the next instruction on the 68030/68040; the 68040 frame no longer stacks the return address](CHANGELOG.md#2026-11-11-jsr-target-fault)
+- **2026-11-11 (third)** — [The 68030 sweep's five vectors: one defect fixed (long displacements in the access log), four were ruling D28, one residue ruled D36](CHANGELOG.md#2026-11-11-030-sweep-leftovers)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E
 

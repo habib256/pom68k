@@ -1055,6 +1055,27 @@ Moira::readExt()
 template <Core C, Size S> u32
 Moira::readExt()
 {
+    // [D] WinUAE cpummu030.c get_disp_ea_020_mmu030 @ Hatari e77819f7 —
+    // POM68K: a LONG base or outer displacement is ONE entry of the 68030
+    // access log (next_ilong_mmu030_state), as ABS.L and a long immediate
+    // already are. Logged as two words, a fault on the memory-indirect
+    // fetch stacked a format-$B frame with one entry too many
+    // ("random/identity seed=6107 #1726"). Gate: moira_rules_test
+    // (fullEaLongDisplacementLog030).
+    if constexpr (C == Core::C68020 && S == Long) {
+        if (cpuModel == Model::M68030) [[unlikely]] {
+            bool logSave = mmuLogging;
+            mmuLogging = false;
+            u32 value = queue.irc << 16;
+            readExt<C>();
+            value |= queue.irc;
+            readExt<C>();
+            mmuLogging = logSave;
+            mmuLogExtWord(value);
+            return value;
+        }
+    }
+
     u32 result = queue.irc;
     readExt<C>();
 
