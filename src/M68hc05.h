@@ -53,6 +53,14 @@ public:
     // the one-second timer alongside the instruction stream.
     int run(int budget);
 
+    // Run-ahead of internal instructions (see run() and nextIsInternal()).
+    // 0 = off: run() stops at the first instruction boundary at or past
+    // the budget, as a standalone core does. With a cap, run() goes on
+    // through instructions that touch neither a port nor an on-chip
+    // register, until one that does or until it stands `cap` cycles past
+    // the budget. Board wiring, not machine state: not serialized.
+    void setRunAhead(int capCycles) { runAhead_ = capCycles; }
+
     void setIrqLine(bool asserted);                  // external /IRQ ($1FFA)
 
     // ── Debug / gate accessors ──
@@ -125,6 +133,7 @@ private:
     uint8_t aluRmw(int op, uint8_t v);               // NEG..CLR group
     void aluOp(int op, uint16_t ea, bool imm);       // SUB..STX group
     int execOne();                                   // one instruction → cycles
+    bool nextIsInternal() const;                     // run-ahead admission
 
     void sendPort(int p, uint8_t data);              // DDR/pullup mix out
 
@@ -159,6 +168,8 @@ private:
     bool illegal_ = false;
     uint16_t illegalPc_ = 0;
     uint8_t illegalOp_ = 0;
+
+    int runAhead_ = 0;                               // setRunAhead
 
     static const uint8_t kCycles[256];               // MAME s_hc_cycles
 };

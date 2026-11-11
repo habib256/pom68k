@@ -179,6 +179,10 @@ private:
     const int64_t cpuHz_;                // machine cycles per second
     const Flavor flavor_;
     static constexpr int64_t kMcuHz = 2097152;    // 4.194304 MHz XTAL / 2
+    // Run-ahead cap, MCU cycles (tick()): one programmable-timer period,
+    // 244 µs. It bounds how far the slaved ADB wire stands ahead of machine
+    // time, and lets a WAITing MCU sleep to its next timer overflow.
+    static constexpr int kRunAhead = 512;
     static constexpr int64_t kAdbHz = 15667200;   // AdbLine's cycle domain
     int64_t mcuAcc_ = 0;                 // machine cycles → MCU cycles
     int mcuDebt_ = 0;                    // run() overshoot carried forward

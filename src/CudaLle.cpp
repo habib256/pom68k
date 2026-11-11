@@ -13,6 +13,7 @@
 CudaLle::CudaLle(Via6522& via, int64_t cpuHz, Flavor flavor)
     : via_(via), cpuHz_(cpuHz), flavor_(flavor)
 {
+    mcu_.setRunAhead(kRunAhead);
     mcu_.readPort = [this](int p) { return mcuPortRead(p); };
     mcu_.writePort = [this](int p, uint8_t v) { mcuPortWrite(p, v); };
     // Event-driven wire (TODO step 6): AdbLine's clock is SLAVED to the
@@ -355,13 +356,16 @@ void CudaLle::tick(int cpuCycles) {
     // ~37% under instruction-sized quanta — the LC II soak gate caught the
     // Mac wall clock running 247 s in 180 s of machine time (the HLE path,
     // which is time-based, kept exact time on the same feed).
+    // The MCU also runs AHEAD through the instructions nothing outside it
+    // can observe (M68hc05::nextIsInternal), up to kRunAhead cycles: the
+    // debt then reaches to the next instruction that touches a port, and
+    // cyclesToNextEvent() wakes the board there instead of at every
+    // instruction. Port accesses keep their exact MCU cycle. run() is
+    // entered even when the debt covers the slice, so the run-ahead
+    // reached at a given machine time does not depend on the slicing.
     mcuCyc -= mcuDebt_;
-    if (mcuCyc > 0) {
-        int used = mcu_.run(mcuCyc);
-        mcuDebt_ = used > mcuCyc ? used - mcuCyc : 0;
-    } else {
-        mcuDebt_ = -mcuCyc;
-    }
+    const int used = mcu_.run(mcuCyc);
+    mcuDebt_ = used > mcuCyc ? used - mcuCyc : 0;
 }
 
 int CudaLle::cyclesToNextEvent() const {

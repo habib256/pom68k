@@ -273,6 +273,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
+- **Why is the whole board no longer woken at every Egret/Cuda instruction, and what keeps that exact?** → [The MCU runs ahead through its internal instructions](#2026-11-11-mcu-run-ahead)
 - **Where does a Mac Plus spend its host time, and which optimisations were measured and refused on the M4?** → [The quiet SCC and five null results](#2026-11-11-scc-quiet-tick)
 - **What happens when the target page of a JSR is not mapped (68030/68040)?** → [The JSR retires; the next fetch faults with the target as PC](#2026-11-11-jsr-target-fault)
 - **Why did `sst68040_fpuh` not regenerate to its pinned hashes, and what were its twelve known divergences?** → [Host stack bytes in the oracle's packed path](#2026-11-11-oracle-packed-stack)
@@ -1326,6 +1327,77 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-11-mcu-run-ahead"></a>
+## 2026-11-11 (fifth) — The Egret/Cuda MCU runs ahead through its internal instructions: the board wakes at port accesses only; Quadra 605 11-19 % and LC II 15-16 % faster in JIT
+
+The entry below left one lever untried and gave it the wrong name. It
+said every 68HC05 instruction bounding a machine slice "is the exactness
+rule of that file, not an inefficiency". Half of that is wrong: the rule
+is that a *port access* happens on its exact MCU cycle. An instruction
+that touches neither a port ($0000-$0002), a DDR ($0004-$0006) nor the
+/IRQ pin computes from MCU state alone — RAM, ROM, registers, and the PLL
+and timers, which are clocked by the instruction stream itself. Nothing
+outside the MCU can tell when it ran.
+
+**The change.** `M68hc05::run` goes on past its budget through such
+instructions (`nextIsInternal`, which forms the effective address as
+`execOne` does and judges a pending interrupt on the first instruction of
+its handler), until one that is not internal or until it stands
+`CudaLle::kRunAhead` = 512 cycles (244 µs, one programmable-timer period)
+ahead. The overshoot is the existing `mcuDebt_`, so
+`CudaLle::cyclesToNextEvent` now reaches to the next port instruction.
+`CudaLle::tick` enters `run()` even when the debt covers the slice; that
+makes the state at a given machine time independent of the slicing, which
+the interpreter/JIT lockstep gates require. No save-state format change
+(the debt was already serialized; a state saved now simply holds an MCU
+that stands ahead). The MCU instruction rate, the phase of every port
+access against the host VIA and the instruction-slaved ADB wire as the
+firmware sees it are unchanged; the wire stands at most 244 µs ahead of
+machine time when a host input event lands on it.
+
+| bench (JIT a64) | 3 000 frames | 6 000 frames | fingerprint |
+|---|---|---|---|
+| Quadra 605 (Cuda) | 2.636 → 2.144 s, **-18.7 %** | 12.194 → 10.869 s, **-10.9 %** | same |
+| LC II (Egret) | 4.475 → 3.818 s, **-14.7 %** | 8.533 → 7.171 s, **-16.0 %** | same |
+
+Means of six runs per arm, two binaries interleaved A B B A after a
+discarded pair, one process per run, idle host (floor 1.1 %). Board
+wake-ups over 3 000 frames (`POM68K_BENCH_PERIPH_STATS`): Quadra 605
+27.29 M → 7.60 M `mem.tick` (45.8 → 164.4 machine cycles each), LC II
+27.68 M → 6.36 M (28.2 → 122.8). The Mac Plus and Mac II benches have no
+MCU and were not re-measured. A first version that also treated the PLL
+and timer registers as external, and refused any pending interrupt,
+measured about 1 % slower — inside the floor; the wider rule is kept
+because it is the true one, not for that figure.
+
+Gate: `m68hc05_runahead_test`, synthetic ROMs, no dump. Forty random
+programs per cap (512, 37, 1) — port and DDR accesses in every addressing
+mode, timer interrupts whose handler opens on a port read, WAIT, BIL/BIH —
+run on three integrators with the debt pattern of `CudaLle::tick`, against
+a port whose input is a function of integrator time: run-ahead off at one
+cycle per tick, run-ahead sliced at the event bound, run-ahead sliced at
+random below it. Every port read, port write and DDR write must land on
+the same cycle with the same value in all three; the two run-ahead
+integrators must serialize identically every 2 000 cycles; the reference
+must serialize identically once caught up on the MCU cycle count.
+Mutation-checked: ten of eleven fail the gate (each addressing mode
+declared internal, the port/DDR limit lowered to $0003 or $0001, the
+interrupt-handler look-up removed, a WAIT with a deliverable interrupt
+declared idle, a slicing-dependent cap). The one that passes is BIL/BIH
+declared internal: no rig drives /IRQ, and no Egret or Cuda board wires
+it — the refusal is conservative, and the contract (no /IRQ under
+run-ahead) is written at `nextIsInternal`.
+
+Tiers on the final tree (M4, a64 backend): `unit|jit` 207 / 209 on the
+first pass, the two failures being `docs_test` and
+`file_size_budget_test` for the new gate's registration (STATUS
+regenerated; `cmake/Pom68kMachineGates.cmake` ceiling 1082 → 1088), both
+green after; `m030` 141 / 141 with no soft-skip line — it holds
+`mactv_boot_etalon`, `jit_mactv_boot_etalon` and `lcii_soak_etalon`, the
+three gates `DEV.md` § 3.7 names for any MCU timing change — and `m040`
+102 / 102 with no soft-skip line, run concurrently at `-j3` each, 63 min.
+The x86-64 host was not run.
 
 <a id="2026-11-11-scc-quiet-tick"></a>
 ## 2026-11-11 (fourth) — An idle SCC no longer costs a call per slice: Mac Plus 19-20 % faster; five other levers measured and left alone

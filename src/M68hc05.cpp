@@ -459,10 +459,58 @@ int M68hc05::execOne() {
     return cyc;
 }
 
+// ── Run-ahead admission ────────────────────────────────────────────────
+// Everything this MCU exchanges with the outside goes through its ports
+// and their DDRs ($0000-$0006: readPort/sendPort) or the /IRQ pin. The PLL
+// and the two timers ($0007-$0012) are clocked by the instruction stream
+// itself, so they are as internal as RAM. An instruction whose only memory
+// operand lies above $0006, and which does not sample /IRQ (BIL/BIH),
+// computes from MCU state alone: executing it early changes nothing any
+// other device can see, and the next port access still happens on the same
+// MCU cycle. The effective address is formed exactly as execOne() forms
+// it. An interrupt about to be taken is judged on the first instruction of
+// its handler, which run() executes in the same step (entry leaves X
+// untouched). Conservative refusals: an instruction outside the ROM
+// window and an undefined opcode.
+// Contract: the integrator does not drive /IRQ while run-ahead is on (no
+// Egret or Cuda board wires it).
+// Gate: tests/m68hc05_runahead_test.cpp.
+bool M68hc05::nextIsInternal() const {
+    if (waiting_ && !(pending_ && !(cc_ & CC_I))) return true;   // idle step
+    unsigned pc = pc_ & 0x1FFF;
+    if (pending_ && !(cc_ & CC_I)) {                 // serviceInterrupts()
+        const unsigned vec = (pending_ & INT_IRQ) ? 0x1FFA
+                           : (pending_ & INT_TIMER) ? 0x1FF8 : 0x1FF6;
+        pc = (unsigned(rom_[vec - 0x0F00]) << 8 | rom_[vec + 1 - 0x0F00]) & 0x1FFF;
+    }
+    if (pc < 0x0F00 || pc > 0x1FFD) return false;
+    const uint8_t* p = &rom_[pc - 0x0F00];
+    const uint8_t op = p[0];
+    if (kCycles[op] == 0) return false;
+    auto internal = [](unsigned ea) { return (ea & 0x1FFF) > 0x0006; };
+    switch (op >> 4) {
+        case 0x0: case 0x1: case 0x3: case 0xB:      // dir
+            return internal(p[1]);
+        case 0x2: return (op & 0xF) < 0xE;           // BIL/BIH sample /IRQ
+        case 0x6: case 0xE:                          // ix1
+            return internal(unsigned(x_) + p[1]);
+        case 0x7: case 0xF: return internal(x_);     // ix
+        case 0xC: return internal(unsigned(p[1]) << 8 | p[2]);       // ext
+        case 0xD:                                    // ix2
+            return internal(uint16_t(x_ + (unsigned(p[1]) << 8 | p[2])));
+        default: return true;                        // inherent, imm, stack
+    }
+}
+
 int M68hc05::run(int budget) {
-    if (!romLoaded_ || illegal_) return budget;
+    if (!romLoaded_ || illegal_) return budget > 0 ? budget : 0;
     int used = 0;
-    while (used < budget) {
+    // Past the budget, only internal instructions, and only while the core
+    // stands less than runAhead_ cycles ahead: the state reached at a given
+    // budget total is then the same however the caller sliced it, provided
+    // the caller also calls with a budget its debt already covers.
+    while (used < budget ||
+           (used - budget < runAhead_ && nextIsInternal())) {
         // Shaped like MAME's execute_run (m6805.cpp:167-183): the interrupt
         // sequence PRECEDES an instruction, it never replaces one — taking a
         // vector and then falling straight through to the next opcode fetch
