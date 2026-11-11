@@ -25,6 +25,7 @@ class Moira {
     friend class Breakpoints;
     friend class Watchpoints;
     friend class Catchpoints;
+    friend struct PomAtcProbe;      // POM68K: gate seam (tests/moira_rules_test.cpp)
     
     
     //
@@ -2491,7 +2492,22 @@ public:
     void pomJitAtcReplayBegin040(PomJitAtcReplay040& replay, u32 addr,
                                  bool data, unsigned access) noexcept;
     void pomJitAtcReplayAbort040(PomJitAtcReplay040& replay) noexcept;
+    // POM68K: the entries of a begun side are copied on their first
+    // mutation, not at Begin — most exact accesses hit the ATC and change
+    // only the counter and the last-hit indices, which Begin saves. Bits
+    // 0-1 of `active`: side begun; bits 2-3: its entries are in `opaque`.
+    // Every writer of mmu040AtcI/D entries calls pomAtcCow040Touch first.
+    // Gate: tests/moira_rules_test.cpp (atcReplayCopyOnWrite040).
+    PomJitAtcReplay040* pomAtcCow040 {nullptr};
+    void pomAtcCow040Save(bool side) noexcept;
+    void pomAtcCow040Touch(bool side) noexcept {
+        if (pomAtcCow040) [[unlikely]] pomAtcCow040Save(side);
+    }
+    void mmu040AtcCowBoth() noexcept { pomAtcCow040Touch(false); pomAtcCow040Touch(true); }
 
+#else
+    void pomAtcCow040Touch(bool) noexcept {}
+    void mmu040AtcCowBoth() noexcept {}
 #endif
 
 private:

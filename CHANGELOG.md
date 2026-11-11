@@ -273,6 +273,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
+- **Why does an exact native 68040 access no longer copy the whole ATC?** → [Copy-on-write ATC transaction](#2026-11-11-atc-replay-cow)
 - **Why is the whole board no longer woken at every Egret/Cuda instruction, and what keeps that exact?** → [The MCU runs ahead through its internal instructions](#2026-11-11-mcu-run-ahead)
 - **Where does a Mac Plus spend its host time, and which optimisations were measured and refused on the M4?** → [The quiet SCC and five null results](#2026-11-11-scc-quiet-tick)
 - **What happens when the target page of a JSR is not mapped (68030/68040)?** → [The JSR retires; the next fetch faults with the target as PC](#2026-11-11-jsr-target-fault)
@@ -1327,6 +1328,60 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-11-atc-replay-cow"></a>
+## 2026-11-11 (sixth) — The 68040 ATC transaction of an exact native access copies entries only when one changes: Quadra 605 JIT 2-7 % faster
+
+A steady-state profile of the Quadra 605 bench after the entry below
+(frames 3 000-6 000, `sample` at 1 kHz) put `_platform_memmove` first:
+5.7 % of the samples, all of it under `pomJitAtcReplayBegin040`. Every
+exact native access (`pom68kJitRead`/`Write`/`ReadProg`/`Jsr040`) opens a
+transaction a refused instruction can roll back, and Begin saved the
+whole ATC of each side it touched — 64 entries, 1 KB — although nearly
+every such access hits the ATC and changes only the access counter and
+the last-hit indices.
+
+**The change.** Begin saves the counter and the two indices. A side's
+entries are copied by `pomAtcCow040Save` the first time something is
+about to change one: `pomAtcCow040Touch` stands in front of the two
+re-walk invalidations of `mmu040AtcLookup`, of `mmu040AtcFill` and of the
+three flushes — every writer of `mmu040AtcI/D`. Bits 2-3 of
+`PomJitAtcReplay040::active` say which sides were copied; Abort restores
+those and always restores counter and indices. The generated code's
+existing 64-bit clear of `active` retires a transaction as before, and a
+mutation that finds it retired drops the pointer. No guest-visible claim,
+no layout change the emitters depend on (`opaque` stays at +16).
+
+| bench | 3 000 frames | 6 000 frames | fingerprint |
+|---|---|---|---|
+| Quadra 605, JIT a64 | 2.149 → 2.107 s, **-2.0 %** | 10.981 → 10.226 s, **-6.9 %** | same |
+
+Means of six runs per arm, two binaries interleaved A B B A after a
+discarded pair, idle host (floor 1.1 %). The LC II (68030) does not run
+this code and was not measured.
+
+Gate: `moira_rules_test`, cell `atcReplayCopyOnWrite040`, through the
+`PomAtcProbe` friend seam (the ATCs are private to the core). Nine
+mutation kinds after a Begin on both sides — hits only, a D fill, an I
+fill, a last-hit re-walk, a set-scan re-walk, the three flushes, three
+fills in a row — each checked for which sides were copied (none for hits)
+and for a byte-exact restore of both ATCs, counters and indices by Abort;
+then the same mutation after a retired transaction, which must write
+nothing into it. Mutation-checked, ten of ten fail the cell: each of the
+six `Touch` sites removed, the retired-transaction test removed, a second
+copy allowed, the entries not restored, the indices not saved.
+
+Measured and found empty: Abort also invalidates every derived mapping
+when a transaction is active, which looked like a second cost. Counted
+over 6 000 frames, Abort ran 25.8 M times and found an active transaction
+**zero** times — there is nothing to win there. The 31 879 "translation
+moved" flushes of that run are the guest's own.
+
+Tiers on the final tree (M4, a64 backend): `unit|jit` 209 / 209; `m040`
+102 / 102 with no soft-skip line, `-j5`, 46 min. `m030` was not rerun:
+Begin returns at once below the 68EC040 and the six `Touch` sites are in
+68040-only functions. The x86-64 host was not run; its emitter addresses
+the same fields and is untouched.
 
 <a id="2026-11-11-mcu-run-ahead"></a>
 ## 2026-11-11 (fifth) — The Egret/Cuda MCU runs ahead through its internal instructions: the board wakes at port accesses only; Quadra 605 11-19 % and LC II 15-16 % faster in JIT

@@ -1295,6 +1295,91 @@ void jsrTargetFetchFault()
     }
 }
 
+#if MOIRA_ENABLE_JIT
+// The 68040 ATCs are private to the core; this is the seam Moira.h befriends.
+struct moira::PomAtcProbe {
+    struct Image {
+        uint8_t i[sizeof(Moira::mmu040AtcI)], d[sizeof(Moira::mmu040AtcD)];
+        uint32_t ai, ad; int8_t li[2], ld[2];
+        bool operator==(const Image&) const = default;
+    };
+    static Image image(const Moira& c) {
+        Image m {};
+        std::memcpy(m.i, c.mmu040AtcI, sizeof m.i);
+        std::memcpy(m.d, c.mmu040AtcD, sizeof m.d);
+        m.ai = c.mmu040AtcAccessI; m.ad = c.mmu040AtcAccessD;
+        std::memcpy(m.li, c.mmu040AtcLastI, 2); std::memcpy(m.ld, c.mmu040AtcLastD, 2);
+        return m;
+    }
+    static void seed(Moira& c) {
+        for (uint32_t n = 0; n < 40; n++) {
+            // Resident, unmodified, some global: a write hit re-walks.
+            c.mmu040AtcFill(true,  n << 12, (n << 12) | 0x001 | (n & 1 ? 0x400 : 0), true);
+            c.mmu040AtcFill(false, n << 13, (n << 13) | 0x011, true);
+        }
+    }
+    static void begin(Moira& c, Moira::PomJitAtcReplay040& r) {
+        r.fetches = 2; r.routes = 1;                // I side, then D side
+        c.pomJitAtcReplayBegin040(r, 0, true, 1);
+    }
+    static void mutate(Moira& c, int kind) {
+        switch (kind) {
+            case 0: c.mmu040AtcLookup(true, 39u << 12, false, true);       // hits
+                    c.mmu040AtcLookup(false, 39u << 13, false, true); break;
+            case 1: c.mmu040AtcFill(true, 0x00777000, 0x00777011, true); break;
+            case 2: c.mmu040AtcFill(false, 0x00555000, 0x00555011, false); break;
+            case 3: c.mmu040AtcLookup(true, 39u << 12, true, true); break;  // last-hit re-walk
+            case 4: c.mmu040AtcLookup(true, 20u << 12, true, true); break;  // set-scan re-walk
+            case 5: c.mmu040AtcFlushAll(); break;
+            case 6: c.mmu040AtcFlushNonGlobal(); break;
+            case 7: c.mmu040AtcFlushPage(38u << 12, false, true); break;
+            default: c.mmu040AtcFill(true, 0x00777000, 0x00777011, true);   // two in a row:
+                     c.mmu040AtcFill(true, 0x00778000, 0x00778011, true);   // one copy
+                     c.mmu040AtcFill(false, 0x00556000, 0x00556011, true); break;
+        }
+    }
+    static bool armed(const Moira& c) { return c.pomAtcCow040 != nullptr; }
+};
+void atcReplayCopyOnWrite040()
+{
+    // POM68K (Moira.h § pomAtcCow040): an exact native access opens an ATC
+    // transaction that a refused instruction rolls back. Begin saves the
+    // access counter and the last-hit indices; the 64 entries of a side are
+    // copied only when something is about to change one. Whatever the
+    // mutation, Abort must put both ATCs back exactly, and a transaction
+    // that retired must leave later mutations alone.
+    using P = moira::PomAtcProbe;
+    static const uint32_t wantSaved[] = { 0, 8, 4, 8, 8, 12, 12, 12, 12 };
+    for (int kind = 0; kind <= 8; kind++) {
+        TestCpu c(moira::Model::M68040);
+        P::seed(c);
+        const P::Image before = P::image(c);
+        moira::Moira::PomJitAtcReplay040 r;
+        P::begin(c, r);
+        CHECK((r.active & 15) == 3, "kind %d: Begin copied entries (active=%X)",
+              kind, unsigned(r.active));
+        P::mutate(c, kind);
+        CHECK((r.active & 12) == wantSaved[kind],
+              "kind %d: sides copied %X, want %X", kind, unsigned(r.active & 12),
+              unsigned(wantSaved[kind]));
+        CHECK(!(P::image(c) == before), "kind %d: the mutation changed nothing", kind);
+        c.pomJitAtcReplayAbort040(r);
+        CHECK(P::image(c) == before && r.active == 0,
+              "kind %d: Abort did not restore both ATCs", kind);
+
+        // Retired: generated code zeroes `active`; nothing is owed after.
+        P::begin(c, r);
+        r.active = 0;
+        std::memset(r.opaque, 0xA5, sizeof r.opaque);
+        P::mutate(c, kind);
+        bool untouched = true;
+        for (uint8_t b : r.opaque) untouched = untouched && b == 0xA5;
+        CHECK(untouched && r.active == 0 && (kind == 0 || !P::armed(c)),
+              "kind %d: a retired transaction was written to", kind);
+    }
+}
+#endif
+
 void fullEaLongDisplacementLog030()
 {
     // [D] WinUAE cpummu030.c get_disp_ea_020_mmu030 @ Hatari e77819f7 —
@@ -1500,6 +1585,9 @@ int main(int argc, char** argv)
     cacrStrobesReadZero();
     jsrTargetFetchFault();
     fullEaLongDisplacementLog030();
+#if MOIRA_ENABLE_JIT
+    atcReplayCopyOnWrite040();
+#endif
 
     if (failures) {
         std::printf("[moira_rules_test] FAIL: %d check(s)\n", failures);
@@ -1512,6 +1600,6 @@ int main(int argc, char** argv)
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68EC030 plain-020 path with a 68030 "
-                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, 68030 long-displacement access log\n");
+                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, 68030 long-displacement access log, 68040 ATC replay copy-on-write\n");
     return 0;
 }
