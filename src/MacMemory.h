@@ -176,6 +176,10 @@ public:
     // Called from Cpu68k::sync with elapsed CPU cycles: advances the VIA
     // timers (φ2 = CPU/10) and raises IRQs on underflow.
     void tick(int cpuCycles);
+    // CPU cycles until tick() next does something a later, longer tick
+    // would not do identically (Cpu68k::catchUp batches up to this bound).
+    // 1 = no batching: the ADB compacts and any live floppy stream.
+    int cyclesToNextEvent() const;
     // Called once per emulated second: RTC seconds + CA2 interrupt.
     void tickOneSecond();
     Rtc& rtc() { return rtc_; }

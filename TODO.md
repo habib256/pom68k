@@ -115,9 +115,11 @@ LLE 5 %, repli interpréteur 5 %. Donc, par ordre de rendement attendu :
      lecteurs, pompe CD, ASC, CA1) avancés à l'accès : flush devant chaque
      observateur côté hôte et décision de format de save-state ; à
      re-profiler, le gisement a fondu avec les réveils ;
-   - cartes 68000 : la marche des périphériques reste ~80 % du temps du
-     Plus après le SCC au repos (`MacMemory::tick` 23 %, `SonyDrive` 9 %,
-     `Iwm` 8 %, `CdAudioPump` 8 %, `MacMouse` 5 %).
+   - cartes 68000 : échéances FAITES sur 128K–Plus le 2026-11-11
+     (`CHANGELOG` (eighth), Plus −64 %). Restent les compacts ADB (SE,
+     SE FDHD, Classic), non regroupés tant qu'`AdbVia` est resynchronisé
+     dans `tick()` et que son HLE borne à 1 ; et la disquette en cours de
+     lecture (IWM non indépendant du découpage).
 
 ## Statut
 
