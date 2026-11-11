@@ -3,19 +3,7 @@
 # which the fork does not match the oracle. See tests/SstKnown.h for the
 # rules: a listed vector that passes, or is missing, fails the gate.
 
-# Open defect, not a ruling (TODO.md § Moteur › Justesse 68040): a dyadic
-# instruction with a packed-decimal source. The oracle's state frame tags
-# the source 4 where the fork writes the packed marker 7 — its datatype
-# capture runs a second time for the destination operand.
-040 fpuh/identity seed=1302 #210
-040 fpuh/identity seed=1302 #661
-040 fpuh/identity seed=1302 #1125
-040 fpuh/identity seed=1302 #1708
-040 fpuh/identity seed=1302 #1909
-040 fpuh/off seed=1301 #66
-040 fpuh/off seed=1301 #925
-040 fpuh/off seed=1301 #937
-040 fpuh/off seed=1301 #1857
-040 fpuh/tt seed=1303 #674
-040 fpuh/tt seed=1303 #1758
-040 fpuh/tt seed=1303 #1779
+# None at present. The twelve vectors listed here on 2026-11-07 (a dyadic
+# instruction with a packed-decimal source) were not a divergence of the
+# fork: the oracle built their state frame from an uninitialised operand,
+# and they pass since oracle patch 13 (oracle/uae/VENDOR.md).

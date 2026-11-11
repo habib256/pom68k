@@ -135,6 +135,26 @@ is vendored and linked — `-Wl,--gc-sections` trims the .so on ELF,
    68030 corpus pinned before that date was generated with); on, opmodes
    $40-$7F take a Line-F and FRESTORE refuses a 68040 frame, as the
    MC68881/MC68882 manual has it. `fuzz030.py --strict-fpu`.
+13. `upstream/fpp.c`, `fpuop_arithmetic2()` (2026-11-11) — two changes.
+   `src` and `dst` are zeroed at entry, and the destination denormal check
+   of a dyadic instruction is skipped while `regs.fp_unimp_pend == 2`.
+   A packed source on the strict 68040 returns from `get_fp_value()` with
+   its datatype trap captured (`fp_unimp_datatype(..., NULL, packed)`,
+   STAG 7) and `src` never written; when FPn was itself denormal or
+   unnormal, the destination check captured a second frame from that
+   uninitialised stack slot, so ETEMP and STAG of the BUSY frame were host
+   stack bytes, different on every run. `fpu2` never saw it (no FSAVE reads
+   the frame); `fpuh` did, on twelve vectors of 6 000. The first capture
+   is the oracle's own answer and is kept. `sst68040_fpuh` regenerated and
+   re-pinned; the fork passes 6 000 / 6 000 with an empty known list.
+14. `upstream/fpp.c`, `pom_fpu_clear_internal()` (2026-11-11) — the hook
+   of patch 7 also resets softfloat's eight `floatx80_internal_*` globals
+   (the intermediate result a 68040 BUSY/UNIMP or 6888x frame is built
+   from) and `fpu_mmu_fixup` (armed by an (An)+/-(An) operand, cleared
+   only at the next arithmetic entry; `fault_if_no_fpu` restores a
+   register from it on the 68LC040). Both survived `oracle_set_state`.
+   No pinned vector depended on either: the 24 files of the seven FPU
+   corpora regenerate hash-identically with this patch.
 
 No other vendored file is modified.
 

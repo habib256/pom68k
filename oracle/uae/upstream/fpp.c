@@ -359,6 +359,19 @@ static void reset_fsave_data(void)
 void pom_fpu_clear_internal(void)
 {
 	reset_fsave_data();
+	/* Patch 14: two more pieces of run history. softfloat keeps the last
+	   intermediate result for the state frames (WBTEMP, guard bits), and
+	   fpu_mmu_fixup stays armed after an (An)+/-(An) operand until the next
+	   arithmetic entry — fault_if_no_fpu then restores a register from it. */
+	floatx80_internal_sign = 0;
+	floatx80_internal_exp = 0;
+	floatx80_internal_sig = 0;
+	floatx80_internal_exp0 = 0;
+	floatx80_internal_sig0 = 0;
+	floatx80_internal_sig1 = 0;
+	floatx80_internal_precision = 80;
+	floatx80_internal_mode = float_round_nearest_even;
+	fpu_mmu_fixup = false;
 }
 
 static uae_u32 get_ftag(fpdata *src, int size)
@@ -3170,6 +3183,11 @@ static void fpuop_arithmetic2 (uae_u32 opcode, uae_u16 extra)
 	int reg = -1;
 	int v;
 	fpdata src, dst;
+	// POM68K: several early-return paths hand `src` to the frame capture
+	// before any fetch wrote it; a defined value keeps the oracle
+	// deterministic from the initial state.
+	memset(&src, 0, sizeof src);
+	memset(&dst, 0, sizeof dst);
 	uaecptr pc = m68k_getpc () - 4;
 	uaecptr ad = 0;
 	bool adset = false;
@@ -3566,7 +3584,12 @@ static void fpuop_arithmetic2 (uae_u32 opcode, uae_u16 extra)
 
 			dst = regs.fp[reg];
 
-			if (fp_is_dyadic(extra))
+			// POM68K: a packed source on the 68040 returns from get_fp_value
+			// with its datatype trap captured and `src` never written. The
+			// destination check then captured a second frame from that
+			// uninitialised stack slot (ETEMP and STAG were host garbage,
+			// different on every run). Keep the first capture.
+			if (fp_is_dyadic(extra) && regs.fp_unimp_pend != 2)
 				normalize_or_fault_if_no_denormal_support_dst(opcode, extra, ad, adset, pc, &dst, &src);
 
 			// check for 680x0 unimplemented instruction
