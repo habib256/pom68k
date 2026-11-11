@@ -21,3 +21,10 @@ add_executable(compact_deadline_etalon tests/compact_deadline_etalon.cpp)
 target_link_libraries(compact_deadline_etalon PRIVATE pom68k_core)
 add_test(NAME compact_deadline_etalon COMMAND compact_deadline_etalon
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+# Portable / PowerBook 100 slicing (PortableCpu::runCycles): one call per
+# frame against random slices from power-on, every serialized byte compared.
+add_executable(portable_slicing_etalon tests/portable_slicing_etalon.cpp)
+target_link_libraries(portable_slicing_etalon PRIVATE pom68k_core)
+add_test(NAME portable_slicing_etalon COMMAND portable_slicing_etalon
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})

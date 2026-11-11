@@ -279,6 +279,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **Do the changes of 2026-11-11/12 hold on the x86-64 backend, and how can this host check?** → [The x86-64 leg under Rosetta](#2026-11-12-x64-leg)
 - **What are the JIT's "not compilable" exits on an idle Mac, and which fixes for them worked?** → [Entries that cannot head a block](#2026-11-12-jit-unsafe-entry)
 - **Why did `LINK` run in the interpreter on the 68040, and what did admitting it change?** → [Head-position polls](#2026-11-12-jit-040-head-poll)
+- **Why did a PowerBook 100 behave differently under the debugger's single step, and why did its pinned screen change?** → [The Portable board and host slicing](#2026-11-11-portable-slicing)
 - **Which NeoST 68000 changes were back-ported, and why not the reset timing?** → [STOP ported, the reset left out for the PowerBook 100](#2026-11-11-neost-stop-port)
 - **How much faster did each bench get on 2026-11-11, and what was refused?** → [RAM writes, and the day's totals](#2026-11-11-ram-write-path)
 - **What did NeoST change in its 68000 core after 2026-10-20, and what is missing from the fork?** → [The fetch-window call, and the NeoST reading](#2026-11-11-fetch-window-inline)
@@ -1756,6 +1757,65 @@ restriction and is not changed**: it cannot be run on this host.
 in the working directory by a test in flight was swept into `f9a29795`
 by a blanket `git add`. It is untracked and `*.pomundo` is ignored since
 `c5dc026c`. It remains in history.
+
+<a id="2026-11-11-portable-slicing"></a>
+## 2026-11-11 (fourteenth) — The Portable and the PowerBook 100 no longer depend on host slicing; the PB100's pinned screen was a product of it and is re-pinned
+
+Entry (thirteenth) found that the PowerBook 100 ends its boot on a
+different screen when the host runs it one instruction per call instead
+of one frame per call, on an unmodified tree. This is the correction.
+
+**The defect.** `PortableCpu::runCycles` cut each host call into chunks
+of 256 cycles, counted from where the call began, and looked at the
+Power Manager's lines only between chunks. While the Power Manager held
+the 68000 it advanced the whole board by a full chunk at once, so the
+M50753 ran several instructions before the VIA saw the first; and the
+cycle on which the CPU was released, or reset, depended on where the
+host's calls happened to fall. A debugger stepping the machine changed
+what the machine did.
+
+**The correction.** The lines are read before every instruction. While
+the CPU is held the board advances exactly to its next event —
+`PortableMemory::cyclesToNextEvent`: the Power Manager's next instruction
+(`PortablePmu::cyclesToNextStep`, the debt arithmetic of its own
+`tick`), the frame edge that raises CA1 and the PMU's vertical-blank
+input, the end of the CA1 pulse. Before that cycle a tick only
+accumulates, so cutting it shorter changes nothing. The engine runs one
+instruction per call; this board's JIT is a fetch window, not blocks. No
+save-state format change. Host time: the boot etalons take what they
+took (7.1 s against 6.2-7.0 s).
+
+**The pin.** `pb100_boot_etalon@System_7.1_HD.dsk` moves from
+`f3c9095a373a7f28` to `cc4a869f52d960ad` — which is the value
+`portable_boot_etalon` has been pinned at all along. The two screens
+differ by 91 pixels, all in the pointer: the arrow before, the wristwatch
+now, as on the Portable. The arrow was what the 256-cycle lumps produced
+under frame slicing and under no other; every combination tried on the
+investigation build (reset at 2 or 4 cycles, frame or instruction
+slicing, absolute polling with one-cycle hold steps) gave the wristwatch.
+Why the Finder leaves the wristwatch up on both machines is a separate
+question — an `InitCursor` followed a tick or two later by a `SetCursor`
+from `$7ABEFA`, with the Startup Items companion volume of this rig
+attached — and is not answered here.
+
+Gate: `portable_slicing_etalon` (in `cmake/Pom68kTimeGates.cmake`). Two
+machines per model, Portable and PowerBook 100, from power-on to the same
+absolute clock targets one frame apart: one call per frame against
+random slices of 1 to 3 000 cycles (260 073 slices for 1 500 frames).
+The complete serialized board and CPU are compared after every frame;
+the run must cross the Power Manager's hold and reach the disk. On the
+former `runCycles` it fails after frame 1 on both models, the two clocks
+three cycles apart. Mutation-checked: hold steps of 256 again fail the
+same way; dropping the frame-edge term from the bound passes — within a
+Power Manager step of at most a few dozen cycles the edge lands in the
+same place for this firmware; the term is kept as the rule.
+
+Tiers on the branch `fix/portable-slicing` (M4): the 15 Portable and
+PB100 gates — boot, agent boot, sleep, their JIT variants, PMU, board,
+product, the new etalon — 15 / 15; `unit|jit` 210 / 210; `etalon-core`
+16 / 16. `m030`/`m040` not run: only `PortableCpu`, `PortableMemory` and
+`PortablePmu` change. The x86-64 host was not run. **Not merged**: a
+reference screen changes, which is the owner's call.
 
 <a id="2026-11-11-neost-stop-port"></a>
 ## 2026-11-11 (thirteenth) — NeoST's 68000 STOP back-ported (format v31); its reset timing is not, because two cycles at power-on leave the PowerBook 100 busy for ever

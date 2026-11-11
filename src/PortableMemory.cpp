@@ -185,6 +185,13 @@ uint8_t* PortableMemory::dataSpan(uint32_t a,uint32_t& len,bool write) {
     len=0;if(overlay_ || a>=ram_.size()) return nullptr;
     len=uint32_t(ram_.size()-a);return ram_.data()+a;
 }
+int PortableMemory::cyclesToNextEvent() const {
+    int best=pmu_.cyclesToNextStep();
+    if(pulseLeft_>0) best=std::min(best,pulseLeft_);
+    const int64_t frame=(kCpuHz*20-frameAcc_+1202)/1203;
+    best=int(std::min<int64_t>(best,frame));
+    return std::max(best,1);
+}
 void PortableMemory::tick(int cycles) {
     cdPump_.advance(disks_,cycles,kCpuHz);
     viaAcc_+=cycles;const int via=int(viaAcc_/20);viaAcc_%=20;
