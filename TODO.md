@@ -318,8 +318,9 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   faute.** `random/identity seed=6107 #1726` (`32B2 553A 09FB 95F2`) :
   PC, SR et A7 égaux à l'oracle, sept octets internes diffèrent ($3B et
   les six derniers, où l'oracle range les mots d'extension décalés d'un
-  mot). Même balayage ; 9 995 / 10 000 sur `random` MMU active, les autres
-  familles (core, mmu, fault, rmw) 23 937 / 23 937.
+  mot). Même balayage ; 3 995 / 4 000 sur `random` MMU active, 2 000 /
+  2 000 MMU éteinte, les autres familles (core, mmu, fault, rmw)
+  21 937 / 21 937.
 - [ ] **Trois octets internes de la frame $B après un JSR vers une page
   fautive.** Vecteur à deux pas (JSR puis faute de fetch à la cible,
   68030, MMU identité) : la frame du fork égale celle de l'oracle sauf
