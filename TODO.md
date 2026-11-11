@@ -163,15 +163,12 @@ LLE 5 %, repli interpréteur 5 %. Donc, par ordre de rendement attendu :
      Q605) : 0,5 % du profil du LC II, sous le plancher de mesure.
    - *Refusé le même soir* : `pomJitFetch` forcé en ligne (dans le bruit
      sur les quatre bancs).
-   - *Piste non confirmée* : `POM68K_JIT_ARM_BACKOFF` (défaut 32). Quatre
-     exécutions isolées du Q605 à 6 000 trames, machine chargée par deux
-     tiers : 12,83 s à 0, 12,92 s à 4, 13,56 s à 32, 13,76 s à 64,
-     empreinte identique, instructions « arm backoff » 9,4 M → 1,3 M à 4.
-     Un ABBA entrelacé 32 contre 4 lancé aussitôt n'a rien confirmé
-     (machine chargée, et le script lisait `wall=` sous une locale à
-     virgule décimale, donc tronqué à la seconde). À mesurer au calme, en
-     `wall_ns`, sur les deux bancs JIT et les deux budgets, avant de
-     toucher au défaut. Taille du cache de dispatch : 131 072 contre
+   - *Mesuré et sans suite* : `POM68K_JIT_ARM_BACKOFF` (défaut 32).
+     Quatre exécutions isolées du Q605 à 6 000 trames semblaient donner
+     une tendance (12,83 s à 0, 13,56 s à 32). L'ABBA entrelacé 32 contre
+     4, machine encore chargée par deux tiers : Q605 −0,3 % (3 000
+     trames) et +1,1 % (6 000), LC II +4,5 %. La tendance était du bruit ;
+     à refaire au calme seulement si un profil le redemande. Taille du cache de dispatch : 131 072 contre
      16 384 emplacements, ABBA intra-processus, −0,5 % sous un plancher de
      3,6 % — rien.
 
