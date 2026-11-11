@@ -441,7 +441,7 @@ uint8_t MacMemory::peek8(uint32_t addr) const {
     }
 }
 
-uint8_t MacMemory::read8(uint32_t addr) {
+uint8_t MacMemory::read8Decoded(uint32_t addr) {
     addr &= 0xFFFFFF;
     switch (addr >> 20) {
         case 0x0: case 0x1: case 0x2: case 0x3:              // RAM (or ROM w/ overlay)
@@ -562,12 +562,12 @@ void MacMemory::write8(uint32_t addr, uint8_t v) {
     }
 }
 
-uint16_t MacMemory::read16(uint32_t addr) {
+uint16_t MacMemory::read16Decoded(uint32_t addr) {
     // Sequenced: read8 has side effects on device space (VIA interrupt
     // flags clear on read, IWM state advances) and `|` operands carry
     // no evaluation-order guarantee in C++.
-    const uint16_t hi = read8(addr);                         // 68000 big-endian
-    return uint16_t(hi << 8) | read8(addr + 1);
+    const uint16_t hi = read8Decoded(addr);                  // 68000 big-endian
+    return uint16_t(hi << 8) | read8Decoded(addr + 1);
 }
 
 void MacMemory::write16(uint32_t addr, uint16_t v) {

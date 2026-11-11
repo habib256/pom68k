@@ -275,6 +275,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
+- **Can the Plus's video contention be charged without a loop, and RAM read without the address decoder?** → [Closed-form contention and inline RAM reads](#2026-11-11-compact-ram-path)
 - **Why is a Mac Plus's board no longer ticked at every bus access, and what proves it is the same machine?** → [Compact-board deadlines](#2026-11-11-compact-deadline)
 - **What does the MCU run-ahead cost per instruction, and how was it cut?** → [The verdict table built at firmware load](#2026-11-11-mcu-ahead-table)
 - **Why does an exact native 68040 access no longer copy the whole ATC?** → [Copy-on-write ATC transaction](#2026-11-11-atc-replay-cow)
@@ -1332,6 +1333,51 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-11-compact-ram-path"></a>
+## 2026-11-11 (ninth) — Mac Plus: the contention charge in closed form on a cached scan line, and RAM reads past the decoder: 10-11 % more
+
+With the board fed at its deadlines (entry below), the Plus profile
+turned over: `Cpu68k::applyContention` 30 % of the samples, the wrapper's
+`sync` 11 %, `MacMemory::read8` 9 %.
+
+**Contention.** `contentionDelay` took a 64-bit modulo by the frame length
+and looped, because a wait can land in the next busy slot. It cannot loop
+twice: a wait in a visible video slot ends on the CPU's own slot, and a
+wait in the sound-fetch slot ends at position 0 of the next line, which
+is a video slot (4 more cycles) exactly when that line is visible.
+`contentionAt(line, pos)` is that closed form; the stated model is kept
+as `contentionDelayRef`. `applyContention` keeps the scan line of the
+last contended access — successive RAM accesses share it, so the position
+is a subtraction. The cache is keyed on the absolute clock (lines start
+at multiples of 352) and is not state.
+
+**RAM reads.** `MacMemory::read8`/`read16` are inline for the low
+quarters with the overlay down — the same masked load the decoder's first
+case performs — and fall to `read8Decoded`/`read16Decoded` otherwise.
+`read16` stops one byte short of $400000, where its second byte belongs
+to the ROM window. Writes are unchanged (overlay clear, JIT guard).
+
+| Mac Plus, interpreter | 3 000 frames | 6 000 frames | fingerprint |
+|---|---|---|---|
+| contention in closed form | 0.702 → 0.661 s, **-5.8 %** | 1.500 → 1.399 s, **-6.7 %** | same |
+| + inline RAM reads | 0.661 → 0.631 s, **-4.5 %** | 1.397 → 1.330 s, **-4.8 %** | same |
+
+Means of six runs per arm, interleaved A B B A, idle host (floor 1.1 %).
+From the morning's tree the Plus bench went 2.480 → 0.631 s and
+5.270 → 1.330 s over the day (entries (fourth), (eighth) and this one):
+-74.6 % and -74.8 %, the same fingerprints throughout.
+
+Gate: `contention_test`. The closed form against the stated model on
+every cycle of two frames (260 480 clocks; the second frame proves the
+wrap). The inline reads against the decoder on a synthetic Plus ROM,
+overlay up then down, across RAM, the overlay, the ROM window, the RAM
+alias, both edges of the low quarters and addresses above 24 bits.
+Mutation-checked, four of four fail: the `read16` limit moved onto
+$3FFFFF, the overlay test dropped, the 4 extra cycles after a sound
+fetch dropped, the line wrap at 370 dropped (found at cycle 130 236).
+
+Tiers on the final tree (M4): `unit|jit` 209 / 209; the compact family (every compact boot, `sound_test`, `compact_timing_etalon`, `contention_test`, `compact_deadline_etalon`, `savestate_68k_test`, both 68000 lockstep gates) 92 / 93, the failure being `docs_test` on two line citations moved by this change, green after `refresh_citations.py --fix`; `etalon-core` 16 / 16. `m030` and `m040` were not rerun: the change is confined to `Cpu68k` and `MacMemory`. The x86-64 host was not run.
 
 <a id="2026-11-11-compact-deadline"></a>
 ## 2026-11-11 (eighth) — The compact boards are fed at their next event, not at every bus access: Mac Plus 64 % faster, byte-identical

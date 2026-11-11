@@ -507,7 +507,7 @@ emulators just mirror via a mask and let the ROM discover it.
   **PRAM persists on all sixteen platforms**, `loadPram`/`savePram` on the
   `*Memory` class, file `<boot image>.<profile>.pram`, wired by each
   family's GUI runner (`GuiRunner*.h`, plus `PlatformCompact.cpp:143` for
-  the compacts) (`MacMemory.h:191-192`).
+  the compacts) (`MacMemory.h:208-209`).
 - PB6 H4 is derived from the true beam position (`clock % 352 < 256`),
   unlike MAME's constant.
 
