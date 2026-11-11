@@ -9,6 +9,9 @@
 // RAM bandwidth (Table 5-3).
 
 #include "Cpu68k.h"
+#include "MacMemory.h"
+#include <memory>
+#include <vector>
 #include <cstdio>
 
 int main() {
@@ -35,6 +38,59 @@ int main() {
     if (Cpu68k::contentionDelay(342L * 352 + 100) != 0) {
         std::fprintf(stderr, "FAIL: contention applied during vblank\n");
         return 1;
+    }
+    // The closed form against the stated model, on every cycle of two
+    // frames (the second proves the frame wrap).
+    for (moira::i64 c = 0; c < 2 * kFrame; c++)
+        if (Cpu68k::contentionDelay(c) != Cpu68k::contentionDelayRef(c)) {
+            std::fprintf(stderr, "FAIL: closed form %d != model %d at cycle %lld\n",
+                         Cpu68k::contentionDelay(c), Cpu68k::contentionDelayRef(c),
+                         (long long)c);
+            return 1;
+        }
+    // MacMemory's inline RAM read against the full decoder, overlay up and
+    // down, across RAM, the overlay, the ROM window, the RAM alias and both
+    // edges of the low quarters (no device is read: those have side effects).
+    {
+        std::vector<uint8_t> rom(0x20000);
+        for (size_t i = 0; i < rom.size(); i++) rom[i] = uint8_t(i * 7 + (i >> 9));
+        uint32_t sum = 0;
+        for (size_t i = 4; i + 1 < rom.size(); i += 2)
+            sum += uint32_t(rom[i] << 8 | rom[i + 1]);
+        for (int k = 0; k < 4; k++) rom[size_t(k)] = uint8_t(sum >> (24 - 8 * k));
+        auto mem = std::make_unique<MacMemory>(pom68k::defaultCoreConfig());
+        if (!mem->loadRom(rom)) {
+            std::fprintf(stderr, "FAIL: synthetic Plus ROM refused\n");
+            return 1;
+        }
+        mem->reset();
+        for (int pass = 0; pass < 2; pass++) {
+            if (pass == 1) {
+                mem->write8(0xE807FE, 0xFF);           // VIA DDRA
+                mem->write8(0xE81FFE, 0x00);           // PA4 low: overlay down
+                for (uint32_t a = 0; a < 0x400000; a += 0x101)
+                    mem->write8(a, uint8_t(a * 13 + (a >> 11)));
+            }
+            if (mem->overlay() != (pass == 0)) {
+                std::fprintf(stderr, "FAIL: overlay not %s\n", pass ? "down" : "up");
+                return 1;
+            }
+            auto check = [&](uint32_t a) {
+                return mem->read8(a) == mem->read8Decoded(a) &&
+                       mem->read16(a) == mem->read16Decoded(a);
+            };
+            bool same = true;
+            for (uint32_t a = 0; a < 0x500000 && same; a += 0x35) same = check(a);
+            for (uint32_t a = 0x600000; a < 0x800000 && same; a += 0x3B) same = check(a);
+            for (uint32_t a : { 0x3FFFFEu, 0x3FFFFFu, 0x400000u, 0x0FFFFFu, 0x100000u,
+                                0x1FFFFFu, 0x01000000u, 0x013FFFFFu, 0xFF000010u })
+                same = same && check(a);
+            if (!same) {
+                std::fprintf(stderr, "FAIL: inline RAM read differs from the "
+                                     "decoder (overlay %s)\n", pass ? "down" : "up");
+                return 1;
+            }
+        }
     }
     std::printf("contention_test: all checks passed\n");
     return 0;

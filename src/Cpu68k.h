@@ -52,7 +52,13 @@ public:
     // The sound/PWM word fetch steals the last 4 cycles of every line's
     // hblank (all 370 lines). ROM and I/O are never contended.
     // Frame = 370 lines × 352 cycles = 130 240; visible = pos 0-255.
-    static int contentionDelay(moira::i64 clock) {
+    // Two forms of one function. contentionDelayRef is the model as it is
+    // stated — a wait can land in the next busy slot, so it loops.
+    // contentionDelay is its closed form: a visible-slot wait ends on the
+    // CPU's own slot, and a sound-fetch wait ends at position 0 of the next
+    // line, which is a video slot (4 more cycles) iff that line is visible.
+    // Gate: tests/contention_test.cpp compares the two over two frames.
+    static int contentionDelayRef(moira::i64 clock) {
         moira::i64 t = clock;
         for (;;) {                          // a wait can land in the next busy slot
             int f = int(t % 130240);
@@ -67,6 +73,19 @@ public:
             if (!d) return int(t - clock);
             t += d;
         }
+    }
+    static int contentionAt(int line, int pos) {
+        if (line < 342 && pos < 256) {
+            const int ph = pos & 7;
+            return ph < 4 ? 4 - ph : 0;
+        }
+        if (pos < 348) return 0;
+        const int next = line + 1 == 370 ? 0 : line + 1;
+        return 352 - pos + (next < 342 ? 4 : 0);
+    }
+    static int contentionDelay(moira::i64 clock) {
+        const int f = int(clock % 130240);
+        return contentionAt(f / 352, f % 352);
     }
 
 private:
@@ -121,5 +140,11 @@ private:
     jit::Engine jit_;
     moira::i64 lastPeriphClock_ = 0;
     moira::i64 periphDeadline_ = 0;         // derived; 0 = flush at once
+    // The scan line the last contended access fell in: successive RAM
+    // accesses share it, so the position is a subtraction, not a modulo.
+    // Keyed on the absolute clock (lines start at multiples of 352), hence
+    // valid across a restore; derived, not serialized.
+    mutable moira::i64 lineBase_ = -352;
+    mutable int line_ = 0;
     bool batching_ = true;                  // setPeriphBatching
 };

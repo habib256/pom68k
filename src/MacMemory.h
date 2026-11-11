@@ -130,8 +130,25 @@ public:
     void installRom(const uint8_t* data, size_t n);  // built-in demo/test ROM
     void reset();                                    // asserts the boot overlay
 
-    uint8_t  read8(uint32_t addr);
-    uint16_t read16(uint32_t addr);
+    // RAM in the low quarters with the overlay down is nearly every read a
+    // running machine makes: served here, with the same masking the decoder
+    // applies. Everything else goes through the full map.
+    uint8_t read8(uint32_t addr) {
+        addr &= 0xFFFFFF;
+        if (addr < 0x400000 && !overlay_) [[likely]]
+            return ram_[addr & (ramSize_ - 1)];
+        return read8Decoded(addr);
+    }
+    uint16_t read16(uint32_t addr) {
+        addr &= 0xFFFFFF;
+        if (addr < 0x3FFFFF && !overlay_) [[likely]] {
+            const uint32_t mask = ramSize_ - 1;
+            return uint16_t(ram_[addr & mask] << 8 | ram_[(addr + 1) & mask]);
+        }
+        return read16Decoded(addr);
+    }
+    uint8_t  read8Decoded(uint32_t addr);
+    uint16_t read16Decoded(uint32_t addr);
     void     write8(uint32_t addr, uint8_t v);
     void     write16(uint32_t addr, uint16_t v);
 

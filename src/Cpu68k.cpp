@@ -89,7 +89,14 @@ void Cpu68k::applyContention(moira::u32 addr) const {
     bool ram = (addr < 0x400000 && !mem_.overlay())
             || (addr >= 0x600000 && addr < 0x800000);
     if (!ram) return;
-    int d = contentionDelay(clock);
+    moira::u64 pos = moira::u64(clock - lineBase_);
+    if (pos >= 352) [[unlikely]] {
+        const int f = int(clock % 130240);
+        line_ = f / 352;
+        pos = moira::u64(f % 352);
+        lineBase_ = clock - moira::i64(pos);
+    }
+    const int d = contentionAt(line_, int(pos));
     if (d) {
         auto* self = const_cast<Cpu68k*>(this);
         self->clock += d;
