@@ -1191,9 +1191,11 @@ explicit program-space word read at the target. That second access may fill
 or replace I-cache state, stall or fault. It cannot be moved before the push
 without changing bus/cache order, and a target fault cannot replay the now
 modified instruction. For the plain EA forms, both native generators call
-`pomJitJsr040`: one helper owns push -> target read -> exception processing,
-then returns success to the generated terminal or failure directly to
-`Exit::Fault`. Cache-active full-indirect 040 JSR stays conservative;
+`pomJitJsr040`: one helper owns push -> target read, then returns success to
+the generated terminal, or failure directly to `Exit::Fault` when the push
+itself faults. Since 2026-11-11 a fault on the target read is not the JSR's:
+the JSR retires and the next instruction start takes it with the target as
+stacked PC (vendor row 87). Cache-active full-indirect 040 JSR stays conservative;
 cacheless 040 and the separately transactional 030 forms are unchanged.
 
 `LINK`, `UNLK` and `NOP` are carved out of `$4Exx` as ordinary
