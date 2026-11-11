@@ -157,9 +157,10 @@ LLE 5 %, repli interpréteur 5 %. Donc, par ordre de rendement attendu :
      profil), chemin MMU 11,5 %. Le poids de l'interpréteur vient des
      blocs sous le score de rentabilité (4 % des instructions), mesuré et
      laissé à 64 le matin même.
-   - *À faire sans réfléchir* : `Cpu030::catchUp` (et vérifier
-     `Cpu040`) est hors ligne comme l'était `Cpu020::catchUp` ; le mettre
-     dans l'en-tête a fait partie des −12 % du Mac II.
+   - *Petit, pas prioritaire* : `Cpu030::catchUp` et `Cpu040::catchUp`
+     sont hors ligne comme l'était `Cpu020::catchUp`, mais sur ces cœurs
+     `SYNC` ne coûte rien et l'appel est rare (3,9 M pour 3 000 trames du
+     Q605) : 0,5 % du profil du LC II, sous le plancher de mesure.
    - *Refusé le même soir* : `pomJitFetch` forcé en ligne (dans le bruit
      sur les quatre bancs).
 
