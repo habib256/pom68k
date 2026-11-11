@@ -275,6 +275,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
+- **Do the changes of 2026-11-11/12 hold on the x86-64 backend, and how can this host check?** → [The x86-64 leg under Rosetta](#2026-11-12-x64-leg)
 - **What are the JIT's "not compilable" exits on an idle Mac, and which fixes for them worked?** → [Entries that cannot head a block](#2026-11-12-jit-unsafe-entry)
 - **Why did `LINK` run in the interpreter on the 68040, and what did admitting it change?** → [Head-position polls](#2026-11-12-jit-040-head-poll)
 - **Which NeoST 68000 changes were back-ported, and why not the reset timing?** → [STOP ported, the reset left out for the PowerBook 100](#2026-11-11-neost-stop-port)
@@ -1339,6 +1340,36 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-12-x64-leg"></a>
+## 2026-11-12 (third) — The x86-64 leg, run at last: two days of changes hold, one red cell of mine fixed, a stale registry section regenerated
+
+Every entry since 2026-11-11 ended on "the x86-64 host was not run". This
+host can run that leg: `build-x64-proof` is an x86_64 tree with the x64
+backend (`-DCMAKE_OSX_ARCHITECTURES=x86_64 -DPOM68K_JIT_BACKENDS=x64`),
+and its binaries run under Rosetta. 245 of the 248 test executables
+build there; the application itself does not link (no x86_64 GLFW),
+which is the known state of that tree.
+
+**What it found.**
+
+- `STATUS.md`'s x86_64 registry section was stale: 561 gates where the
+  configure registers 565. The four gates added on 2026-11-11 were
+  regenerated for aarch64 only, and Linux CI's `docs_test` holds that
+  section to account — the mistake the index already lists under
+  2026-11-09. Regenerated from a real configure.
+- `unit|jit` on x86-64 at `d6acec79`: **210 / 211**. Everything written
+  in two days passes on that leg — the quiet SCC, the MCU run-ahead and
+  its table, the copy-on-write ATC transaction, the compact deadlines,
+  the inline RAM paths, NeoST's STOP, the recorder shortcut. The one
+  failure was mine and predictable: the lockstep cell added with the a64
+  `LINK` admission runs on every host, and the x64 backend still sent
+  `LINK` to the interpreter ("did not run native: slow=110").
+- The x64 backend carries the same positioned-poll rule in the same
+  shape. With the same admission (`headPollsOnly`), `unit|jit` on x86-64
+  is **211 / 211**, 647 s under Rosetta, the x64 lockstep gates included.
+
+No timing is claimed for x86-64: Rosetta is not that host.
 
 <a id="2026-11-12-jit-unsafe-entry"></a>
 ## 2026-11-12 (later) — The engine stopped trying to record a block at opcodes that can never head one: LC II 1-4 % faster; a native `MOVE SR,-(A7)` measured and refused
