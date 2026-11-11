@@ -90,7 +90,14 @@ paquets. À corriger d'abord (interrogation à chaque instruction, tenue
 avancée exactement jusqu'à la prochaine instruction du M50753, gate
 d'indépendance au découpage, `pb100_boot_etalon` ré-épinglé sur l'écran
 commun `cc4a869f52d960ad`), puis porter le reset
-(`SYNC(C == Core::C68000 ? 4 : 2)` dans `Moira::reset`). À ne pas
+(`SYNC(C == Core::C68000 ? 4 : 2)` dans `Moira::reset`). **Les deux
+sont faits et testés sur des branches locales non fusionnées** :
+`fix/portable-slicing` (`13725f00`, Portable/PB100 15 / 15, `unit|jit`
+210 / 210) puis `port/neost-68000-reset` (`dc14273b`, machines 68000
+122 / 122). La fusion ré-épingle `pb100_boot_etalon` sur la valeur du
+Portable : décision du propriétaire. À la fusion, régénérer les deux
+sections de `STATUS.md` (la branche ajoute `portable_slicing_etalon` ;
+x86_64 : `tools/status_md.py --build-dir build-x64-proof`). À ne pas
 reprendre : `71b92cc` (retard d'échantillonnage IPL, non tranché côté
 NeoST).
 
