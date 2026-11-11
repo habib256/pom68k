@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 764 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 765 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -14,7 +14,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 31 |
 | [Sound](#sound) | 14 |
-| [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 26 |
+| [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 27 |
 | [Save states](#save-states) | 11 |
 | [Machine bring-ups](#machine-bring-ups) | 94 |
 | [Build, packaging and release](#build-packaging-and-release) | 23 |
@@ -471,6 +471,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-18 (seventh)** — [A real AppleShare server answers the guest: netatalk mounts, the Finder copies both forks, and the wire was never the problem](CHANGELOG.md#2026-09-18-bridge-session)
 - **2026-09-19** — [A System 7.0 client on the AFP server: zero refused opcodes against a second client generation, and one absurd size that belongs to the client](CHANGELOG.md#2026-09-19-afp-system7)
 - **2026-10-04** — [The AFP trace is one trace: interpreter and native engine on both hosts agree at all 22 boundaries](CHANGELOG.md#2026-10-04-afp-four-arms)
+- **2026-11-11 (fourth)** — [An idle SCC no longer costs a call per slice: Mac Plus 19-20 % faster; five other levers measured and left alone](CHANGELOG.md#2026-11-11-scc-quiet-tick)
 
 ## Save states
 

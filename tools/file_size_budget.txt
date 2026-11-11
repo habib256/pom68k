@@ -10,7 +10,7 @@ CLAUDE.md                                258
 cmake/Pom68kAfpGates.cmake               27
 cmake/Pom68kAgentGates.cmake             76
 cmake/Pom68kAudioGates.cmake             12
-cmake/Pom68kComponentGates.cmake         660
+cmake/Pom68kComponentGates.cmake         666
 cmake/Pom68kCorpusGates.cmake             12
 cmake/Pom68kCpuGates.cmake               135
 cmake/Pom68kDaynaGates.cmake             36
@@ -63,7 +63,7 @@ src/RuntimeConfigCore.cpp                191
 src/RuntimeConfigMachine.cpp              52
 src/RuntimeConfigParsers.h               36
 src/RuntimeConfigProduct.cpp             57
-src/Scc8530.cpp                          1071
+src/Scc8530.cpp                          1081
 src/ScsiDisk.cpp                         1553
 src/SonyDrive.cpp                        1247
 src/StartupDomainView.h                  73

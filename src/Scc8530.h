@@ -36,10 +36,10 @@ public:
     void configureTrace(bool trace) { trace_ = trace; }
     // Q5: the Quadra POST reads CTS as "serial debugger attached" — the
     // LC 475 machine pulls it low; the LC II keeps the historic high.
-    void setCtsHigh(bool v) { ctsHigh_ = v; }
+    void setCtsHigh(bool v) { wake(); ctsHigh_ = v; }
     // Optional standing Rx (RR0 bit 0). Mac II POST does NOT need this when
     // GLUE RAM banking is correct; kept for targeted SCC experiments.
-    void setRxStanding(bool on) { rxStanding_ = on; }
+    void setRxStanding(bool on) { wake(); rxStanding_ = on; }
     void reset();
 
     // Bus access: channel 0 = B, 1 = A; ctl/data per address decode.
@@ -69,7 +69,7 @@ public:
     // has actually carried a frame and no live peer holds it (see
     // openLine() below; a virgin line reads clean, which is what OT's
     // .MPP bind waits for).
-    void setAbortIdle(bool on) { abortIdle_ = on; }
+    void setAbortIdle(bool on) { wake(); abortIdle_ = on; }
 
     // Periodic tick (CPU cycles). On an open LocalTalk line the SDLC
     // receiver keeps detecting aborts, so the ext/status interrupt must
@@ -81,7 +81,25 @@ public:
     // (a real 8530 latches on transitions, not levels), so non-LAP
     // ext/status users don't get an interrupt storm. Returns true if
     // the IRQ line may have changed (caller recomputes IPL).
-    bool tick(int cycles);
+    // A board calls this on every slice — on every bus access on the 68000
+    // boards (it was 24 % of the Mac Plus host profile, 2026-11-11). A chip
+    // with no transmitter running, no frame queued or playing, no relatch
+    // countdown and no peer-hold window has nothing to do but advance its
+    // two SDLC line clocks; `quiet_` records that tickSlow() found it so,
+    // and every other mutator clears it (wake()).
+    bool tick(int cycles) {
+        if (quiet_) [[likely]] {
+            for (int i = 0; i < 2; i++) {
+                if (!quietSdlc_[i]) continue;
+                Chan& c = ch_[i];
+                c.wireClk += cycles;
+                if (c.rxIdle < (1 << 24)) c.rxIdle += cycles;
+            }
+            return false;
+        }
+        return tickSlow(cycles);
+    }
+    bool quiet() const { return quiet_; }      // gate accessor (scc_quiet_tick_test)
     // Earliest countdown-driven state transition. Purely accumulated clocks
     // (wireClk/rxIdle) are omitted unless a queued frame is waiting on them;
     // register reads flush elapsed time explicitly.
@@ -130,7 +148,7 @@ public:
     // (LC II / Mac II), 272 @ 7.8336 (Plus), 868 @ 25 MHz (Q605).
     // Legacy fixed pace — the fallback when the machine has not provided
     // clocks or the guest has not programmed a mode we can derive.
-    void setByteCycles(int c) { byteCycles_ = c > 0 ? c : 544; }
+    void setByteCycles(int c) { wake(); byteCycles_ = c > 0 ? c : 544; }
 
     // ── Virtual-wire accelerator (in-process AppleTalk hub only) ──
     // A real LocalTalk wire is 230.4 kbit/s and lossy; the in-process
@@ -152,8 +170,8 @@ public:
     // avoided drop is an avoided 1-2 s ATP retransmit stall. Both are
     // off by default (LToUDP interop and all timing gates keep real
     // hardware semantics).
-    void setWirePace(int cyclesPerByte) { wirePace_ = cyclesPerByte > 0 ? cyclesPerByte : 0; }
-    void setLosslessRx(bool on) { losslessRx_ = on; }
+    void setWirePace(int cyclesPerByte) { wake(); wirePace_ = cyclesPerByte > 0 ? cyclesPerByte : 0; }
+    void setLosslessRx(bool on) { wake(); losslessRx_ = on; }
     // Backpressure meters (the lossless wire trades drops for delay — these
     // say how much delay). Backlog = frames injected but not yet played;
     // hold = the longest injection→wire wait any frame suffered.
@@ -205,10 +223,31 @@ public:
         }
     }
     template <class Ar> void visit(Ar& ar) {
+        // quiet_ is derived and not saved; a loaded chip proves it again.
+        // (A save leaves it alone: the Writer never mutates visited state.)
+        if (Ar::loading) wake();
         ar(ch_, ptr_, lineDriven_, peerHold_, ctsHigh_, rxStanding_);
     }
 
 private:
+    // Derived, never serialized: true only between a tickSlow() that found
+    // the chip idle and the next call of any other non-const entry point.
+    bool quiet_ = false;
+    bool quietSdlc_[2] = {};
+    void wake() { quiet_ = false; }
+    bool tickSlow(int cycles);
+    // The idle state tick() short-circuits on: nothing below can change, and
+    // no countdown runs, until another entry point is called.
+    void proveQuiet() {
+        bool quiet = peerHold_ <= 0;
+        for (int i = 0; i < 2 && quiet; i++) {
+            const Chan& c = ch_[i];
+            quiet = c.txShiftIn <= 0 && (c.rtsPin || (c.wr[5] & 0x02)) &&
+                    c.rxCur.empty() && c.rxQueue.empty() && c.relatch <= 0;
+            quietSdlc_[i] = sdlcMode(c);
+        }
+        quiet_ = quiet;
+    }
     bool trace_ = false;
     struct Chan {
         uint8_t wr[16] = {};

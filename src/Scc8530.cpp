@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 void Scc8530::reset() {
+    wake();
     ch_[0] = Chan{};
     ch_[1] = Chan{};
     ptr_ = 0;
@@ -14,6 +15,7 @@ void Scc8530::reset() {
 }
 
 void Scc8530::setClocks(int64_t cpuHz, int64_t pclkHz) {
+    wake();
     cpuHz_ = cpuHz;
     pclkHz_ = pclkHz;
     updateSerial(ch_[0]);
@@ -261,6 +263,7 @@ void Scc8530::rxPushByte(Chan& c) {
 // the byte through the FIFO; the special condition raises at READ time
 // (readData), parity only under WR1 bit 2. The transport owns the pacing.
 void Scc8530::injectRxByte(int ch, uint8_t d, bool parityError, bool framingError) {
+    wake();
     Chan& c = ch_[ch & 1];
     if (sdlcMode(c) || !rxEnabled(c)) return;
     // Overrun: the incoming character is lost and RR1 bit 5 rides the byte
@@ -290,6 +293,7 @@ void Scc8530::injectRxByte(int ch, uint8_t d, bool parityError, bool framingErro
 
 void Scc8530::injectRxFrame(int ch, const uint8_t* d, size_t n, RxFrameKind kind,
                             bool badFcs) {
+    wake();
     Chan& c = ch_[ch & 1];
     const bool prompt = kind != RxFrameKind::Peer;
     // Receiver off = no ear... except for prompt LLAP response frames:
@@ -369,6 +373,7 @@ void Scc8530::injectRxFrame(int ch, const uint8_t* d, size_t n, RxFrameKind kind
 }
 
 uint8_t Scc8530::readCtl(int channel) {
+    wake();
     Chan& c = ch_[channel & 1];
     int reg = ptr_;
     ptr_ = 0;                                   // pointer auto-resets
@@ -494,6 +499,7 @@ bool Scc8530::txLoad(Chan& c, int rem) {
 // to the shifter — but the wire now carries one character per character
 // time instead of accepting bytes instantly (SCC Tx-engine LLE).
 void Scc8530::writeData(int channel, uint8_t d) {
+    wake();
     if (trace_) fprintf(stderr, "[scc] %c data <- %02X\n", channel ? 'A' : 'B', d);
     Chan& c = ch_[channel & 1];
     // Writing the next character IS the acknowledgment: the single-slot
@@ -518,6 +524,7 @@ void Scc8530::writeData(int channel, uint8_t d) {
 }
 
 uint8_t Scc8530::readData(int channel) {
+    wake();
     Chan& c = ch_[channel & 1];
     if (c.fifo.empty()) return 0;               // dead line / drained FIFO
     const Chan::RxByte b = c.fifo.front();
@@ -537,6 +544,7 @@ uint8_t Scc8530::readData(int channel) {
 }
 
 void Scc8530::writeCtl(int channel, uint8_t v) {
+    wake();
     ctlWrites++;
     Chan& c = ch_[channel & 1];
     if (trace_) fprintf(stderr, "[scc] %c ctl%s wr%d <- %02X\n", channel ? 'A' : 'B', ptr_ ? "" : "0", ptr_, v);
@@ -834,6 +842,7 @@ void Scc8530::writeCtl(int channel, uint8_t v) {
 // when WR15 DCD IE (bit 3) and WR1 ext-int-enable (bit 0) allow it. The
 // driver reads RR0 (latched at the transition), then resets ext status.
 void Scc8530::setDcd(int channel, bool level) {
+    wake();
     Chan& c = ch_[channel & 1];
     if (c.dcd == level) return;
     dcdEdges++;
@@ -863,7 +872,7 @@ bool Scc8530::irqAsserted() const {
 // but never services latches exactly once (a real 8530 latches on
 // transitions, not levels) — no storm for non-LAP ext/status users.
 // Guarded by abortIdle_ (LC II only), so the Plus mouse path is untouched.
-bool Scc8530::tick(int cycles) {
+bool Scc8530::tickSlow(int cycles) {
     bool changed = false;
     // The "peer present" window runs down chip-wide (the LocalTalk line is
     // channel B, but the counter is a single line state). When it expires
@@ -1047,6 +1056,7 @@ bool Scc8530::tick(int cycles) {
             changed = true;
         }
     }
+    proveQuiet();        // last: a callback above may have woken the chip
     return changed;
 }
 

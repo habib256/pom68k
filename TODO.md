@@ -102,6 +102,18 @@ LLE 5 %, repli interpréteur 5 %. Donc, par ordre de rendement attendu :
 5. **Le code généré lui-même (22–33 %)** : la qualité d'émission, mais
    c'est le poste le plus coûteux à améliorer et il faut un profil par
    bloc.
+6. **Ne réveiller à chaque instruction du MCU que ce que le MCU voit.**
+   Profils M4 du 2026-11-11 (`CHANGELOG` 2026-11-11 (fourth)) : sur les
+   deux bancs JIT toute la carte est réveillée une fois par instruction
+   68HC05 (27,3 M `mem.tick` pour 50 s invitées sur le Q605). DAFB,
+   lecteurs, pompe CD, ASC et CA1 — que le MCU n'observe pas — pèsent
+   ~19 % du profil Q605. Les avancer à leur propre échéance ou à l'accès
+   (la recette de dette du SCC/SCSI, généralisée) demande un flush devant
+   chaque observateur côté hôte et une décision de format de save-state
+   (champ de dette, ou flush avant sauvegarde). Même gisement sur les
+   cartes 68000, où la marche des périphériques est ~80 % du temps du
+   Plus après le SCC au repos : `MacMemory::tick` 23 %, `SonyDrive` 9 %,
+   `Iwm` 8 %, `CdAudioPump` 8 %, `MacMouse` 5 %.
 
 ## Statut
 
