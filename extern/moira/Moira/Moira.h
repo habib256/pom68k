@@ -1050,8 +1050,13 @@ private:
         return true;
     }
 
+    // POM68K: the cache model is off on every product default and absent
+    // below the 68EC040; that answer must not cost a call on each fetch.
     bool pomJitCache040Match(u32 addr, u32 n) const {
-        if (!pomCache040Active()) return true;
+        if (!pomCache040Active()) [[likely]] return true;
+        return pomJitCache040MatchLive(addr, n);
+    }
+    bool pomJitCache040MatchLive(u32 addr, u32 n) const {
         const PomJitWindow &w = pomJitWindow;
         if (!(reg.cacr & 0x8000)) return false;
         for (u32 i = 0; i < n;) {

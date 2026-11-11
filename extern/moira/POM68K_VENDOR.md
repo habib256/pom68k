@@ -43,10 +43,10 @@ pair):
 
 | | | how to re-measure |
 |---|---|---|
-| distinct `pom*` extension identifiers | **110** (63 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **530** | `grep -rn POM68K Moira/ \| wc -l` |
+| distinct `pom*` extension identifiers | **111** (64 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
+| `POM68K`-marked lines | **531** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **16 of 26** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **89** | this file |
+| patch groups in the inventory below | **90** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h`, `MoiraState.h` | — |
 
 Eighty-six patch groups, two of which (the JIT seam, row 22, and the ATC
@@ -244,6 +244,7 @@ gate in the last column of each row.
 | 87 | **A fault on a JSR's target fetch belongs to the next instruction (68030/68040)** — `execJsr` and the JIT helper `pomJitJsr040` still read the target after the push (the I-cache fill, ATC accounting and queue the JIT gates pin are unchanged), but an `MmuBusError` on that read no longer aborts the retired JSR: the next instruction start refetches the target and takes the fault with the target as stacked PC. Taken inside the JSR, the 68040 format-$7 frame stacked the return address, so the handler's RTE skipped the call | `MoiraExec_cpp.h`, `MoiraExecMMU_cpp.h` | [D] WinUAE @ Hatari e77819f7, found by a fresh-seed sweep (`040 random/identity seed=3945 #676`) and 962 + 950 targeted JSR/BSR vectors (1 and 2 steps, mapped/unmapped, even/odd targets): 68040 853 → 962 / 962. the three access-log bytes of the 68030 two-step frame are ruling D36 (fork kept) | `moira_rules_test` (jsrTargetFetchFault), `jit_copyback_write_040_test` |
 | 88 | **A long displacement is one entry of the 68030 access log** — `readExt<C, Long>` (the base and outer displacements of a full-format EA) logs its value once, as ABS.L and a long immediate already do, instead of two word entries. Visible only when the memory-indirect fetch faults before `computeEAdisp030` rewinds the log: the format-$B frame then held one entry too many and a wrong idx/idx_done byte | `MoiraDataflow_cpp.h` | [D] WinUAE `cpummu030.c get_disp_ea_020_mmu030` @ Hatari e77819f7 (`next_ilong_mmu030_state`); found by a fresh-seed sweep (`random/identity seed=6107 #1726`, MOVE.W ([bd.L,A2,D5.W*4],od.W),(A1)). The five pinned 68030 corpora are unchanged | `moira_rules_test` (fullEaLongDisplacementLog030) |
 | 89 | **The 68040 ATC replay snapshot is copy-on-write** — `pomJitAtcReplayBegin040` saved both 64-entry ATCs (1 KB a side) at every exact native access; it now saves the access counter and the last-hit indices only, and `pomAtcCow040Save` copies a side's entries the first time something is about to change one (`pomAtcCow040Touch` in front of the two re-walk invalidations of `mmu040AtcLookup`, the fill, and the three flushes). Bits 2-3 of `PomJitAtcReplay040::active` record which sides were copied; the generated code's existing clear of `active` retires them. Host time only: `_platform_memmove` was 5.7 % of the Quadra 605 bench's steady state | `Moira.h`, `MoiraExecMMU_cpp.h` | POM68K host-time measurement (CHANGELOG 2026-11-11 (sixth)); no guest-visible claim | `moira_rules_test` (atcReplayCopyOnWrite040, through the `PomAtcProbe` friend seam) |
+| 90 | **The fetch window's cache-model test is inline** — `pomJitCache040Match` answers `true` at once when the cache model is off (every product default) or the CPU is below the 68EC040, and only then calls `pomJitCache040MatchLive`, the former body. The compiler kept the whole function out of line, so every windowed fetch of every machine paid a call for that answer. Host time only | `Moira.h` | POM68K host-time measurement (CHANGELOG 2026-11-11 (eleventh)); no guest-visible claim | bench fingerprints; `cache040_test` and the cache-on lockstep gates for the live path |
 
 Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54, 56, 59-75 and 79-86 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
 when nothing arms them); rows 48 and 55 are performance alone, with no architectural effect. Row 58 is evidence documentation only. The ten files carrying no `POM68K` marker at all —
