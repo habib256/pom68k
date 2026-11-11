@@ -64,6 +64,17 @@ une optimisation côté hôte POM68K ne rapproche pas de NeoST.
    puis la jambe AArch64 quand l'hôte est disponible.
 5. *Premier portage réel* vers NeoST, qui dira ce que le contrat a oublié.
 
+**Dépôt — décision en attente (2026-11-12).** Le commit `f9a29795`
+(2026-11-11, 21:54) contient par erreur `lc580_ide_boot.img.pomundo`, un
+journal d'écriture disque de 2,5 Mo laissé par un test en cours : des
+blocs d'une image système privée, poussés sur le dépôt public. Retiré de
+l'arbre et `*.pomundo` ignoré depuis `c5dc026c`. **Il reste dans
+l'historique** : le purger demande de réécrire `main` depuis `f9a29795`
+et de pousser en force (les branches locales `fix/portable-slicing` et
+`port/neost-68000-reset` sont à rebaser aussi), puis de demander à
+GitHub la suppression des objets devenus inaccessibles. Décision du
+propriétaire.
+
 **Rétro-portages NeoST (2026-11-11, `CHANGELOG` (thirteenth)).** STOP
 68000 et `<cstdlib>` portés (format de save-state v31), sur la branche
 `port/neost-68000-stop-reset`. **Reste : le reset 68000 de NeoST
@@ -159,6 +170,9 @@ LLE 5 %, repli interpréteur 5 %. Donc, par ordre de rendement attendu :
    - Le poste dominant est donc bien l'émission elle-même, que `sample`
      ne détaille pas : il faut un profil par bloc (compteurs du moteur)
      avant d'y toucher.
+   - *Fait le 2026-11-12* : `LINK` natif sur le 68040 (a64), replis en
+     bloc 25,8 M → 1,75 M. **Reste le backend x64**, qui porte la même
+     restriction (`positioned-ipl-poll`) et n'a pas pu être essayé ici.
    - *Petit, pas prioritaire* : `Cpu030::catchUp` et `Cpu040::catchUp`
      sont hors ligne comme l'était `Cpu020::catchUp`, mais sur ces cœurs
      `SYNC` ne coûte rien et l'appel est rare (3,9 M pour 3 000 trames du
