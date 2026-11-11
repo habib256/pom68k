@@ -65,6 +65,8 @@ public:
     void write(int reg, uint8_t v);
     void tick(int cycles);
     int cyclesToNextEvent() const;
+    // IWM personality only (Iwm::batchable); the ISM engine keeps its bound.
+    bool batchable() const { return !ismMode_ && iwm_.batchable(); }
 
     // The drive's side-select line, as the BOARD drives it — MAME models
     // it on the drive (`floppy_image_device::ss_w`, floppy.h:334) and every

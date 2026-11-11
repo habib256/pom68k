@@ -17,12 +17,12 @@ carry `tools/gate_execution_census.py`'s executed/soft-skipped pair: quote the
 pair, never the green total alone — a soft-skipped gate exited 0 and proved
 nothing about the behaviour it names.
 
-## Union across hosts — 567 gates
+## Union across hosts — 568 gates
 
 | `ctest -L` | selects |
 |---|---|
 | `cpu-vectors` | 4 |
-| `etalon` | 324 |
+| `etalon` | 325 |
 | `etalon-core` | 16 |
 | `gui` | 3 |
 | `interp-only` | 7 |
@@ -40,27 +40,27 @@ scheduling slots are per-host manifest facts and live in the sections below.
 
 ## Registered on aarch64
 
-562 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
+563 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
 
 | dimension | value | gates |
 |---|---|---|
 | assets | none | 155 |
 | assets | optional | 26 |
-| assets | required | 381 |
+| assets | required | 382 |
 | host | a64 | 4 |
-| host | any | 552 |
+| host | any | 553 |
 | host | native | 6 |
 | scope | component | 166 |
 | scope | engine | 21 |
-| scope | profile | 370 |
+| scope | profile | 371 |
 | scope | repository | 5 |
 | tier | daily | 155 |
-| tier | full | 391 |
+| tier | full | 392 |
 | tier | platform | 16 |
-| slots_src | assumed | 442 |
+| slots_src | assumed | 443 |
 | slots_src | measured | 120 |
 
-Scheduling cost if every gate ran at once: 797 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 798 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## Registered on x86_64
 

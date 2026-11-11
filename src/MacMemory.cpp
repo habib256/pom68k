@@ -226,6 +226,38 @@ void MacMemory::tick(int cpuCycles) {
     }
 }
 
+// ── The board's event bound (Cpu68k::catchUp) ──────────────────────────
+// tick() used to run at every bus access. Everything it does is either a
+// threshold crossing — an accumulator reaching a line, a second, a timer
+// underflow — or arithmetic that sums the same however the cycles are
+// split. So the wrapper may hold the cycles back until the nearest
+// threshold: tick() then fires each event at the first bus access at or
+// past its cycle, exactly as before. Each term below is one such
+// threshold; a term that is too small only costs time.
+//   * ADB compacts: AdbVia is re-synced to the CPU clock inside tick()
+//     itself. Not batched (1).
+//   * a floppy stream in flight: the IWM read engine keeps one framed byte
+//     and is not slicing-independent (Iwm::batchable). Not batched.
+//   * the mouse: its 4 000-cycle phase restarts at the tick that crosses
+//     it, queue empty or not, so the phase is a threshold of its own.
+// Device registers are not covered here: the wrapper flushes before every
+// access outside RAM and ROM and re-arms after it.
+// Gate: tests/compact_deadline_etalon.cpp; compact boot and sound etalons.
+int MacMemory::cyclesToNextEvent() const {
+    if (isAdb() || !swim_.batchable()) return 1;
+    int best = 352 - pwmPhase_;                       // sound/PWM line fetch
+    best = int(std::min<int64_t>(best, kCpuHz - secAcc_));   // RTC second
+    const int viaTicks = via_.cyclesToNextEvent();    // φ2 ticks, CPU / 10
+    if (viaTicks < 0x7fffffff / 16)
+        best = std::min(best, viaTicks * 10 - viaPhase_);
+    best = std::min(best, scc_.cyclesToNextEvent());
+    best = std::min(best, cdPump_.cyclesToNextEvent(cpuHz()));
+    best = std::min(best, mouse_.cyclesToPhaseWrap());
+    if (kbdPhase_ == KBD_SHIFT_OUT || kbdPhase_ == KBD_SHIFT_IN)
+        best = std::min(best, kbdTimer_);
+    return std::max(best, 1);
+}
+
 void MacMemory::tickOneSecond() {
     rtc_.tickSecond();
     via_.raiseCa2();

@@ -81,6 +81,12 @@ public:
 
     // Advance internal time (CPU cycles) — paces the nibble stream.
     void tick(int cpuCycles);
+    // True when tick(n) does the same whatever n and however it is split:
+    // no countdown running, no write in progress, no disk turning under an
+    // enabled head. A board may then batch its ticks (MacMemory::
+    // cyclesToNextEvent); in every other state the read engine keeps one
+    // framed byte and is NOT slicing-independent (see the note below).
+    bool batchable() const;
 
     // NOT given a `cyclesToNextEvent()`, and that was TRIED and dropped on
     // 2026-08-15. The theory was good — the cell engine keeps ONE framed

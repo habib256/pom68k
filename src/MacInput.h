@@ -84,6 +84,14 @@ public:
         return left > 0 ? left : 1;
     }
 
+    // Cycles until tick() restarts its phase — which it does with or
+    // without a queued step, so a board that batches ticks must enter here
+    // to keep the phase where per-access ticks would leave it.
+    int cyclesToPhaseWrap() const {
+        const int left = kStepCycles - phase_;
+        return left > 0 ? left : 1;
+    }
+
     // ── Save states (SaveState.h contract) ──────────────────────────────
     // Queued deltas, quadrature phase and the live line levels all travel:
     // a restore mid-gesture must not step the wrong direction.

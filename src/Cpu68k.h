@@ -84,7 +84,22 @@ private:
     // stays a plain function pointer in the fetch path — a virtual there is
     // the ~11 % the i-cache overlay was folded inline to avoid.
     static void jitBusStall(void* self, moira::u32 addr);
-    void catchUp();                         // feed elapsed cycles to peripherals
+    // Peripherals are fed at the board's next event, not at every bus
+    // access (MacMemory::cyclesToNextEvent). flushTicks() brings them to
+    // `clock` now and re-arms; every access outside RAM and ROM is
+    // bracketed by it, and so is every runCycles()/runUntil(), so the host
+    // never sees a board behind its CPU.
+    void catchUp() { if (clock >= periphDeadline_) flushTicks(); }
+    void flushTicks();
+    static bool isDevice(moira::u32 addr) { return (addr & 0xFFFFFF) >= 0x500000; }
+
+public:
+    // Gate seam (tests/compact_deadline_etalon.cpp): with batching off the
+    // board is ticked at every bus access, as it was before the deadline.
+    void setPeriphBatching(bool on) { batching_ = on; periphDeadline_ = 0; }
+    long periphTicks = 0;                   // debug: MacMemory::tick calls
+
+private:
     void willInterrupt(moira::u8 level) override { irqServed[level & 7]++; }
 
 public:
@@ -97,6 +112,7 @@ public:
     template <class Ar> void visit(Ar& ar) {
         visitCpuCommon(ar);
         ar(lastPeriphClock_);
+        periphDeadline_ = 0;                // re-derived at the next access
     }
 
 private:
@@ -104,4 +120,6 @@ private:
     MacMemory& mem_;
     jit::Engine jit_;
     moira::i64 lastPeriphClock_ = 0;
+    moira::i64 periphDeadline_ = 0;         // derived; 0 = flush at once
+    bool batching_ = true;                  // setPeriphBatching
 };

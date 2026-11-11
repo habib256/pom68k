@@ -35,6 +35,14 @@ public:
         for (auto& disk : disks) disk.advanceAudioCycles(due, cpuHz);
     }
 
+    // Cycles until advance() next hands time to the transports: a board
+    // that batches its tick() must still enter at each grain, or the play
+    // head would move on a different cycle than with per-access ticks.
+    int cyclesToNextEvent(std::int64_t cpuHz) const {
+        const std::int64_t left = cpuHz / 1000 - acc_;
+        return left > 0 ? int(left) : 1;
+    }
+
 private:
     std::int64_t acc_ = 0;
 };

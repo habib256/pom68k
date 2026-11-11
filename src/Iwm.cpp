@@ -238,6 +238,13 @@ uint8_t Iwm::readRegister() {
 }
 
 // Advance in machine tick units; the read/write engines use physical flux time.
+bool Iwm::batchable() const {
+    if (clearCountdown_ > 0 || selDelay_ > 0 || writing_) return false;
+    if (!enable_) return true;
+    const SonyDrive* d = selectedDrive();
+    return !d || !d->hasDisk() || !d->motorOn();
+}
+
 void Iwm::tick(int cpuCycles) {
     if (clearCountdown_ > 0) {
         clearCountdown_ -= cpuCycles;

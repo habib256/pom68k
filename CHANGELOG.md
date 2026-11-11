@@ -275,6 +275,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
+- **Why is a Mac Plus's board no longer ticked at every bus access, and what proves it is the same machine?** → [Compact-board deadlines](#2026-11-11-compact-deadline)
 - **What does the MCU run-ahead cost per instruction, and how was it cut?** → [The verdict table built at firmware load](#2026-11-11-mcu-ahead-table)
 - **Why does an exact native 68040 access no longer copy the whole ATC?** → [Copy-on-write ATC transaction](#2026-11-11-atc-replay-cow)
 - **Why is the whole board no longer woken at every Egret/Cuda instruction, and what keeps that exact?** → [The MCU runs ahead through its internal instructions](#2026-11-11-mcu-run-ahead)
@@ -1331,6 +1332,87 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-11-compact-deadline"></a>
+## 2026-11-11 (eighth) — The compact boards are fed at their next event, not at every bus access: Mac Plus 64 % faster, byte-identical
+
+After the quiet SCC (entry (fourth)) the device march was still about
+80 % of a Mac Plus's host time: `Cpu68k::sync` called `MacMemory::tick`
+before every bus access, 45 M times for 900 frames, and each call walked
+the CD pump, the RTC accumulator, the VIA divider, the SCC, the SWIM, three
+drives, the sound/PWM line counter, the keyboard and the mouse.
+
+**The rule.** Everything `tick()` does is either a threshold crossing — an
+accumulator reaching a scan line, a second, a timer underflow — or
+arithmetic that sums the same however the cycles are split. So the cycles
+can be held back until the nearest threshold: the tick that crosses it
+still runs at the first bus access at or past that cycle, which is when
+the per-access tick ran it. `MacMemory::cyclesToNextEvent` is the minimum
+of those thresholds: the 352-cycle sound/PWM line fetch, the RTC second,
+the VIA's own bound through the ÷10 divider, the SCC, the CD pump's 1 ms
+grain, the mouse's 4 000-cycle phase (which restarts with or without a
+queued step), and the M0110 transaction timer. `Cpu68k::catchUp` compares
+the clock with the armed deadline and returns.
+
+What is not batched: the ADB compacts (SE, SE FDHD, Classic — `AdbVia` is
+re-synced to the CPU clock inside `tick()`), and any floppy stream in
+flight — `Iwm::batchable()` is false while a countdown runs, a write is in
+progress or a disk turns under an enabled head, because the IWM read
+engine keeps one framed byte and is not slicing-independent (`Iwm.h`,
+2026-08-15). In those states the bound is 1 and the board ticks as before.
+
+Device registers are covered by the wrapper, not by the bound: every
+access at or above $500000 flushes first and re-arms after; RAM and ROM
+touch no device. `runCycles`/`runUntil` open with a due deadline and close
+with the board caught up, so the host — video, audio, input, save states,
+the debugger — never sees a board behind its CPU. `lastPeriphClock_` was
+already serialized; the deadline is derived. No save-state format change.
+
+| bench (interpreter) | 3 000 frames | 6 000 frames | fingerprint |
+|---|---|---|---|
+| Mac Plus | 1.978 → 0.704 s, **-64.4 %** | 4.229 → 1.504 s, **-64.4 %** | same |
+
+Means of six runs per arm, two binaries interleaved A B B A after a
+discarded pair, idle host (floor 1.1 %). The bench boots from a SCSI disk;
+a floppy session is not batched and gains nothing while it lasts.
+
+Gate: `compact_deadline_etalon` (new file `cmake/Pom68kTimeGates.cmake`,
+which also takes `scc_quiet_tick_test` and `m68hc05_runahead_test` and
+lets the two ceilings raised earlier today come back down: ComponentGates
+666 → 661, MachineGates 1088 → 1082). Two Mac Plus machines on the
+interpreter, one with batching off (`Cpu68k::setPeriphBatching`), run in
+`MacFrameClock`'s shape under scripted mouse deltas, button presses and
+key transitions. CPU registers and clock are compared after each of the
+17 slices of a frame; after each frame the complete serialized machine
+and CPU chunk, byte for byte, and the 370 per-line sound latches (derived,
+not serialized — they are what the audio renders). ROM only: 2 600
+frames, 138.6 M ticks against 1.42 M (1 in 98). Boot floppy
+(`Disk605.dsk`): 6 500 frames, 2.0 M IWM polls, 350 M ticks against 79 M.
+A third cell loads VIA timer 2 with 3 from guest code and samples the
+free-running timer 1 in the handler: a threshold created by a device
+write, nearer than the armed deadline.
+
+Mutation-checked, ten of twelve fail the gate: the sound-line, second,
+VIA, mouse-phase and keyboard terms removed from the bound, the floppy
+refusal removed, the flush before a device read, the re-arm after a
+device write, the flush at the end of a run, the device limit raised to
+$F00000. Two pass. The SCC term: the chip is idle in both passes (its own
+behaviour is `scc_quiet_tick_test`'s and the LocalTalk gates'). The due
+deadline at the start of a run: for the one host input that `tick()`
+polls, a key during the Inquiry hold, the tick that sees it subtracts its
+own cycles from the timer it has just loaded, so the timer starts at the
+previous tick — the slice boundary — in both machines; the reset is kept
+as the rule for whatever the host changes next. The first two escapes of
+this series were real holes in the gate and were closed before this
+count: the sound latches were not compared, and no short timer existed.
+
+**Cumulative figures for entries (fifth) to (seventh), on the exact
+`main` binary** (those entries' own tables came from binaries holding the
+equivalent mutant): Quadra 605 JIT a64 2.633 → 2.055 s (-22.0 %) and
+12.439 → 10.297 s (-17.2 %); LC II JIT a64 4.482 → 3.746 s (-16.4 %) and
+8.527 → 7.023 s (-17.6 %); fingerprints identical; six runs per arm.
+
+Tiers on the final tree (M4): `unit|jit` 208 / 209, the failure being `docs_test` on two line citations moved by this change, green after `refresh_citations.py --fix`; the 91 gates of the compact family (every compact boot, `sound_test`, `compact_timing_etalon`, `contention_test`, `savestate_68k_test`, both 68000 lockstep gates, the new etalon) 91 / 91 with no skip line; `etalon-core` 16 / 16. `m030` and `m040` were not rerun: the change is `Cpu68k`/`MacMemory`, plus const accessors added to `CdAudioPump`, `Iwm`, `Swim1` and `MacMouse`. The x86-64 host was not run.
 
 <a id="2026-11-11-mcu-ahead-table"></a>
 ## 2026-11-11 (seventh) — The MCU run-ahead verdict comes from a table built when the firmware loads: LC II 2-4 %, Quadra 605 1-2.5 % faster in JIT
