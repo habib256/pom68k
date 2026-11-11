@@ -2078,6 +2078,7 @@ void
 Moira::mmu040AtcFlushAll()
 {
     pomJitMapMoved();                 // POM68K JIT: every cached mapping dies
+    mmu040AtcCowBoth();
     for (auto &e : mmu040AtcI) e.valid = false;
     for (auto &e : mmu040AtcD) e.valid = false;
     mmu040AtcLastI[0] = mmu040AtcLastI[1] = 0;
@@ -2088,6 +2089,7 @@ void
 Moira::mmu040AtcFlushNonGlobal()
 {
     pomJitMapMoved();                 // POM68K JIT
+    mmu040AtcCowBoth();
     for (auto &e : mmu040AtcI)
         if (e.valid && !(e.status & 0x400)) e.valid = false;
     for (auto &e : mmu040AtcD)
@@ -2098,6 +2100,7 @@ void
 Moira::mmu040AtcFlushPage(u32 addr, bool nonGlobalOnly, bool super, int space)
 {
     pomJitMapMoved();                 // POM68K JIT
+    mmu040AtcCowBoth();
     const u32 imask = mmu040PageMaskI();
     addr &= imask;
     auto flush = [&](Mmu040AtcEntry* arr) {
@@ -2139,15 +2142,16 @@ Moira::pomJitAtcReplayBegin040(PomJitAtcReplay040& replay, u32 addr,
     const auto capture = [&](bool side) {
         const u32 bit = 1u << unsigned(side);
         if (replay.active & bit) return;
+        // Counter and last-hit indices now; the entries on their first
+        // mutation (pomAtcCow040Save).
         auto* dst = replay.opaque + unsigned(side) * PomJitAtcReplay040::SnapshotBytes;
-        const auto* entries = side ? mmu040AtcD : mmu040AtcI;
         constexpr auto bytes = sizeof(mmu040AtcD);
-        std::memcpy(dst, entries, bytes);
         const u32 count = side ? mmu040AtcAccessD : mmu040AtcAccessI;
         std::memcpy(dst + bytes, &count, sizeof(count));
         std::memcpy(dst + bytes + sizeof(count),
                     side ? mmu040AtcLastD : mmu040AtcLastI, 2);
         replay.active |= bit;
+        pomAtcCow040 = &replay;
     };
     if (replay.fetches) {
         capture(false);
@@ -2169,6 +2173,19 @@ Moira::pomJitAtcReplayBegin040(PomJitAtcReplay040& replay, u32 addr,
 }
 
 void
+Moira::pomAtcCow040Save(bool side) noexcept
+{
+    PomJitAtcReplay040& replay = *pomAtcCow040;
+    // Retired or aborted since Begin: nothing is owed, stop asking.
+    if (!(replay.active & 3)) { pomAtcCow040 = nullptr; return; }
+    const u32 begun = 1u << unsigned(side), saved = 4u << unsigned(side);
+    if (!(replay.active & begun) || (replay.active & saved)) return;
+    std::memcpy(replay.opaque + unsigned(side) * PomJitAtcReplay040::SnapshotBytes,
+                side ? mmu040AtcD : mmu040AtcI, sizeof(mmu040AtcD));
+    replay.active |= saved;
+}
+
+void
 Moira::pomJitAtcReplayAbort040(PomJitAtcReplay040& replay) noexcept
 {
     for (bool side : {false, true}) {
@@ -2176,7 +2193,7 @@ Moira::pomJitAtcReplayAbort040(PomJitAtcReplay040& replay) noexcept
         const auto* src = replay.opaque + unsigned(side) * PomJitAtcReplay040::SnapshotBytes;
         auto* entries = side ? mmu040AtcD : mmu040AtcI;
         constexpr auto bytes = sizeof(mmu040AtcD);
-        std::memcpy(entries, src, bytes);
+        if (replay.active & (4u << unsigned(side))) std::memcpy(entries, src, bytes);
         auto& count = side ? mmu040AtcAccessD : mmu040AtcAccessI;
         std::memcpy(&count, src + bytes, sizeof(count));
         std::memcpy(side ? mmu040AtcLastD : mmu040AtcLastI,
@@ -2215,6 +2232,7 @@ Moira::mmu040AtcLookup(bool data, u32 addr, bool write, bool super)
                 (e.status & 4) || (!super && (e.status & 0x80))) {
                 return last[write];
             }
+            pomAtcCow040Touch(data);
             e.valid = false;
             pomJitAtcEvict(e.logical & imask, ~imask + 1, !data);   // POM68K J3b
         }
@@ -2228,6 +2246,7 @@ Moira::mmu040AtcLookup(bool data, u32 addr, bool write, bool super)
             last[write] = i8(i);
             return i;
         }
+        pomAtcCow040Touch(data);
         e.valid = false;
         pomJitAtcEvict(e.logical & imask, ~imask + 1, !data);       // POM68K J3b
     }
@@ -2272,6 +2291,7 @@ Moira::mmu040AtcFill(bool data, u32 addr, u32 status, bool super)
     // edge and PTEST phase are unknown. Settled by: real 040 traces.
     ++(data ? mmu040AtcAccessD : mmu040AtcAccessI);
 
+    pomAtcCow040Touch(data);
     auto &e = arr[i];
     // POM68K J3b (Moira.h § pomJitAtcEvict): whatever the JIT derived from
     // the entry being REPLACED dies with it, so a window/TLB hit implies a
