@@ -280,6 +280,9 @@ JIT translations directly, via `jitMapChanged()` ([§4](#4-jit--the-second-execu
   `MoiraSnapshot` delegates to it. The host archive and file format stay
   outside Moira. `moira_state_test` loads fresh bare CPUs at executed
   PMMU/FPU continuation boundaries and checks resumed execution.
+- **Format v31** adds Moira's 68000 STOP iteration phase
+  (`stopGraceUntil`): a machine saved while stopped wakes on the same
+  4-cycle boundary. Versions through v30 are refused.
 - **Format v30** preserves the 040 data-bearing I/D caches, including dirty
   copyback bytes, stale instruction bytes, replacement phase and cache-model
   mode. Saving does not push lines or advance guest time; loading drops old

@@ -275,6 +275,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
+- **Which NeoST 68000 changes were back-ported, and why not the reset timing?** → [STOP ported, the reset left out for the PowerBook 100](#2026-11-11-neost-stop-port)
 - **How much faster did each bench get on 2026-11-11, and what was refused?** → [RAM writes, and the day's totals](#2026-11-11-ram-write-path)
 - **What did NeoST change in its 68000 core after 2026-10-20, and what is missing from the fork?** → [The fetch-window call, and the NeoST reading](#2026-11-11-fetch-window-inline)
 - **Why did the Mac II decode every RAM word twice, and what replaced it?** → [Inline RAM reads on the GLUE board](#2026-11-11-macii-ram-path)
@@ -1336,6 +1337,73 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-11-neost-stop-port"></a>
+## 2026-11-11 (thirteenth) — NeoST's 68000 STOP back-ported (format v31); its reset timing is not, because two cycles at power-on leave the PowerBook 100 busy for ever
+
+NeoST's core-swap contract (`docs/CPU_SWAP_GATE.md`, NeoST `b624bf4`)
+lists what it expects to find in this core. Entry (eleventh) recorded what
+was missing; this is the port, on branch `port/neost-68000-stop-reset`.
+
+**Taken.** On the 68000 only: `execStop` reads its operand from IRC and
+makes no bus access — upstream's `readI` also prefetched the next word —
+and charges the 4 cycles itself (NeoST `2fc53a8`, `9f20046`). An
+interrupt the operand unmasks is held until STOP+8, the first iteration
+having tested the old mask, and a later one is taken on a 4-cycle
+boundary counted from the STOP, the clock being advanced to it
+(`993ce5e`, `2fc53a8`; new member `stopGraceUntil`, serialized, cleared
+by reset). `<cstdlib>` is included explicitly (`c9925da`). The 68010 and
+the 68020 family keep upstream's STOP. Evidence as NeoST read it: the
+M68000 User's Manual's 4(0/0), fx68k @ 0602ee46, Hatari @ f0736b24 — and
+one admitted disagreement, graded [F] at the member: Hatari takes the
+pending-interrupt case at STOP+12 where fx68k gives STOP+8.
+
+Save-state format **v31**: `stopGraceUntil` travels, so a machine saved
+while stopped wakes on the same 4-cycle boundary. States through v30 are
+refused, as every version change does.
+
+Gate: `moira_rules_test`, cell `stop68000` — no access past the operand
+(a bus-error hole sits where the prefetch would land), 4 cycles, PC past
+the operand; a pending interrupt unmasked by the operand reaches its
+handler at STOP+8 plus the cost of the same exception measured without a
+STOP; a 68020 STOP still prefetches.
+
+**Not taken: the reset.** NeoST `9f20046` also spends two more cycles
+between the two prefetch reads of a 68000 reset (fx68k: 6 cycles there,
+as at the entry of an exception). Ported and measured: of the 115 gates
+of the 68000 machines, 111 are unchanged — every compact, the Macintosh
+Portable, both 68000 lockstep gates — and the four PowerBook 100 gates
+fail. The PB100 still boots to the Finder (739 SCSI commands, the same
+frame-by-frame trace as before) but its pointer stays the wristwatch:
+91 pixels differ from the pinned screen, all in the cursor, and they
+still differ at 9 000 frames, 150 s of guest time. Bisected on the
+branch: reverting the reset change alone restores the pinned screen;
+none of the STOP changes moves it. So a two-cycle shift of the CPU clock
+from power-on changes what this machine does for ever. That is a
+phase dependence in the PB100 model, not evidence against fx68k — and
+not something to re-pin over. The reset change is left out of the code
+and recorded in `TODO.md` with this reproduction.
+
+**Why, found the same night.** The PB100 is not stuck. Steady state is
+the same in both variants — the same system traps at the same rates, the
+same code pages, the same 739 SCSI commands — and only the last cursor
+call differs: near frame 1948 an `InitCursor` is followed one to three
+ticks later by a `SetCursor` of the wristwatch from `$7ABEFA`, and
+nothing asks for the arrow again, mouse moved or not. On the unmodified
+reset that second call does not happen. And the unmodified reset gives
+the very same wristwatch screen (`cc4a869f52d960ad`) as soon as the host
+runs the machine one instruction per call instead of one frame per call:
+the outcome depends on host slicing. `PortableCpu::runCycles` advances
+the whole board in lumps of up to 256 cycles while the Power Manager
+holds the CPU, measured from where the host call began, so the M50753
+runs several instructions at once and its exchanges with the VIA are not
+interleaved where they belong. With the Power Manager's lines polled on
+absolute boundaries and the held time fed one cycle at a time, all four
+combinations — reset at 2 or 4 cycles, frame or instruction slicing —
+give one screen, and it is the wristwatch: the pinned arrow is a product
+of the lumps. The fix and the re-pin are a separate change (`TODO.md`).
+
+Tiers on the branch (M4): `unit|jit` 210 / 210 (it holds `moira_state_test` and the save-state gates on the new format); the 121 gates matching the 68000 machines, the save-state family, `sst68000` and the Moira gates 121 / 121, the four PB100 gates included. `m030` 141 / 141 and `m040` 102 / 102, no soft-skip line in either, run concurrently at `-j3` each, 68 min — owed because the change touches `Moira::execute()` for every core. The x86-64 host was not run.
 
 <a id="2026-11-11-ram-write-path"></a>
 ## 2026-11-11 (twelfth) — RAM writes past the decoder on the Plus and the Mac II: 4-6 % and 3 % more; the day's totals

@@ -64,22 +64,24 @@ une optimisation côté hôte POM68K ne rapproche pas de NeoST.
    puis la jambe AArch64 quand l'hôte est disponible.
 5. *Premier portage réel* vers NeoST, qui dira ce que le contrat a oublié.
 
-**Rétro-portages NeoST en attente de décision (relevé du 2026-11-11).**
-NeoST a écrit ce qu'il attend du cœur (`docs/CPU_SWAP_GATE.md`, NeoST
-`b624bf4`). Comparé au fork : il manque (1) STOP sur 68000 — pas de
-lecture bus de préfetch, 4 cycles comptés, IRQ retenue jusqu'à STOP+8
-(`stopGraceUntil`, que NeoST sérialise), réveil quantifié par 4 cycles
-(NeoST `993ce5e`, `2fc53a8`, `9f20046`) ; (2) 2 cycles de plus entre les
-deux lectures de préfetch au reset du 68000 (`9f20046`) ; (3) `<cstdlib>`
-explicite dans `Moira.cpp` (`c9925da`). Aucun n'est tenu par
-`sst68000` (pas de fichier STOP ; RESET.json est l'instruction, pas la
-mise sous tension). Le reset décale l'horloge de tous les 68000 de
-2 cycles dès la mise sous tension : empreintes des compacts et du
-Portable probablement à ré-épingler, non mesuré. Déjà présents ou
-tenus par `sst68000` (ordre, adresse, FC, valeur) : ordre des accès
-fx68k (MOVEM, ADD/SUB.L, ADDX/SUBX.L, DBcc, JSR, trame de groupe 0),
-hooks et membres du contrat. À ne pas reprendre : `71b92cc` (retard
-d'échantillonnage IPL, non tranché côté NeoST).
+**Rétro-portages NeoST (2026-11-11, `CHANGELOG` (thirteenth)).** STOP
+68000 et `<cstdlib>` portés (format de save-state v31), sur la branche
+`port/neost-68000-stop-reset`. **Reste : le reset 68000 de NeoST
+`9f20046`** (2 cycles de plus entre les deux lectures de préfetch).
+Porté seul, il laisse le PowerBook 100 au Finder avec le curseur montre
+pour toujours (91 pixels, encore à 9 000 trames) ; les 111 autres gates
+des machines 68000 ne bougent pas. Ce n'est pas une empreinte à
+ré-épingler tel quel. **Cause trouvée** (`CHANGELOG` (thirteenth)) : la
+carte Portable dépend du découpage hôte — `PortableCpu::runCycles`
+avance la carte par paquets de 256 cycles pendant que le Power Manager
+tient le processeur, et n'interroge ses lignes qu'aux frontières de ces
+paquets. À corriger d'abord (interrogation à chaque instruction, tenue
+avancée exactement jusqu'à la prochaine instruction du M50753, gate
+d'indépendance au découpage, `pb100_boot_etalon` ré-épinglé sur l'écran
+commun `cc4a869f52d960ad`), puis porter le reset
+(`SYNC(C == Core::C68000 ? 4 : 2)` dans `Moira::reset`). À ne pas
+reprendre : `71b92cc` (retard d'échantillonnage IPL, non tranché côté
+NeoST).
 
 ## Vitesse — côté hôte POM68K, après l'objectif principal (profils du 2026-11-07)
 
