@@ -275,6 +275,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
+- **Are NeoST's reset timing and the Portable slicing fix merged, and what did the slicing gate find on the way?** → [Merged; 80 unseeded bytes in the CPU state](#2026-11-12-neost-port-merged)
 - **Why was a64 generated code a kilobyte per guest instruction, and what did pinning two base registers buy?** → [Pinned bases](#2026-11-12-a64-pinned-bases)
 - **Do the changes of 2026-11-11/12 hold on the x86-64 backend, and how can this host check?** → [The x86-64 leg under Rosetta](#2026-11-12-x64-leg)
 - **What are the JIT's "not compilable" exits on an idle Mac, and which fixes for them worked?** → [Entries that cannot head a block](#2026-11-12-jit-unsafe-entry)
@@ -1343,6 +1344,51 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-12-neost-port-merged"></a>
+## 2026-11-12 (seventh) — NeoST's reset timing and the Portable slicing fix are on `main`; the slicing gate found 80 unseeded bytes in the CPU state; the Linux CI was red on a compile error
+
+**Merged.** Entries 2026-11-11 (fourteenth) and (fifteenth) — the
+Portable board made independent of host slicing, then NeoST's 68000
+reset timing — waited on local branches because the first re-pins
+`pb100_boot_etalon` on the Portable's screen. The owner asked for the
+port; both are rebased on `main` and merged. `STATUS.md` is regenerated
+for both hosts (`portable_slicing_etalon` joins the registry).
+
+**What the new gate found.** `portable_slicing_etalon` passed alone and
+failed at frame 0 on both hosts when it ran beside other gates: two
+machines built in one process serialized different states before either
+had executed anything. The difference was 80 bytes — `fpu.fp[8]` in
+`Moira.h` had no initialiser. `fpuResetState()` writes the reset NaNs,
+but the Portable and the PowerBook 100 are held in reset by their Power
+Manager and `PortableCpu::hardReset` defers the first `reset()` to the
+release edge, so a state serialized before it carried whatever the
+allocator left. Alone, the process got fresh zero pages; under load it
+did not. The array is now value-initialised (vendor row 93). No guest
+can observe the old bytes: every path to an FPU instruction passes a
+reset. Gate: `moira_rules_test`, cell `unresetFpZero` — a core built
+over scribbled storage; 8 of 8 registers fail without the initialiser.
+
+**CI.** The Linux leg of `CI` and four `Nightly` legs had been red since
+`f189fe1e`: GCC refuses `struct moira::PomAtcProbe { … }` because a
+friend declaration does not make the name visible to a qualified
+definition (clang accepts it), and `std::memset` lacked `<cstring>`.
+Fixed in `bb8fe4db`; `CI` and `macOS` are green on it. The nightly
+re-run on `bb8fe4db` builds everywhere again; its `asan-ubsan` leg is
+still red on two **timeouts**, not on a sanitizer report:
+`cache040_test` (over 1800 s; 5 s in the last green run, 2026-11-09)
+and `jit_asset_free_lockstep_test` (over 300 s; 105-128 s then). Both
+grew with the 68040 fault matrices of 2026-11-10/11. Open (`TODO.md`).
+
+**Evidence** (M4; x86-64 under Rosetta, `build-x64-proof`). On the merged
+tree with the initialiser: AArch64 every gate outside `m030`/`m040`
+274 / 274, `m030` 141 / 141, `m040` 102 / 102; x86-64 every gate outside
+`m030`/`m040` 274 / 274 with `se30_agent_boot_etalon` left out — it did
+not finish in 29 minutes under Rosetta, for a reason that has nothing
+to do with this merge (the GLUE board's CACR flush, entry (eighth)). No gate
+soft-skipped. The x86-64 `m030`/`m040` tiers were not replayed: the
+merge changes `Portable*`, the `C68000` branch of `Moira::reset` and one
+in-class initialiser.
 
 <a id="2026-11-12-a64-pinned-bases"></a>
 ## 2026-11-12 (sixth) — The a64 generator spent three or four instructions to reach every CPU field: two pinned base registers, LC II 22-28 % faster, Quadra 605 6-11 %; three engine experiments measured beside it
