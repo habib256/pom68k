@@ -176,10 +176,8 @@ set_tests_properties(jit_backend_test
 # the instrumentation's honest ×7-8 with margin, not a loosened budget
 # for the native tier, whose other gates stay within the blanket.
 set_tests_properties(jit_asset_free_lockstep_test PROPERTIES TIMEOUT 300)
-# The gate has grown since (the 68040 ATC and fault matrices of November):
-# 66 s under AppleClang ASan on the M4 on 2026-11-12 against the 38.7 s
-# above, and past 300 s under GCC ASan in the nightly (run 43222539870;
-# 105-128 s there on 2026-11-09). Instrumented builds only.
+# Grown since: 66 s under AppleClang ASan (2026-11-12), past 300 s under
+# GCC ASan in the nightly (run 43222539870). Instrumented builds only.
 if(POM68K_SANITIZE)
     set_tests_properties(jit_asset_free_lockstep_test PROPERTIES TIMEOUT 900)
 endif()
