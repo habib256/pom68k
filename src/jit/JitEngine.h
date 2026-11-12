@@ -444,6 +444,35 @@ private:
     // POM68K_JIT_ARM_BACKOFF — how many instructions the interpreter takes
     // alone after a refused arm. Sampled once (JitConfig.h owns the why).
     int armBackoff_steps_ = 32;
+    // One immediate retry after a TRANSIENT refusal — one the very next
+    // instruction cures:
+    //   * "no ATC entry yet" (ArmFail::Probe): the interpreted instruction
+    //     that follows fetches through the MMU and fills the entry.
+    //     Measured on an LC III boot (2026-11-12): 16 777 827 of
+    //     16 782 622 such refusals were probeable at the same pc one
+    //     instruction later;
+    //   * pc in the last bytes of its page (ArmFail::PcAtEnd): the next pc
+    //     is in another page. The same boot refused one instruction at
+    //     $35FFE 4.3 million times.
+    // The full backoff after each was carrying 537 M interpreted
+    // instructions in that boot. If the retry is refused again IN THE SAME
+    // 256 BYTES AND PRIVILEGE, the full backoff applies — so code that
+    // stays unarmable costs two probes per backoff period, not one per
+    // instruction (the half-speed case the backoff exists for). A refusal
+    // somewhere else is a new page with its own missing entry — a trap
+    // entry, its dispatcher, the routine — and gets its own retry. 256
+    // bytes is the smallest 68030 page.
+    bool armRefusedTransient_ = false;   // set by armWindow()
+    bool armRetried_ = false;
+    uint32_t armRetryKey_ = 0;
+    int backoffAfterRefusal(uint32_t pc, bool super) {
+        const uint32_t key = (pc >> 8) << 1 | uint32_t(super);
+        const bool retry = armRefusedTransient_ &&
+            !(armRetried_ && armRetryKey_ == key);
+        armRetried_ = retry;
+        armRetryKey_ = key;
+        return retry ? 0 : armBackoff_steps_;
+    }
     // Instructions the last trace actually retired (it executes as it
     // records, so the caller must not run one more on top).
     uint32_t traceRetired_ = 0;

@@ -90,8 +90,10 @@ paquets. **Corrigé et fusionné le 2026-11-12** (`CHANGELOG` (fourteenth),
 `pb100_boot_etalon` est ré-épinglé sur l'écran du Portable
 (`cc4a869f52d960ad`) et le reset de NeoST est porté. Reste à comprendre
 pourquoi le Finder laisse la montre sur les deux machines (`InitCursor`
-puis `SetCursor` depuis `$7ABEFA`). **Ouvert — Nightly `asan-ubsan`** :
-deux dépassements de délai, sans rapport du sanitizer —
+puis `SetCursor` depuis `$7ABEFA`). **Nightly `asan-ubsan`, à
+confirmer par le prochain run** (bornes propres aux builds instrumentés
+depuis `94f7bb36` : 3600 s et 900 s) : deux dépassements de délai, sans
+rapport du sanitizer —
 `cache040_test` (> 1800 s ; 5 s le 2026-11-09) et
 `jit_asset_free_lockstep_test` (> 300 s ; 105-128 s alors), alourdis par
 les matrices de fautes 68040 des 10 et 11 novembre. À ne pas
@@ -652,6 +654,13 @@ d'instruction.
   826 changements de carte mémoire, sorties `WindowLost` × 3) ; aucun
   banc GLUE ni PowerBook à empreinte — les chiffres viennent de gates
   entiers.
+- [ ] **LC III / IIvx : l'ATC de 22 entrées tourne sous pages de 8 Ko.**
+  Après le réessai immédiat des refus transitoires (`CHANGELOG`
+  2026-11-12 (tenth), LC III et IIvx −17 à −18 %), le boot LC III refuse
+  encore 30 M de sondes de fenêtre et 180 M de remplissages du TLB de
+  données faute d'entrée ATC. C'est le comportement de l'invité ; reste à
+  voir si la sonde peut répondre sans entrée (marche de table en lecture
+  seule, sans écrire U/M) sans rompre l'identité avec l'interpréteur.
 - [ ] **Modéliser l'intervalle hors tension du power cycling des
   PowerBook 030.** Le réveil est un reset immédiat
   (`Pb030Memory::consumeReset`) : 1,29 M de resets par boot de PowerBook
