@@ -1341,6 +1341,30 @@ Newest first.
 
 ---
 
+<a id="2026-11-12-consolidated-bench"></a>
+## 2026-11-12 (fourth) — Two days of optimisation, measured once end to end: Plus −77 %, Quadra 605 −24 %, LC II −20 %, Mac II −19 %, every fingerprint unchanged
+
+One interleaved ABBA run per bench (n = 6 per side, AArch64 M4, idle
+host), the binaries of the morning of 2026-11-11 against `1dc6a2d6`.
+Wall time is `wall_ns` from `POM68K_JIT_METRICS`; the fingerprints are
+identical on both sides at both budgets.
+
+| Bench | Frames | Before | After | Change |
+|---|---|---|---|---|
+| Quadra 605 (`jit_bench`) | 3000 | 2.578 s | 1.972 s | −23.5 % |
+| Quadra 605 | 6000 | 11.936 s | 9.111 s | −23.7 % |
+| LC II (`jit_bench_lcii`) | 3000 | 4.500 s | 3.619 s | −19.6 % |
+| LC II | 6000 | 8.589 s | 6.808 s | −20.7 % |
+| Plus (`jit_bench_plus`) | 3000 | 2.427 s | 0.552 s | −77.3 % |
+| Plus | 6000 | 5.172 s | 1.202 s | −76.8 % |
+| Mac II (`jit_bench_macii`) | 3000 | 3.003 s | 2.433 s | −19.0 % |
+| Mac II | 6000 | 5.991 s | 4.839 s | −19.2 % |
+
+The individual steps and their own measurements are the entries from
+2026-11-11 (fifth) to 2026-11-12 (later). This is AArch64 only; the
+x86-64 leg has an open red on the 68040 tier (entry below) and no
+timing.
+
 <a id="2026-11-12-x64-leg"></a>
 ## 2026-11-12 (third) — The x86-64 leg, run at last: unit and 68030 tiers hold, one red cell of mine fixed, two 68040 agent gates crash on the x64 backend (open)
 
