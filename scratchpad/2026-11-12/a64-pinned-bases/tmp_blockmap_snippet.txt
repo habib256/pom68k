@@ -1,0 +1,10 @@
+    {   // TMP-BLOCKMAP (uncommitted instrument)
+        static FILE* mapFile = [] { const char* f = std::getenv("POM68K_TMP_BLOCKMAP");
+                                    return f ? std::fopen(f, "w") : nullptr; }();
+        if (mapFile) { std::fprintf(mapFile, "%p %zu %08x %zu\n", (void*)dst,
+                                    size_t(a.byteSize()), ir.entryPc, ir.instrs.size());
+                       std::fflush(mapFile); }
+        static const char* dumpDir = std::getenv("POM68K_TMP_BLOCKDUMP");
+        if (dumpDir) { char nm[512]; std::snprintf(nm, sizeof nm, "%s/%08x.bin", dumpDir, ir.entryPc);
+                       if (FILE* f = std::fopen(nm, "wb")) { std::fwrite(a.bytes(), 1, a.byteSize(), f); std::fclose(f); } }
+    }

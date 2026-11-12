@@ -194,6 +194,24 @@ LLE 5 %, repli interpréteur 5 %. Donc, par ordre de rendement attendu :
      `POM68K_TEST_AGENT=1 POM68K_CENTRIS_MODEL=q610` ; vert → retirer
      ou corriger l'admission x64, rouge → bissecter plus haut, et
      rejouer sur un vrai hôte x86-64 pour écarter Rosetta.
+   - *Fait le 2026-11-12 (`CHANGELOG` (sixth))* : le profil par bloc
+     existe (adresses de `sample` rattachées à une table des blocs,
+     instrument non versé) et dit que le code généré est plat — pas de
+     bloc chaud, mais 3 à 4 instructions hôte par accès à un champ du
+     CPU. Deux bases épinglées dans `x27`/`x28` : LC II −22 à −28 %,
+     Quadra 605 −6 à −11 %, a64 seul ; aucun gate n'épingle la taille
+     du code émis. Restent dans l'émission, non
+     mesurés : les écritures de `pc`/`pc0` devant chaque accès mémoire
+     (lues seulement par les chemins froids), la base du DTLB
+     rematérialisée à chaque accès, `movW` sur une constante à moitié
+     basse nulle.
+   - *Candidat mesuré, non versé* : régler dans le dispatcheur un
+     `CHECK_IRQ` sans rien à livrer (LC II −2,0 à −2,6 %, exact, sept
+     compteurs épinglés à relire, tiers ROM des deux hôtes dus).
+     *Mesurés et refusés* : fenêtre gardée armée sur les pas à drapeau
+     (−1,2 %, au plancher) ; fenêtre plafonnée à la longueur du bloc
+     (−5 % au boot, rien à 6 000 trames, écritures en page de code
+     doublées).
    - *Petit, pas prioritaire* : `Cpu030::catchUp` et `Cpu040::catchUp`
      sont hors ligne comme l'était `Cpu020::catchUp`, mais sur ces cœurs
      `SYNC` ne coûte rien et l'appel est rare (3,9 M pour 3 000 trames du

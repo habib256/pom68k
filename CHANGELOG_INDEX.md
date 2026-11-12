@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 778 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 779 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,7 +8,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 103 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 104 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 116 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 37 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
@@ -128,6 +128,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-11 (fifth)** — [The Egret/Cuda MCU runs ahead through its internal instructions: the board wakes at port accesses only; Quadra 605 11-19 % and LC II 15-16 % faster in JIT](CHANGELOG.md#2026-11-11-mcu-run-ahead)
 - **2026-11-11 (seventh)** — [The MCU run-ahead verdict comes from a table built when the firmware loads: LC II 2-4 %, Quadra 605 1-2.5 % faster in JIT](CHANGELOG.md#2026-11-11-mcu-ahead-table)
 - **2026-11-11 (sixth)** — [The 68040 ATC transaction of an exact native access copies entries only when one changes: Quadra 605 JIT 2-7 % faster](CHANGELOG.md#2026-11-11-atc-replay-cow)
+- **2026-11-12 (sixth)** — [The a64 generator spent three or four instructions to reach every CPU field: two pinned base registers, LC II 22-28 % faster, Quadra 605 6-11 %; three engine experiments measured beside it](CHANGELOG.md#2026-11-12-a64-pinned-bases)
 - **2026-11-12 (third)** — [The x86-64 leg, run at last: unit and 68030 tiers hold, one red cell of mine fixed, two 68040 agent gates crash on the x64 backend (open)](CHANGELOG.md#2026-11-12-x64-leg)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle

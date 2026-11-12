@@ -251,7 +251,26 @@ public:
                 emit(0xF2800000u | (hw << 21) | (part << 5) | rd);
         }
     }
+    // Pinned bases. Moira's hot fields sit 47 KB and 72 KB into the object,
+    // past the reach of a scaled-immediate load off x0, so every access cost
+    // a MOV(+MOVK), an ADD and the load. x28 and x27 hold x0 + base for the
+    // whole generated chain (set by the prologue, callee-saved, never
+    // written afterwards); an x0-relative operand inside a base's reach is
+    // encoded against it instead. Bases of 0 disable the rewrite.
+    void pinBases(uint32_t a, uint32_t b) { base_[0] = a; base_[1] = b; }
+    bool viaBase(unsigned& rn, uint32_t& off, uint32_t scale) const {
+        if (rn != 0) return false;
+        for (unsigned i = 0; i < 2; i++) {
+            const uint32_t base = base_[i];
+            if (base && off >= base && (off - base) % scale == 0 &&
+                (off - base) / scale < 4096) {
+                rn = 28 - i; off -= base; return true;
+            }
+        }
+        return false;
+    }
     void address(unsigned rd, unsigned rn, uint32_t off) {
+        if (off >= 4096) viaBase(rn, off, 1);
         if (off < 4096) {
             emit(0x91000000u | (off << 10) | (rn << 5) | rd); // ADD imm
         } else {
@@ -260,49 +279,49 @@ public:
         }
     }
     void ldrX(unsigned rt, unsigned rn, uint32_t off) {
-        if ((off & 7) || off / 8 >= 4096) {
+        if (((off & 7) || off / 8 >= 4096) && !viaBase(rn, off, 8)) {
             address(15, rn, off); emit(0xF9400000u | (15 << 5) | rt); return;
         }
         emit(0xF9400000u | ((off / 8) << 10) | (rn << 5) | rt);
     }
     void ldrW(unsigned rt, unsigned rn, uint32_t off) {
-        if ((off & 3) || off / 4 >= 4096) {
+        if (((off & 3) || off / 4 >= 4096) && !viaBase(rn, off, 4)) {
             address(15, rn, off); emit(0xB9400000u | (15 << 5) | rt); return;
         }
         emit(0xB9400000u | ((off / 4) << 10) | (rn << 5) | rt);
     }
     void ldrH(unsigned rt, unsigned rn, uint32_t off) {
-        if ((off & 1) || off / 2 >= 4096) {
+        if (((off & 1) || off / 2 >= 4096) && !viaBase(rn, off, 2)) {
             address(15, rn, off); emit(0x79400000u | (15 << 5) | rt); return;
         }
         emit(0x79400000u | ((off / 2) << 10) | (rn << 5) | rt);
     }
     void ldrB(unsigned rt, unsigned rn, uint32_t off) {
-        if (off >= 4096) {
+        if ((off >= 4096) && !viaBase(rn, off, 1)) {
             address(15, rn, off); emit(0x39400000u | (15 << 5) | rt); return;
         }
         emit(0x39400000u | (off << 10) | (rn << 5) | rt);
     }
     void strW(unsigned rt, unsigned rn, uint32_t off) {
-        if ((off & 3) || off / 4 >= 4096) {
+        if (((off & 3) || off / 4 >= 4096) && !viaBase(rn, off, 4)) {
             address(15, rn, off); emit(0xB9000000u | (15 << 5) | rt); return;
         }
         emit(0xB9000000u | ((off / 4) << 10) | (rn << 5) | rt);
     }
     void strX(unsigned rt, unsigned rn, uint32_t off) {
-        if ((off & 7) || off / 8 >= 4096) {
+        if (((off & 7) || off / 8 >= 4096) && !viaBase(rn, off, 8)) {
             address(15, rn, off); emit(0xF9000000u | (15 << 5) | rt); return;
         }
         emit(0xF9000000u | ((off / 8) << 10) | (rn << 5) | rt);
     }
     void strH(unsigned rt, unsigned rn, uint32_t off) {
-        if ((off & 1) || off / 2 >= 4096) {
+        if (((off & 1) || off / 2 >= 4096) && !viaBase(rn, off, 2)) {
             address(15, rn, off); emit(0x79000000u | (15 << 5) | rt); return;
         }
         emit(0x79000000u | ((off / 2) << 10) | (rn << 5) | rt);
     }
     void strB(unsigned rt, unsigned rn, uint32_t off) {
-        if (off >= 4096) {
+        if ((off >= 4096) && !viaBase(rn, off, 1)) {
             address(15, rn, off); emit(0x39000000u | (15 << 5) | rt); return;
         }
         emit(0x39000000u | (off << 10) | (rn << 5) | rt);
@@ -514,6 +533,7 @@ public:
     size_t byteSize() const { return code_.size() * sizeof(uint32_t); }
 
 private:
+    uint32_t base_[2] = {0, 0};
     std::vector<uint32_t> code_;
     std::vector<size_t> labels_;
     std::vector<Fix> fixes_;
@@ -4698,14 +4718,27 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
     // helper calls. On 030, x23/x24 keep the i-cache counters. x26 keeps the
     // retired count, and in packed-CCR mode its low byte also keeps XNZVC;
     // the count starts at bit 8. x0/x1 remain the CPU/Frame ABI pair.
-    a.emit(guestCacheAbi ? 0xA9B97BFDu    // stp x29,x30,[sp,#-112]!
-                         : 0xA9BA7BFDu);  // stp x29,x30,[sp,#-96]!
+    a.emit(0xA9B97BFDu);                 // stp x29,x30,[sp,#-112]!
     a.emit(0xA9015BF5u);                 // stp x21,x22,[sp,#16]
     a.emit(0xA90207E0u);                 // stp x0,x1,[sp,#32]
     if (icache) a.emit(0xA90363F7u);      // stp x23,x24,[sp,#48]
     a.emit(0xA9046BF9u);                 // stp x25,x26,[sp,#64]
     a.emit(0xA90553F3u);                 // stp x19,x20,[sp,#80]
-    if (guestCacheAbi) a.emit(0xA90673FBu); // stp x27,x28,[sp,#96]
+    a.emit(0xA90673FBu);                 // stp x27,x28,[sp,#96]
+    // x27/x28 are the guest register cache's when that option is on, the
+    // pinned bases (Asm::pinBases) otherwise: the register block, and the
+    // 030 i-cache overlay or the 040's read DTLB.
+    if (!guestCacheAbi) {
+        const uint32_t regs = std::min({L.clock, L.pc, L.pc0, L.d, L.a,
+                                        L.srT1, L.flags, L.ird}) & ~7u;
+        const uint32_t far = (icache
+            ? std::min({L.icTag, L.icValid, L.icFetches, L.icHits,
+                        L.icMisses, L.icPenalty})
+            : L.dtlbR) & ~7u;
+        a.address(28, 0, regs);
+        a.address(27, 0, far);
+        a.pinBases(regs, far);
+    }
     a.ldrX(20, 1, 0);                    // Frame::clockTarget
     a.ldrX(21, 0, L.clock);
     a.ldrW(26, 1, 8);                    // Frame::instrs
@@ -5063,12 +5096,11 @@ CompileResult A64Backend::compile(const BlockIr& ir, const Context& ctx) {
         spillIcacheCounters(a, L);
         a.emit(0xA94363F7u);              // ldp x23,x24,[sp,#48]
     }
-    if (guestCacheAbi) a.emit(0xA94673FBu); // ldp x27,x28,[sp,#96]
+    a.emit(0xA94673FBu);                 // ldp x27,x28,[sp,#96]
     a.emit(0xA94553F3u);                 // ldp x19,x20,[sp,#80]
     a.emit(0xA9446BF9u);                 // ldp x25,x26,[sp,#64]
     a.emit(0xA9415BF5u);                 // ldp x21,x22,[sp,#16]
-    a.emit(guestCacheAbi ? 0xA8C77BFDu    // ldp x29,x30,[sp],#112
-                         : 0xA8C67BFDu);  // ldp x29,x30,[sp],#96
+    a.emit(0xA8C77BFDu);                 // ldp x29,x30,[sp],#112
     a.emit(0xD65F03C0u);                 // ret
     if (!a.finish()) return reject(CompileReject::Emit, "branch fixup");
 

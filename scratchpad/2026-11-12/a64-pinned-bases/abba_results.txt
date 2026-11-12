@@ -1,0 +1,25 @@
+jit_bench_lcii frames=3000 n=6 load 3.7->2.2 fingerprints=['619ac389e7c6b6f1']
+  base     mean 3.658s  min 3.638 max 3.702 spread 1.7%  vs base +0.0%
+  B        mean 3.616s  min 3.596 max 3.639 spread 1.2%  vs base -1.2%
+  AB       mean 3.544s  min 3.523 max 3.571 spread 1.4%  vs base -3.1%
+  cand     mean 2.838s  min 2.815 max 2.858 spread 1.5%  vs base -22.4%
+  C        mean 3.470s  min 3.423 max 3.515 spread 2.6%  vs base -5.2%
+jit_bench_lcii frames=6000 n=6 load 2.2->1.9 fingerprints=['ee9de0a7c16fb3dc']
+  base     mean 6.868s  min 6.787 max 6.977 spread 2.8%  vs base +0.0%
+  B        mean 6.776s  min 6.668 max 6.825 spread 2.3%  vs base -1.3%
+  AB       mean 6.602s  min 6.561 max 6.687 spread 1.9%  vs base -3.9%
+  cand     mean 4.928s  min 4.906 max 4.982 spread 1.5%  vs base -28.3%
+  C        mean 6.860s  min 6.741 max 7.054 spread 4.6%  vs base -0.1%
+jit_bench frames=3000 n=6 load 1.9->1.9 fingerprints=['c3bfa9dece806679']
+  base     mean 2.019s  min 2.017 max 2.021 spread 0.2%  vs base +0.0%
+  B        mean 2.030s  min 2.022 max 2.034 spread 0.6%  vs base +0.6%
+  AB       mean 2.021s  min 2.009 max 2.031 spread 1.1%  vs base +0.1%
+  cand     mean 1.899s  min 1.894 max 1.903 spread 0.5%  vs base -5.9%
+  C        mean 2.026s  min 2.023 max 2.031 spread 0.4%  vs base +0.3%
+jit_bench frames=6000 n=6 load 1.9->2.1 fingerprints=['eff73aa85d485c65']
+  base     mean 9.328s  min 9.270 max 9.400 spread 1.4%  vs base +0.0%
+  B        mean 9.294s  min 9.245 max 9.343 spread 1.1%  vs base -0.4%
+  AB       mean 9.200s  min 9.135 max 9.310 spread 1.9%  vs base -1.4%
+  cand     mean 8.203s  min 8.179 max 8.252 spread 0.9%  vs base -12.1%
+  C        mean 9.339s  min 9.297 max 9.380 spread 0.9%  vs base +0.1%
+DONE

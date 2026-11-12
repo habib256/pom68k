@@ -162,7 +162,7 @@ what it does and does not drive today:
 The per-opcode question is **not** a block boundary: `Backend::canEmit()` is
 an encoding-only answer — consulted by the opcode census
 (`POM68K_JIT_HISTO`), by `jit_backend_test`, and by `A64Backend::compile()`
-as the dispatch test in front of `emitRegInstr` (`JitBackendA64.cpp:4799-4801`;
+as the dispatch test in front of `emitRegInstr` (`JitBackendA64.cpp:4832-4834`;
 the x64 emitters carry their own switch and never call it). The coverage
 floor is a separate thing and is not built on it: `compile()` counts what
 the emitter actually produced and refuses a block below

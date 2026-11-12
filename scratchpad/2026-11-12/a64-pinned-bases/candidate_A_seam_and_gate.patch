@@ -1,0 +1,141 @@
+diff --git a/extern/moira/Moira/Moira.h b/extern/moira/Moira/Moira.h
+index e4e28faf..e876d42e 100644
+--- a/extern/moira/Moira/Moira.h
++++ b/extern/moira/Moira/Moira.h
+@@ -472,6 +472,24 @@ public:
+     }
+ 
+     bool pomJitIdle()  const { return flags == 0; }
++
++    // The slow path of execute(), when CHECK_IRQ is the ONLY flag and it has
++    // nothing to deliver: no recognition delay pending (irqDelay), no
++    // deferred pin level, the polled level neither above the mask nor NMI,
++    // and the poll up to date with the pin. execute() would then clear the
++    // flag in checkForIrq() and run the instruction exactly as the fast path
++    // does (same loop head, same handler, same staged trace). This performs
++    // that clearing alone, so the caller may dispatch the instruction as it
++    // would any other. Returns false, changing nothing, in every other case.
++    // Gate: moira_rules_test `settleIrq`; jit_asset_free_lockstep_test.
++    bool pomJitSettleIrq() {
++        if (flags != State::CHECK_IRQ || irqDelay || iplDeferred >= 0)
++            return false;
++        if (reg.ipl > reg.sr.ipl || reg.ipl == 7 || reg.ipl != ipl)
++            return false;
++        flags = 0;
++        return true;
++    }
+     bool pomJitSuper() const { return bool(reg.sr.s); }
+     u16  pomJitIrd()   const { return queue.ird; }
+ 
+diff --git a/tests/moira_rules_test.cpp b/tests/moira_rules_test.cpp
+index 6a0875d0..a5e05708 100644
+--- a/tests/moira_rules_test.cpp
++++ b/tests/moira_rules_test.cpp
+@@ -1359,6 +1359,91 @@ void stop68000()
+ }
+ 
+ #if MOIRA_ENABLE_JIT
++// POM68K JIT seam: a CHECK_IRQ with nothing to deliver is settled without
++// the slow path (Moira::pomJitSettleIrq). The seam must clear the flag only
++// where execute() would, and the instruction that follows must cost and do
++// exactly what it does after execute()'s own settling. It must refuse, and
++// change nothing, when a recognition delay is pending (mask lowered), when
++// the poll is older than the pin, when the polled level is deliverable, on
++// level 7, and under any other flag.
++void settleIrq()
++{
++    for (moira::Model model : { moira::Model::M68020, moira::Model::M68030,
++                                moira::Model::M68040 }) {
++        const unsigned m = unsigned(model);
++        auto vectors = [&](TestCpu& c) {
++            p32(c, 27 * 4, kHandler);                   // level-3 autovector
++            p32(c, 31 * 4, kHandler);                   // level-7 autovector
++            p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
++            for (uint32_t a = kCode; a < kCode + 32; a += 2) p16(c, a, kNop);
++        };
++        {   // the state an SR write leaves when it does not lower the mask
++            TestCpu ref(model), c(model);
++            stage(ref, kNop, 0); stage(c, kNop, 0);
++            ref.setSR(0x2700); c.setSR(0x2700);
++            const moira::i64 r0 = ref.getClock(), c0 = c.getClock();
++            ref.execute();
++            const bool was = c.pomJitIdle();
++            const bool settled = c.pomJitSettleIrq();
++            const bool idle = c.pomJitIdle();
++            c.execute();
++            CHECK(!was && settled && idle && ref.pomJitIdle() && c.pomJitIdle() &&
++                  c.getClock() - c0 == ref.getClock() - r0 &&
++                  c.getPC() == ref.getPC() && c.getSR() == ref.getSR(),
++                  "model %u: settle was=%d settled=%d idle=%d, %lld cycles vs "
++                  "%lld, PC %08X vs %08X", m, was, settled, idle,
++                  (long long)(c.getClock() - c0),
++                  (long long)(ref.getClock() - r0), c.getPC(), ref.getPC());
++        }
++        {   // a lowered mask arms the recognition delay: not settled
++            TestCpu c(model);
++            stage(c, kNop, 0); vectors(c);
++            c.setSR(0x2000);
++            CHECK(!c.pomJitSettleIrq() && !c.pomJitIdle(),
++                  "model %u: settled across a pending recognition delay", m);
++            for (int i = 0; i < 4; i++) c.execute();
++            CHECK(c.pomJitIdle(), "model %u: the delay never expired", m);
++
++            // the pin moved, the poll has not seen it: not settled
++            c.setIPL(3);
++            CHECK(!c.pomJitSettleIrq() && !c.pomJitIdle(),
++                  "model %u: settled before the pin was polled", m);
++            // polled and above the mask: not settled, and the interrupt is taken
++            for (int i = 0; i < 4 && c.getPC0() != kHandler; i++) {
++                CHECK(!c.pomJitSettleIrq(),
++                      "model %u: settled with a deliverable level", m);
++                c.execute();
++            }
++            CHECK(c.getPC0() == kHandler,
++                  "model %u: the level-3 interrupt was lost (PC0=%08X)", m,
++                  c.getPC0());
++        }
++        {   // polled and masked: settled; level 7 is never masked
++            TestCpu c(model);
++            stage(c, kNop, 0); vectors(c);
++            (void)c.pomJitSettleIrq();
++            c.setIPL(3);
++            c.execute(); c.execute();                   // the poll catches up
++            CHECK(c.pomJitIdle() || c.pomJitSettleIrq(),
++                  "model %u: a masked, polled level 3 was not settled", m);
++            CHECK(c.getPC0() != kHandler, "model %u: masked level taken", m);
++            c.setIPL(7);
++            for (int i = 0; i < 4 && c.getPC0() != kHandler; i++) {
++                CHECK(!c.pomJitSettleIrq(), "model %u: settled on level 7", m);
++                c.execute();
++            }
++            CHECK(c.getPC0() == kHandler, "model %u: level 7 was lost", m);
++        }
++        {   // any other flag: not settled
++            TestCpu c(model);
++            stage(c, kNop, 0); vectors(c);
++            c.setSR(0xA700);
++            CHECK(!c.pomJitSettleIrq() && !c.pomJitIdle(),
++                  "model %u: settled while tracing", m);
++        }
++    }
++}
++
+ // The 68040 ATCs are private to the core; this is the seam Moira.h befriends.
+ struct moira::PomAtcProbe {
+     struct Image {
+@@ -1665,6 +1750,7 @@ int main(int argc, char** argv)
+     fullEaLongDisplacementLog030();
+ #if MOIRA_ENABLE_JIT
+     atcReplayCopyOnWrite040();
++    settleIrq();
+ #endif
+     stop68000();
+ 
+@@ -1679,6 +1765,6 @@ int main(int argc, char** argv)
+                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
+                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
+                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68EC030 plain-020 path with a 68030 "
+-                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle\n");
++                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, 68030 long-displacement access log, 68040 ATC replay copy-on-write, IRQ settle seam, 68000 STOP without a bus cycle\n");
+     return 0;
+ }

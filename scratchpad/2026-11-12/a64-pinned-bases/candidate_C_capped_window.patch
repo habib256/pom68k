@@ -1,0 +1,47 @@
+diff --git a/src/jit/JitEngine.cpp b/src/jit/JitEngine.cpp
+index d68d3288..3d687ace 100644
+--- a/src/jit/JitEngine.cpp
++++ b/src/jit/JitEngine.cpp
+@@ -803,7 +803,7 @@ bool Engine::armWindow(uint32_t pc, bool super) {
+     return true;
+ }
+ 
+-void Engine::runWindow(int64_t clockTarget) {
++void Engine::runWindow(int64_t clockTarget, uint32_t maxInstrs) {
+     // J1a in isolation: the fetch window with no block bookkeeping at all.
+     // Every instruction still goes through Moira; the only thing that
+     // changed is where its opcode words come from.
+@@ -814,6 +814,10 @@ void Engine::runWindow(int64_t clockTarget) {
+         if (!histo_.empty()) [[unlikely]] histo_[cpu_.pomJitPeek(cpu_.getPC())]++;
+         if (!cpu_.pomJitExecOne()) { n++; stats_.bump(Exit::Fault); break; }
+         n++;
++        // A block that has not earned its code yet runs here for its own
++        // length only, so the dispatcher sees every return to a loop head
++        // and the visit count reflects iterations, not entries.
++        if (n == maxInstrs) { stats_.bump(Exit::BlockEnd); break; }
+         // POM68K_JIT_WINDOW_KILL: a forced exit, indistinguishable from the
+         // ATC-eviction one except that its rate is chosen. Off = one
+         // always-predicted branch.
+@@ -1535,7 +1539,8 @@ void Engine::executeUntil(int64_t clockTarget) {
+             if (!b.code) {
+                 const uint64_t before = stats_.windowInstrs.load(
+                     std::memory_order_relaxed);
+-                runWindow(clockTarget);
++                runWindow(clockTarget,
++                          b.rejected ? 0 : uint32_t(b.ir.instrs.size()));
+                 const Miss miss = b.rejected ? Miss::Rejected
+                     : hotReady && !profitReady ? Miss::NotProfitable
+                                                : Miss::NotHot;
+diff --git a/src/jit/JitEngine.h b/src/jit/JitEngine.h
+index 661e8e51..1137252f 100644
+--- a/src/jit/JitEngine.h
++++ b/src/jit/JitEngine.h
+@@ -221,7 +221,7 @@ private:
+     // Runs instructions with the window armed but without recording or
+     // consulting a block. This is J1a in isolation (POM68K_JIT_BLOCKS=0):
+     // it isolates the contribution of the fetch window from the block cache.
+-    void runWindow(int64_t clockTarget);
++    void runWindow(int64_t clockTarget, uint32_t maxInstrs = 0);
+ 
+     // Traces a straight line of instructions from `pc`, recording what
+     // actually executed. Tracing IS execution: the instructions run through
