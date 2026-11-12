@@ -70,8 +70,7 @@ journal d'écriture disque de 2,5 Mo laissé par un test en cours : des
 blocs d'une image système privée, poussés sur le dépôt public. Retiré de
 l'arbre et `*.pomundo` ignoré depuis `c5dc026c`. **Il reste dans
 l'historique** : le purger demande de réécrire `main` depuis `f9a29795`
-et de pousser en force (les branches locales `fix/portable-slicing` et
-`port/neost-68000-reset` sont à rebaser aussi), puis de demander à
+et de pousser en force, puis de demander à
 GitHub la suppression des objets devenus inaccessibles. Décision du
 propriétaire.
 
@@ -86,14 +85,16 @@ ré-épingler tel quel. **Cause trouvée** (`CHANGELOG` (thirteenth)) : la
 carte Portable dépend du découpage hôte — `PortableCpu::runCycles`
 avance la carte par paquets de 256 cycles pendant que le Power Manager
 tient le processeur, et n'interroge ses lignes qu'aux frontières de ces
-paquets. Corrigé sur la branche `fix/portable-slicing` (`CHANGELOG`
-(fourteenth)), **non fusionnée : elle ré-épingle `pb100_boot_etalon`**
-sur l'écran du Portable (`cc4a869f52d960ad`). Le reset de NeoST est
-porté par-dessus, branche `port/neost-68000-reset` (`CHANGELOG`
-(fifteenth)), 122 / 122 sur les machines 68000 : **fusionner les deux
-branches** est la décision en attente. Reste à comprendre pourquoi le
-Finder laisse la montre sur les deux machines (`InitCursor` puis
-`SetCursor` depuis `$7ABEFA`). À ne pas
+paquets. **Corrigé et fusionné le 2026-11-12** (`CHANGELOG` (fourteenth),
+(fifteenth), (seventh)) : la carte ne dépend plus du découpage,
+`pb100_boot_etalon` est ré-épinglé sur l'écran du Portable
+(`cc4a869f52d960ad`) et le reset de NeoST est porté. Reste à comprendre
+pourquoi le Finder laisse la montre sur les deux machines (`InitCursor`
+puis `SetCursor` depuis `$7ABEFA`). **Ouvert — Nightly `asan-ubsan`** :
+deux dépassements de délai, sans rapport du sanitizer —
+`cache040_test` (> 1800 s ; 5 s le 2026-11-09) et
+`jit_asset_free_lockstep_test` (> 300 s ; 105-128 s alors), alourdis par
+les matrices de fautes 68040 des 10 et 11 novembre. À ne pas
 reprendre : `71b92cc` (retard d'échantillonnage IPL, non tranché côté
 NeoST).
 
