@@ -275,6 +275,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
+- **Why were the LC III and the IIvx the slowest 68030 machines under the JIT?** → [A refused window cost 32 interpreted instructions](#2026-11-12-jit-transient-refusal)
 - **Why was the JIT never faster than the interpreter on the 68030 PowerBooks?** → [Power cycling: 2.6 million flushes per boot](#2026-11-12-pb030-wake-reset)
 - **Why did the JIT run an SE/30 under System 7 slower than the interpreter, and why did one x86-64 gate never finish?** → [The CACR hint on the GLUE board](#2026-11-12-glue-cacr-inventory)
 - **Are NeoST's reset timing and the Portable slicing fix merged, and what did the slicing gate find on the way?** → [Merged; 80 unseeded bytes in the CPU state](#2026-11-12-neost-port-merged)
@@ -1347,6 +1348,77 @@ Newest first.
 
 ---
 
+<a id="2026-11-12-jit-transient-refusal"></a>
+## 2026-11-12 (tenth) — A refused fetch window cost 32 interpreted instructions even when the next one would have armed: one immediate retry, LC III and IIvx 17-18 % faster
+
+**Found the same way as entries (eighth) and (ninth)**: by ranking each
+gate against its `interp_` twin in the tier logs. After the PowerBooks,
+the weakest were `iivx_boot_etalon` (0.73 of the interpreter's time) and
+`lc3_boot_etalon` (0.69), against 0.39 for the IIsi and 0.26 for the
+LC II.
+
+**The counters.** An LC III boot retired 603 M of its 2 831 M
+instructions in the interpreter, the IIvx 570 M of 3 486 M, the IIsi
+107 M of 2 226 M. The difference is one line of the miss table: `arm
+backoff` 537 M and 429 M against 9 M. `armWindow` refused 16.8 M and
+13.4 M times, and each refusal is followed by 32 instructions the
+interpreter runs alone before the engine probes again
+(`POM68K_JIT_ARM_BACKOFF`).
+
+**Why the backoff was wasted.** Two kinds of refusal are cured by the
+very next instruction, and they were nearly all of them:
+
+- `ArmFail::Probe`, "no ATC entry yet". The interpreted instruction
+  fetches through the MMU and fills the entry. Measured directly: of
+  16 782 622 such refusals in the LC III boot, 16 777 827 were probeable
+  at the same pc one instruction later. They come in chains on different
+  pages — an A-line trap, its dispatcher, the routine (opcodes `$ABF7`
+  and `$A030` head the list) — on machines whose 22-entry ATC churns.
+- `ArmFail::PcAtEnd`, pc in the last bytes of its page. The LC III runs
+  8 KB pages and has one hot instruction at `$35FFE`: 4.3 M refusals,
+  each paying the full backoff.
+
+**The rule.** After a transient refusal the engine retries at the next
+instruction. If that retry is refused again in the same 256 bytes and
+privilege, the full backoff applies, so code that stays unarmable costs
+two probes per backoff period — not the probe per instruction that the
+backoff was introduced against. A refusal elsewhere is a new page and
+gets its own retry. Every other refusal (not plain memory, the PMOVE
+pipe, the 68040 line) backs off as before. `JitEngine.h`,
+`backoffAfterRefusal`. The guest sees nothing: the window and the
+interpreter are fetch-identical by contract, which the lockstep gates
+hold.
+
+`JitConfig.h` records that lowering the knob globally on the LC II was
+noise (2026-08). That still holds — the LC II has few refusals — and is
+why this is a rule about the refusal's kind, not a new default.
+
+**Measured** (M4, AArch64, idle host). Benches, six interleaved passes
+per arm, fingerprints identical: LC II 2.948 → 2.941 s at 3 000 frames
+and 5.204 → 5.211 s at 6 000; Quadra 605 1.905 → 1.907 s and 8.395 →
+8.305 s (−1.1 %). Whole gates, old / new / new / old:
+
+| Gate | Before | After | |
+|---|---|---|---|
+| `lc3_boot_etalon` | 61.78, 62.11 s | 50.54, 50.85 s | −18 % |
+| `iivx_boot_etalon` | 77.41, 76.79 s | 64.26, 64.06 s | −17 % |
+| `se30_agent_boot_etalon` | 18.29, 18.20 s | 16.22, 16.22 s | −11 % |
+| `pb180_boot_etalon` | 20.46, 20.80 s | 19.20, 18.35 s | −9 % |
+| `duo230_boot_etalon` | 19.96, 19.96 s | 19.97, 19.17 s | −2 % |
+| `iisi_boot_etalon` | 24.20, 24.24 s | 24.02, 24.04 s | −1 % |
+| `lcii_boot_etalon` | 17.20, 17.28 s | 17.86, 17.27 s | +2 %, inside its own spread |
+
+**A measurement I threw away.** The first bench comparison showed LC II
+−25 %. Both binaries were stale: `jit_bench*` are `EXCLUDE_FROM_ALL`,
+neither had been rebuilt, and the figure was the morning's pinned-bases
+gain measured a second time. The numbers above are from benches rebuilt
+on both sides.
+
+**Left.** The LC III still refuses 30 M probes: the churn of a 22-entry
+ATC under 8 KB pages is the guest's, and the data TLB refuses 180 M
+fills for the same reason. Raw bench output:
+`scratchpad/2026-11-12/jit-probe-retry/`.
+
 <a id="2026-11-12-pb030-wake-reset"></a>
 ## 2026-11-12 (ninth) — The 68030 PowerBooks dropped all generated code 2.6 million times per boot: power cycling resets the CPU, and each reset flushed twice; boots 33-40 % faster, the JIT ahead of the interpreter at last
 
@@ -1414,8 +1486,10 @@ reset at once and spins through the wake path until one arrives:
 machine time of an idle boot. Modelling the power-off interval would
 skip that time on both engines; it is a hardware-timing change with its
 own evidence to gather (`TODO.md`). The steady state still interprets a
-quarter of its instructions (123 M of 489 M), the flagged steps that
-follow each reset.
+fifth of its instructions (123 M of 612 M — corrected 2026-11-12
+(tenth): the engine's `instrs` counter excludes the interpreted ones,
+and the first text divided by it alone), the flagged steps that follow
+each reset.
 
 **Tiers** on the change (M4; x86-64 under Rosetta): AArch64 every gate
 outside `m030`/`m040` 274 / 274 and `m030` 141 / 141; x86-64 `m030`

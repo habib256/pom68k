@@ -715,6 +715,7 @@ bool Engine::armWindow(uint32_t pc, bool super) {
     // identically. Checked before the covers fast path: a PMOVE to CRP with
     // translation off arms the pipe without moving the map, so coverage
     // alone cannot see it. (2026-08-29; the +2/+2 lockstep class.)
+    armRefusedTransient_ = false;
     if (cpu_.pomMmuPipeLive()) [[unlikely]] {
         stats_.add(stats_.windowFailed);
         stats_.bump(ArmFail::Pipe);
@@ -752,6 +753,7 @@ bool Engine::armWindow(uint32_t pc, bool super) {
         // fills the ATC, so the next attempt usually succeeds.
         stats_.add(stats_.windowFailed);
         stats_.bump(ArmFail::Probe);
+        armRefusedTransient_ = true;
         disarmWindow();
         return false;
     }
@@ -784,6 +786,7 @@ bool Engine::armWindow(uint32_t pc, bool super) {
     if (len < kMinWindow || pc - pageBase > len - kMinWindow) {
         stats_.add(stats_.windowFailed);
         stats_.bump(len < kMinWindow ? ArmFail::TooShort : ArmFail::PcAtEnd);
+        armRefusedTransient_ = len >= kMinWindow;   // pc at the end
         disarmWindow();
         return false;
     }
@@ -1328,7 +1331,7 @@ void Engine::executeUntil(int64_t clockTarget) {
             // Code outside plain memory, or a translation the probe cannot
             // confirm. The interpreter runs it and stacks any fault itself
             // — and the next probes wait their turn.
-            armBackoff_ = armBackoff_steps_;
+            armBackoff_ = backoffAfterRefusal(pc, super);
             cpu_.execute();
             stats_.add(stats_.interpInstrs);
             stats_.miss(Miss::ArmFailed);
@@ -1336,6 +1339,7 @@ void Engine::executeUntil(int64_t clockTarget) {
             continue;
         }
         armBackoff_ = 0;
+        armRetried_ = false;
 
         if (!useBlocks_) { runWindow(clockTarget); continue; }
 
