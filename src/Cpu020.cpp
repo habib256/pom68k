@@ -16,6 +16,8 @@ Cpu020::Cpu020(MacIIMemory& mem, const jit::ResolvedConfig& jitConfig,
                                  : moira::FPUModel::M68881)
                         : moira::FPUModel::NONE);
     eventDriven_ = cpuConfig.macIiEventDriven;
+    if (cpuConfig.cacr030Flush)
+        cacrFlushPolicy_ = *cpuConfig.cacr030Flush ? 1 : 0;
     // The JIT is paced by the same batch that caps the deadline below: the
     // cap is the worst case, so telling the engine the batch keeps it
     // conservative whatever the devices ask for on a given quantum.
@@ -32,12 +34,22 @@ void Cpu020::hardReset() {
     setISP(0x2000);
 }
 
-// A cache-control write is the guest announcing freshly written code — the
-// same SMC hint every other wrapper honours. Bit 3 (CI) / bit 11 on the 030
-// are strobes; flushing on any CACR write is conservative and cheap (the
-// System writes it a handful of times per boot).
-void Cpu020::didChangeCACR(moira::u32 /*value*/) {
-    jit_.flushAll();
+// The CACR SMC hint, retired behind this board's own audited store
+// inventory (MacIIMemory::kJitStoreInventoryComplete, pinned by
+// store_inventory_test): every RAM store already crosses CodeGuard::note(),
+// so the drop-all flush protected nothing. It was not "a handful of times
+// per boot" either: System 7.0 idling in the Finder on an SE/30 writes
+// CACR = $2109 (CI set) 22 times a frame, so the block cache never kept
+// anything — about 20 compilations a frame for ever (measured 2026-11-12,
+// se30_boot_etalon with the agent: 10 170 compile attempts per 500 frames).
+// Only the instruction-cache strobes (C/CI bit 3, CE/CEI bit 2, same bits
+// on the 68020 and the 68030) ever announced code; a data-cache command or
+// an enable bit never did. POM68K_JIT_030_CACR_FLUSH keeps its three
+// values as on the other boards: =1 forces the hint back on to price it.
+void Cpu020::didChangeCACR(moira::u32 value) {
+    const bool flush = cacrFlushPolicy_ < 0
+        ? !MacIIMemory::kJitStoreInventoryComplete : cacrFlushPolicy_ != 0;
+    if ((value & 0x0C) && flush) jit_.flushAll();
 }
 
 void Cpu020::runCycles(moira::i64 n) {
