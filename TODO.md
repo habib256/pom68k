@@ -643,8 +643,16 @@ d'instruction.
   030 récentes.** `Pb030Cpu` (neuf PowerBook) reçoit du code natif par
   `auto` sans aucun gate à `POM68K_JIT_REQUIRE_NATIVE` ; le
   `jit_duo230_boot_etalon` promis par `docs/JIT_BRINGUP.md` n'existe pas ;
-  `kJitStoreInventoryComplete` manque sur Pb030, IIfx et `Cpu020`, qui
-  vident le JIT à chaque écriture de CACR (chiffré −21,8 % ailleurs).
+  `kJitStoreInventoryComplete` manque sur Pb030 et IIfx, qui vident le
+  JIT à chaque écriture de CACR. `Cpu020` (GLUE) l'a depuis le 2026-11-12
+  (`CHANGELOG` (eighth)) : SE/30 sous System 7 quatre fois plus vite, le
+  JIT y était plus lent que l'interpréteur. À faire pour les deux
+  autres : compter d'abord les vidages par trame au Finder (le IIfx a un
+  DMA SCSI et des IOP à auditer avant toute déclaration). Deux restes du
+  changement GLUE : `se30_boot_etalon` perd 5 % (blocs périmés gardés à
+  travers 826 changements de carte mémoire, sorties `WindowLost` × 3),
+  et il n'existe aucun banc GLUE à empreinte — les chiffres viennent de
+  gates entiers.
 - [ ] **Tenir une table de parité datée au-delà de `canEmit`.**
   `jit_backend_parity_test` ne balaie que l'encodage ; les refus décidés à
   l'émission ne sont pas comparés. Écarts connus : côté a64 seul,
