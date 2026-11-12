@@ -25,7 +25,8 @@
 // TODO § B.4 rule: do not extrapolate one board's proof to another. Each
 // claiming pair below was audited individually (V8: 2026-08-19 §
 // C.4quinquies; VASP: 2026-09-03 (ninth); RBV: 2026-09-03 (tenth); MSC: 2026-09-03 (eleventh);
-// Sonora: 2026-09-04; GLUE: 2026-11-12 (eighth)).
+// Sonora: 2026-09-04; GLUE: 2026-11-12 (eighth);
+// Pb030: 2026-11-12 (ninth)).
 
 #include "AssetFingerprint.h"
 
@@ -69,7 +70,9 @@ void checkInventory(const std::string& name, const std::string& cppPath) {
 
     // An assignment into the RAM vector: `ram_[i] = v` in any spelling,
     // excluding comparisons (== / != handled by requiring a single `=`).
-    const std::regex store(R"(ram_\[[^\]]*\]\s*=[^=])");
+    // `\b` keeps `vram_[...] =` out: video RAM is not `ram_`, and no block
+    // is ever recorded from it (codeSpan serves RAM and ROM only).
+    const std::regex store(R"(\bram_\[[^\]]*\]\s*=[^=])");
     // `noteRam(` is the GLUE board's wrapper around note(): it notes both
     // bus addresses of a mirrored byte (MacIIMemory.h).
     const std::regex noted(R"(->note\(|noteRam\()");
@@ -119,6 +122,8 @@ int main() {
         // out-of-line store goes through a ramAt() pointer and has its own
         // rule below.
         {"GLUE", "src/MacIIMemory.h", "src/MacIIMemory.h", "src/Cpu020.cpp"},
+        {"Pb030", "src/Pb030Memory.h", "src/Pb030Memory.cpp",
+         "src/Pb030Cpu.cpp"},
     };
     for (const Board& b : proven) {
         const std::string header = slurp(testasset::find(b.header));

@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 784 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 785 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,7 +8,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 106 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 107 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 117 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 37 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
@@ -130,6 +130,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-11 (sixth)** — [The 68040 ATC transaction of an exact native access copies entries only when one changes: Quadra 605 JIT 2-7 % faster](CHANGELOG.md#2026-11-11-atc-replay-cow)
 - **2026-11-12 (eighth)** — [On the Mac II family the JIT dropped every block 22 times a frame: the CACR hint retired on GLUE, SE/30 under System 7 four times faster, and the x86-64 gate that never finished](CHANGELOG.md#2026-11-12-glue-cacr-inventory)
 - **2026-11-12 (fifth)** — [The two x64 reds were mine: the copy-on-write ATC snapshot kept a pointer to a stack object; one release call, and what the search got wrong on the way](CHANGELOG.md#2026-11-12-x64-atc-cow-dangling)
+- **2026-11-12 (ninth)** — [The 68030 PowerBooks dropped all generated code 2.6 million times per boot: power cycling resets the CPU, and each reset flushed twice; boots 33-40 % faster, the JIT ahead of the interpreter at last](CHANGELOG.md#2026-11-12-pb030-wake-reset)
 - **2026-11-12 (sixth)** — [The a64 generator spent three or four instructions to reach every CPU field: two pinned base registers, LC II 22-28 % faster, Quadra 605 6-11 %; three engine experiments measured beside it](CHANGELOG.md#2026-11-12-a64-pinned-bases)
 - **2026-11-12 (third)** — [The x86-64 leg, run at last: unit and 68030 tiers hold, one red cell of mine fixed, two 68040 agent gates crash on the x64 backend (open)](CHANGELOG.md#2026-11-12-x64-leg)
 

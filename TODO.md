@@ -643,16 +643,23 @@ d'instruction.
   030 récentes.** `Pb030Cpu` (neuf PowerBook) reçoit du code natif par
   `auto` sans aucun gate à `POM68K_JIT_REQUIRE_NATIVE` ; le
   `jit_duo230_boot_etalon` promis par `docs/JIT_BRINGUP.md` n'existe pas ;
-  `kJitStoreInventoryComplete` manque sur Pb030 et IIfx, qui vident le
-  JIT à chaque écriture de CACR. `Cpu020` (GLUE) l'a depuis le 2026-11-12
-  (`CHANGELOG` (eighth)) : SE/30 sous System 7 quatre fois plus vite, le
-  JIT y était plus lent que l'interpréteur. À faire pour les deux
-  autres : compter d'abord les vidages par trame au Finder (le IIfx a un
-  DMA SCSI et des IOP à auditer avant toute déclaration). Deux restes du
-  changement GLUE : `se30_boot_etalon` perd 5 % (blocs périmés gardés à
-  travers 826 changements de carte mémoire, sorties `WindowLost` × 3),
-  et il n'existe aucun banc GLUE à empreinte — les chiffres viennent de
-  gates entiers.
+  `kJitStoreInventoryComplete` ne manque plus que sur le IIfx, qui vide
+  le JIT à chaque écriture de CACR (DMA SCSI et IOP à auditer avant toute
+  déclaration ; compter d'abord les vidages par trame au Finder). GLUE et
+  Pb030 l'ont depuis le 2026-11-12 (`CHANGELOG` (eighth), (ninth)) :
+  SE/30 sous System 7 quatre fois plus vite, PowerBook 030 −29 à −40 %.
+  Restes : `se30_boot_etalon` perd 5 % (blocs périmés gardés à travers
+  826 changements de carte mémoire, sorties `WindowLost` × 3) ; aucun
+  banc GLUE ni PowerBook à empreinte — les chiffres viennent de gates
+  entiers.
+- [ ] **Modéliser l'intervalle hors tension du power cycling des
+  PowerBook 030.** Le réveil est un reset immédiat
+  (`Pb030Memory::consumeReset`) : 1,29 M de resets par boot de PowerBook
+  180, le processeur tourne dans le chemin de réveil de la ROM au lieu
+  d'attendre l'interruption suivante comme le matériel. Sauter ce temps
+  profiterait aux deux moteurs ; c'est un changement de temps machine,
+  qui demande son témoin (ROM : la séquence d'endormissement ; MAME
+  `jaws_w` @ révision à nommer) et un ré-épinglage éventuel des écrans.
 - [ ] **Tenir une table de parité datée au-delà de `canEmit`.**
   `jit_backend_parity_test` ne balaie que l'encodage ; les refus décidés à
   l'émission ne sont pas comparés. Écarts connus : côté a64 seul,
