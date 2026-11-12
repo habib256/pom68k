@@ -1348,6 +1348,52 @@ Newest first.
 
 ---
 
+<a id="2026-11-13-settle-irq-parked"></a>
+## 2026-11-13 — The `CHECK_IRQ` settle is parked: it changes which block owns a device read, and the gate that says that read is native never ran it native
+
+**Tried.** The candidate left measured on 2026-11-12 (sixth): in the
+dispatcher, clear a lone `CHECK_IRQ` that has nothing to deliver
+(`Moira::pomJitSettleIrq`) instead of sending the instruction through
+`execute()`. Applied on `202ae52c` with its `moira_rules_test` cell. The
+cell passes; AArch64 `unit|jit` goes 181/185, the reds being two
+bookkeeping gates and seven pinned counters in
+`jit_asset_free_lockstep_test` and `jit_restart_write_030_test`.
+
+**Six of the seven are one instruction.** 704 → 705, 1 024 → 1 025,
+2 047 → 2 048: the first instruction after `setSR` now runs in a block.
+
+**The seventh is not bookkeeping.** `runExactSourceMove` loops
+`MOVE.B (A0),(A1)+ ; NOP ; NOP ; NOP ; BRA` with A0 on a device, and
+requires `slowInstrs == 0`. It reports 383.
+
+- Before: the first `MOVE` is interpreted for the flag, so the first block
+  recorded starts at `kCode+2` (four instructions). The block at `kCode`
+  then stops at that entry, holds the `MOVE` alone, and the backend
+  refuses it (`rejected`, 383 visits). The dispatcher interprets the
+  `MOVE` on the window path. `slowInstrs` stays 0 because the `MOVE` is
+  in no block.
+- After: the block at `kCode` is recorded first, five instructions, and is
+  compiled. Its `MOVE` takes the in-block slow step on all 384 passes.
+  `pom68kJitRead` is never called and the two-EA emitter is never reached
+  for it.
+
+So in neither arrangement does the a64 backend run this device-source
+`MOVE` through the exact thunk, with `POM68K_JIT_ACCESS_THUNK` at its
+default of 2, and the check titled "exact MMIO source + preflighted RAM
+destination stays native and exact" has been passing on a block that was
+never compiled. I did not find why the instruction is a fallback, nor
+whether x86-64 behaves the same.
+
+**Why parked.** Re-pinning that counter to 383 would write the gap into
+the gate. The settle itself stays exact (every lockstep comparison in the
+two gates passes); what is missing is the answer to the question above,
+then the ROM tiers of both hosts. Nothing was committed; the seam and its
+cell are still `scratchpad/2026-11-12/a64-pinned-bases/candidate_A_seam_and_gate.patch`.
+
+**Nightly.** Run 43272142073 on `94f7bb36` is green on every leg,
+`asan-ubsan` included: the bounds for instrumented builds (3 600 s and
+900 s) hold.
+
 <a id="2026-11-12-jit-transient-refusal"></a>
 ## 2026-11-12 (tenth) — A refused fetch window cost 32 interpreted instructions even when the next one would have armed: one immediate retry, LC III and IIvx 17-18 % faster
 
