@@ -53,6 +53,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <new>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -1652,6 +1653,22 @@ void tableSearchBusError030()
     }
 }
 
+// POM68K (Moira.h, fpu.fp): a core that has not been reset yet is serialized
+// too — the Portable's is held by its Power Manager — so its FP registers
+// must not be whatever the allocator left. Built over scribbled storage.
+void unresetFpZero()
+{
+    alignas(TestCpu) static unsigned char raw[sizeof(TestCpu)];
+    std::memset(raw, 0xA5, sizeof raw);
+    TestCpu* c = new (raw) TestCpu(moira::Model::M68000);
+    for (int n = 0; n < 8; n++) {
+        moira::u32 w[3]; c->getFP(n, w);
+        CHECK(w[0] == 0 && w[1] == 0 && w[2] == 0,
+              "FP%d of a never-reset core is %08X %08X %08X", n, w[0], w[1], w[2]);
+    }
+    c->~TestCpu();
+}
+
 int main(int argc, char** argv)
 {
     if (argc == 2 && std::string_view(argv[1]) == "--movem-restart") {
@@ -1691,6 +1708,7 @@ int main(int argc, char** argv)
 #endif
     stop68000();
     reset68000();
+    unresetFpZero();
 
     if (failures) {
         std::printf("[moira_rules_test] FAIL: %d check(s)\n", failures);
@@ -1703,6 +1721,6 @@ int main(int argc, char** argv)
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68EC030 plain-020 path with a 68030 "
-                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing\n");
+                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset\n");
     return 0;
 }
