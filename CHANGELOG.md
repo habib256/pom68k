@@ -275,6 +275,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
+- **Why did the JIT run an SE/30 under System 7 slower than the interpreter, and why did one x86-64 gate never finish?** → [The CACR hint on the GLUE board](#2026-11-12-glue-cacr-inventory)
 - **Are NeoST's reset timing and the Portable slicing fix merged, and what did the slicing gate find on the way?** → [Merged; 80 unseeded bytes in the CPU state](#2026-11-12-neost-port-merged)
 - **Why was a64 generated code a kilobyte per guest instruction, and what did pinning two base registers buy?** → [Pinned bases](#2026-11-12-a64-pinned-bases)
 - **Do the changes of 2026-11-11/12 hold on the x86-64 backend, and how can this host check?** → [The x86-64 leg under Rosetta](#2026-11-12-x64-leg)
@@ -1344,6 +1345,76 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-12-glue-cacr-inventory"></a>
+## 2026-11-12 (eighth) — On the Mac II family the JIT dropped every block 22 times a frame: the CACR hint retired on GLUE, SE/30 under System 7 four times faster, and the x86-64 gate that never finished
+
+**How it was found.** The x86-64 leg of entry (seventh) left
+`se30_agent_boot_etalon` running for 29 minutes under Rosetta; the same
+gate takes about 75 s on AArch64. A `sample` of the process showed a
+third of the main thread inside `X64Backend::compile`, for the whole
+run, and the rest in Rosetta's runtime. My first reading — an `mprotect`
+pair per block — was wrong: Rosetta grants a read-write-execute mapping,
+`CodeBuffer` runs unified, and the sample contains no `mprotect`. The
+hot line was the `memcpy` of a finished block into the code buffer.
+Rosetta only made visible what every host was paying.
+
+**The defect.** `Cpu020::didChangeCACR` dropped the whole block cache on
+any CACR write, with the comment "the System writes it a handful of
+times per boot". System 7.0 idling in the Finder on an SE/30 writes
+CACR = `$2109` (WA, ED, CI, EI: an instruction-cache clear) 22 times a
+frame. Measured on that gate, 500 frames of steady state: 11 050
+flushes, 10 170 compile attempts, between 60 and 700 live blocks. The
+JIT ran this machine **slower than the interpreter** (78 s against 46 s
+for the whole gate).
+
+**The change.** The hint is retired the way it was on V8, VASP, RBV,
+MSC and Sonora: behind the board's own audited store inventory. On a
+GLUE board there are three store sites into `ram_` — the inline RAM
+fast path of `write8`/`write16` (`MacIIMemory.h`, `noteRam()` first)
+and `write8Decoded` (`MacIIMemory.cpp`, `note()` then the byte through
+`ramAt()`); each notes both bus addresses of a byte the 8 MiB mirror
+doubles. The 5380's pseudo-DMA is guest MOVEs, the other devices are
+polled or own their memory, and no modelled device masters the bus.
+`MacIIMemory::kJitStoreInventoryComplete` declares it;
+`store_inventory_test` gains a GLUE row (rules 1-3 over the header,
+where the `ram_[…] =` stores are) and a rule of its own for the
+writable `ramAt()` pointer. `POM68K_JIT_030_CACR_FLUSH=1` still forces
+the hint back on. Pb030 and IIfx keep the flush: no audit yet.
+
+**Measured** (M4, AArch64, idle host; whole-gate wall clock, old / new /
+new / old, same final state and same agent transcript on both sides):
+
+| Gate | Before | After | |
+|---|---|---|---|
+| `se30_agent_boot_etalon` (System 7.0) | 75.2, 76.0 s | 18.3, 18.5 s | −76 % |
+| `iicx_824_8bit_etalon` | 34.5, 33.6 s | 12.0, 11.6 s | −65 % |
+| `iix_agent_boot_etalon` | 15.2, 14.9 s | 13.6, 13.2 s | −11 % |
+| `iicx_agent_boot_etalon` | 14.6, 14.8 s | 13.3, 13.1 s | −10 % |
+| `macii_sys7_agent_boot_etalon` (68020, interpreter by default) | 33.0, 32.2 s | 32.7, 32.2 s | — |
+| `se30_boot_etalon` (three interleaved passes) | 14.09, 14.18, 14.19 s | 14.90, 14.86, 14.78 s | **+5 %** |
+
+These are gates, not benches: the figures include boot, asset hashing
+and the gate's own settling, and there is no GLUE bench with a
+fingerprint (`TODO.md`). The one loss is real. On that boot the hint
+fired only 3 231 times in 20 000 frames, so there was no storm to
+remove, and the flush had a side effect that is now missing: with the
+blocks kept across the board's 826 map changes, `WindowLost` exits go
+from 0.47 M to 1.52 M and instructions run through a block's fallback
+from 0.37 M to 1.44 M. That is the stale-block cost the LC II entry of
+2026-08-19 describes; it is open, not explained away.
+
+Under Rosetta (x86-64, loaded host, one run each, so indicative only):
+`se30_agent_boot_etalon` did not finish in 1 752 s and takes 71 s;
+`iicx_824_8bit_etalon` 412 → 24 s; `iix_agent_boot_etalon` 154 → 28 s.
+
+**Tiers** on the change: AArch64 every gate outside `m030`/`m040`
+273 / 274, x86-64 274 / 275 with `se30_agent_boot_etalon` back in; the
+one red on each side was `docs_test` (a line citation this change moved
+on AArch64, the `STATUS.md` section entry (seventh) regenerates on
+x86-64) and passes on the merged tree. No gate soft-skipped. `m030` and
+`m040` were not run: no board of either label uses `Cpu020` or
+`MacIIMemory`.
 
 <a id="2026-11-12-neost-port-merged"></a>
 ## 2026-11-12 (seventh) — NeoST's reset timing and the Portable slicing fix are on `main`; the slicing gate found 80 unseeded bytes in the CPU state; the Linux CI was red on a compile error
