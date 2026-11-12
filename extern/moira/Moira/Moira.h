@@ -1767,7 +1767,11 @@ protected:
 
     struct {
 
-        FpuExtended fp[8];  // [B] MC68881UM-1989 §2.1: reset floating-point registers. — FP0-FP7 (reset = nonsignaling NaN, § 2.1)
+        // POM68K: value-initialised. fpuResetState() writes the reset NaNs,
+        // but a core that has not been reset yet (the Portable's, held by
+        // its Power Manager) is serialized too, and carried heap bytes here.
+        // Gate: portable_slicing_etalon (two machines, one process, frame 0).
+        FpuExtended fp[8] {};  // [B] MC68881UM-1989 §2.1: reset floating-point registers. — FP0-FP7 (reset = nonsignaling NaN, § 2.1)
         u32 fpcr {};        // control register (enables + mode byte)
         u32 fpsr {};        // status register (cc, quotient, exc, accrued)
         u32 fpiar {};       // instruction address register
