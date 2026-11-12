@@ -57,6 +57,7 @@ public:
 private:
     friend pom68k::MoiraCpu<Cpu020, MacIIMemory>;
     bool eventDriven_ = false;
+    int cacrFlushPolicy_ = -1;      // -1 = the board's own answer (didChangeCACR)
     moira::u16 read16OnReset(moira::u32 addr) const override;
     void didChangeCACR(moira::u32 value) override;
     // Inline: this is the tail of every sync() charge (MoiraCpu::sync).

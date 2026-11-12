@@ -148,6 +148,23 @@ public:
     // window may cache.
     const uint8_t* codeSpan(uint32_t phys, uint32_t& len) const;
     uint8_t* dataSpan(uint32_t phys, uint32_t& len, bool write);
+    // Every path that can deposit code in guest RAM on a GLUE board passes
+    // CodeGuard::note(). There are three store sites: the inline RAM fast
+    // path of write8 and write16 above (noteRam() first) and write8Decoded
+    // (MacIIMemory.cpp, note() first, then the byte through ramAt()); on an
+    // 8 MiB board each notes BOTH bus addresses of a mirrored byte. The
+    // 5380's pseudo-DMA port is read and written by guest MOVEs; the IWM/
+    // SWIM, the SCC and ADB are polled; the ASC plays from its own FIFO;
+    // the NuBus video card and the SE/30's built-in video own their VRAM
+    // and never write system RAM. Generated-code stores cross the DTLB
+    // codeMask into pomJitWrite -> write8/16, and dataSpan() hands the
+    // write window out only under that same engine-side codeMask. No
+    // modelled device masters the bus. `store_inventory_test` pins these
+    // source properties; a board that grows a bus master (a NuBus card
+    // with DMA) must flip this back and take the CACR SMC flush with it
+    // (Cpu020::didChangeCACR).
+    static constexpr bool kJitStoreInventoryComplete = true;
+
     void setJitGuard(jit::CodeGuard* g) { jitGuard_ = g; }
     // The address map itself moved — the one invalidation a write guard
     // cannot see. Three callers: the overlay latch dropping, the GLUE

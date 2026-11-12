@@ -25,7 +25,7 @@
 // TODO § B.4 rule: do not extrapolate one board's proof to another. Each
 // claiming pair below was audited individually (V8: 2026-08-19 §
 // C.4quinquies; VASP: 2026-09-03 (ninth); RBV: 2026-09-03 (tenth); MSC: 2026-09-03 (eleventh);
-// Sonora: 2026-09-04).
+// Sonora: 2026-09-04; GLUE: 2026-11-12 (eighth)).
 
 #include "AssetFingerprint.h"
 
@@ -70,7 +70,9 @@ void checkInventory(const std::string& name, const std::string& cppPath) {
     // An assignment into the RAM vector: `ram_[i] = v` in any spelling,
     // excluding comparisons (== / != handled by requiring a single `=`).
     const std::regex store(R"(ram_\[[^\]]*\]\s*=[^=])");
-    const std::regex noted(R"(->note\()");
+    // `noteRam(` is the GLUE board's wrapper around note(): it notes both
+    // bus addresses of a mirrored byte (MacIIMemory.h).
+    const std::regex noted(R"(->note\(|noteRam\()");
     int stores = 0;
     for (size_t i = 0; i < ls.size(); i++) {
         if (!std::regex_search(ls[i], store)) continue;
@@ -112,6 +114,11 @@ int main() {
         {"MSC", "src/MscMemory.h", "src/MscMemory.cpp", "src/MscCpu.cpp"},
         {"Sonora", "src/SonoraMemory.h", "src/SonoraMemory.cpp",
          "src/SonoraCpu.cpp"},
+        // GLUE (2026-11-12): the `ram_[...] =` stores are the inline fast
+        // path in the HEADER, so that is the file rules 1-3 walk; the
+        // out-of-line store goes through a ramAt() pointer and has its own
+        // rule below.
+        {"GLUE", "src/MacIIMemory.h", "src/MacIIMemory.h", "src/Cpu020.cpp"},
     };
     for (const Board& b : proven) {
         const std::string header = slurp(testasset::find(b.header));
@@ -122,6 +129,29 @@ int main() {
         const std::string wrapper = slurp(testasset::find(b.wrapper));
         check(wrapper.find("kJitStoreInventoryComplete") != std::string::npos,
               std::string(b.name) + ": wrapper consults the constant");
+    }
+
+    // GLUE only: MacIIMemory.cpp stores through `uint8_t* p = ramAt(...)`.
+    // Every place that takes that non-const pointer must note() within the
+    // next 12 lines, before the byte is written.
+    {
+        const std::vector<std::string> ls =
+            lines(slurp(testasset::find("src/MacIIMemory.cpp")));
+        const std::regex taken(R"(uint8_t\*\s*\w+\s*=\s*ramAt\()");
+        const std::regex constTaken(R"(const\s+uint8_t\*)");
+        int sites = 0;
+        for (size_t i = 0; i < ls.size(); i++) {
+            if (!std::regex_search(ls[i], taken) ||
+                std::regex_search(ls[i], constTaken)) continue;
+            sites++;
+            bool guarded = false;
+            for (size_t j = i; j < ls.size() && j <= i + 12; j++)
+                if (ls[j].find("->note(") != std::string::npos) { guarded = true; break; }
+            check(guarded, "GLUE: writable ramAt() pointer at src/MacIIMemory.cpp:" +
+                               std::to_string(i + 1) + " is followed by a CodeGuard note()");
+        }
+        check(sites > 0, "GLUE: the scanner still sees the ramAt() store site (" +
+                             std::to_string(sites) + ")");
     }
 
     // ── The boards that have NOT earned the claim keep the flush ─────────
