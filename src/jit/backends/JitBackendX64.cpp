@@ -5633,6 +5633,8 @@ RunResult X64Backend::run(Compiled* c, Context& ctx) {
     using Fn = void (*)(moira::Moira*, Frame*);
     reinterpret_cast<Fn>(static_cast<X64Compiled*>(c)->entry)(ctx.cpu, &f);
     if (f.atc.active) ctx.cpu->pomJitAtcReplayAbort040(f.atc);
+    // `f` dies here and Moira may still point at f.atc (Moira.h § pomAtcCow040).
+    ctx.cpu->pomJitAtcReplayRelease040(f.atc);
 
     RunResult r;
     r.instrs = f.instrs;

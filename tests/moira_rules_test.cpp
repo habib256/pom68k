@@ -1439,6 +1439,21 @@ void atcReplayCopyOnWrite040()
         for (uint8_t b : r.opaque) untouched = untouched && b == 0xA5;
         CHECK(untouched && r.active == 0 && (kind == 0 || !P::armed(c)),
               "kind %d: a retired transaction was written to", kind);
+
+        // An owner whose replay object dies (the x64 backend's lives on the
+        // stack of run()) releases it; whatever lands in that storage later,
+        // even bits that read as "begun, not copied", is never written to.
+        P::begin(c, r);
+        r.active = 0;
+        c.pomJitAtcReplayRelease040(r);
+        r.active = 3;
+        std::memset(r.opaque, 0xA5, sizeof r.opaque);
+        P::mutate(c, kind);
+        untouched = true;
+        for (uint8_t b : r.opaque) untouched = untouched && b == 0xA5;
+        CHECK(untouched && r.active == 3 && !P::armed(c),
+              "kind %d: a released replay object was written to", kind);
+        r.active = 0;
     }
 }
 #endif
