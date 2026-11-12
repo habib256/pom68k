@@ -1,0 +1,13 @@
+jit_bench_lcii frames=3000 n=6 load 2.1->2.2 fingerprints=['619ac389e7c6b6f1']
+  base     mean 3.672s  min 3.654 max 3.709 spread 1.5%  vs base +0.0%
+  pinned   mean 2.856s  min 2.836 max 2.907 spread 2.5%  vs base -22.2%
+jit_bench_lcii frames=6000 n=6 load 2.1->2.0 fingerprints=['ee9de0a7c16fb3dc']
+  base     mean 6.888s  min 6.807 max 6.959 spread 2.2%  vs base +0.0%
+  pinned   mean 4.960s  min 4.902 max 5.051 spread 3.0%  vs base -28.0%
+jit_bench frames=3000 n=6 load 2.0->2.0 fingerprints=['c3bfa9dece806679']
+  base     mean 2.025s  min 2.019 max 2.032 spread 0.6%  vs base +0.0%
+  pinned   mean 1.902s  min 1.894 max 1.910 spread 0.8%  vs base -6.1%
+jit_bench frames=6000 n=6 load 2.0->2.2 fingerprints=['eff73aa85d485c65']
+  base     mean 9.359s  min 9.320 max 9.431 spread 1.2%  vs base +0.0%
+  pinned   mean 8.322s  min 8.191 max 8.845 spread 7.9%  vs base -11.1%
+DONE

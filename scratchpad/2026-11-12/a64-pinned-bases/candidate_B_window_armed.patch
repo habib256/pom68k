@@ -1,0 +1,17 @@
+diff --git a/src/jit/JitEngine.cpp b/src/jit/JitEngine.cpp
+index d68d3288..19811de2 100644
+--- a/src/jit/JitEngine.cpp
++++ b/src/jit/JitEngine.cpp
+@@ -1301,7 +1301,11 @@ void Engine::executeUntil(int64_t clockTarget) {
+         // business, always. The engine never second-guesses those paths.
+         if (!cpu_.pomJitIdle()) {
+             const uint32_t fpc = cpu_.getPC();
+-            disarmWindow();
++            // The window stays armed: the interpreter fetches through it
++            // exactly as it does while tracing, and pomJitCovers() re-proves
++            // privilege and MMU generation after whatever this step did.
++            // Only the post-PMOVE pipe needs the real fetches (armWindow).
++            if (cpu_.pomMmuPipeLive()) [[unlikely]] disarmWindow();
+             cpu_.execute();
+             stats_.add(stats_.interpInstrs);
+             stats_.bump(Exit::CpuFlags);

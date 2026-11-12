@@ -275,6 +275,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
+- **Why was a64 generated code a kilobyte per guest instruction, and what did pinning two base registers buy?** → [Pinned bases](#2026-11-12-a64-pinned-bases)
 - **Do the changes of 2026-11-11/12 hold on the x86-64 backend, and how can this host check?** → [The x86-64 leg under Rosetta](#2026-11-12-x64-leg)
 - **What are the JIT's "not compilable" exits on an idle Mac, and which fixes for them worked?** → [Entries that cannot head a block](#2026-11-12-jit-unsafe-entry)
 - **Why did `LINK` run in the interpreter on the 68040, and what did admitting it change?** → [Head-position polls](#2026-11-12-jit-040-head-poll)
@@ -1340,6 +1341,137 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-12-a64-pinned-bases"></a>
+## 2026-11-12 (sixth) — The a64 generator spent three or four instructions to reach every CPU field: two pinned base registers, LC II 22-28 % faster, Quadra 605 6-11 %; three engine experiments measured beside it
+
+**The instrument.** `sample` cannot unwind out of generated code, but it
+does report the address of each such frame. A temporary dump in
+`A64Backend::compile` (host address, size, guest entry pc, instruction
+count per block; not committed) lets a script attribute those samples to
+blocks, and a second dump writes each block's bytes for `objdump`. On the
+LC II over 9 000 frames the generated code is 2 705 of 6 947 samples and
+it is flat: the hottest block holds 4 % of them. There is no hot block to
+tune; what is slow is every block.
+
+**What the disassembly showed.** A block of six instructions
+(`$40A099B0`: two pushes, a `MOVEA`, a `MOVE.W (A2)+`, a `CMPI`, a `Bcc`)
+was 6 492 bytes, 1 623 host instructions. The fields the generator reads
+and writes on every guest instruction — the clock, `pc`/`pc0`, the data
+and address registers, the status bits, `flags`, the prefetch queue —
+sit about 47 KB into the `Moira` object, and the 68030 i-cache overlay's
+counters about 72 KB in. A scaled-immediate load off `x0` reaches 16 KB
+(32 KB for a 64-bit operand), so `Asm::ldrW/strW/…` fell back to
+`MOV x15,#off` (+ `MOVK`), `ADD x15,x0,x15`, then the access: three or
+four instructions where one was meant, on nearly every line of emitted
+code.
+
+**The change.** `x28` and `x27` hold `x0 + base` for the whole generated
+chain: the register block, and the 68030 i-cache overlay (or the read
+DTLB when the overlay is not armed). The prologue sets them, they are
+callee-saved, nothing writes them afterwards, and linked blocks inherit
+them. `Asm` encodes any `x0`-relative operand within a base's reach
+against that base; everything else is unchanged. Both registers belonged
+to the optional guest-register cache (`POM68K_JIT_REG_CACHE`, off by
+default, measured slower on 2026-11-11): with that option on they keep
+that role and no base is pinned. The frame is 112 bytes in both cases.
+It is an encoding change only — no instruction's semantics, order or
+cost moves — and it is a64-only: x86-64 addresses the same fields with a
+32-bit displacement.
+
+Generated code over 3 000 LC II frames: 20.06 MB → 12.92 MB (taken
+before the overlay's miss-penalty field joined the second base); the
+block above, 6 492 → 4 164 bytes.
+
+**Measured.** One interleaved run per bench and budget, five binaries in
+the order A B C D E / E D C B A, six passes per arm after a discarded
+warm-up, AArch64 M4; an x86-64 tier running on the same host was suspended
+(`SIGSTOP`) for the duration, 1-minute load 3.7 falling to 1.9. Wall time
+is `wall_ns` from `POM68K_JIT_METRICS`. Every arm of a line has the same
+fingerprint.
+
+| Bench | Frames | `6c3eb704` | window kept armed | + settle | window kept armed + pinned bases | capped window |
+|---|---|---|---|---|---|---|
+| LC II | 3 000 | 3.658 s | 3.616 s, -1.2 % | 3.544 s, -3.1 % | 2.838 s, **-22.4 %** | 3.470 s, -5.2 % |
+| LC II | 6 000 | 6.868 s | 6.776 s, -1.3 % | 6.602 s, -3.9 % | 4.928 s, **-28.3 %** | 6.860 s, -0.1 % |
+| Quadra 605 | 3 000 | 2.019 s | 2.030 s, +0.6 % | 2.021 s, +0.1 % | 1.899 s, **-5.9 %** | 2.026 s, +0.3 % |
+| Quadra 605 | 6 000 | 9.328 s | 9.294 s, -0.4 % | 9.200 s, -1.4 % | 8.203 s, **-12.1 %** | 9.339 s, +0.1 % |
+
+Arm spreads 0.2-2.8 % (4.6 % on the last LC II cell). The pinned bases
+were measured on top of "window kept armed", so their own share is the
+fourth column against the second: LC II -21.5 % and -27.3 %, Quadra 605
+-6.5 % and -11.7 %.
+
+The binary of this change alone, against the reference, same protocol
+with two arms (load 2.1-2.2; fingerprints identical):
+
+| Bench | Frames | `6c3eb704` | pinned bases | Change |
+|---|---|---|---|---|
+| LC II | 3 000 | 3.672 s | 2.856 s | **-22.2 %** |
+| LC II | 6 000 | 6.888 s | 4.960 s | **-28.0 %** |
+| Quadra 605 | 3 000 | 2.025 s | 1.902 s | **-6.1 %** |
+| Quadra 605 | 6 000 | 9.359 s | 8.322 s | **-11.1 %** |
+
+Arm spreads 0.6-3.0 %, and 7.9 % on the last cell (one run of six at
+8.845 s against 8.19-8.25 s for the others).
+
+**The three engine experiments, none of them in this change.**
+
+- *Window kept armed across flagged steps.* `executeUntil` disarms the
+  fetch window before every interpreter step taken with a CPU flag up,
+  and re-proves it on the next dispatch. Keeping it armed (the post-PMOVE
+  pipe excepted) is exact — both fingerprints, `unit|jit` 210 / 210,
+  `m030` 141 / 141 and `m040` 102 / 102 on a64 together with the pinned
+  bases — and removes a third of the full arms on the LC II (8.53 M →
+  5.80 M per 3 000 frames). It is worth 1.2-1.3 % there, at the floor,
+  nothing on the Quadra 605, and being engine code it owes an x86-64
+  tier. Not kept.
+- *Settling a `CHECK_IRQ` that has nothing to deliver.* After an SR write
+  that does not lower the mask, `execute()` clears the flag and runs the
+  next instruction exactly as the fast path would; a seam doing only that
+  clearing lets the dispatcher run the instruction natively. "cpu flags"
+  exits on the LC II halve (5.53 M → 2.77 M per 3 000 frames), six
+  mutations of the seam are caught by its `moira_rules_test` cell, the
+  fingerprints hold — and it is worth 2.0-2.6 % on the LC II. It also
+  moves seven pinned instruction counts (`jit_restart_write_030_test`,
+  `jit_asset_free_lockstep_test`: the first instruction after the
+  harness's own `setSR` is no longer interpreted, 2 047 → 2 048), with no
+  lockstep divergence. A real gain, small; it needs those pins re-read
+  one by one and both hosts' ROM tiers. Left as a candidate.
+- *Capping the window path at the block's length.* A block that has not
+  earned its code runs in the interpreter until the window is lost, so a
+  loop entered through it never returns to the dispatcher and its visit
+  count grows by one per entry, not per iteration: 25.4 M instructions
+  per 3 000 LC II frames, 99.3 % of them emittable. Capped, the native
+  share goes from 89.1 % to 95.2 % — and the time gained at 3 000 frames
+  is gone at 6 000. Those instructions are a boot phenomenon (25.4 M at
+  3 000 frames, 27.8 M at 9 000), and the additional blocks double the
+  writes into pages holding translated code (28 313 → 54 672). The same
+  answer as profit score 0 on 2026-11-11, by another route. Refused.
+
+**What the steady state still interprets**, per 3 000 LC II frames past
+the boot: 7.6 M flagged steps and 7.6 M single steps at opcodes that
+cannot head a block, against 302 M native instructions — the idle loop's
+SR writes and traps, as the entry of 2026-11-12 (later) found.
+
+**Left in the emitted code**, read off the same disassembly and not
+measured: each memory instruction stores `pc` and `pc0` before its
+access although only its cold paths read them; the DTLB base is still
+materialised per access; `movW` spends two instructions on a constant
+whose low half is zero.
+
+Tiers (M4, a64, this change alone, in a worktree whose private media are
+APFS clones): `unit|jit` 210 / 210 — 208 in the tier run, plus
+`docs_test` once this entry was indexed and `file_size_budget_test`,
+which timed out at 45 s under a niced, loaded run and passes alone in
+3 s (`JitBackendA64.cpp` 5 161 → 5 193 lines, ceiling raised with the
+change); `m030` 141 / 141 and `m040` 102 / 102, no soft-skip line in
+either. No gate pins the code size itself; the lockstep gates hold the
+semantics, and nothing would notice the encoding quietly reverting.
+The x86-64 backend is not touched.
+
+Evidence, scripts and the three experiment patches:
+`scratchpad/2026-11-12/a64-pinned-bases/`.
 
 <a id="2026-11-12-consolidated-bench"></a>
 ## 2026-11-12 (fourth) — Two days of optimisation, measured once end to end: Plus −77 %, Quadra 605 −24 %, LC II −20 %, Mac II −19 %, every fingerprint unchanged
