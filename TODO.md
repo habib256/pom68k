@@ -180,20 +180,12 @@ LLE 5 %, repli interpréteur 5 %. Donc, par ordre de rendement attendu :
    - *Fait le 2026-11-12* : `LINK` natif sur le 68040, a64 puis x64
      (replis en bloc 25,8 M → 1,75 M sur a64). La jambe x86-64 se joue
      sur cet hôte sous Rosetta (`build-x64-proof`) : `unit|jit` 211 / 211.
-   - **Ouvert, à traiter en premier — deux rouges x64 sur le tier
-     68040** (2026-11-12, `99a2cecf`, sous Rosetta) :
-     `quadra610_agent_boot_etalon` (SIGSEGV) et `q950_agent_boot_etalon`
-     (abort), reproductibles ; 100 / 102 sur `-L m040`, 141 / 141 sur
-     `-L m030`. Le même binaire passe en `POM68K_JIT_BACKEND=threaded`
-     et en interpréteur : le défaut est dans le chemin du backend x64.
-     Non tranché : régression de l'admission `headPollsOnly` x64
-     (`89a70db9`), d'un changement antérieur, ou artefact Rosetta.
-     Marche à suivre : redémarrer l'hôte (Rosetta s'est figé après un
-     lancement sous `lldb` — ne pas déboguer ces binaires avec `lldb`),
-     construire `centris650_boot_etalon` x86_64 à `13719be6` et rejouer
-     `POM68K_TEST_AGENT=1 POM68K_CENTRIS_MODEL=q610` ; vert → retirer
-     ou corriger l'admission x64, rouge → bissecter plus haut, et
-     rejouer sur un vrai hôte x86-64 pour écarter Rosetta.
+   - *Clos le 2026-11-12* : les deux rouges x64 du tier 68040
+     (`quadra610_agent_boot_etalon`, `q950_agent_boot_etalon`) venaient
+     du snapshot ATC copie-sur-écriture, dont le pointeur survivait à la
+     pile de `X64Backend::run` ; corrigé par
+     `pomJitAtcReplayRelease040`. L'admission `LINK` x64 n'était pas en
+     cause. Reste utile : rejouer le tier sur un vrai hôte x86-64.
    - *Fait le 2026-11-12 (`CHANGELOG` (sixth))* : le profil par bloc
      existe (adresses de `sample` rattachées à une table des blocs,
      instrument non versé) et dit que le code généré est plat — pas de

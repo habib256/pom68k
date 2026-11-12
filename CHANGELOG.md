@@ -1473,6 +1473,80 @@ The x86-64 backend is not touched.
 Evidence, scripts and the three experiment patches:
 `scratchpad/2026-11-12/a64-pinned-bases/`.
 
+<a id="2026-11-12-x64-atc-cow-dangling"></a>
+## 2026-11-12 (fifth) — The two x64 reds were mine: the copy-on-write ATC snapshot kept a pointer to a stack object; one release call, and what the search got wrong on the way
+
+**The defect.** The copy-on-write ATC replay of 2026-11-11 (`f189fe1e`)
+makes `pomJitAtcReplayBegin040` keep a pointer to the replay object, so
+that the first ATC mutation can copy the entries into it. The a64
+backend's replay object is a member of the backend (`frame_`); the x64
+backend's is inside `Frame f`, a local of `X64Backend::run`. Generated
+code retires a transaction by zeroing `active`, which leaves the pointer
+armed; once `run()` returned, the next ATC mutation in the interpreter
+read `active` through a dead stack slot and, when the bytes there
+happened to read "begun, not copied", wrote 1 KB of ATC entries over
+live frames. `q950_agent_boot_etalon` died in `__stack_chk_fail` at the
+return of `X64Backend::run`; `quadra610_agent_boot_etalon` on a wild
+pointer. I had written the change against the a64 lifetime and never
+ran a ROM tier on x64 — the asset-free tiers passed there.
+
+**The fix.** `Moira::pomJitAtcReplayRelease040(replay)` drops the pointer
+if it designates that object; `X64Backend::run` calls it before `f`
+dies. The lifetime rule is stated at `pomAtcCow040` in `Moira.h` and in
+vendor row 89. Gate: `moira_rules_test` `atcReplayCopyOnWrite040`, new
+part — a released object whose storage later reads as an open
+transaction is never written to; 9 of 9 mutation kinds fail when the
+release is a no-op.
+
+**How it was found, mistakes included.**
+
+- The macOS crash reports (`~/Library/Logs/DiagnosticReports/*.ips`)
+  gave the nature of the fault (stack canary at `X64Backend::run`) where
+  `lldb` under Rosetta had only wedged the translation daemon — which
+  recovered by itself an hour later, no reboot needed.
+- A first "bisect" blamed the x64 `headPollsOnly` admission
+  (`89a70db9`): the gate passed at `13719be6`. That comparison was void.
+  The worktree had been configured with the default `POM68K_LTO=ON` and
+  `POM68K_NATIVE=ON`, the proof tree has both OFF, and the stack layout
+  that makes the stale slot harmful depends on it. Withdrawing the
+  admission changed nothing and was discarded before any commit. At
+  equal configuration `13719be6` crashes too.
+- `git bisect run` over `cf8e6086..13719be6` at equal configuration
+  (six steps, about two minutes each under Rosetta) named `f189fe1e`.
+
+The x64 `LINK` admission is therefore not implicated; the entry of
+2026-11-12 (third) below, which left it under suspicion, is corrected by
+this one.
+
+**Evidence.** All on `6c3eb704`, both trees rebuilt and found fresh by
+`tools/check_binaries_fresh.py` (256 and 255 gate executables), after a
+host restart.
+
+- x86-64 under Rosetta (`build-x64-proof`): `m040` **102 / 102** —
+  `q950_agent_boot_etalon` (173.6 s) and `quadra610_agent_boot_etalon`
+  (133.6 s) among them; `m030` **141 / 141**; no soft-skip line in
+  either. `unit|jit` 210 / 211 right after the fix, the one failure
+  being `docs_test` on this entry's missing index line; it passes once
+  the index is regenerated.
+- AArch64: `m040` 102 / 102 (the run of 07:23, before the restart),
+  `m030` 141 / 141 with no soft-skip line, `unit|jit` 209 / 210 with the
+  same `docs_test`.
+
+One verification run was thrown away first, and the mistake was mine:
+both trees were started on the same labels at once. They run their gates
+from the same source directory, so they share `hdv/work/` and the scratch
+images at the root; `lc580_ide_boot_etalon`, `q630_ide_boot_etalon` and
+`q605_dayna_rarp_network_etalon` went red on both, with the two
+instances' folders in one catalog. The figures above are from runs where
+the two trees only ever shared disjoint labels (a64 `m030` beside x64
+`m040`, then x64 `m030`). The x86-64 tiers were suspended for about
+twenty-five minutes in all while a bench ran; no gate failed across the
+pause.
+
+**Rule kept from this.** A change in `extern/moira` or the engine that a
+backend consumes is not validated by one backend's ROM tier: the x64 leg
+runs on this host, and it runs before the push.
+
 <a id="2026-11-12-consolidated-bench"></a>
 ## 2026-11-12 (fourth) — Two days of optimisation, measured once end to end: Plus −77 %, Quadra 605 −24 %, LC II −20 %, Mac II −19 %, every fingerprint unchanged
 
