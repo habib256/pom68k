@@ -1417,6 +1417,12 @@ own evidence to gather (`TODO.md`). The steady state still interprets a
 quarter of its instructions (123 M of 489 M), the flagged steps that
 follow each reset.
 
+**Tiers** on the change (M4; x86-64 under Rosetta): AArch64 every gate
+outside `m030`/`m040` 274 / 274 and `m030` 141 / 141; x86-64 `m030`
+141 / 141 and every gate outside `m030`/`m040` 275 / 275, with
+`se30_agent_boot_etalon` back in. No gate soft-skipped. `m040` was not
+run: no 68040 board uses `Pb030Cpu` or `Pb030Memory`.
+
 <a id="2026-11-12-glue-cacr-inventory"></a>
 ## 2026-11-12 (eighth) — On the Mac II family the JIT dropped every block 22 times a frame: the CACR hint retired on GLUE, SE/30 under System 7 four times faster, and the x86-64 gate that never finished
 
