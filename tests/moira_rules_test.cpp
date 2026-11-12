@@ -52,6 +52,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -1360,7 +1361,10 @@ void stop68000()
 
 #if MOIRA_ENABLE_JIT
 // The 68040 ATCs are private to the core; this is the seam Moira.h befriends.
-struct moira::PomAtcProbe {
+// Defined inside the namespace: the friend declaration does not make the name
+// visible to a qualified definition (GCC refuses `struct moira::PomAtcProbe`).
+namespace moira {
+struct PomAtcProbe {
     struct Image {
         uint8_t i[sizeof(Moira::mmu040AtcI)], d[sizeof(Moira::mmu040AtcD)];
         uint32_t ai, ad; int8_t li[2], ld[2];
@@ -1403,6 +1407,7 @@ struct moira::PomAtcProbe {
     }
     static bool armed(const Moira& c) { return c.pomAtcCow040 != nullptr; }
 };
+} // namespace moira
 void atcReplayCopyOnWrite040()
 {
     // POM68K (Moira.h § pomAtcCow040): an exact native access opens an ATC
