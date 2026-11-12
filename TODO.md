@@ -654,6 +654,14 @@ d'instruction.
   826 changements de carte mémoire, sorties `WindowLost` × 3) ; aucun
   banc GLUE ni PowerBook à empreinte — les chiffres viennent de gates
   entiers.
+- [ ] **`q630_ide_boot_etalon` : un échec isolé, non reproduit.** Le
+  2026-11-12, premier passage du tier m040 AArch64 sur le commit du
+  « réessai transitoire » : phase 3, Cmd-N n'écrit aucun secteur, trois
+  fois, après un démarrage aux compteurs ATA identiques. 15 relances du
+  même binaire passent (seul, à cinq en parallèle, tas pré-rempli, second
+  passage du tier). Cause inconnue : ni horloge hôte ni fichier partagé
+  trouvés. Si l'échec revient, garder l'état sauvegardé et l'écran avant
+  de relancer. CHANGELOG 2026-11-12 (tenth).
 - [ ] **LC III / IIvx : l'ATC de 22 entrées tourne sous pages de 8 Ko.**
   Après le réessai immédiat des refus transitoires (`CHANGELOG`
   2026-11-12 (tenth), LC III et IIvx −17 à −18 %), le boot LC III refuse
