@@ -1342,7 +1342,7 @@ Newest first.
 ---
 
 <a id="2026-11-12-x64-leg"></a>
-## 2026-11-12 (third) — The x86-64 leg, run at last: two days of changes hold, one red cell of mine fixed, a stale registry section regenerated
+## 2026-11-12 (third) — The x86-64 leg, run at last: unit and 68030 tiers hold, one red cell of mine fixed, two 68040 agent gates crash on the x64 backend (open)
 
 Every entry since 2026-11-11 ended on "the x86-64 host was not run". This
 host can run that leg: `build-x64-proof` is an x86_64 tree with the x64
@@ -1368,6 +1368,33 @@ which is the known state of that tree.
 - The x64 backend carries the same positioned-poll rule in the same
   shape. With the same admission (`headPollsOnly`), `unit|jit` on x86-64
   is **211 / 211**, 647 s under Rosetta, the x64 lockstep gates included.
+
+**The ROM tiers on that leg (`99a2cecf`, under Rosetta).**
+
+- 68030 tier (`-L m030`): **141 / 141**, 4844 s, no soft-skip.
+- 68040 tier (`-L m040`): **100 / 102**, 4418 s, no soft-skip. Two reds,
+  reproducible on a second run: `quadra610_agent_boot_etalon` (SIGSEGV,
+  ~80-90 s in) and `q950_agent_boot_etalon` (abort, ~120-135 s in). Both
+  are the host process dying, not a pin mismatch.
+- What is established: on the same x86_64 binary the Quadra 610 gate
+  passes with `POM68K_JIT_BACKEND=threaded` and with
+  `POM68K_CPU_ENGINE=interp`, so the fault is in the x64 backend path
+  (or in Rosetta's handling of its generated code). The same two
+  machines pass their plain boot etalons on x64, and the other thirteen
+  agent gates of the tier pass, Quadra 650/800/900 and Centris 610
+  included. Both gates are green on AArch64.
+- What is **not** established: whether this is a regression of the
+  `headPollsOnly` admission ported to x64 the same night (`89a70db9`),
+  of an earlier change, or a Rosetta artefact. No x86-64 full tier had
+  been run since 2026-09-01. The bisect stopped on a host fault, not on
+  a result: launching the gate under `lldb` wedged Rosetta's translation
+  daemon, and from then on every non-system x86_64 binary hangs in the
+  kernel before `main` until the host is rebooted. A worktree at
+  `13719be6` (the commit before the x64 admission) was built for the
+  purpose and never got to run.
+
+The x64 admission therefore stands unproven on the 68040 ROM tier. It is
+recorded as open work, with the bisect to run first.
 
 No timing is claimed for x86-64: Rosetta is not that host.
 

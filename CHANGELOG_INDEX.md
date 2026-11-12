@@ -128,7 +128,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-11 (fifth)** — [The Egret/Cuda MCU runs ahead through its internal instructions: the board wakes at port accesses only; Quadra 605 11-19 % and LC II 15-16 % faster in JIT](CHANGELOG.md#2026-11-11-mcu-run-ahead)
 - **2026-11-11 (seventh)** — [The MCU run-ahead verdict comes from a table built when the firmware loads: LC II 2-4 %, Quadra 605 1-2.5 % faster in JIT](CHANGELOG.md#2026-11-11-mcu-ahead-table)
 - **2026-11-11 (sixth)** — [The 68040 ATC transaction of an exact native access copies entries only when one changes: Quadra 605 JIT 2-7 % faster](CHANGELOG.md#2026-11-11-atc-replay-cow)
-- **2026-11-12 (third)** — [The x86-64 leg, run at last: two days of changes hold, one red cell of mine fixed, a stale registry section regenerated](CHANGELOG.md#2026-11-12-x64-leg)
+- **2026-11-12 (third)** — [The x86-64 leg, run at last: unit and 68030 tiers hold, one red cell of mine fixed, two 68040 agent gates crash on the x64 backend (open)](CHANGELOG.md#2026-11-12-x64-leg)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 
