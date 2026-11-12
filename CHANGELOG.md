@@ -1419,6 +1419,21 @@ ATC under 8 KB pages is the guest's, and the data TLB refuses 180 M
 fills for the same reason. Raw bench output:
 `scratchpad/2026-11-12/jit-probe-retry/`.
 
+**Tiers**, on the commit. x86-64 under Rosetta: m030 141/141, m040
+102/102, everything else 275/275. AArch64: everything else 274/274, m030
+141/141, m040 101/102 on the first pass and 102/102 on the second.
+
+**One red I could not reproduce.** On the first AArch64 m040 pass
+`q630_ide_boot_etalon` failed its third phase: Cmd-N wrote 0 sectors,
+three times, after a boot whose ATA counters (365 commands and 5 244
+sectors written, then 5 571 commands and 24 316 sectors read) are those of
+every passing run. The same binary then passed 15 times: three alone, ten
+at five in parallel, one with `MallocPreScribble`, one in the second tier
+pass; the x86-64 leg passed too. The board reads no host clock and shares
+no file with the gates that ran beside it. I can neither attribute it to
+this change nor clear the change of it; it is recorded as open in
+`TODO.md`.
+
 <a id="2026-11-12-pb030-wake-reset"></a>
 ## 2026-11-12 (ninth) — The 68030 PowerBooks dropped all generated code 2.6 million times per boot: power cycling resets the CPU, and each reset flushed twice; boots 33-40 % faster, the JIT ahead of the interpreter at last
 
