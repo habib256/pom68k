@@ -90,13 +90,7 @@ paquets. **Corrigé et fusionné le 2026-11-12** (`CHANGELOG` (fourteenth),
 `pb100_boot_etalon` est ré-épinglé sur l'écran du Portable
 (`cc4a869f52d960ad`) et le reset de NeoST est porté. Reste à comprendre
 pourquoi le Finder laisse la montre sur les deux machines (`InitCursor`
-puis `SetCursor` depuis `$7ABEFA`). **Nightly `asan-ubsan`, à
-confirmer par le prochain run** (bornes propres aux builds instrumentés
-depuis `94f7bb36` : 3600 s et 900 s) : deux dépassements de délai, sans
-rapport du sanitizer —
-`cache040_test` (> 1800 s ; 5 s le 2026-11-09) et
-`jit_asset_free_lockstep_test` (> 300 s ; 105-128 s alors), alourdis par
-les matrices de fautes 68040 des 10 et 11 novembre. À ne pas
+puis `SetCursor` depuis `$7ABEFA`). À ne pas
 reprendre : `71b92cc` (retard d'échantillonnage IPL, non tranché côté
 NeoST).
 
@@ -197,8 +191,14 @@ LLE 5 %, repli interpréteur 5 %. Donc, par ordre de rendement attendu :
      rematérialisée à chaque accès, `movW` sur une constante à moitié
      basse nulle.
    - *Candidat mesuré, non versé* : régler dans le dispatcheur un
-     `CHECK_IRQ` sans rien à livrer (LC II −2,0 à −2,6 %, exact, sept
-     compteurs épinglés à relire, tiers ROM des deux hôtes dus).
+     `CHECK_IRQ` sans rien à livrer (LC II −2,0 à −2,6 %, exact, tiers
+     ROM des deux hôtes dus). Rangé le 2026-11-13 (`CHANGELOG`) : six
+     compteurs épinglés bougent d'une instruction, le septième révèle
+     que `MOVE.B (A0),(A1)+` à source périphérique n'est jamais natif
+     sur a64 (seul dans son bloc il est refusé et interprété ; dans un
+     bloc plus long il prend le pas lent) alors que `runExactSourceMove` l'affirme. À comprendre
+     d'abord : pourquoi l'instruction est un repli, et si x86-64 fait de
+     même ; c'est la forme des boucles de pseudo-DMA.
      *Mesurés et refusés* : fenêtre gardée armée sur les pas à drapeau
      (−1,2 %, au plancher) ; fenêtre plafonnée à la longueur du bloc
      (−5 % au boot, rien à 6 000 trames, écritures en page de code
