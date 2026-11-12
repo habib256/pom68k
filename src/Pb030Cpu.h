@@ -20,6 +20,9 @@ public:
 private:
     friend pom68k::MoiraCpu<Pb030Cpu,Pb030Memory>;
     int nominalBoost_=4,boost_=4;
+    // POM68K_JIT_030_CACR_FLUSH: -1 = board default (retired here), 0/1 =
+    // forced, as on the other 68030 wrappers.
+    int cacrFlushPolicy_=-1;
     bool floppyGate_=true;
     moira::i64 remainder_=0,machineBase_=0,clockBase_=0;
     void catchUp();

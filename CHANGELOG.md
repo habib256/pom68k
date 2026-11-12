@@ -275,6 +275,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
+- **Why was the JIT never faster than the interpreter on the 68030 PowerBooks?** → [Power cycling: 2.6 million flushes per boot](#2026-11-12-pb030-wake-reset)
 - **Why did the JIT run an SE/30 under System 7 slower than the interpreter, and why did one x86-64 gate never finish?** → [The CACR hint on the GLUE board](#2026-11-12-glue-cacr-inventory)
 - **Are NeoST's reset timing and the Portable slicing fix merged, and what did the slicing gate find on the way?** → [Merged; 80 unseeded bytes in the CPU state](#2026-11-12-neost-port-merged)
 - **Why was a64 generated code a kilobyte per guest instruction, and what did pinning two base registers buy?** → [Pinned bases](#2026-11-12-a64-pinned-bases)
@@ -1345,6 +1346,76 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-12-pb030-wake-reset"></a>
+## 2026-11-12 (ninth) — The 68030 PowerBooks dropped all generated code 2.6 million times per boot: power cycling resets the CPU, and each reset flushed twice; boots 33-40 % faster, the JIT ahead of the interpreter at last
+
+**The symptom was in the tier logs.** Every 68030 PowerBook gate has an
+`interp_` twin, and the JIT side was never faster: `pb180_boot_etalon`
+50 s against 45 s for the interpreter, `pb145` 26.5 against 23.3. A
+`sample` of a PowerBook 180 boot put over 40 % of the time in
+`__bzero`, `mmuAtcFlushAll`, `Engine::flushAll` and `pomJitMapMoved`.
+
+**The cause.** A write to the Jaws/Niagra control register requests a
+CPU-only reset that keeps RAM — the board's comment cites MAME's
+`jaws_w` and calls it the wake reset; I read it as the power cycling of
+an idle 68030 PowerBook, and did not check that reading against the ROM.
+POM68K delivers the reset at once (`Pb030Memory::consumeReset`). One PowerBook 180 boot to the Finder
+takes that reset 1 288 797 times, and `Pb030Cpu` answered each with two
+whole-cache flushes: one at the reset itself, one when the wake path
+clears the instruction cache through CACR (1 337 103 writes with CI
+set). 2 625 902 flushes, 87 788 compile attempts, and 134 M instructions
+on the fetch-window path because no block survived long enough to run.
+
+**The change.** Neither flush protected anything.
+
+- *The CACR hint* is retired behind the board's own audited store
+  inventory, as on the six boards before it
+  (`Pb030Memory::kJitStoreInventoryComplete`): the one `ram_` store site
+  is `write8`, which notes `CodeGuard` first; the 5380's pseudo-DMA is
+  guest MOVEs; the Power Manager MCU has its own memory; the video
+  paths own their VRAM, from which no block is ever recorded.
+  `store_inventory_test` gains a Pb030 row, and its store pattern now
+  reads `\bram_[` — it was matching `vram_[` too, which no earlier
+  board had beside a `ram_` store.
+- *The wake reset* no longer drops the code. It changes no byte of RAM;
+  it changes the translation, and both moves already reach the engine
+  as a map generation bump — `Moira::reset()` through
+  `mmu040AtcFlushAll()`, the overlay through `mapChanged()` — after
+  which a block re-proves its (logical, physical, length) triple before
+  it runs. `hardReset()` and a state load still flush.
+
+After: 4 flushes in the same boot, 12 592 compile attempts, 16 M
+instructions on the window path.
+
+**Measured** (M4, AArch64, idle host; whole-gate wall clock, old / new /
+new / old; every gate ends on its pinned screen on both sides):
+
+| Gate | Before | After | |
+|---|---|---|---|
+| `pb140_boot_etalon` | 12.50, 12.46 s | 7.43, 7.48 s | −40 % |
+| `pb145_boot_etalon` | 19.90, 20.29 s | 12.85, 12.82 s | −36 % |
+| `pb170_boot_etalon` | 20.11, 20.21 s | 12.88, 12.72 s | −37 % |
+| `pb160_boot_etalon` | 19.29, 19.34 s | 13.90, 13.74 s | −29 % |
+| `pb165_boot_etalon` | 30.91, 30.88 s | 20.43, 20.72 s | −33 % |
+| `pb180_boot_etalon` | 30.82, 30.57 s | 20.90, 20.76 s | −32 % |
+| `pb180_agent_boot_etalon` | 28.11, 28.16 s | 18.81, 18.87 s | −33 % |
+| `interp_pb180_boot_etalon` (control) | 26.86, 26.58 s | 27.05, 27.04 s | — |
+
+Gates, not benches, as in entry (eighth): there is no PowerBook bench
+with a fingerprint. What the figures do establish is the order — the
+JIT was slower than the interpreter on these nine machines and is now
+about 23 % faster.
+
+**What is left on the table, and is not an engine matter.** A real
+PowerBook's CPU stays unpowered until the next interrupt. Here it is
+reset at once and spins through the wake path until one arrives:
+1.29 M resets of at most 256 machine cycles each is most of the
+machine time of an idle boot. Modelling the power-off interval would
+skip that time on both engines; it is a hardware-timing change with its
+own evidence to gather (`TODO.md`). The steady state still interprets a
+quarter of its instructions (123 M of 489 M), the flagged steps that
+follow each reset.
 
 <a id="2026-11-12-glue-cacr-inventory"></a>
 ## 2026-11-12 (eighth) — On the Mac II family the JIT dropped every block 22 times a frame: the CACR hint retired on GLUE, SE/30 under System 7 four times faster, and the x86-64 gate that never finished

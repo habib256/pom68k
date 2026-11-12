@@ -84,6 +84,20 @@ public:
     void mapChanged();
     const uint8_t* codeSpan(uint32_t a,uint32_t& len) const;
     uint8_t* dataSpan(uint32_t a,uint32_t& len,bool write);
+    // Every path that can deposit code in guest RAM on a Jaws/Niagra/
+    // Pangola board passes CodeGuard::note(): the only `ram_` store site is
+    // write8 (write16 is two of them) and it notes before storing. The
+    // 5380's pseudo-DMA port is read and written by guest MOVEs (dmaWrite
+    // feeds the device, never RAM); SWIM, SCC and ASC are polled or own
+    // their FIFOs; the Power Manager MCU has its own memory and reaches
+    // the 68030 through the VIA; the LCD and the external video own their
+    // VRAM. Generated-code stores cross the DTLB codeMask into pomJitWrite
+    // -> write8, and dataSpan() hands the write window out only under that
+    // same engine-side codeMask. No modelled device masters the bus.
+    // `store_inventory_test` pins these source properties; a board that
+    // grows a bus master must flip this back and take the CACR SMC flush
+    // with it (Pb030Cpu::didChangeCACR).
+    static constexpr bool kJitStoreInventoryComplete = true;
     void setJitGuard(jit::CodeGuard* g) { guard_=g; }
     uint32_t ramBytes() const { return uint32_t(ram_.size()); }
     bool floppyStreaming() const { return drive_.motorOn(); }
