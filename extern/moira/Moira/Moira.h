@@ -2514,7 +2514,15 @@ public:
     // 0-1 of `active`: side begun; bits 2-3: its entries are in `opaque`.
     // Every writer of mmu040AtcI/D entries calls pomAtcCow040Touch first.
     // Gate: tests/moira_rules_test.cpp (atcReplayCopyOnWrite040).
+    // Lifetime: Begin keeps a pointer to the replay object. An owner whose
+    // object does not outlive the engine (the x64 backend's is a local of
+    // run()) calls pomJitAtcReplayRelease040 before the object dies; a
+    // retired transaction left armed would otherwise be read, and written
+    // to, through a dead stack slot at the next ATC mutation.
     PomJitAtcReplay040* pomAtcCow040 {nullptr};
+    void pomJitAtcReplayRelease040(const PomJitAtcReplay040& replay) noexcept {
+        if (pomAtcCow040 == &replay) pomAtcCow040 = nullptr;
+    }
     void pomAtcCow040Save(bool side) noexcept;
     void pomAtcCow040Touch(bool side) noexcept {
         if (pomAtcCow040) [[unlikely]] pomAtcCow040Save(side);
