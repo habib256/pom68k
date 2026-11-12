@@ -196,9 +196,13 @@ LLE 5 %, repli interpréteur 5 %. Donc, par ordre de rendement attendu :
      compteurs épinglés bougent d'une instruction, le septième révèle
      que `MOVE.B (A0),(A1)+` à source périphérique n'est jamais natif
      sur a64 (seul dans son bloc il est refusé et interprété ; dans un
-     bloc plus long il prend le pas lent) alors que `runExactSourceMove` l'affirme. À comprendre
-     d'abord : pourquoi l'instruction est un repli, et si x86-64 fait de
-     même ; c'est la forme des boucles de pseudo-DMA.
+     bloc plus long il prend le pas lent) alors que `runExactSourceMove` l'affirme. Cause :
+     l'émetteur du `MOVE` à deux EA refuse un coût tracé (11, dont 3
+     cycles d'attente du périphérique) différent du coût statique (8),
+     avant la branche du thunk exact. À trancher d'abord : admettre
+     l'attente tracée sur cette branche, ou donner au test un
+     périphérique sans attente. Non vérifié : x86-64, et quelles cartes
+     réelles facturent une attente dans leurs boucles de pseudo-DMA.
      *Mesurés et refusés* : fenêtre gardée armée sur les pas à drapeau
      (−1,2 %, au plancher) ; fenêtre plafonnée à la longueur du bloc
      (−5 % au boot, rien à 6 000 trames, écritures en page de code
