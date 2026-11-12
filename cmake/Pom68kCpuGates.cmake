@@ -34,6 +34,14 @@ target_link_libraries(fpu_context_test PRIVATE ${POM68K_CPU_CONTEXT_THREADS})
 # instrumented cost with margin, as for jit_asset_free_lockstep_test; the
 # plain tiers finish it in ~20 s.
 set_tests_properties(cache040_test PROPERTIES TIMEOUT 1800)
+# …and 1800 was not it. Measured again on 2026-11-12: 246 s under AppleClang
+# ASan/UBSan on the M4, yet the GCC leg of the nightly was at 46 000 of its
+# 60 000 fault sequences when the 1800 s expired (run 43222539870) — about
+# 2 400 s on that runner. An instrumented build gets its own bound; every
+# other configuration keeps 1800.
+if(POM68K_SANITIZE)
+    set_tests_properties(cache040_test PROPERTIES TIMEOUT 3600)
+endif()
 
 # The 68030 against WinUAE alone, all fourteen cells: the pinned sst68030
 # keeps, in several cells, only the vectors a retired second oracle agreed
