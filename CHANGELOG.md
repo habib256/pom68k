@@ -1381,13 +1381,24 @@ So in neither arrangement does the a64 backend run this device-source
 `MOVE` through the exact thunk, with `POM68K_JIT_ACCESS_THUNK` at its
 default of 2, and the check titled "exact MMIO source + preflighted RAM
 destination stays native and exact" has been passing on a block that was
-never compiled. I did not find why the instruction is a fallback, nor
-whether x86-64 behaves the same.
+never compiled.
+
+**Why it is a fallback** (found after the first version of this entry).
+The two-EA `MOVE` emitter refuses an instruction whose cycle count traced
+at record time differs from the static one, unless a sole-access timing
+admission applies; with two memory operands none does. Here the static
+cost is 8 and the trace is 11: the synthetic device charges 3 to 6 wait
+cycles per read (`3 + (n & 3)`), three on the one traced. The refusal comes before the exact-thunk branch, so
+the thunk, which does let a device read advance the clock, is never
+emitted. A device that charges nothing on a read is not affected. Not
+checked: x86-64, and which real boards charge wait cycles on the reads
+their pseudo-DMA loops make.
 
 **Why parked.** Re-pinning that counter to 383 would write the gap into
 the gate. The settle itself stays exact (every lockstep comparison in the
-two gates passes); what is missing is the answer to the question above,
-then the ROM tiers of both hosts. Nothing was committed; the seam and its
+two gates passes); what is missing is a decision on that check (admit the
+traced wait on the exact-thunk branch, or give the check a device without
+wait cycles and say so), then the ROM tiers of both hosts. Nothing was committed; the seam and its
 cell are still `scratchpad/2026-11-12/a64-pinned-bases/candidate_A_seam_and_gate.patch`.
 
 **Nightly.** Run 43272142073 on `94f7bb36` is green on every leg,
