@@ -275,6 +275,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
+- **Which 68030 boards have a gate that fails if the native backend silently falls back?** → [The Duo and the PowerBook 140/180 joined the seven others](#2026-11-13-native-gates-pb-duo)
 - **Does the moment a fetch window is armed still change guest state under the 68040 D-cache?** → [No: the August reproducer passes on both hosts](#2026-11-13-arm-moment-040)
 - **Why did a 68030/68040 guest take a wrong flag about once per 10^12 cycles on macOS/AArch64, and hang a Quadra 630 in its ROM's remainder routine?** → [The a64 generator held values in x18, which macOS clears on every interrupt](#2026-11-13-a64-x18)
 - **Why does `q630_ide_boot_etalon` fail once in a while, and did the transient-refusal retry cause it?** → [About one run in 70, and it predates the retry](#2026-11-13-q630-rare-divergence)
@@ -1350,6 +1351,41 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-13-native-gates-pb-duo"></a>
+## 2026-11-13 (fifth) — The Duo and the 68030 PowerBooks get a gate that fails when the native backend is not the one running
+
+**Why.** `auto` has given MSC (Duo), Jaws (PowerBook 140/145/170) and
+Niagra (160/165/180) native code since they joined the tree, and their
+boot gates are green; but none of them set
+`POM68K_JIT_REQUIRE_NATIVE`, so a selection or W^X failure that fell back
+to `threaded` would have stayed green. `docs/JIT_BRINGUP.md` had been
+promising `jit_duo230_boot_etalon` since August.
+
+**Added.** `jit_duo230_boot_etalon`, `jit_pb140_boot_etalon` and
+`jit_pb180_boot_etalon`: the existing executables with
+`POM68K_CPU_ENGINE=jit`, the host's native backend named explicitly and
+`POM68K_JIT_REQUIRE_NATIVE=1`, registered next to the seven 68030
+families that already had one. No new test code.
+
+| Gate | AArch64 | x86-64 under Rosetta |
+|---|---|---|
+| `jit_pb140_boot_etalon` | passed, 14 s | passed, 43 s |
+| `jit_duo230_boot_etalon` | passed, 34 s | passed, 73 s |
+| `jit_pb180_boot_etalon` | passed, 34 s | passed, 70 s |
+
+The registry goes from 570 to 573 in the union, 568 on AArch64 and 569 on
+x86-64; `STATUS.md` is regenerated for both hosts from this machine.
+`Pom68kJitGates.cmake` grows six lines and its ceiling with it
+(641 → 647).
+
+**Tiers.** A registration change: the three gates on both hosts (table
+above), then `asset-none` 156/156 on AArch64 and 155/155 on x86-64 under
+Rosetta (its three GUI smoke tests skip there: the GUI does not link for
+x86-64 on this machine). The ROM tiers were not rerun.
+
+**Not done.** The colour PowerBooks (Pangola: 165c, 180c) have no such
+gate; the IIfx still has no store inventory. Both stay in `TODO.md`.
 
 <a id="2026-11-13-arm-moment-040"></a>
 ## 2026-11-13 (fourth) — The moment a fetch window is armed no longer changes guest state under the 68040 D-cache: the August reproducer passes on both hosts
