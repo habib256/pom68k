@@ -2003,20 +2003,19 @@ void cas2IsReadModifyWrite030()
     constexpr uint32_t kTable = 0x60000, kPages = kTable + 0x1000;
     constexpr uint64_t kCrp = uint64_t(0x7FFF0002u) << 32 | kTable;
     constexpr uint32_t kFirst = 0x40010, kSecond = 0x41010;
-    struct Case { uint16_t opcode; uint16_t ext[2]; unsigned words; bool second;
+    struct Case { uint16_t opcode; uint16_t ext[3]; unsigned words; bool second;
                   const char* what; };
-    for (const Case& k : { Case{ 0x0cfc, {0x8080, 0x90c1}, 2, true,  "CAS2.W, compare failing" },
-                           Case{ 0x0cd0, {0x0080, 0},      1, false, "CAS.W, compare failing" },
-                           Case{ 0x4ad0, {0, 0},           0, false, "TAS" } }) {
+    for (const Case& k : { Case{ 0x0cfc, {0x8080, 0x90c1, kNop}, 2, true,  "CAS2.W, compare failing" },
+                           Case{ 0x0cd0, {0x0080, kNop, kNop},   1, false, "CAS.W, compare failing" },
+                           Case{ 0x4ad0, {kNop, kNop, kNop},     0, false, "TAS" } }) {
         TestCpu c(moira::Model::M68030);
         p32(c, kTable, kPages | 2);                     // TIA 0: a short table
         for (uint32_t page : { 0u, 1u, 0x40u, 0x41u })  // each on itself
             p32(c, kPages + page * 4, page << 12 | 1);
         p16(c, kFirst, 0x1234); p16(c, kSecond, 0x5678);
         stage(c, k.opcode, 0);
-        for (unsigned i = 0; i < 3; i++)
-            p16(c, kCode + 2 + 2 * i, i < k.words ? k.ext[i] : kNop);
-        c.setIRC(k.words ? k.ext[0] : kNop);
+        for (unsigned i = 0; i < 3; i++) p16(c, kCode + 2 + 2 * i, k.ext[i]);
+        c.setIRC(k.ext[0]);
         c.setA(0, kFirst); c.setA(1, kSecond);
         c.setD(0, 0); c.setD(1, 0);                     // neither compare matches
         c.mmu030(kTc, kCrp, 0, 0);
