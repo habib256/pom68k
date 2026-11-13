@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 797 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 798 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 24 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 44 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 160 |
+| [Cross-cutting](#cross-cutting) | 161 |
 
 ---
 
@@ -859,4 +859,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-10 (third)** — [Plain 020 bus faults consume software-completed data cycles after RTE](CHANGELOG.md#2026-11-10-rte020-completion)
 - **2026-11-11 (tenth)** — [Mac II: RAM reads past the GLUE decoder and an inline catch-up: 12 % faster in the interpreter](CHANGELOG.md#2026-11-11-macii-ram-path)
 - **2026-11-11 (twelfth)** — [RAM writes past the decoder on the Plus and the Mac II: 4-6 % and 3 % more; the day's totals](CHANGELOG.md#2026-11-11-ram-write-path)
+- **2026-11-13 (twelfth)** — [The engine is held to the interpreter's two-instruction interrupt delay, without a ROM](CHANGELOG.md#2026-11-13-jit-unmasked-ipl)
 

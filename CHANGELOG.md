@@ -1353,6 +1353,27 @@ Newest first.
 
 ---
 
+<a id="2026-11-13-jit-unmasked-ipl"></a>
+## 2026-11-13 (twelfth) — The engine is held to the interpreter's two-instruction interrupt delay, without a ROM
+
+`jit_asset_free_lockstep_test` gains `runUnmaskedIpl`: a 68040 loop that
+masks, reads a device that raises level 2, unmasks with `MOVE #$2000,SR`
+and runs three `ADDQ`; the handler logs the stacked PC and acknowledges.
+Interpreter and engine are compared at 192 boundaries (registers, the
+log, the stack, device counters), unarmed then armed, and the
+interpreter's first stacked PC is pinned at the third `ADDQ`: two
+instructions after the write, as (sixth) pins it in the core.
+
+On both hosts: 2 blocks compiled, 190 block runs, 192 native
+instructions, no slow one, 48 interrupts. The blocks are short, since
+each SR write ends one; what the case holds is the hand-over around the
+write, which is where the parked `CHECK_IRQ` settle of 2026-11-13 would
+act. Not mutated: a joint drift of core and engine would be caught by the
+pinned PC, a split by the comparison.
+
+Tiers: the gate through `ctest` on AArch64 (9.7 s) and on x86-64 under
+Rosetta (10.3 s), its four performance budgets included.
+
 <a id="2026-11-13-pipe-ipl-gate"></a>
 ## 2026-11-13 (eleventh) — The 68030's pipe across a PMOVE to TC and the interrupt poll inside a DBRA loop have a cell: no row of the patch inventory is held by a boot alone any more
 

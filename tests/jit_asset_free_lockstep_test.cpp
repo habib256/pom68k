@@ -439,6 +439,32 @@ void installLateIplLoop(SyntheticCpu& c) {
     put16(c, kIrqHandler + 12, 0x4E73);// RTE
 }
 
+// An interrupt raised under mask 7 and unmasked by MOVE to SR is taken two
+// instructions after the write (Moira's `irqDelay`, moira_rules_test
+// `irqDelayAfterMaskLowering`). The engine must count the same two when the
+// instructions around the write are generated code.
+void installUnmaskedIplLoop(SyntheticCpu& c) {
+    installVectors(c);
+    put32(c, 26 * 4, kIrqHandler);     // level-2 autovector
+    put16(c, kCode + 0x00, 0x46FC);    // MOVE #$2700,SR
+    put16(c, kCode + 0x02, 0x2700);
+    put16(c, kCode + 0x04, 0xC029);    // AND.B $800(A1),D0   raises the pin
+    put16(c, kCode + 0x06, 0x0800);
+    put16(c, kCode + 0x08, 0x5281);    // ADDQ.L #1,D1
+    put16(c, kCode + 0x0A, 0x46FC);    // MOVE #$2000,SR      unmasks it
+    put16(c, kCode + 0x0C, 0x2000);
+    put16(c, kCode + 0x0E, 0x5282);    // ADDQ.L #1,D2
+    put16(c, kCode + 0x10, 0x5284);    // ADDQ.L #1,D4
+    put16(c, kCode + 0x12, 0x5285);    // ADDQ.L #1,D5        interrupted here
+    put16(c, kCode + 0x14, 0x60EA);    // BRA.S kCode
+    put16(c, kIrqHandler + 0, 0x26EF); // MOVE.L 2(A7),(A3)+  stacked PC
+    put16(c, kIrqHandler + 2, 0x0002);
+    put16(c, kIrqHandler + 4, 0x13FC); // MOVE.B #0,kIrqDev   acknowledge
+    put16(c, kIrqHandler + 6, 0x0000);
+    put32(c, kIrqHandler + 8, kIrqDev);
+    put16(c, kIrqHandler + 12, 0x4E73);// RTE
+}
+
 // LINK samples the interrupt pin BEFORE its push: every poll of the
 // instruction precedes its one data access. The frame it builds and the
 // handler's stacked PC are both compared, with the pin raised by the device
@@ -1595,6 +1621,53 @@ bool runLateIplPoll() {
     // would still be caught.
     return ref.irqAcks != 0 && get32(ref, kData) == kCode + 4 &&
            s.instrs > warm.instrs;
+}
+
+bool runUnmaskedIpl() {
+    const auto refOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& native = *nativeOwner;
+    installUnmaskedIplLoop(ref);
+    installUnmaskedIplLoop(native);
+    resetCpu(ref);
+    resetCpu(native);
+    for (SyntheticCpu* c : {&ref, &native}) {
+        c->setD(0, 0x5A);
+        c->setA(1, kDevice);
+        c->setA(3, kData);
+    }
+    native.jit.setEnabled(true);
+    for (int phase = 0; phase < 2; phase++) {   // unarmed warm-up, then armed
+        ref.irqArmed = native.irqArmed = phase == 1;
+        for (int step = 0; step < 96; step++) {
+            const int64_t target = ref.getClock() + 37;
+            ref.executeUntil(target);
+            native.jit.executeUntil(target);
+            if (!sameCpu(ref, native, true) ||
+                !sameMemory(ref, native, kData, 0x400, true) ||
+                !sameMemory(ref, native, kStack - 128, 128, true) ||
+                ref.irqReads != native.irqReads ||
+                ref.irqAcks != native.irqAcks) {
+                std::printf("    unmasked-IPL divergence, phase %d checkpoint %d: "
+                            "first stacked PC %08X/%08X acks %u/%u\n", phase, step,
+                            get32(ref, kData), get32(native, kData),
+                            ref.irqAcks, native.irqAcks);
+                return false;
+            }
+        }
+    }
+    const auto s = native.jit.stats().snapshot();
+    std::printf("    unmasked-IPL compiled=%llu runs=%llu native=%llu slow=%llu "
+                "acks=%u first stacked PC=%08X\n",
+                (unsigned long long)s.blocksCompiled,
+                (unsigned long long)s.blocksRun,
+                (unsigned long long)s.instrs,
+                (unsigned long long)s.slowInstrs, native.irqAcks,
+                get32(native, kData));
+    // Two instructions after the unmasking write, in the interpreter too.
+    return ref.irqAcks > 1 && get32(ref, kData) == kCode + 0x12 &&
+           s.blocksCompiled != 0 && s.blocksRun != 0 && s.instrs != 0;
 }
 
 bool runHeadPollLink() {
@@ -3681,6 +3754,8 @@ int main(int argc, char** argv) {
           "exact MMIO source + preflighted RAM destination stays native and exact");
     check(runLateIplPoll(),
           "an MMIO read that raises the pin interrupts after its own instruction");
+    check(runUnmaskedIpl(),
+          "an interrupt unmasked by MOVE to SR lands two instructions later, natively too");
     check(runHeadPollLink(),
           "LINK, whose polls all precede its push, is native and interrupts land the same");
     check(runAddressSourceAluLockstep(),
