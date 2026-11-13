@@ -104,6 +104,13 @@ programme d'après fx68k @ 0602ee46 [D], ce cœur en espace données
 d'après SingleStepTests 68000/v1 [D] (`readM`, `sst68000` 16 130/16 130
 sur MOVEM avec FC comparé). À trancher par une source de rang B ou A
 avant le portage vers NeoST.
+`ea81c29` (2026-11-12, « le saut d'attente STOP garde la phase du
+68000 ») corrige l'enveloppe de NeoST (`Cpu68k::run` posait l'horloge
+sur une échéance impaire pendant un STOP), pas Moira. Sans objet ici :
+aucune enveloppe 68000 ne déplace l'horloge d'un CPU arrêté — il
+traverse `execute()` par pas de 2 cycles, et le moteur JIT lui rend la
+main dès que `flags != 0`. Si une enveloppe gagne un jour un tel saut,
+il devra avancer d'un nombre pair de cycles.
 
 ## Vitesse — côté hôte POM68K, après l'objectif principal (profils du 2026-11-07)
 
