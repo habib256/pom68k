@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 792 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 793 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -9,7 +9,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | Subsystem | Entries |
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 109 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 118 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 119 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 37 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 32 |
@@ -256,6 +256,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-11 (thirteenth)** — [NeoST's 68000 STOP back-ported (format v31); its reset timing is not, because two cycles at power-on leave the PowerBook 100 busy for ever](CHANGELOG.md#2026-11-11-neost-stop-port)
 - **2026-11-12** — [On the 68040, `LINK` ran in the interpreter inside every native block: one admission rule, in-block fallbacks 25.8 M → 1.75 M, Quadra 605 6 % faster after boot](CHANGELOG.md#2026-11-12-jit-040-head-poll)
 - **2026-11-13 (fourth)** — [The moment a fetch window is armed no longer changes guest state under the 68040 D-cache: the August reproducer passes on both hosts](CHANGELOG.md#2026-11-13-arm-moment-040)
+- **2026-11-13 (seventh)** — [A faulting MOVES gives the function-code pins back before its handler, held on the 68040 and in both directions](CHANGELOG.md#2026-11-13-moves-fc-gate)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E
 
