@@ -1384,8 +1384,12 @@ above), then `asset-none` 156/156 on AArch64 and 155/155 on x86-64 under
 Rosetta (its three GUI smoke tests skip there: the GUI does not link for
 x86-64 on this machine). The ROM tiers were not rerun.
 
-**Not done.** The colour PowerBooks (Pangola: 165c, 180c) have no such
-gate; the IIfx still has no store inventory. Both stay in `TODO.md`.
+**Not done.** The IIfx still has no store inventory; it stays in
+`TODO.md`.
+
+**Added the same morning:** `jit_pb180c_boot_etalon` for the Pangola
+colour boards (passed, 32 s on AArch64 and 69 s on x86-64 under Rosetta).
+Union 574, 569 on AArch64, 570 on x86-64; the cmake ceiling is 649.
 
 <a id="2026-11-13-arm-moment-040"></a>
 ## 2026-11-13 (fourth) — The moment a fetch window is armed no longer changes guest state under the 68040 D-cache: the August reproducer passes on both hosts

@@ -331,7 +331,7 @@ Re-derived from the generated gate roster (`pom68k_gates.tsv`):
   (`jit_*_boot_etalon`: q605, centris650, q630, q700, lcii, mactv, lc3, iivx,
   iisi, lc, macii, se30, system — the Plus — and iifx from the `foreach` over
   `lcii_boot_etalon` and its peers in `cmake/Pom68kJitGates.cmake:464-510`, plus `jit_classic_boot_etalon`
-  registered on its own at `cmake/Pom68kJitGates.cmake:637-641` because it
+  registered on its own at `cmake/Pom68kJitGates.cmake:544-548` because it
   shares the compact binary); ten profiles also carry an explicit
   `interp_*_boot_etalon` interpreter reference (q605, centris650, q630,
   q700, lcii, lc3, iivx, iisi, iifx, duo230 —
