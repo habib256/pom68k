@@ -142,8 +142,16 @@ private:
         m[a & 0xfffff] = moira::u8(v >> 8); m[(a + 1) & 0xfffff] = moira::u8(v);
     }
     bool illegalOpcodeHook(moira::u16) override { return handleIllegal; }
+    void pomDidReachWatchpoint(moira::u32 a, moira::Size S, bool write, bool) override {
+        char line[32];
+        std::snprintf(line, sizeof line, "%c%X:%d ", write ? 'w' : 'r', unsigned(a), int(S));
+        watch += line;
+    }
     void didChangeCACR(moira::u32 value) override { cacrWritten = value; }
 public:
+    // Cell "watchpoints under the MMU": every access stop, as
+    // <r|w><logical address>:<bytes>.
+    std::string watch;
     // CACR read-back cell: the raw MOVEC value the board receives.
     moira::u32 cacrWritten = 0;
     // Cell "bus error during a table search": the 68030 PMMU registers,
@@ -1784,6 +1792,52 @@ void movesReleasesAlternateFc()
     }
 }
 
+void watchpointsUnderMmu()
+{
+    // POM68K_VENDOR.md row 20: on the 68030 and 68040 data accesses go
+    // through mmuRead/mmuWrite and mmu040Read/mmu040Write, which bypass
+    // the readM/writeM that host upstream's watchpoint check; each of the
+    // four carries its own, on the LOGICAL address. The debugger is their
+    // only consumer and `debug_session_test` runs a 68000, so none of the
+    // four had a gate.
+    constexpr uint32_t kData = 0x40000;
+    for (moira::Model m : { moira::Model::M68030, moira::Model::M68040 }) {
+        for (bool write : { false, true }) {
+            TestCpu c(m);
+            stage(c, write ? 0x2080 : 0x2010, 0);       // MOVE.L D0,(A0) / (A0),D0
+            c.setA(0, kData);
+            c.debugger.watchpoints.setAt(kData);
+            c.execute();
+            const std::string want = std::string(write ? "w" : "r") + "40000:4 ";
+            CHECK(c.watch == want, "model %d %s watchpoint: saw \"%s\", want \"%s\"",
+                  int(m), write ? "write" : "read", c.watch.c_str(), want.c_str());
+        }
+    }
+    {   // 68030, translation on: the stop is on the logical address
+        constexpr uint32_t kTc  = 0x80000000u | 0xCu << 20 | 0xAu << 12 | 0xAu << 8;
+        constexpr uint32_t kTt0 = 0x00008124u;          // program space transparent
+        constexpr uint32_t kTable = 0x60000, kLogical = 0x00123010, kPhysical = 0x50010;
+        constexpr uint64_t kCrp = uint64_t(0x7FFF0002u) << 32 | kTable;
+        for (uint32_t armed : { kLogical, kPhysical }) {
+            TestCpu c(moira::Model::M68030);
+            p32(c, kTable, (kTable + 0x1000) | 2);      // TIA 0: a short table
+            p32(c, kTable + 0x1000 + 0x123 * 4, (kPhysical & ~0xFFFu) | 1);   // TIB $123: the page
+            p32(c, kPhysical, 0xCAFE1234);
+            stage(c, 0x2010, 0);                        // MOVE.L (A0),D0
+            c.setA(0, kLogical);
+            c.mmu030(kTc, kCrp, kTt0, 0);
+            c.debugger.watchpoints.setAt(armed);
+            c.execute();
+            CHECK(c.getD(0) == 0xCAFE1234, "68030 translated read returned %08X "
+                  "(want the physical page's CAFE1234)", c.getD(0));
+            const std::string want = armed == kLogical ? "r123010:4 " : "";
+            CHECK(c.watch == want, "68030 watchpoint armed at %08X under "
+                  "translation: saw \"%s\", want \"%s\"", armed, c.watch.c_str(),
+                  want.c_str());
+        }
+    }
+}
+
 int main(int argc, char** argv)
 {
     if (argc == 2 && std::string_view(argv[1]) == "--movem-restart") {
@@ -1826,6 +1880,7 @@ int main(int argc, char** argv)
     unresetFpZero();
     irqDelayAfterMaskLowering();
     movesReleasesAlternateFc();
+    watchpointsUnderMmu();
 
     if (failures) {
         std::printf("[moira_rules_test] FAIL: %d check(s)\n", failures);
@@ -1838,6 +1893,6 @@ int main(int argc, char** argv)
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68EC030 plain-020 path with a 68030 "
-                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code\n");
+                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU\n");
     return 0;
 }

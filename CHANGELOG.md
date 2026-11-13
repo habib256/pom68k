@@ -1353,6 +1353,30 @@ Newest first.
 
 ---
 
+<a id="2026-11-13-watchpoints-mmu-gate"></a>
+## 2026-11-13 (eighth) — The four watchpoint hooks of the 68030/68040 translated paths have a gate; none had one
+
+Row 20 of the patch inventory: `mmuRead`, `mmuWrite`, `mmu040Read` and
+`mmu040Write` bypass the `readM`/`writeM` that host upstream's watchpoint
+check, so each carries its own on the logical address. Their only
+consumer is the debugger, and `debug_session_test` runs a 68000: the gate
+column said "— (debug)".
+
+`moira_rules_test` now has `watchpointsUnderMmu`: a long read and a long
+write through a watched address on the 68030 and the 68040, each stop
+reported once with its direction and width; then a 68030 with translation
+on (two-level short table, logical `$123010` on physical `$50010`): the
+read returns the physical page's longword, a watchpoint on the logical
+address stops, one on the physical address does not.
+
+Mutations, one site at a time: each of the four silenced hooks turns its
+own row red, and the first also the translated row.
+
+Tiers: `moira_rules_test` on both hosts, `asset-none` 156/156 on AArch64
+and 155/155 on x86-64 under Rosetta.
+
+Rows 11, 21 and the 68010/68020 half of row 15 remain (`TODO.md`).
+
 <a id="2026-11-13-moves-fc-gate"></a>
 ## 2026-11-13 (seventh) — A faulting MOVES gives the function-code pins back before its handler, held on the 68040 and in both directions
 
@@ -1367,8 +1391,8 @@ path all six rows go red with FC = 1 left on the pins.
 Tiers: `moira_rules_test` on both hosts, `asset-none` 156/156 on AArch64
 and 155/155 on x86-64 under Rosetta.
 
-Rows 11, 20, 21 and the 68010/68020 half of row 15 still have only a
-boot behind them (`TODO.md`).
+Rows 11, 20, 21 and the 68010/68020 half of row 15 still had only a
+boot behind them at that point (`TODO.md`); row 20 follows in (eighth).
 
 <a id="2026-11-13-irq-delay-gate"></a>
 ## 2026-11-13 (sixth) — The two-instruction interrupt delay after an SR write has a CPU gate: it was held by one boot
