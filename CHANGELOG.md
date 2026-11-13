@@ -1353,6 +1353,23 @@ Newest first.
 
 ---
 
+<a id="2026-11-13-moves-fc-gate"></a>
+## 2026-11-13 (seventh) — A faulting MOVES gives the function-code pins back before its handler, held on the 68040 and in both directions
+
+Row 37 of the patch inventory was held by `v8_ramsize` on a V8 board: the
+68020 and the 68030, read direction only. `moira_rules_test` now has
+`movesReleasesAlternateFc`, no board and no ROM: `MOVES.L (A0),D1` and
+`MOVES.L D1,(A0)` with SFC = DFC = 1 on an address that answers /BERR,
+on the 68020, 68030 and 68040; after the exception the pins must show a
+supervisor code. Mutation: without the `fcSource = 0` of the bus-error
+path all six rows go red with FC = 1 left on the pins.
+
+Tiers: `moira_rules_test` on both hosts, `asset-none` 156/156 on AArch64
+and 155/155 on x86-64 under Rosetta.
+
+Rows 11, 20, 21 and the 68010/68020 half of row 15 still have only a
+boot behind them (`TODO.md`).
+
 <a id="2026-11-13-irq-delay-gate"></a>
 ## 2026-11-13 (sixth) — The two-instruction interrupt delay after an SR write has a CPU gate: it was held by one boot
 

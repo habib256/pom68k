@@ -1752,6 +1752,38 @@ void irqDelayAfterMaskLowering()
     }
 }
 
+void movesReleasesAlternateFc()
+{
+    // POM68K_VENDOR.md row 37: MOVES puts SFC or DFC on the function-code
+    // pins for its one access; if that access takes a bus error, the pins
+    // must be back on the supervisor's own code before the handler's first
+    // fetch, or the handler runs in the faulting access's address space.
+    // `v8_ramsize` holds it on a V8 board for the 68020 and the 68030, in
+    // the read direction; this holds both directions on the 68040 too.
+    for (moira::Model m : { moira::Model::M68020, moira::Model::M68030,
+                            moira::Model::M68040 }) {
+        for (bool write : { false, true }) {
+            TestCpu c(m);
+            p32(c, 2 * 4, kHandler);                    // vector 2: bus error
+            p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
+            stage(c, 0x0e90, 0);                        // MOVES.L (A0),D1 / D1,(A0)
+            const uint16_t ext = write ? 0x1800 : 0x1000;
+            p16(c, kCode + 2, ext); c.setIRC(ext);
+            c.setSFC(1); c.setDFC(1);                   // user data
+            c.setA(0, kHole);
+            c.holeArmed = true;
+            const bool contained = executeContained(c);
+            for (int i = 0; i < 4 && c.getPC0() != kHandler; i++) c.execute();
+            CHECK(contained && c.holeTrips != 0 && c.getPC0() == kHandler,
+                  "model %d MOVES %s: no bus error taken (trips %u, PC0=%08X)",
+                  int(m), write ? "write" : "read", c.holeTrips, c.getPC0());
+            CHECK((c.readFC() & 4) != 0,
+                  "model %d faulting MOVES %s left FC=%u on the pins for its "
+                  "handler", int(m), write ? "write" : "read", c.readFC());
+        }
+    }
+}
+
 int main(int argc, char** argv)
 {
     if (argc == 2 && std::string_view(argv[1]) == "--movem-restart") {
@@ -1793,6 +1825,7 @@ int main(int argc, char** argv)
     reset68000();
     unresetFpZero();
     irqDelayAfterMaskLowering();
+    movesReleasesAlternateFc();
 
     if (failures) {
         std::printf("[moira_rules_test] FAIL: %d check(s)\n", failures);
@@ -1805,6 +1838,6 @@ int main(int argc, char** argv)
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68EC030 plain-020 path with a 68030 "
-                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write\n");
+                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code\n");
     return 0;
 }
