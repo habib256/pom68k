@@ -275,6 +275,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
+- **Why did a 68030/68040 guest take a wrong flag about once per 10^12 cycles on macOS/AArch64, and hang a Quadra 630 in its ROM's remainder routine?** → [The a64 generator held values in x18, which macOS clears on every interrupt](#2026-11-13-a64-x18)
 - **Why does `q630_ide_boot_etalon` fail once in a while, and did the transient-refusal retry cause it?** → [About one run in 70, and it predates the retry](#2026-11-13-q630-rare-divergence)
 - **Why were the LC III and the IIvx the slowest 68030 machines under the JIT?** → [A refused window cost 32 interpreted instructions](#2026-11-12-jit-transient-refusal)
 - **Why was the JIT never faster than the interpreter on the 68030 PowerBooks?** → [Power cycling: 2.6 million flushes per boot](#2026-11-12-pb030-wake-reset)
@@ -1349,8 +1350,102 @@ Newest first.
 
 ---
 
+<a id="2026-11-13-a64-x18"></a>
+## 2026-11-13 (third) — The a64 generator kept ADDX's carry in x18, which macOS clears on every interrupt: the Quadra 630 hang, and a random wrong flag on every 68030/68040 machine since 2026-08-31
+
+**Answers** the "Not known" of [2026-11-13 (later)](#2026-11-13-q630-rare-divergence).
+
+**The defect.** `JitBackendA64.cpp` used host register x18 as scratch in
+three sequences: `emitAddSubExtend` (ADDX/SUBX loaded the incoming X bit
+into x18, then added it two instructions later; N went through x18 too),
+`emitBitfieldFlags` (Z built in x18, then stored) and the packed-CCR
+reload. Apple's ABI reserves x18, and on this host the kernel clears it on
+the way back from an interrupt. A value held there across two host
+instructions is therefore lost whenever an interrupt lands between them.
+ADDX then adds 0 instead of X; a bit-field test of zero publishes Z = 0.
+
+The x18 uses date from `97858b9e` (2026-08-31, ADDX/SUBX) and `88328cf3`
+(2026-09-01, bit-field flags). Every 68030 and 68040 machine that ran
+native code on macOS/AArch64 since then was exposed, GUI sessions
+included. x86-64 never was, nor the interpreter, nor the threaded backend.
+
+**Why it looked like a divide step.** `$40891984` in ROM `06684214` is the
+quotient step of the ROM's floating-point remainder routine (the code
+around it merges the quotient byte into FPSR). Its add-back loop is
+`SUBQ #1,D0 / ADD.L D5,D1 / ADDX.L D4,D3 / BCC`: it ends when the 64-bit
+add carries out. With the X of `ADD.L` dropped, the high half misses its
+carry. I did not trace the guest from the lost bit to the hang; what the
+replays show is that every run that leaves the reference ends inside that
+routine and stays there, and that none does once the carry is safe. A
+lost flag elsewhere would give the other shape of the earlier soak, a
+trace that leaves the reference and still passes; the first batch below
+has one.
+
+**How it was found.** The gate was rebuilt as a snapshot/replay harness
+(`scratchpad/2026-11-13/q630_replay/`): phase 1 saves the machine at each
+of its 65 script steps, and a fresh process reloads one and runs on. A
+replay from a save-state reproduces the reference trace to the cycle and
+the RAM hash, so a 10-second replay of frames 19 428 to 22 934 stands for
+the whole gate.
+
+| Replays of that window, eight at a time | Runs | Left the reference trace |
+|---|---|---|
+| Before the fix, first batch | 320 | 2 (one of them the remainder hang) |
+| Before the fix, interleaved with the fixed binary | 1 000 | 3 (all three the remainder hang) |
+| After the fix, interleaved | 1 000 | 0 |
+| 300 frames only, before the fix | 800 | 0 |
+
+Five in 1 320 old runs against none in 1 000 fixed ones is thin on its
+own (about one chance in fifty if the fix did nothing); the measurement
+and the first gate below are what carry the conclusion. The divergences
+fall at any frame, which is what pointed away from the guest and at the
+host: 2 in 1.1 million frames in the first batch, none in 240 000 frames
+of the short one. An inventory of everything in the JIT
+that reads a host address, a host clock or unseeded memory found nothing
+that reaches guest state. The register did.
+
+**Measured, grade A.** `x18.c` in the same directory writes x18, spins
+20 ms and reads it back: 0, 957 times out of 957, on the M4 under
+macOS 27.2.
+
+**The fix.** x7 replaces x18 in the 28 assembler calls. x7 had no other
+use in the generator, and none of the three sequences contains a helper
+call. A comment at the head of `Asm` carries the rule with both sources.
+
+**Gates.** Two, because no lockstep can see a loss that needs an
+interrupt at one particular instruction.
+
+- `jit_asset_free_lockstep_test` runs a native loop for one second of
+  host time: `ADD.L` sets X, `ADDX.L D0,D1` counts it, `ADDQ.L #1,D2`
+  counts iterations, `BFTST D5{0:8}` on zero must publish Z. The two
+  counts may differ by one at a slice boundary and by nothing else.
+  Against the old generator, with the soak running beside it, it failed
+  5 runs out of 6, on a lost Z after 21 to 653 slices; with the fix it
+  passes 8 of 8 on a64 and 3 of 3 on x86-64 under Rosetta, 41 million
+  iterations each on a64. It can only go red on a real loss; on a quiet
+  machine it may miss one, which is what the second gate is for.
+- `docs_test` § 9 refuses any `a.xxx(…)` assembler call with a bare 18
+  among its operands in the three a64 generator files. Mutation: putting
+  x18 back in `emitAddSubExtend` turns it red and names the line.
+
+**Tiers**, on the change. AArch64: m030 141/141, m040 102/102 (both IDE
+gates among them), everything else 274/274. x86-64 under Rosetta:
+`unit|jit` 186/186; its ROM tiers were not rerun, the x64 generator being
+untouched. The first pass of both fast tiers had one red,
+`file_size_budget_test`: the comment took `JitBackendA64.cpp` ten lines
+over its ceiling. It is now four lines and the ceiling is raised by those
+four (5 193 → 5 197).
+
+**Not done.** The full gate was not soaked again after the fix: the
+replay table stands for it. Linux on AArch64 leaves x18 to the program,
+so the Raspberry Pi leg was never exposed; Windows on ARM reserves it as
+macOS does, and the lexical gate covers all three.
+
 <a id="2026-11-13-q630-rare-divergence"></a>
 ## 2026-11-13 (later) — `q630_ide_boot_etalon` fails about once in 70 runs, and did so before the transient-refusal retry
+
+> **Answered:** the cause is the a64 generator's use of host register x18
+> — see [2026-11-13 (third)](#2026-11-13-a64-x18).
 
 **Corrects** the "one red I could not reproduce" paragraph of
 2026-11-12 (tenth): it does reproduce, and it is not that change's.

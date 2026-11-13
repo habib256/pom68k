@@ -193,6 +193,10 @@ void watchRefusal(const Layout& L, const BlockIr& ir, const Instr& in,
 
 // Minimal fixed-width assembler. Every memory operand is an unsigned scaled
 // immediate off x0 (Moira*) or x1 (Frame*); layout() validates the offsets.
+// x18 is never an operand; x7 is the scratch that used to be x18.
+// [B] Apple, "Writing ARM64 Code for Apple Platforms": x18 is reserved.
+// [A] M4, macOS 27.2: x18 reads back 0 after any interrupt (957 of 957);
+//     an ADDX lost its X that way. CHANGELOG 2026-11-13 (third); docs_test § 9.
 class Asm {
 public:
     enum Cond : uint32_t { EQ = 0, NE = 1, CS = 2, CC = 3, MI = 4,
@@ -937,9 +941,9 @@ void reloadPackedCcr(Asm& a, const Layout& L) {
     a.movX(17, ~kPackedCcrMask);
     a.andX(26, 26, 17);
     const auto add = [&](uint32_t off, unsigned bit) {
-        a.ldrB(18, 0, off);
-        if (bit) a.lslW(18, 18, bit);
-        a.orrX(26, 26, 18);
+        a.ldrB(7, 0, off);
+        if (bit) a.lslW(7, 7, bit);
+        a.orrX(26, 26, 7);
     };
     add(L.srC, 0); add(L.srV, 1); add(L.srZ, 2);
     add(L.srN, 3); add(L.srX, 4);
@@ -1022,30 +1026,30 @@ void emitLogicFlags(Asm& a, const Layout& L, unsigned result, int bits) {
 
 // Bitfields right-justify their selected field, so N comes from bit width-1
 // rather than bit 31. Callers pass that already-isolated boolean in `n` and
-// the value whose entirety determines Z. x18 is dedicated scratch here:
+// the value whose entirety determines Z. x7 is dedicated scratch here:
 // unlike setPackedCcrBits, this must not clobber x16 because BFFFO keeps the
 // uncropped offset live across flag publication.
 void emitBitfieldFlags(Asm& a, const Layout& L, unsigned value, unsigned n) {
     if (gPackedCcr) {
         a.lslW(n, n, 3);
         a.cmpWZero(value);
-        a.csetW(18, Asm::EQ);
-        a.lslW(18, 18, 2);
-        a.orrW(n, n, 18);
-        a.movX(18, ~uint64_t(0x0F));
-        a.andX(26, 26, 18);                         // preserve X + count
+        a.csetW(7, Asm::EQ);
+        a.lslW(7, 7, 2);
+        a.orrW(n, n, 7);
+        a.movX(7, ~uint64_t(0x0F));
+        a.andX(26, 26, 7);                         // preserve X + count
         a.orrX(26, 26, n);
         return;
     }
     a.strB(n, 0, L.srN);
     a.cmpWZero(value);
-    a.csetW(18, Asm::EQ);
-    a.strB(18, 0, L.srZ);
-    a.movW(18, 0);
-    if (L.srC == L.srV + 1) a.strH(18, 0, L.srV);
+    a.csetW(7, Asm::EQ);
+    a.strB(7, 0, L.srZ);
+    a.movW(7, 0);
+    if (L.srC == L.srV + 1) a.strH(7, 0, L.srV);
     else {
-        a.strB(18, 0, L.srV);
-        a.strB(18, 0, L.srC);
+        a.strB(7, 0, L.srV);
+        a.strB(7, 0, L.srC);
     }
 }
 
@@ -1076,17 +1080,17 @@ void emitAddSubFlags(Asm& a, const Layout& L, bool sub, bool setX) {
         a.csetW(12, Asm::MI);
         a.csetW(13, Asm::EQ);
         a.csetW(17, Asm::VS);
-        a.csetW(18, sub ? Asm::CC : Asm::CS);
+        a.csetW(7, sub ? Asm::CC : Asm::CS);
         a.lslW(12, 12, 3);
         a.lslW(13, 13, 2);
         a.lslW(17, 17, 1);
         a.orrW(12, 12, 13);
         a.orrW(12, 12, 17);
-        a.orrW(12, 12, 18);
+        a.orrW(12, 12, 7);
         setPackedCcrBits(a, 12, setX ? 0x1F : 0x0F);
         if (setX) {
-            a.lslW(18, 18, 4);
-            a.orrX(26, 26, 18);
+            a.lslW(7, 7, 4);
+            a.orrX(26, 26, 7);
         }
         return;
     }
@@ -1114,20 +1118,20 @@ void emitAddSubExtend(Asm& a, const Layout& L,
     loadSized(a, L, 10, false, src, bits);
     if (gPackedCcr) {
         a.ubfxW(17, 26, 2, 1);          // old cumulative Z
-        a.ubfxW(18, 26, 4, 1);          // carry/borrow input X
+        a.ubfxW(7, 26, 4, 1);          // carry/borrow input X
     } else {
         a.ldrB(17, 0, L.srZ);
-        a.ldrB(18, 0, L.srX);
+        a.ldrB(7, 0, L.srX);
     }
 
     if (sub) {
-        a.addX(12, 10, 18);             // source + X cannot wrap 64 bits
+        a.addX(12, 10, 7);             // source + X cannot wrap 64 bits
         a.subX(11, 9, 12);
         a.cmpX(9, 12);
         a.csetW(12, Asm::CC);           // 68k C/X = unsigned borrow
     } else {
         a.addX(11, 9, 10);
-        a.addX(11, 11, 18);
+        a.addX(11, 11, 7);
         a.lsrX(12, 11, unsigned(bits)); // carry past guest width
     }
     maskResult(a, 11, bits);
@@ -1136,27 +1140,27 @@ void emitAddSubExtend(Asm& a, const Layout& L,
     // V = (~(dst^src) for ADD, dst^src for SUB) & (dst^result) & sign.
     a.eorW(13, 9, 10);
     if (!sub) a.mvnW(13, 13);
-    a.eorW(18, 9, 11);
-    a.andW(13, 13, 18);
+    a.eorW(7, 9, 11);
+    a.andW(13, 13, 7);
     a.ubfxW(13, 13, unsigned(bits - 1), 1);
-    a.ubfxW(18, 11, unsigned(bits - 1), 1); // N
+    a.ubfxW(7, 11, unsigned(bits - 1), 1); // N
     a.cmpWZero(11);
     a.csetW(10, Asm::EQ);
     a.andW(10, 10, 17);                // sticky Z
 
     if (gPackedCcr) {
-        a.lslW(18, 18, 3);
+        a.lslW(7, 7, 3);
         a.lslW(10, 10, 2);
         a.lslW(13, 13, 1);
         a.lslW(9, 12, 4);
         a.orrW(12, 12, 9);             // C and X are identical
         a.orrW(12, 12, 13);
         a.orrW(12, 12, 10);
-        a.orrW(12, 12, 18);
+        a.orrW(12, 12, 7);
         setPackedCcrBits(a, 12, 0x1F);
         return;
     }
-    a.strB(18, 0, L.srN);
+    a.strB(7, 0, L.srN);
     a.strB(10, 0, L.srZ);
     a.strB(13, 0, L.srV);
     a.strB(12, 0, L.srC);

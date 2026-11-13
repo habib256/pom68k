@@ -2570,6 +2570,69 @@ bool runAddSubExtendLockstep() {
            (!nativeGenerator || s.slowInstrs == 0);
 }
 
+// A value the generated code keeps in a host register across two host
+// instructions must survive an interrupt taken between them. macOS clears
+// x18 on the way back from one, and until 2026-11-13 the a64 generator held
+// ADDX's incoming X and the bit-field Z there: about once per 10^12 guest
+// cycles a carry was lost, and a Quadra 630 hung in its ROM's FREM add-back
+// loop (CHANGELOG 2026-11-13 (third)). No lockstep can see that, because
+// the loss needs an interrupt at the right instruction, so this runs the two
+// sequences natively for one second of host time — a hundred or more
+// interrupts — and counts in the guest itself: D1 advances by X, D2 by one,
+// D3 counts a bit-field test of zero that did not publish Z.
+void installHostRegisterSoakLoop(SyntheticCpu& c) {
+    installVectors(c);
+    uint32_t p = kCode;
+    const auto word = [&](uint16_t v) { put16(c, p, v); p += 2; };
+    word(0x7000); word(0x7200); word(0x7400);   // MOVEQ #0,D0/D1/D2
+    word(0x7600); word(0x7A00);                 // MOVEQ #0,D3/D5
+    const uint32_t loop = p;
+    word(0x7CFF);                       // MOVEQ #-1,D6
+    word(0x7E01);                       // MOVEQ #1,D7
+    word(0xDC87);                       // ADD.L D7,D6 -> X=1
+    word(0xD380);                       // ADDX.L D0,D1 -> D1 += X
+    word(0x5282);                       // ADDQ.L #1,D2
+    word(0xE8C5); word(0x0008);         // BFTST D5{0:8} -> Z=1
+    word(0x6702);                       // BEQ.S over the error count
+    word(0x5283);                       // ADDQ.L #1,D3
+    const int32_t displacement = int32_t(loop) - int32_t(p + 2);
+    word(uint16_t(0x6000 | uint8_t(displacement))); // BRA.S loop
+}
+
+bool runHostRegisterSoak() {
+    const auto owner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& cpu = *owner;
+    installHostRegisterSoakLoop(cpu);
+    resetCpu(cpu);
+    cpu.jit.setEnabled(true);
+    const bool nativeGenerator =
+        !std::strcmp(cpu.jit.backendName(), "aarch64") ||
+        !std::strcmp(cpu.jit.backendName(), "x86-64");
+    const auto start = std::chrono::steady_clock::now();
+    const auto budget = std::chrono::milliseconds(nativeGenerator ? 1000 : 0);
+    uint64_t slices = 0;
+    bool ok = true;
+    while (ok && (slices < 64 ||
+                  std::chrono::steady_clock::now() - start < budget)) {
+        cpu.jit.executeUntil(cpu.getClock() + 1'000'003);
+        slices++;
+        // A slice may end between the ADDX and the ADDQ, never elsewhere
+        // with the two counts further apart.
+        const uint32_t lead = cpu.getD(1) - cpu.getD(2);
+        ok = lead <= 1 && cpu.getD(3) == 0 && cpu.getD(2) != 0;
+    }
+    const auto s = cpu.jit.stats().snapshot();
+    const uint32_t behind = cpu.getD(2) - cpu.getD(1);
+    std::printf("    host-register soak slices=%llu iterations=%u lost X=%u "
+                "lost Z=%u native=%llu slow=%llu\n",
+                (unsigned long long)slices, cpu.getD(2),
+                int32_t(behind) > 0 ? behind : 0, cpu.getD(3),
+                (unsigned long long)s.instrs,
+                (unsigned long long)s.slowInstrs);
+    return ok && s.blocksCompiled != 0 &&
+           (!nativeGenerator || s.slowInstrs * 1000 < s.instrs);
+}
+
 bool runExtendByteLockstep() {
     const auto refOwner = std::make_unique<SyntheticCpu>();
     SyntheticCpu& ref = *refOwner;
@@ -3696,6 +3759,8 @@ int main(int argc, char** argv) {
           "Speedometer MULU.W/MULS.W register, immediate and RAM forms stay native");
     check(runAddSubExtendLockstep(),
           "Speedometer ADDX/SUBX B/W/L preserve X and cumulative Z natively");
+    check(runHostRegisterSoak(),
+          "one second of native ADDX and BFTST loses no carry and no Z to the host");
     check(runExtendByteLockstep(),
           "Speedometer EXTB.L overwrites Dn, preserves X and publishes N/Z/V/C");
     check(runMemoryMultiplyDeviceOnce(),

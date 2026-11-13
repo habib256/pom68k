@@ -676,18 +676,6 @@ d'instruction.
   826 changements de carte mémoire, sorties `WindowLost` × 3) ; aucun
   banc GLUE ni PowerBook à empreinte — les chiffres viennent de gates
   entiers.
-- [ ] **`q630_ide_boot_etalon` : environ un échec sur 70, antérieur au
-  « réessai transitoire ».** 288 exécutions instrumentées sur le M4 :
-  3 échecs sur 144 avant le réessai (`94f7bb36`), 1 sur 144 après. Trois
-  en phase 1 (Drive Setup s'arrête à 57 commandes ATA), un en phase 3
-  (Cmd-N n'écrit rien). Les quatre quittent la trace de référence dans
-  une fenêtre de 300 trames avec le PC en ROM à `$40891988`/`$40891992`.
-  C'est un pas de division 64/32 (`DIVU.L`, `MULU.L`, boucle de
-  correction `ADDX`/`BCC`) dont l'invité ne sort plus. À faire : resserrer la fenêtre (empreinte
-  par trame autour des trames 19 800-22 500 de la phase 1), essayer le
-  moteur interpréteur et la jambe x86-64. Écartés : horloge hôte, threads,
-  image partagée, tas et pile non initialisés. CHANGELOG 2026-11-13
-  (later).
 - [ ] **LC III / IIvx : l'ATC de 22 entrées tourne sous pages de 8 Ko.**
   Après le réessai immédiat des refus transitoires (`CHANGELOG`
   2026-11-12 (tenth), LC III et IIvx −17 à −18 %), le boot LC III refuse
