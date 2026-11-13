@@ -2492,6 +2492,49 @@ int main() {
               std::string(relative) + " has no private live environment policy");
     }
 
+    // The a64 generator never names x18. Apple reserves the register and
+    // the kernel clears it on the way back from an interrupt, so a value
+    // held there is lost about once per 10^12 guest cycles: the Quadra 630
+    // hang of CHANGELOG 2026-11-13 (third). No run can be made to fail on
+    // demand, so the rule is lexical: an `a.xxx(…)` assembler call with a
+    // bare 18 among its operands. A shift or an immediate of 18 would trip
+    // it too; write that one as a named constant.
+    for (const char* relative : {
+             "src/jit/backends/JitBackendA64.cpp",
+             "src/jit/backends/JitBackendA64Atc040.inl",
+             "src/jit/backends/JitBackendA64Jsr040.inl" }) {
+        const std::string path = testasset::find(relative);
+        check(!path.empty(), std::string(relative) + " located");
+        if (path.empty()) continue;
+        std::istringstream lines(slurp(path));
+        std::string line;
+        int lineNo = 0, hits = 0, firstHit = 0;
+        const auto ident = [](char c) {
+            return std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '.';
+        };
+        while (std::getline(lines, line)) {
+            lineNo++;
+            line = line.substr(0, line.find("//"));
+            const size_t call = line.find("a.");
+            if (call == std::string::npos || (call && ident(line[call - 1]))) continue;
+            const size_t open = line.find('(', call);
+            if (open == std::string::npos) continue;
+            for (size_t at = line.find("18", open); at != std::string::npos;
+                 at = line.find("18", at + 2)) {
+                const char before = line[at - 1];
+                const char after = at + 2 < line.size() ? line[at + 2] : ' ';
+                if ((before == '(' || before == ',' || before == ' ') &&
+                    (after == ',' || after == ')') &&
+                    line.compare(at >= 3 ? at - 3 : 0, 3, "<< ") != 0) {
+                    if (!hits++) firstHit = lineNo;
+                }
+            }
+        }
+        check(hits == 0,
+              std::string(relative) + " never names x18 as an operand" +
+                  (hits ? " (line " + std::to_string(firstHit) + ")" : ""));
+    }
+
     // The host-invariant halves the backends consume (2026-08-28
     // extraction). The bug these catch: the shared decode or the D1F0
     // sub-form predicate quietly moving back into one backend, which is

@@ -162,7 +162,7 @@ what it does and does not drive today:
 The per-opcode question is **not** a block boundary: `Backend::canEmit()` is
 an encoding-only answer — consulted by the opcode census
 (`POM68K_JIT_HISTO`), by `jit_backend_test`, and by `A64Backend::compile()`
-as the dispatch test in front of `emitRegInstr` (`JitBackendA64.cpp:4832-4834`;
+as the dispatch test in front of `emitRegInstr` (`JitBackendA64.cpp:4836-4838`;
 the x64 emitters carry their own switch and never call it). The coverage
 floor is a separate thing and is not built on it: `compile()` counts what
 the emitter actually produced and refuses a block below
@@ -1678,8 +1678,9 @@ Canonical x64/030 and packed x64/040 retain inline pacing.
 
 Bitfields now publish packed flags directly too. All register and memory
 forms insert N/Z into bits 3/2, clear V/C and preserve X plus the retired
-count; the A64 path deliberately uses x18 rather than the live raw-offset
-scratch used by `BFFFO`, while x64 keeps the historical canonical `CMP`
+count; the A64 path deliberately uses x7 rather than the live raw-offset
+scratch used by `BFFFO` (it was x18 until 2026-11-13: macOS clears that
+register on return from an interrupt, `CHANGELOG` 2026-11-13 (third)), while x64 keeps the historical canonical `CMP`
 sequence unchanged. The six asset-free bitfield loops run in both CCR
 layouts on each host with zero slow instructions; their MMIO and fault legs,
 and the independent 030 format-$B oracle, repeat the same two-layout proof.
