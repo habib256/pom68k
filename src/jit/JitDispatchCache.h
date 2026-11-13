@@ -34,7 +34,13 @@ namespace jit {
 template <class BlockT>
 class DispatchCache {
 public:
-    struct Entry { uint64_t key = 0; BlockT* block = nullptr; };
+    // An empty slot's key must match no block. Key 0 is a real one — pc 0
+    // in user mode (Engine::key) — and a guest that jumped there met the
+    // empty slot's {0, nullptr} and the host dereferenced the null block:
+    // a segfault from guest code, found by sst68030_jit on the 68030 corpus
+    // (2026-11-13). Real keys use 33 bits; all ones is none of them.
+    static constexpr uint64_t kEmptyKey = ~uint64_t(0);
+    struct Entry { uint64_t key = kEmptyKey; BlockT* block = nullptr; };
 
     // 16384 slots (256 KB, Entry = 16 B). It was 65536 (1 MB) until
     // 2026-09-17 on the strength of a 2026-09-02 note claiming "4096 slots =

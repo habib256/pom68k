@@ -369,17 +369,6 @@ boot.
   `callm_rtm_test` et les 404 séquences de `berr020_test` tiennent des
   règles ciblées, mais aucun corpus différentiel ne juge le 020. Le fetch
   général à file de préfetch repose encore sur les boots Mac II et LC.
-- [ ] **`PACK -(Ay),-(Ax)` fautif sur 68040 : Ay reste décrémenté d'un
-  octet.** Trouvé le 2026-11-13 par un balayage de graines neuves
-  (`fuzz040.py`, familles core/mmu/random/fault × identity/tt, graines
-  5201 à 5208, 800 par cellule : 6 399 / 6 400). Vecteur
-  `040 random/identity seed=5205 #483` : `$854B` (`PACK -(A3),-(A2),#$4E71`),
-  faute d'accès, frame $7 ; l'oracle rend A3 = `$788C0` (valeur d'entrée),
-  le fork `$788BF`. Le modèle de redémarrage du 68040 veut les registres
-  d'avant l'instruction : regarder la restauration quand le même mode
-  prédécrémente deux fois (PACK lit deux octets), et UNPK par symétrie.
-  Non corrigé : trouvé à 12 h 50, sans le temps de repasser les tiers.
-  Recette : `CHANGELOG` 2026-11-13 (fourteenth).
 - [ ] **Décider ce que fait un 68010 interrompu avec une pile impaire.**
   Vu en écrivant `oddStackInterruptFrame` (`CHANGELOG` 2026-11-13
   (tenth)) : le cœur prend l'interruption (SR passe au niveau, SSP − 8)
@@ -387,11 +376,27 @@ boot.
   un bus 16 bits : erreur d'adresse attendue. Aucun Macintosh n'a de
   68010 ; à trancher pour NeoST et l'amont, avec le corpus `sst68000`
   comme juge du côté 68000.
-- [ ] **Rejouer les corpus à travers le JIT.** Les harnais `sst` ne
-  pilotent que l'interpréteur et aucun gate JIT ne se compare à WinUAE.
-  Sans Macintosh il n'existe qu'un programme 040 synthétique, les gates
-  copyback et `jit_restart_write_030_test` ; tous les `jit_lockstep_*`
-  exigent une ROM.
+- [ ] **Passer le rejeu des corpus à travers le JIT sur AArch64.** Les
+  gates `jit_sst68030*`/`jit_sst68040*` et `cpu_vectors0x0_jit_test`
+  (`tests/SstJitLockstep.h`, `CHANGELOG` 2026-11-13 (seventeenth)) jugent
+  le traducteur contre l'interpréteur sur chaque corpus épinglé ; ils n'ont
+  tourné que sur x86-64 (backend `x86-64`, et `threaded` sur quatre
+  corpus). Reste la jambe `a64`. Le harnais ne juge pas le traducteur
+  contre WinUAE : l'interpréteur reste le juge intermédiaire.
+- [ ] **Trancher les octets non listés que `--strict-ram` révèle.** Depuis
+  le 2026-11-13 (sixteenth) un octet que le cœur écrit et que l'oracle
+  laisse intact peut être jugé ; six corpus le sont. Restent :
+  (1) MOVE16 sur 68040, champs EA et WB2A de la frame $7 (~230 vecteurs de
+  `sst68040`/`sst68040_8k`) et PD1-PD3 de la forme `(Ax)+,(Ay)+` : WinUAE
+  n'affecte jamais `mmu_effective_addr` hors MOVEM (`cpummu.c`
+  @ Hatari e77819f7) et sa forme postincrémentée remplit un tampon local, la
+  glue remet ces globales à zéro — défaut de l'oracle à enregistrer comme
+  décision, le fork empile l'adresse de ligne ; (2) `sst68040_fpu` et
+  `sst68040_fpuh` (568 vecteurs, octets internes de la frame FSAVE et des
+  frames FPU) : non analysés ; (3) `sst68030_solo` `random/tt seed=709 #204`
+  et `sst68040` `mmu/identity seed=203 #506` : un bit U posé par le fetch
+  anticipé à la cible d'un JSR impair — la limite « fautes de préfetch
+  différées » de › Justesse 68030.
 - [ ] **Obtenir une preuve indépendante du 6888x.** La convergence
   numérique repose sur la même famille SoftFloat que l'oracle
   et l'interruption en cours d'instruction (format $9, BUSY) ne tient que

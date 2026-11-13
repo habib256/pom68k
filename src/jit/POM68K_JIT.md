@@ -1287,6 +1287,20 @@ six across the two — exist because each covers something the others cannot:
 | `jit_lockstep_noaccess_test` | x64 + the conservative data path (`POM68K_JIT_ACCESS_THUNK=0`) |
 | `jit_lockstep_a64_coarse_test` | the arm64 generator at 50 cycles per comparison, 5 M comparisons — **AArch64 hosts only** (`cmake/Pom68kJitGates.cmake:312-317`), which is also why it is the one smoke gate an x86-64 developer never sees |
 
+**The oracle corpora, through the translator.** Every pinned SST corpus
+also replays through the engine: `sst68030_jit`/`sst68040_jit`
+(`tests/SstJitLockstep.h`) load each vector's initial state into an
+interpreter and an engine-driven core, run a warm-up pass so the vector's
+own instruction is generated code on the judged pass, then run both to the
+same clock and compare every register, the clock and the whole 16 MB bus.
+The `jit_sst*` gates read the optional corpora (`asset-optional`); the
+`cpu_vectors0x0_jit_test` pair replays the 256 public vectors on every CI
+host. They judge the translator against the interpreter on states no
+Macintosh boot reaches — their first run found a host segfault on a guest
+`pc` of 0 in user mode (an empty dispatch-cache slot had key 0) and two
+frame latches that made a fault frame depend on which engine ran the
+instructions before it (`CHANGELOG` 2026-11-13 (seventeenth)).
+
 Two things this gate learned the hard way, both worth keeping in mind when
 extending it:
 

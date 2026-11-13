@@ -275,6 +275,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
+- **Do the oracle corpora pass through the JIT, not only the interpreter?** → [Every pinned corpus does since 2026-11-13; the first run found a host segfault at guest pc 0](#2026-11-13-jit-corpus-replay)
+- **Do the SST harnesses judge bytes the oracle left untouched?** → [Only with `--strict-ram`, since 2026-11-13; six corpora are registered strict](#2026-11-13-strict-ram)
 - **Is CAS2 a locked read-modify-write on the 68030, as CAS and TAS are?** → [It is since 2026-11-13; a fresh-seed sweep found it](#2026-11-13-cas2-rmw-030)
 - **How many instructions run between an SR write that unmasks an interrupt and the interrupt, per model, and what holds it?** → [None on the 68000/010, two from the 68020 up; a `moira_rules_test` cell](#2026-11-13-irq-delay-gate)
 - **Which 68030 boards have a gate that fails if the native backend silently falls back?** → [The Duo and the PowerBook 140/180 joined the seven others](#2026-11-13-native-gates-pb-duo)
@@ -1351,6 +1353,190 @@ Newest first.
 - **2026-07-14** — [M4.5: SingleStepTests/680x0 — 1 000 058 / 1 000 060](#2026-07-14--m45-singlesteptests680x0--1-000-058--1-000-060)
 - **2026-07-14** — [M4 complete: cycle-accurate boot hardware](#2026-07-14--m4-complete-cycle-accurate-boot-hardware)
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
+
+---
+
+<a id="2026-11-13-jit-corpus-replay"></a>
+## 2026-11-13 (seventeenth) — Every pinned oracle corpus replays through the translator: a host segfault on a guest pc of 0, and two frame latches that depended on the engine
+
+**The harness.** `tests/SstJitLockstep.h`, compiled into `sst68030_jit`
+and `sst68040_jit` from the two existing harnesses (`SST_JIT=1`). For each
+vector: the interpreter runs the vector's own unit (the oracle's verdict on
+it is the plain gate), which fixes a clock target, plus a 64-cycle slack
+that carries both cores into the words after it. A second core driven by
+`jit::Engine` runs a warm-up pass first — the tracer interprets the block it
+records, so on that pass the vector's instruction is not generated code —
+then is reloaded over the warm block cache and run to the same target.
+Every register, IRD/IRC, the clock, the halt state and the whole 16 MB bus
+must agree. The bus is compared and cleared whole on the translated side:
+generated code and the data window store straight into memory without
+passing `write8`, and the first version, which trusted a list of written
+addresses, read a warm-pass store back on the judged pass as a wrong Z flag
+(`random/tt/8k seed=606 #348`, only after `#320`) — a harness defect, found
+by bisecting the predecessor and then reading the dispatch ring.
+
+**Found, and fixed.**
+
+1. *A guest at pc 0 in user mode crashed the host.* `Engine::key(0, user)`
+   is 0, and an empty `DispatchCache` slot was `{key 0, block nullptr}`:
+   the lookup matched and dereferenced the null block (`sst68030_jit` on
+   `sst68030` and `sst68030_solo`, SIGSEGV in `DispatchCache::lookup`, read
+   under gdb). An empty slot now carries an all-ones key, which no block
+   key has (they use 33 bits). Gate: `jit_asset_free_lockstep_test`,
+   "a user-mode loop at pc 0 runs translated"; the mutation run with the
+   old header segfaults in that cell.
+2. *A split locked read stacked the datum of an earlier store.*
+   `mmu040Fault` gives WB3D `mmu040FullVal` when a write-flavoured access
+   is split, and CAS's read is write-flavoured; `reset()` cleared every
+   other frame latch but not that one, so the same vector stacked `$0000`
+   on its first run and `$270E` (the SR its own frame had pushed) on the
+   second (`fault/identity/8k seed=607 #337`, a CAS.W across an 8 KB page
+   boundary). Cleared in `reset()`; the oracle glue zeroes `regs.wb3_data`
+   per vector, so nothing pinned moves.
+3. *A 68030 $B frame carried the indexed EA of an earlier instruction.*
+   `mmuDispStore` (WinUAE's `mmu030_disp_store`) was never cleared between
+   instructions; when that earlier instruction had run as generated code,
+   which keeps no such latch, the two engines stacked different frames for
+   the same address error (`random/tt seed=709 #340`, internal long at frame
+   offset $1C: `$003E5FCC` against 0). Cleared at `mmuExecuteStart`;
+   nothing reads it back (RTE does not restore it). [F] for silicon.
+
+Row 97 of `POM68K_VENDOR.md`; the dispatch-cache fix is engine-side.
+
+**Results**, x86-64 host, `x86-64` backend, -O0 harness build:
+
+| Corpus | Vectors | Native instructions |
+|---|---|---|
+| `sst68040` | 7 200 | 103 273 |
+| `sst68040_8k` | 4 000 | 58 184 |
+| `sst68040_fline` | 4 500 | 58 500 |
+| `sst68040_fpu` | 7 500 | 104 279 |
+| `sst68040_fpu2` | 6 000 | 86 200 |
+| `sst68040_fpuh` | 6 000 | 92 862 |
+| `sst68030` | 3 082 | 47 091 |
+| `sst68030_solo` | 5 592 | 83 594 |
+| `sst68030_fpuraw` | 6 000 | 77 724 |
+| `sst68030_fpu2` | 6 000 | 92 880 |
+| `sst68030_rmw` | 6 000 | 85 698 |
+
+All agree. The fresh-seed sweeps of the day agree too (68040 6 400, 68030
+11 178). The `threaded` backend was run on four of them (`sst68040_8k`,
+`sst68040_fpu`, `sst68030_solo`, `sst68030_rmw`): all agree. `--cold`
+(no warm-up) agrees on `sst68040_8k`.
+
+**Gates.** `jit_sst68030*` and `jit_sst68040*`, eleven, `asset-optional`
+like the corpora they read; `cpu_vectors030_jit_test` and
+`cpu_vectors040_jit_test` replay the 256 public vectors through the engine
+on every CI host (`tools/cpu_vectors.py replay --jit`, which drops the
+oracle's known list: a listed vector agrees on both sides). Not run: the
+`a64` backend (`TODO.md § Moteur › Socle`).
+
+<a id="2026-11-13-strict-ram"></a>
+## 2026-11-13 (sixteenth) — The SST harnesses never looked at a byte the oracle left alone; judged, they find the 68030 write buffer of Scc, NBCD and SBCD, and an oracle defect in MOVE16 frames
+
+**The blind spot.** A vector's final RAM list holds only the bytes the
+oracle CHANGED (`oracle_driver.py` `ram_diff`, against the initial cells,
+zero elsewhere). `sst68030`/`sst68040` compared those bytes and nothing
+else, so a byte the core wrote where the oracle wrote nothing — or wrote
+back the initial value — was never looked at. `--strict-ram` judges every
+byte in the core's write list that the final list omits: it must still hold
+its initial value. First pass over the pinned corpora, before any fix:
+1 600 unlisted bytes, in seven classes.
+
+**Fixed: the 68030 write buffer (243 vectors of `sst68030_rmw`).** Scc
+(134), NBCD (62), SBCD `-(An)` (39) and the memory shifts (8) stacked a
+sign-extended byte or word where gencpu passes an unsigned variable — the
+same defect row 83 fixed for FScc on 2026-11-10. Scc and the shifts now
+store with `MMU_RAWBUF`; the three BCD stores hand the buffer gencpu's
+unclipped `uae_u16 newv`, recomputed by `pomGencpuBcdValue` from the
+operands and X before `bcd()` changes X (NBCD of `$01` stacks `$0000FF99`,
+not `$FFFFFF99`); the bus still receives the byte the core computed.
+Row 96. Grade D, internal register content.
+
+**Registered strict:** `sst68030`, `sst68030_fpuraw`, `sst68030_fpu2`,
+`sst68030_rmw`, `sst68040_fline`, `sst68040_fpu2` — all pass with
+`--strict-ram`.
+
+**Open, in `TODO.md § Moteur › Socle`:**
+
+- MOVE16 on the 68040, the EA and WB2A fields of the format-$7 frame
+  (~230 vectors of `sst68040`/`sst68040_8k`) and PD1-PD3 of the
+  `(Ax)+,(Ay)+` form: WinUAE never assigns `mmu_effective_addr` outside
+  MOVEM (`cpummu.c`: only `&= ~15` on a MOVE16 fault, then
+  `wb2_address = mmu_effective_addr`), and its postincrement form moves the
+  line through a local buffer, not `mmu040_move16`. The oracle's zeros are
+  its glue's per-vector reset of stale globals; the fork stacks the line
+  address. To be recorded as a ruling against the oracle.
+- `sst68040_fpu` and `sst68040_fpuh` (568 vectors of `fpuh`): unlisted bytes
+  in FSAVE and FPU frames, not analysed.
+- Two descriptor U bits (`sst68030_solo` `random/tt seed=709 #204`,
+  `sst68040` `mmu/identity seed=203 #506`): a JSR to an odd target fetches
+  ahead at the target in the fork, the oracle does not — the known
+  prefetch-ahead limit (`› Justesse 68030`, deferred prefetch faults).
+
+**A stale corpus copy, not a defect.** `sst68040_fpuh` was red on this host
+before any change (5 988 / 6 000): its `tests/data` copy was the one from
+2026-11-07, before the 2026-11-11 regeneration. Regenerated here from the
+lock's recipe with the oracle built on Linux x86-64, its three files are
+byte-identical to the hashes pinned on the M4 — the corpus is reproducible
+across hosts — and replay 6 000 / 6 000. The other 189 pinned files
+matched the lock.
+
+<a id="2026-11-13-pack-unpk-fault"></a>
+## 2026-11-13 (fifteenth) — A faulting PACK restarted with the wrong source register and packed the wrong byte; PACK and UNPK now move one word, as the oracle does
+
+Closes [(fourteenth)](#2026-11-13-pack-040-open), reproduced on the x86-64
+host from its recipe (`random/identity`, seed 5205: 799 / 800,
+`A3 got $788BF want $788C0`).
+
+**Two defects, one site.** `execPackPd` decremented the source register by
+hand and never armed its restart fixup — `computeEA` arms it for every
+other `-(An)` — so a fault on the source read stacked the frame with Ax one
+byte low. And it read the packed pair as two byte cycles where the oracle
+reads ONE word at Ax−2 (`gencpu.c` `i_PACK`, cpuemu_31/32 `op_8148`
+@ Hatari e77819f7): once A3 was right, the vector's SSW still differed
+(`$0521` SIZE=byte against `$0541` SIZE=word). `execUnpkPd` had the mirror
+image: two byte writes, no fixup for Ay on the 68030, and on the 68030 the
+write was not marked as the instruction's last write, so its frame held the
+instruction's own PC.
+
+It was not only a frame byte. The new cell's mutation run shows what a
+guest saw: after the handler's RTE, the restarted PACK started from the
+wrong Ax, left A3 two bytes off and stored `$00` where `$34` was due, on
+the 68030 and the 68040 alike.
+
+**The fix** (row 95). PACK arms Ax's fixup and reads one word at Ax−2
+before fetching the adjustment, in the oracle's order; UNPK arms Ay's fixup
+(68030, plain 68020) and writes one word at Ay−2 as the last write. The
+fixup carries the long encoding because gencpu gives PACK/UNPK no size: on
+the 68030 the handler sees Ax one long below its entry value
+(`mmu030fixupmod`), which the RTE takes back. A word at an odd address is a
+legal 020/030/040 bus cycle; no manual at hand says which cycles PACK/UNPK
+run ([F], settled by a bus capture). The `MOIRA_MIMIC_MUSASHI` path is
+untouched; PACK/UNPK are 68020+ only, so NeoST's 68000 is unaffected; the
+JIT does not translate them.
+
+**Gate.** `moira_rules_test` `packUnpkFaultRestoresAn`, 68030 and 68040:
+PACK with its source word on a /BERR byte (Ax in the handler, stacked PC,
+SSW size, then RTE with the hole disarmed and the instruction completing
+with the right byte and registers); UNPK with its destination on the hole
+(one `W0` bus cycle, last-write PC, Ay decremented, Ax kept). Six checks
+fail on the old code, none on the new.
+
+**Fresh seeds after the fix.** 68040, core/mmu/random/fault ×
+identity/tt, seeds 5301–5308, 800 a cell: 6 400 / 6 400. 68030, the
+fourteen cells of `sst68030_solo`, seeds 5401–5414, 800 a cell: 11 175 /
+11 178, the three left being FBcc to an odd target (ruling D28). Not pinned.
+
+**Tiers** for the fifteenth to seventeenth entries together, x86-64 host,
+RelWithDebInfo + native LTO build: `unit|jit|cpu-vectors` 223 / 228 on the
+first pass, then green — four repository gates read the change itself (the
+Moira identifier and patch-group counts, a `JIT_BRINGUP.md` citation moved by
+the new lines, the two new evidence comments, the new header in the Moira
+export, and the line budgets of the three gate files, raised in
+`tools/file_size_budget.txt`), rerun green with the eleven `jit_sst*` gates
+and the two `cpu_vectors*_jit_test`; `agent_binary_test` is this host's
+Retro68 toolchain, red before the change. `m030` 145 / 145, `m040` 102 / 102.
 
 ---
 

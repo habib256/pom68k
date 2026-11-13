@@ -41,14 +41,17 @@ def verify(model, entry):
     return raw
 
 
-def replay(model, entry, runner, emulator=""):
+def replay(model, entry, runner, emulator="", jit=False):
     raw = verify(model, entry)
     with tempfile.TemporaryDirectory(prefix="pom68k-cpu-vectors-") as work:
         (Path(work) / "public.json").write_bytes(raw)
         cmd = [part for part in emulator.split(";") if part] + [str(runner), work]
         if model == "040":
             cmd.append("--fpu")
-        if entry.get("known"):
+        # --jit: the runner judges the translator against the interpreter,
+        # so the oracle rulings in the known list do not apply (a listed
+        # vector agrees on both sides and would read as a stale entry).
+        if entry.get("known") and not jit:
             cmd += ["--known", str(FIXTURES / entry["known"])]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
     output = result.stdout + result.stderr
@@ -60,7 +63,7 @@ def replay(model, entry, runner, emulator=""):
     expected = entry["vectors"]
     if (result.returncode or skipped
             or not summary or int(summary[2]) != expected or int(summary[3]) != 1
-            or (known and not entry.get("known"))
+            or (known and (jit or not entry.get("known")))
             or int(summary[1]) + (int(known[1]) if known else 0) != expected
             or not mmu or int(mmu[1]) != 0):
         raise ValueError(f"{model}: replay did not execute every pinned vector")
@@ -104,6 +107,8 @@ def main():
     run.add_argument("--model", choices=("030", "040"), required=True)
     run.add_argument("--runner", type=Path, required=True)
     run.add_argument("--emulator", default="")
+    run.add_argument("--jit", action="store_true",
+                     help="the runner is sst68030_jit/sst68040_jit (no known list)")
     generate = commands.add_parser("regenerate")
     generate.add_argument("--oracle", type=Path, required=True)
     generate.add_argument("--write", action="store_true", help="replace fixtures and pins for review")
@@ -112,7 +117,8 @@ def main():
     if args.command == "regenerate":
         regenerate(data, args.oracle, args.write)
     elif args.command == "replay":
-        replay(args.model, data["models"][args.model], args.runner.resolve(), args.emulator)
+        replay(args.model, data["models"][args.model], args.runner.resolve(), args.emulator,
+               args.jit)
     else:
         for model, entry in data["models"].items():
             verify(model, entry)

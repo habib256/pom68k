@@ -17,7 +17,9 @@ towards upstream had quietly expired while the file still read as if a rebase
 were the plan.
 
 What forced it, measured on this tree rather than remembered (re-measured
-2026-11-10 with rows 79–86 (memory bit fields touch only their bytes,
+2026-11-13 with rows 95–97 (PACK/UNPK one-word restart, the 68030 write
+buffer of Scc/BCD/shifts, two frame latches cleared per instruction);
+before that 2026-11-10 with rows 79–86 (memory bit fields touch only their bytes,
 MOVES fixup slot, MOVEM extension log, JMP odd-target PC, FScc and ADD/SUB
 buffers, access-counted cache replacement, 68030 CACR strobes read as
 zero); before that 2026-11-10 with rows 76–78 (compile-time acceleration seam, plain-020
@@ -43,13 +45,13 @@ pair):
 
 | | | how to re-measure |
 |---|---|---|
-| distinct `pom*` extension identifiers | **112** (65 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
+| distinct `pom*` extension identifiers | **113** (65 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
 | `POM68K`-marked lines | **540** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **16 of 26** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **94** | this file |
+| patch groups in the inventory below | **97** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h`, `MoiraState.h` | — |
 
-Eighty-six patch groups, two of which (the JIT seam, row 22, and the ATC
+Ninety-seven patch groups, two of which (the JIT seam, row 22, and the ATC
 performance work, row 16) are not patches over upstream's design but a second
 consumer of it. A re-sync is no longer a merge with conflicts; it is a port.
 
@@ -249,6 +251,9 @@ gate in the last column of each row.
 | 92 | **68000 reset timing, back-ported from NeoST** — `Moira::reset` spends 6 cycles, not 4, between its two prefetch reads on the 68000 (NeoST `9f20046`). Every 68000 machine's clock is two cycles later from power-on | `Moira.cpp` | [D] fx68k @ 0602ee46 as NeoST read it (microcode trap8/trap9/b); the M68000 User's Manual gives only the total, 40(6/0). Could not land before the Portable board stopped depending on host slicing (CHANGELOG 2026-11-11 (fourteenth), (fifteenth)) | `moira_rules_test` (reset68000) |
 | 93 | **The FP data registers are value-initialised** — `fpu.fp[8]` had no initialiser; `fpuResetState()` writes the reset NaNs, but a core that has not been reset yet is serialized as well (the Portable and PowerBook 100 are held in reset by their Power Manager, and `PortableCpu::hardReset` defers the first `reset()` to the release edge), so a save state taken there carried 80 heap bytes. No guest can observe it: every path to an FPU instruction passes a reset | `Moira.h` | POM68K determinism defect, found by `portable_slicing_etalon` failing at frame 0 under a loaded host (CHANGELOG 2026-11-12 (seventh)); no guest-visible claim | `portable_slicing_etalon`; `moira_rules_test` (unresetFpZero) |
 | 94 | **CAS2 is a locked read-modify-write on the 68030** — `execCas2` sets `mmuRmw` for the 68030 as `execCas` and `execTas` do, and clears it before the closing prefetch: both operand reads are write-probed and both pages marked modified, compare failing or not | `MoiraExec_cpp.h` | [D] WinUAE @ Hatari e77819f7, fresh-seed vector `random/tt seed=5109 #261` (2026-11-13): the fork left both page descriptors with U alone. The 68030 was on CAS and TAS only; no Macintosh software is known to depend on it | `moira_rules_test` (`cas2IsReadModifyWrite030`) |
+| 95 | **PACK/UNPK `-(An)` move one word and restart cleanly** — `execPackPd` arms Ax's restart fixup before decrementing it by hand and reads the packed pair as ONE word at Ax−2 before the adjustment; `execUnpkPd` arms Ay's fixup (68030, plain 68020) and writes ONE word at Ay−2 as the instruction's last write (LASTWRITE on the 68030, `mmu040LastWrite` on the 68040). The fixup carries the long encoding, so a 68030 handler sees Ax one long low until the RTE (`mmu030fixupmod`). `MOIRA_MIMIC_MUSASHI` path untouched | `MoiraExec_cpp.h` | [D] WinUAE gencpu.c `i_PACK`/`i_UNPK`, cpuemu_31/32 `op_8148`/`op_8188` @ Hatari e77819f7; fresh-seed vector `040 random/identity seed=5205 #483`. Before: a faulting source read left Ax a byte low and the restarted PACK stored the wrong byte. [F] bus cycles: no manual at hand; settled by a bus capture of `PACK -(A0),-(A1)` on a 68030 | `moira_rules_test` (`packUnpkFaultRestoresAn`, RTE round trip) |
+| 96 | **68030 write buffer of Scc, the BCD stores and the memory shifts** — Scc and the memory shifts store with `MMU_RAWBUF` (gencpu passes `val` unsigned); ABCD/SBCD `-(An)` and NBCD to memory hand the buffer gencpu's unclipped `uae_u16 newv` (`pomGencpuBcdValue`), the low byte staying the result the core computed. Internal frame content only | `MoiraExec_cpp.h` | [D] WinUAE gencpu `i_Scc`, `i_ABCD`/`i_SBCD`/`i_NBCD`, memory shifts, cpuemu_32 @ Hatari e77819f7; 243 `sst68030_rmw` vectors once unlisted bytes were judged. [F] for silicon (internal register), as row 83 | `sst68030_rmw --strict-ram` |
+| 97 | **Two frame latches no longer outlive their instruction** — `reset()` clears `mmu040FullVal` (the datum a split locked read stacks as WB3D), and `mmuExecuteStart` clears `mmuDispStore` (the 68030 extended-EA results a $B frame stacks). Both had made a frame depend on earlier instructions — under the JIT on instructions that ran as generated code, which keep neither | `Moira.cpp`, `MoiraExecMMU_cpp.h` | POM68K determinism; the oracle glue zeroes the same WinUAE globals per vector, so the corpora are unchanged. Found by `sst68040_jit` (`fault/identity/8k seed=607 #337`) and `sst68030_jit` (`random/tt seed=709 #340`) | `jit_sst68040_8k`, `jit_sst68030_solo` |
 
 Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54, 56, 59-75 and 79-86 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
 when nothing arms them); rows 48 and 55 are performance alone, with no architectural effect. Row 58 is evidence documentation only. The ten files carrying no `POM68K` marker at all —
