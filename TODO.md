@@ -658,10 +658,11 @@ d'instruction.
 
 ### JIT justesse et parité des hôtes
 
-- [ ] **Donner des gates natifs et un inventaire de stores aux plateformes
-  030 récentes.** `Pb030Cpu` (neuf PowerBook) reçoit du code natif par
-  `auto` sans aucun gate à `POM68K_JIT_REQUIRE_NATIVE` ; le
-  `jit_duo230_boot_etalon` promis par `docs/JIT_BRINGUP.md` n'existe pas ;
+- [ ] **Donner un inventaire de stores au IIfx, et des gates natifs aux
+  cartes Pangola.** MSC, Jaws et Niagra ont leur gate à
+  `POM68K_JIT_REQUIRE_NATIVE` depuis le 2026-11-13 (`jit_duo230_`,
+  `jit_pb140_`, `jit_pb180_boot_etalon`) ; les PowerBook couleur (165c,
+  180c) n'en ont pas.
   `kJitStoreInventoryComplete` ne manque plus que sur le IIfx, qui vide
   le JIT à chaque écriture de CACR (DMA SCSI et IOP à auditer avant toute
   déclaration ; compter d'abord les vidages par trame au Finder). GLUE et

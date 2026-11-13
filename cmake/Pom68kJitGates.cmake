@@ -502,12 +502,17 @@ foreach(gate q605_boot_etalon centris650_boot_etalon
              # GLUE remap — but its overlay drops on a ROM-region READ,
              # which is the one map move a write guard cannot see, so
              # this gate is really about that.
-             iifx_boot_etalon)
+             iifx_boot_etalon
+             # MSC, Jaws and (below: it shares that binary) Niagra had
+             # native code by `auto` and no gate making a fallback fatal.
+             duo230_boot_etalon pb140_boot_etalon)
     add_test(NAME jit_${gate} COMMAND ${gate}
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     set_tests_properties(jit_${gate} PROPERTIES
                          ENVIRONMENT "POM68K_CPU_ENGINE=jit" TIMEOUT 3600)
 endforeach()
+add_test(NAME jit_pb180_boot_etalon COMMAND pb140_boot_etalon --pb180 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(jit_pb180_boot_etalon PROPERTIES ENVIRONMENT "POM68K_CPU_ENGINE=jit" TIMEOUT 3600)
 
 # Unlike the generic engine gates above, these are the product evidence
 # for the 68030 CODE GENERATOR. Pin the compiled host backend explicitly
@@ -516,7 +521,8 @@ endforeach()
 if(POM68K_JIT_NATIVE_BACKEND)
     foreach(gate lcii_boot_etalon mactv_boot_etalon lc3_boot_etalon
                  iivx_boot_etalon iisi_boot_etalon se30_boot_etalon
-                 iifx_boot_etalon)
+                 iifx_boot_etalon duo230_boot_etalon pb140_boot_etalon
+                 pb180_boot_etalon)
         set_tests_properties(jit_${gate} PROPERTIES
             ENVIRONMENT
                 "POM68K_CPU_ENGINE=jit;POM68K_JIT_BACKEND=${POM68K_JIT_NATIVE_BACKEND};POM68K_JIT_REQUIRE_NATIVE=1")
