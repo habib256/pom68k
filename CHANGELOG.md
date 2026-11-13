@@ -1378,12 +1378,23 @@ sample has the PC at `$40891988` or `$40891992`, a ROM address no passing
 run shows at any sample, and from there the clock advances further per
 frame than in a passing run.
 
+**The ROM address.** `$891984` in ROM `06684214` is a divide step:
+`DIVU.L D4,D3:D1` (64/32), `BVS` to an overflow path, then
+`MULU.L D5,D6:D7`, a 64-bit subtract and an add-back loop
+(`SUBQ #1,D0 / ADD.L D5,D1 / ADDX.L D4,D3 / BCC`), `RTS` at `$8919A2`;
+FPU opcodes sit on both sides of it. Every later sample of a failing run
+is inside `$891988`-`$8919A2`: the guest never leaves the computation
+that calls this step, or the add-back loop never carries. The samples
+cannot tell the two apart. The instructions involved (`DIVU.L` 64/32,
+`MULU.L` 32x32→64, `ADDX`/`SUBX`, `BVS`) are where to look for a result
+that depends on something outside the guest.
+
 **Ruled out.** A host clock in the board, threads in the core, a shared
 writable image, uninitialised heap (`MallocPreScribble`), uninitialised
 stack (`-ftrivial-auto-var-init=pattern` and `=zero` builds give the
 reference trace), disk space.
 
-**Not known.** The cause; what the ROM routine at `$891988` is; whether
+**Not known.** The cause; who calls the divide step; whether
 the interpreter engine shows it; whether the x86-64 leg does; whether it
 predates the pinned bases of 2026-11-12. The two passing runs with a
 different trace were not kept, so where they differ is unknown. The

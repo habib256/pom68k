@@ -664,7 +664,8 @@ d'instruction.
   en phase 1 (Drive Setup s'arrête à 57 commandes ATA), un en phase 3
   (Cmd-N n'écrit rien). Les quatre quittent la trace de référence dans
   une fenêtre de 300 trames avec le PC en ROM à `$40891988`/`$40891992`.
-  À faire : identifier cette routine ROM, resserrer la fenêtre (empreinte
+  C'est un pas de division 64/32 (`DIVU.L`, `MULU.L`, boucle de
+  correction `ADDX`/`BCC`) dont l'invité ne sort plus. À faire : resserrer la fenêtre (empreinte
   par trame autour des trames 19 800-22 500 de la phase 1), essayer le
   moteur interpréteur et la jambe x86-64. Écartés : horloge hôte, threads,
   image partagée, tas et pile non initialisés. CHANGELOG 2026-11-13
