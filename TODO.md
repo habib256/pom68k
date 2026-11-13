@@ -370,9 +370,9 @@ boot.
   règles ciblées, mais aucun corpus différentiel ne juge le 020. Le fetch
   général à file de préfetch repose encore sur les boots Mac II et LC.
 - [ ] **Donner un gate CPU aux rangs qui n'ont qu'un boot.** Rang 11 (pipe
-  de préfetch + poll IPL en mode 5), rang 21 (/BERR
-  du 68020) et moitié 010/020 du rang 15. Les rangs 13, 20 et 37 ont leur
-  cellule dans `moira_rules_test` depuis le 2026-11-13.
+  de préfetch + poll IPL en mode 5) et moitié 010/020 du rang 15. Les
+  rangs 13, 20, 21 et 37 ont leur cellule dans `moira_rules_test` depuis
+  le 2026-11-13.
 - [ ] **Rejouer les corpus à travers le JIT.** Les harnais `sst` ne
   pilotent que l'interpréteur et aucun gate JIT ne se compare à WinUAE.
   Sans Macintosh il n'existe qu'un programme 040 synthétique, les gates

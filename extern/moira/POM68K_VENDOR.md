@@ -174,7 +174,7 @@ gate in the last column of each row.
 | 18 | **68040 MMU bus translation** (Q3) + **32-entry I/D ATC** (Q8) | `MoiraExecMMU_cpp.h`, `Moira.h`, `Moira.cpp` | 7 200/7 200 pinned; format $7 last-write dichotomy | `sst68040`, `q605_boot_etalon` |
 | 19 | **External /BERR (040)** `extBusError040()` | `Moira.h`, `MoiraExecMMU_cpp.h` | the O6 twin for MEMCjr/djMEMC/F108 unmapped I/O | `q605_boot_etalon` |
 | 20 | **Watchpoints under the MMU** — logical-address hooks on the 4 translated paths | `MoiraExecMMU_cpp.h` | `readM`/`writeM` are bypassed on the 030/040 | `moira_rules_test` (`watchpointsUnderMmu`: the four sites, and a translated 68030 read) |
-| 21 | **External /BERR on the plain 68020** (queue refill, access capture, guarded restores) | `MoiraExceptions_cpp.h`, `MoiraDataflow_cpp.h`, `MoiraExecMMU_cpp.h` | the Mac LC ROM's 32-bit probe died in a DS-1 Sad Mac | `lc_boot_etalon` |
+| 21 | **External /BERR on the plain 68020** (queue refill, access capture, guarded restores) | `MoiraExceptions_cpp.h`, `MoiraDataflow_cpp.h`, `MoiraExecMMU_cpp.h` | the Mac LC ROM's 32-bit probe died in a DS-1 Sad Mac | `moira_rules_test` (`externalBusError020`), `lc_boot_etalon` |
 | 22 | **JIT seam** — fetch window (040/030/020 + the cycle-exact 68000 flavour), data TLB (with the per-slice `codeMask`), probes, `pomJitExecOne`, layout, ATC-eviction hook, bus-stall hook, `PomJitTiming` probe | `Moira.h`, `Moira.cpp`, `MoiraExecMMU_cpp.h`, `MoiraDataflow_cpp.h` | the second execution engine drives this object from `src/jit/` | `jit_lockstep_test`, `jit_system_boot_etalon` |
 | 23 | **Save-state seam** `pomFlushAtcs()` | `Moira.h` | a restored snapshot replaces the page tables under live ATCs | `savestate_030_test`, `savestate_040_test` |
 | 24 | **68010-only `readBuffer`/`writeBuffer`** — `pomSetRB<C>`/`pomSetWB<C>` setters; the store compiles away off the C68010 core, argument side effects (the address-error dummy `readM`) preserved | `Moira.h`, `MoiraDataflow_cpp.h`, `MoiraExec_cpp.h` | the buffers are 68010 format-$8 frame state and no Mac is a 68010; maintained on every core they made snapshot bytes depend on JIT arming history | `savestate_040_test` |
@@ -1331,7 +1331,10 @@ Mac the first time its ROM's 32-bit probe faulted):
    stale; restoring them corrupted live CCR/An. Plain core: frame $B
    at `pc0`, no fixups, no CCR restore.
 
-Gates: `lc_boot_etalon` (68020 + V8), `classic2_boot_etalon`; the SST
+Gates: `moira_rules_test` cell `externalBusError020` since 2026-11-13 (the
+handler's first instruction runs, the $B frame's fault address, A0/A1 and
+the stacked CCR, on the 68020 and the 68EC020), `lc_boot_etalon` (68020 +
+V8), `classic2_boot_etalon`; the SST
 68000 corpus and the 030/040 fuzzer pins are unaffected (68000/010
 paths untouched; 030/040 take the mode-5 branches before the new
 code).

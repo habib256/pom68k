@@ -1353,6 +1353,37 @@ Newest first.
 
 ---
 
+<a id="2026-11-13-berr020-rule-and-q630-soak"></a>
+## 2026-11-13 (ninth) — The full Quadra 630 gate, soaked after the x18 fix: 80 of 80 on the reference trace; and a rule cell for the 68020's external /BERR
+
+**The soak owed by (third).** `q630_ide_boot_etalon` built from
+`d15501fe` with the earlier instrumentation (clock, PC, RAM hash and ATA
+counters every 300 frames, all three phases), eight at a time, 09:45 to
+10:39 on the M4: 80 runs, 80 passed, 80 traces identical to the
+reference, line for line. Before the fix the same instrument gave 8 runs
+off the reference in 328 (4 failed, 4 passed on another trace). Eighty
+clean runs alone would happen about one time in seven at that rate; with
+the 1 000 clean replays, the measurement on x18 and the one-second gate,
+I consider the divergence closed. The TODO item is already gone.
+
+**Row 21.** External /BERR on the plain 68020 and 68EC020 was held by
+`lc_boot_etalon`. `moira_rules_test` gains `externalBusError020`: a
+longword read, a longword write and a write whose second word faults;
+the handler's first instruction must run (the prefetch queue is
+refilled), the format-$B frame must carry the faulting sub-access's
+address, A0/A1 and the stacked CCR must be the program's. Mutation:
+without the queue refill every row goes red, the faulted opcode running
+again at the handler's address and faulting twice. I did not mutate the
+fault-address capture or the guarded restores; the cell states them and
+they hold.
+
+Tiers: `moira_rules_test` on both hosts, `asset-none` 156/156 on AArch64
+and 155/155 on x86-64 under Rosetta.
+
+Of the rows `TODO.md` listed as held by a boot only, 13, 20, 21 and 37
+now have a cell; row 11 (prefetch-pipe carry and mode-5 IPL
+polling) and the 68010/68020 half of row 15 remain.
+
 <a id="2026-11-13-watchpoints-mmu-gate"></a>
 ## 2026-11-13 (eighth) — The four watchpoint hooks of the 68030/68040 translated paths have a gate; none had one
 
@@ -1597,7 +1628,8 @@ over its ceiling. It is now four lines and the ceiling is raised by those
 four (5 193 → 5 197).
 
 **Not done.** The full gate was not soaked again after the fix: the
-replay table stands for it. Linux on AArch64 leaves x18 to the program,
+replay table stands for it. (Done later that morning: 80 of 80, see
+[(ninth)](#2026-11-13-berr020-rule-and-q630-soak).) Linux on AArch64 leaves x18 to the program,
 so the Raspberry Pi leg was never exposed; Windows on ARM reserves it as
 macOS does, and the lexical gate covers all three.
 

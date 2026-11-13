@@ -1838,6 +1838,50 @@ void watchpointsUnderMmu()
     }
 }
 
+void externalBusError020()
+{
+    // POM68K_VENDOR.md row 21, held until now by `lc_boot_etalon`: a device
+    // /BERR on the plain 68020 and 68EC020, which have no mode-5 loop.
+    // (1) the handler's first instruction runs — the prefetch queue is
+    // refilled, the faulted opcode is not replayed at the handler's PC;
+    // (2) the format-$B frame carries the address of the sub-access that
+    // faulted, the second word of a longword included; (3) CCR and the
+    // address registers are those of the program, not a stale mode-5 save.
+    for (moira::Model m : { moira::Model::M68020, moira::Model::M68EC020 }) {
+        struct Case { uint16_t opcode; uint32_t a0; const char* what; };
+        for (const Case& k : { Case{ 0x2010, kHole,     "MOVE.L (A0),D0" },
+                               Case{ 0x2080, kHole,     "MOVE.L D0,(A0)" },
+                               Case{ 0x2080, kHole - 2, "MOVE.L D0,(A0), second word" } }) {
+            TestCpu c(m);
+            p32(c, 2 * 4, kHandler);
+            p16(c, kHandler, 0x7655);                   // MOVEQ #$55,D3
+            p16(c, kHandler + 2, kNop); p16(c, kHandler + 4, kNop);
+            stage(c, k.opcode, 0x15);                   // X, Z and C set
+            c.setA(0, k.a0); c.setA(1, 0x00123456);
+            c.setD(0, 0x80000001);                      // a store would set N, clear Z
+            c.holeArmed = true;
+            const bool contained = executeContained(c);
+            const uint32_t sp = c.getSP();
+            CHECK(contained && c.getPC0() == kHandler && c.holeTrips == 1,
+                  "model %d %s: PC0=%08X after %u /BERR (want the handler, one)",
+                  int(m), k.what, c.getPC0(), c.holeTrips);
+            CHECK((g16(c, sp + 6) >> 12) == 0xB && g32(c, sp + 0x10) == kHole,
+                  "model %d %s: frame format $%X, fault address %08X (want $B, %08X)",
+                  int(m), k.what, g16(c, sp + 6) >> 12, g32(c, sp + 0x10), kHole);
+            CHECK(c.getA(0) == k.a0 && c.getA(1) == 0x00123456,
+                  "model %d %s: A0=%08X A1=%08X after the fault (want %08X, 00123456)",
+                  int(m), k.what, c.getA(0), c.getA(1), k.a0);
+            const bool ran = executeContained(c);       // the handler's MOVEQ
+            CHECK(ran && c.getD(3) == 0x55 && c.holeTrips == 1,
+                  "model %d %s: the handler's first instruction did not run "
+                  "(D3=%08X, %u /BERR)", int(m), k.what, c.getD(3), c.holeTrips);
+            CHECK(g16(c, sp) == 0x2715,
+                  "model %d %s: stacked SR %04X (want 2715, the program's CCR)",
+                  int(m), k.what, g16(c, sp));
+        }
+    }
+}
+
 int main(int argc, char** argv)
 {
     if (argc == 2 && std::string_view(argv[1]) == "--movem-restart") {
@@ -1881,6 +1925,7 @@ int main(int argc, char** argv)
     irqDelayAfterMaskLowering();
     movesReleasesAlternateFc();
     watchpointsUnderMmu();
+    externalBusError020();
 
     if (failures) {
         std::printf("[moira_rules_test] FAIL: %d check(s)\n", failures);
@@ -1893,6 +1938,6 @@ int main(int argc, char** argv)
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68EC030 plain-020 path with a 68030 "
-                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU\n");
+                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR\n");
     return 0;
 }
