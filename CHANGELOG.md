@@ -1353,6 +1353,42 @@ Newest first.
 
 ---
 
+<a id="2026-11-13-pipe-ipl-gate"></a>
+## 2026-11-13 (eleventh) — The 68030's pipe across a PMOVE to TC and the interrupt poll inside a DBRA loop have a cell: no row of the patch inventory is held by a boot alone any more
+
+Row 11, the last of the six `TODO.md` listed. `moira_rules_test` gains
+`prefetchPipeAndIplPoll030`.
+
+**The pipe.** A 68030 turns translation on with `PMOVE (A0),TC`; the new
+two-level map sends the code page to another physical page that holds
+different instructions at the same offsets. Seven `MOVEQ` follow.
+
+| Words after the PMOVE | Run from |
+|---|---|
+| 1 to 4 | the old map (the pipe) |
+| 5 to 7 | the new map |
+
+The LC II ROM needs three (`nop; bne; jmp (A5)` at `$A416AA`, grade C).
+The core carries four; that fourth word is grade F and the cell says so
+at its head. It pins what the core does today.
+
+**The poll.** `DBRA D0,*`, no data access, mask 0, then level 3 raised
+between two instructions: the handler is reached after exactly one more
+iteration on the 68020, 68030 and 68040.
+
+**Mutations.** `mmuCapturePipe()` removed from the TC case: all seven
+`MOVEQ` come from the new map. `POLL_IPL` removed from the head of
+`mmuExecuteStart`: the 68030 runs 20 iterations without taking the
+interrupt, and its rows of (sixth) and (tenth) go red with it (ten
+checks in all).
+
+Tiers: `moira_rules_test` on both hosts, `asset-none` 156/156 on AArch64
+and 155/155 on x86-64 under Rosetta, before the last mutation rerun; the
+core file was restored byte for byte and the cell rerun green.
+
+**Left open in `TODO.md`:** what a 68010 does when interrupted on an odd
+SSP, seen in (tenth).
+
 <a id="2026-11-13-odd-ssp-frame-gate"></a>
 ## 2026-11-13 (tenth) — An interrupt frame on an odd SSP, and the RTE that reads it back, have a cell on the 68020, 68030 and 68040
 

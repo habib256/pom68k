@@ -369,12 +369,13 @@ boot.
   `callm_rtm_test` et les 404 séquences de `berr020_test` tiennent des
   règles ciblées, mais aucun corpus différentiel ne juge le 020. Le fetch
   général à file de préfetch repose encore sur les boots Mac II et LC.
-- [ ] **Donner un gate CPU au rang 11, le dernier qui n'a qu'un boot**
-  (pipe de préfetch à travers un changement de traduction + poll IPL en
-  mode 5, `lcii_boot_etalon`). Les rangs 13, 15, 20, 21 et 37 ont leur
-  cellule dans `moira_rules_test` depuis le 2026-11-13 ; le 68010 du rang
-  15 n'y est pas (son entrée d'interruption ne survit pas à une pile
-  impaire, comme un bus 16 bits).
+- [ ] **Décider ce que fait un 68010 interrompu avec une pile impaire.**
+  Vu en écrivant `oddStackInterruptFrame` (`CHANGELOG` 2026-11-13
+  (tenth)) : le cœur prend l'interruption (SR passe au niveau, SSP − 8)
+  mais n'atteint pas le handler et n'empile rien de lisible. Un 68010 a
+  un bus 16 bits : erreur d'adresse attendue. Aucun Macintosh n'a de
+  68010 ; à trancher pour NeoST et l'amont, avec le corpus `sst68000`
+  comme juge du côté 68000.
 - [ ] **Rejouer les corpus à travers le JIT.** Les harnais `sst` ne
   pilotent que l'interpréteur et aucun gate JIT ne se compare à WinUAE.
   Sans Macintosh il n'existe qu'un programme 040 synthétique, les gates

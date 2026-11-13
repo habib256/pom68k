@@ -1929,6 +1929,67 @@ void oddStackInterruptFrame()
     }
 }
 
+void prefetchPipeAndIplPoll030()
+{
+    // POM68K_VENDOR.md row 11, held until now by `lcii_boot_etalon`.
+    //
+    // (1) [C] LC II ROM $A416AA: `pmove (A3),tc; nop; bne; jmp (A5)` — the
+    // ROM turns translation on and expects the three words behind the
+    // PMOVE to be the ones already in the pipe, since the new map sends
+    // their logical addresses elsewhere.
+    // [F] The core carries four words, not three; nothing here measures a
+    // 68030's pipe. Settled by: a capture of the fetches after a PMOVE.
+    // The cell maps the code page onto a page holding other instructions
+    // and counts how many of the old ones still run.
+    {
+        constexpr uint32_t kTc = 0x80000000u | 0xCu << 20 | 0xAu << 12 | 0xAu << 8;
+        constexpr uint32_t kTable = 0x60000, kShadow = 0x70000, kTcAt = 0x50000;
+        constexpr uint64_t kCrp = uint64_t(0x7FFF0002u) << 32 | kTable;
+        TestCpu c(moira::Model::M68030);
+        p32(c, kTable, (kTable + 0x1000) | 2);          // TIA 0: a short table
+        p32(c, kTable + 0x1000 + 0 * 4, 0x0000 | 1);    // page 0 on itself
+        p32(c, kTable + 0x1000 + 1 * 4, kShadow | 1);   // the code page elsewhere
+        p32(c, kTcAt, kTc);
+        stage(c, 0xf010, 0);                            // PMOVE (A0),TC
+        p16(c, kCode + 2, 0x4000); c.setIRC(0x4000);
+        for (int i = 1; i <= 7; i++) {                  // MOVEQ #i,Di / #$50+i,Di
+            p16(c, kCode + 2 + 2 * i, uint16_t(0x7000 | i << 9 | i));
+            p16(c, kShadow + (kCode & 0xFFF) + 2 + 2 * i, uint16_t(0x7050 | i << 9 | i));
+        }
+        c.setA(0, kTcAt);
+        c.mmu030(0, kCrp, 0, 0);
+        for (int i = 0; i < 8; i++) c.execute();
+        bool ok = true;
+        for (int i = 1; i <= 7; i++)
+            ok = ok && c.getD(i) == uint32_t(i <= 4 ? i : 0x50 + i);
+        CHECK(ok, "68030 pipe across PMOVE to TC: D1-D7 = %X %X %X %X %X %X %X "
+              "(want 1 2 3 4 from the old map, then 55 56 57 from the new)",
+              c.getD(1), c.getD(2), c.getD(3), c.getD(4), c.getD(5), c.getD(6),
+              c.getD(7));
+    }
+    // (2) [C] LC II ROM $A00820, TimeDBRA: a `dbra D0,*` with no data
+    // access must still sample the interrupt lines at every boundary. One
+    // more iteration runs (the pin's own latency), not the rest of the loop.
+    for (moira::Model m : { moira::Model::M68020, moira::Model::M68030,
+                            moira::Model::M68040 }) {
+        TestCpu c(m);
+        p32(c, 27 * 4, kHandler);
+        p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
+        stage(c, 0x51c8, 0);                            // DBRA D0,*
+        p16(c, kCode + 2, 0xfffe); c.setIRC(0xfffe);
+        c.setD(0, 1000);
+        c.setSR(0x2000);
+        for (int i = 0; i < 5; i++) c.execute();        // past the SR-write delay
+        const uint32_t before = c.getD(0);
+        c.setIPL(3);
+        for (int i = 0; i < 20 && c.getPC0() != kHandler; i++) c.execute();
+        CHECK(c.getPC0() == kHandler && before - c.getD(0) == 1,
+              "model %d: interrupt inside a DBRA loop: PC0=%08X after %u more "
+              "iteration(s) (want the handler after 1)", int(m), c.getPC0(),
+              before - c.getD(0));
+    }
+}
+
 int main(int argc, char** argv)
 {
     if (argc == 2 && std::string_view(argv[1]) == "--movem-restart") {
@@ -1974,6 +2035,7 @@ int main(int argc, char** argv)
     watchpointsUnderMmu();
     externalBusError020();
     oddStackInterruptFrame();
+    prefetchPipeAndIplPoll030();
 
     if (failures) {
         std::printf("[moira_rules_test] FAIL: %d check(s)\n", failures);
@@ -1986,6 +2048,6 @@ int main(int argc, char** argv)
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68EC030 plain-020 path with a 68030 "
-                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP\n");
+                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop\n");
     return 0;
 }
