@@ -1396,9 +1396,10 @@ descriptors. Mutation: without the new line the CAS2 row reads 0/0 where
 `sst68030_solo` 5 592 / 5 592, `sst68030_rmw` 6 000 / 6 000.
 
 **Tiers**, a core change. AArch64: everything else 274/274, m040
-102/102, m030 139 of 145 passed and none failed when this was committed, the tier still running. x86-64 under Rosetta: `unit|jit` 186/186, m030
-145/145; its m040 tier was not rerun, the change being confined to
-`cpuModel == M68030`.
+102/102, m030 145/145 (139 had passed when the fix was committed; the
+tier finished green two minutes later). x86-64 under Rosetta: `unit|jit`
+186/186, m030 145/145; its m040 tier was not rerun, the change being
+confined to `cpuModel == M68030`.
 
 **Not done.** The 68040 has no such sweep in its loop yet
 (`TODO.md`); the sweep is not pinned as a corpus.
