@@ -369,6 +369,17 @@ boot.
   `callm_rtm_test` et les 404 séquences de `berr020_test` tiennent des
   règles ciblées, mais aucun corpus différentiel ne juge le 020. Le fetch
   général à file de préfetch repose encore sur les boots Mac II et LC.
+- [ ] **`PACK -(Ay),-(Ax)` fautif sur 68040 : Ay reste décrémenté d'un
+  octet.** Trouvé le 2026-11-13 par un balayage de graines neuves
+  (`fuzz040.py`, familles core/mmu/random/fault × identity/tt, graines
+  5201 à 5208, 800 par cellule : 6 399 / 6 400). Vecteur
+  `040 random/identity seed=5205 #483` : `$854B` (`PACK -(A3),-(A2),#$4E71`),
+  faute d'accès, frame $7 ; l'oracle rend A3 = `$788C0` (valeur d'entrée),
+  le fork `$788BF`. Le modèle de redémarrage du 68040 veut les registres
+  d'avant l'instruction : regarder la restauration quand le même mode
+  prédécrémente deux fois (PACK lit deux octets), et UNPK par symétrie.
+  Non corrigé : trouvé à 12 h 50, sans le temps de repasser les tiers.
+  Recette : `CHANGELOG` 2026-11-13 (fourteenth).
 - [ ] **Décider ce que fait un 68010 interrompu avec une pile impaire.**
   Vu en écrivant `oddStackInterruptFrame` (`CHANGELOG` 2026-11-13
   (tenth)) : le cœur prend l'interruption (SR passe au niveau, SSP − 8)
