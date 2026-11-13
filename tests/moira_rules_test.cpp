@@ -1990,6 +1990,50 @@ void prefetchPipeAndIplPoll030()
     }
 }
 
+void cas2IsReadModifyWrite030()
+{
+    // [D] WinUAE @ Hatari e77819f7, "random/tt seed=5109 #261" of the
+    // 2026-11-13 fresh-seed sweep: on the 68030 the operand reads of CAS2
+    // are the read half of a locked read-modify-write, like CAS's and
+    // TAS's — the page is probed for writing and marked modified even
+    // when the compare fails and nothing is written. The fork had CAS and
+    // TAS; CAS2 left both descriptors with U alone. The prefetch that ends
+    // the instruction is not part of the cycle: the code page stays clean.
+    constexpr uint32_t kTc = 0x80000000u | 0xCu << 20 | 0xAu << 12 | 0xAu << 8;
+    constexpr uint32_t kTable = 0x60000, kPages = kTable + 0x1000;
+    constexpr uint64_t kCrp = uint64_t(0x7FFF0002u) << 32 | kTable;
+    constexpr uint32_t kFirst = 0x40010, kSecond = 0x41010;
+    struct Case { uint16_t opcode; uint16_t ext[2]; unsigned words; bool second;
+                  const char* what; };
+    for (const Case& k : { Case{ 0x0cfc, {0x8080, 0x90c1}, 2, true,  "CAS2.W, compare failing" },
+                           Case{ 0x0cd0, {0x0080, 0},      1, false, "CAS.W, compare failing" },
+                           Case{ 0x4ad0, {0, 0},           0, false, "TAS" } }) {
+        TestCpu c(moira::Model::M68030);
+        p32(c, kTable, kPages | 2);                     // TIA 0: a short table
+        for (uint32_t page : { 0u, 1u, 0x40u, 0x41u })  // each on itself
+            p32(c, kPages + page * 4, page << 12 | 1);
+        p16(c, kFirst, 0x1234); p16(c, kSecond, 0x5678);
+        stage(c, k.opcode, 0);
+        for (unsigned i = 0; i < 3; i++)
+            p16(c, kCode + 2 + 2 * i, i < k.words ? k.ext[i] : kNop);
+        c.setIRC(k.words ? k.ext[0] : kNop);
+        c.setA(0, kFirst); c.setA(1, kSecond);
+        c.setD(0, 0); c.setD(1, 0);                     // neither compare matches
+        c.mmu030(kTc, kCrp, 0, 0);
+        const bool contained = executeContained(c);
+        const auto modified = [&](uint32_t page) {
+            return (g32(c, kPages + page * 4) & 0x10) != 0;
+        };
+        CHECK(contained && c.faults == 0 && c.getPC0() == kCode + 2 + 2 * k.words,
+              "68030 %s under translation: PC0=%08X, %d fault(s)", k.what,
+              c.getPC0(), c.faults);
+        CHECK(modified(0x40) && modified(0x41) == k.second && !modified(1),
+              "68030 %s: M on the operand pages %d/%d (want 1/%d), on the code "
+              "page %d (want 0)", k.what, modified(0x40), modified(0x41),
+              k.second, modified(1));
+    }
+}
+
 int main(int argc, char** argv)
 {
     if (argc == 2 && std::string_view(argv[1]) == "--movem-restart") {
@@ -2036,6 +2080,7 @@ int main(int argc, char** argv)
     externalBusError020();
     oddStackInterruptFrame();
     prefetchPipeAndIplPoll030();
+    cas2IsReadModifyWrite030();
 
     if (failures) {
         std::printf("[moira_rules_test] FAIL: %d check(s)\n", failures);
@@ -2048,6 +2093,6 @@ int main(int argc, char** argv)
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68EC030 plain-020 path with a 68030 "
-                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop\n");
+                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write\n");
     return 0;
 }

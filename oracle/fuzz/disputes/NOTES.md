@@ -820,6 +820,18 @@ Recorded here so that they are not rediscovered; each is in `TODO.md`.
   fork raises the address error inside the branch (as for Bcc), the oracle
   only sets the PC.
 
+### Not disputes: the 68030 fresh-seed sweep of 2026-11-13 (seeds 5101-5114)
+Strict oracle, 800 vectors per cell, the fourteen cells of `sst68030_solo`
+in the same order: 11 171 / 11 174 on the first replay.
+- `random/tt seed=5109 #261`: CAS2.W with a failing compare — the oracle
+  marks both operand pages modified, the fork left U alone. **Fixed the
+  same day** (`POM68K_VENDOR.md` row 94): on the 68030 CAS2 is now the
+  locked read-modify-write CAS and TAS already were.
+- `random/identity seed=5108 #157, #548`: FBcc taken to an odd target —
+  ruling D28, the fork keeps the address error.
+The sweep is not pinned: 11 172 / 11 174 after the fix, the two D28
+vectors remaining.
+
 ## The raw F-line window on the 68030 + 68882, and the oracle's strict setting (2026-11-07)
 
 `gen030.py` gained the `fpuraw` family (the generator gen040 used for
