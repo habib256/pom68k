@@ -166,7 +166,7 @@ gate in the last column of each row.
 | 10 | RTE $B honours a **software-cleared SSW.DF** (one-shot completion latch) | `MoiraExec_cpp.h`, `MoiraExecMMU_cpp.h`, `Moira.h` | Mac OS slot-probe recovery, else a 6.8M-deep vector-2 storm | `berr030_test`, `lcii_boot_etalon` |
 | 11 | **Prefetch-pipe carry** across a translation switch + mode-5 **IPL polling** | `MoiraExecMMU_cpp.h`, `Moira.h`, `Moira.cpp` | the LC II ROM banks on the real 030's 3-word pipe; TimeDBRA needs prompt IRQs | `lcii_boot_etalon` |
 | 12 | `isStopped()` accessor | `Moira.h` | debug-only; STOP vs spin loop | — |
-| 13 | **IRQ-recognition delay** after a mask-lowering SR write (`irqDelay`) | `Moira.cpp`, `Moira.h` | SimCity 2000 re-entered its VBL task with a clobbered A5 | `lcii_boot_etalon` |
+| 13 | **IRQ-recognition delay** after a mask-lowering SR write (`irqDelay`) | `Moira.cpp`, `Moira.h` | SimCity 2000 re-entered its VBL task with a clobbered A5 | `moira_rules_test` (`irqDelayAfterMaskLowering`), `lcii_boot_etalon` |
 | 14 | **68030 i-cache timing overlay** `PomIcache` (folded inline from a virtual hook) + exact CACR CI/CEI strobes (`pomInvalidateIcache030`) | `Moira.h`, `MoiraExecMMU_cpp.h` | 020 cycle model over-charges cached 030 code; the virtual hook cost ~11% | `lcii_boot_etalon`, `berr030_test` |
 | 15 | **Odd-SP interrupt frames**: no A0 masking on 010/020, single vector scaling | `MoiraExceptions_cpp.h` | Lode Runner launch freeze (spurious FORMAT ERROR) | `lcii_launch_etalon`, `sst68000` |
 | 16 | **ATC performance**: O(1) pseudo-LRU, last-hit probe, `MOIRA_HOT_INLINE` | `MoiraExecMMU_cpp.h`, `Moira.h`, `Moira.cpp` | 38% of LC II machine time was in two 22-entry scans | `sst68030` |
@@ -936,6 +936,11 @@ run loop decrements it instead of calling `checkForIrq()` while it is
 nonzero. The 68k does not sample interrupts until after the instruction
 following a mask change (M68000 PRM); modelling it guarantees the
 interrupted program makes forward progress before the next IRQ.
+
+Gate since 2026-11-13: `moira_rules_test`, cell
+`irqDelayAfterMaskLowering` — the landing after MOVE to SR, ANDI to SR
+and RTE on five models (two instructions on the 68020/030/040, none on
+the 68000/010), no delay without an unmasking, and none left after reset.
 
 Why: SimCity 2000 on the LC II redraws its screen from a per-VBL task;
 the QuickDraw blit lowers IPL at the instruction just before it restores
