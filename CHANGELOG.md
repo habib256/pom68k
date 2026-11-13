@@ -1389,6 +1389,17 @@ cannot tell the two apart. The instructions involved (`DIVU.L` 64/32,
 `MULU.L` 32x32→64, `ADDX`/`SUBX`, `BVS`) are where to look for a result
 that depends on something outside the guest.
 
+**A second soak, 06:11 to 06:36** (40 runs of `8fb98283`, eight at a
+time, one line per frame inside the three windows above): no failure, two
+passing runs with a different trace. One was kept. It differs from the
+reference in its last three samples of phase 1 only (frames 35 400 to
+36 000, after Drive Setup has finished writing), and there too the PC is
+at `$40891988`-`$40891992` with the clock running ahead. So the guest
+can enter that computation at a moment that varies from run to run, and
+the gate fails only when it does so while an injected click or key is
+due. No divergence fell inside a per-frame window, so the frame is still
+not known.
+
 **Ruled out.** A host clock in the board, threads in the core, a shared
 writable image, uninitialised heap (`MallocPreScribble`), uninitialised
 stack (`-ftrivial-auto-var-init=pattern` and `=zero` builds give the
@@ -1396,9 +1407,7 @@ reference trace), disk space.
 
 **Not known.** The cause; who calls the divide step; whether
 the interpreter engine shows it; whether the x86-64 leg does; whether it
-predates the pinned bases of 2026-11-12. The two passing runs with a
-different trace were not kept, so where they differ is unknown. The
-instrumentation is not in the tree.
+predates the pinned bases of 2026-11-12. The instrumentation is not in the tree.
 
 <a id="2026-11-13-settle-irq-parked"></a>
 ## 2026-11-13 — The `CHECK_IRQ` settle is parked: it changes which block owns a device read, and the gate that says that read is native never ran it native

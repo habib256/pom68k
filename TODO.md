@@ -94,6 +94,17 @@ puis `SetCursor` depuis `$7ABEFA`). À ne pas
 reprendre : `71b92cc` (retard d'échantillonnage IPL, non tranché côté
 NeoST).
 
+**Relevé NeoST du 2026-11-13** (NeoST `9db090b`, dernier commit du cœur
+`c9925da`) : `diff` fichier par fichier, rien de nouveau à porter.
+`cc554ef` ne s'applique pas (`MOIRA_MIMIC_MUSASHI` est faux ici).
+`e809c24` (lecture en plus d'un MOVEM mémoire→registres dans le même
+espace que les transferts) est déjà vrai ici, mais **les deux cœurs ne
+choisissent pas le même espace en relatif PC** : NeoST lit en espace
+programme d'après fx68k @ 0602ee46 [D], ce cœur en espace données
+d'après SingleStepTests 68000/v1 [D] (`readM`, `sst68000` 16 130/16 130
+sur MOVEM avec FC comparé). À trancher par une source de rang B ou A
+avant le portage vers NeoST.
+
 ## Vitesse — côté hôte POM68K, après l'objectif principal (profils du 2026-11-07)
 
 Deux profils à 1 kHz sur les bancs à budget fixe, après l'échéance VIA du
