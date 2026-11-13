@@ -164,7 +164,7 @@ gate in the last column of each row.
 | 8 | FPU **timing tables + FRESTORE acceptance matrix** | `MoiraExecFPU_cpp.h` | MC68881/882UM § 8; placeholders billed a 570-cycle FTWOTOX as 20 | `fpu_sanity` |
 | 9 | **External /BERR (030)** `extBusError()` + RTE of format $A | `MoiraExecMMU_cpp.h`, `MoiraExec_cpp.h`, `Moira.h` | V8 unmapped I/O + SCSI pseudo-DMA timeout | `berr030_test` |
 | 10 | RTE $B honours a **software-cleared SSW.DF** (one-shot completion latch) | `MoiraExec_cpp.h`, `MoiraExecMMU_cpp.h`, `Moira.h` | Mac OS slot-probe recovery, else a 6.8M-deep vector-2 storm | `berr030_test`, `lcii_boot_etalon` |
-| 11 | **Prefetch-pipe carry** across a translation switch + mode-5 **IPL polling** | `MoiraExecMMU_cpp.h`, `Moira.h`, `Moira.cpp` | the LC II ROM banks on the real 030's 3-word pipe; TimeDBRA needs prompt IRQs | `lcii_boot_etalon` |
+| 11 | **Prefetch-pipe carry** across a translation switch + mode-5 **IPL polling** | `MoiraExecMMU_cpp.h`, `Moira.h`, `Moira.cpp` | the LC II ROM banks on the real 030's 3-word pipe; TimeDBRA needs prompt IRQs | `moira_rules_test` (`prefetchPipeAndIplPoll030`), `lcii_boot_etalon` |
 | 12 | `isStopped()` accessor | `Moira.h` | debug-only; STOP vs spin loop | — |
 | 13 | **IRQ-recognition delay** after a mask-lowering SR write (`irqDelay`) | `Moira.cpp`, `Moira.h` | SimCity 2000 re-entered its VBL task with a clobbered A5 | `moira_rules_test` (`irqDelayAfterMaskLowering`), `lcii_boot_etalon` |
 | 14 | **68030 i-cache timing overlay** `PomIcache` (folded inline from a virtual hook) + exact CACR CI/CEI strobes (`pomInvalidateIcache030`) | `Moira.h`, `MoiraExecMMU_cpp.h` | 020 cycle model over-charges cached 030 code; the virtual hook cost ~11% | `lcii_boot_etalon`, `berr030_test` |
