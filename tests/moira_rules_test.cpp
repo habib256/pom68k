@@ -1669,6 +1669,89 @@ void unresetFpZero()
     c->~TestCpu();
 }
 
+void irqDelayAfterMaskLowering()
+{
+    // [F] POM68K_VENDOR.md row 13: from the 68020 up, an interrupt unmasked
+    // by an SR write is recognised two instructions later (`irqDelay = 2`,
+    // POM68K_SURFACE.md § 5); the PRM reads as one, and no capture settles
+    // it. The depth was held by `lcii_boot_etalon` alone. This pins what
+    // the core does, so that a change of depth is a decision: where the
+    // interrupt lands after MOVE to SR, ANDI to SR and RTE, that a write
+    // which leaves the level masked arms nothing, that an interrupt
+    // arriving with the mask already low is not delayed, and that reset
+    // drops an armed delay. The 68000 and 68010 have no delay.
+    constexpr uint32_t kAfterRte = kCode + 0x100;
+    enum Form { MoveToSr, AndiToSr, Rte, StillMasked, AlreadyLow, ResetBetween };
+    const auto landing = [&](moira::Model m, Form form, bool& taken) {
+        TestCpu c(m);
+        p32(c, 27 * 4, kHandler);                       // level-3 autovector
+        for (int i = 0; i < 8; i++) p16(c, kHandler + 2 * i, kNop);
+        const uint16_t op = form == AndiToSr ? 0x027c : form == Rte ? 0x4e73
+                          : form == AlreadyLow ? kNop : 0x46fc;
+        const uint16_t imm = form == AndiToSr ? 0xf8ff
+                           : form == StillMasked ? 0x2400 : 0x2000;
+        stage(c, op, 0);
+        for (int i = 1; i < 10; i++) p16(c, kCode + 2 * i, kNop);
+        for (int i = 0; i < 10; i++) p16(c, kAfterRte + 2 * i, kNop);
+        if (form == Rte) {
+            p16(c, 0x7ff8, 0x2000); p32(c, 0x7ffa, kAfterRte); p16(c, 0x7ffe, 0);
+            c.setSP(0x7ff8);
+        } else if (form == AlreadyLow) {
+            c.setSR(0x2000);                            // arms the delay itself:
+            for (int i = 0; i < 3; i++) c.execute();    // let it run out
+        } else {
+            p16(c, kCode + 2, imm); c.setIRC(imm);
+        }
+        if (form == ResetBetween) {                     // arm the delay, then reset
+            c.execute();
+            c.reset();                                  // mask 7: only level 7 passes
+            p32(c, 31 * 4, kHandler);
+            c.setSP(0x8000);
+            c.setPC(kCode + 4); c.setPC0(kCode + 4);
+            c.setIRD(kNop); c.setIRC(kNop);
+        }
+        c.setIPL(form == ResetBetween ? 7 : 3);
+        int n = 0;
+        for (; n < 12 && c.getPC0() != kHandler; n++) c.execute();
+        taken = c.getPC0() == kHandler;
+        return taken ? g32(c, c.getSP() + 2) : 0;       // the stacked return PC
+    };
+    struct Row { moira::Model model; const char* name; uint32_t delayed; };
+    for (const Row& row : { Row{ moira::Model::M68000, "68000", 0 },
+                            Row{ moira::Model::M68010, "68010", 0 },
+                            Row{ moira::Model::M68020, "68020", 4 },
+                            Row{ moira::Model::M68030, "68030", 4 },
+                            Row{ moira::Model::M68040, "68040", 4 } }) {
+        bool taken = false;
+        uint32_t ret = landing(row.model, MoveToSr, taken);
+        CHECK(taken && ret == kCode + 4 + row.delayed,
+              "%s MOVE to SR: interrupt returns to %08X, want %08X",
+              row.name, ret, kCode + 4 + row.delayed);
+        ret = landing(row.model, AndiToSr, taken);
+        CHECK(taken && ret == kCode + 4 + row.delayed,
+              "%s ANDI to SR: interrupt returns to %08X, want %08X",
+              row.name, ret, kCode + 4 + row.delayed);
+        ret = landing(row.model, Rte, taken);
+        CHECK(taken && ret == kAfterRte + row.delayed,
+              "%s RTE: interrupt returns to %08X, want %08X",
+              row.name, ret, kAfterRte + row.delayed);
+        landing(row.model, StillMasked, taken);
+        CHECK(!taken, "%s MOVE to SR leaving level 3 masked took the interrupt",
+              row.name);
+        ret = landing(row.model, AlreadyLow, taken);
+        // A level raised between two instructions is seen one boundary
+        // later on every model (the pin is sampled before the boundary):
+        // that instruction is the pin's, not irqDelay's.
+        CHECK(taken && ret == kCode + 8,
+              "%s interrupt with the mask already low returns to %08X, want "
+              "%08X", row.name, ret, kCode + 8);
+        ret = landing(row.model, ResetBetween, taken);
+        CHECK(taken && ret == kCode + 6,
+              "%s reset kept an armed delay: level 7 returns to %08X, want %08X",
+              row.name, ret, kCode + 6);
+    }
+}
+
 int main(int argc, char** argv)
 {
     if (argc == 2 && std::string_view(argv[1]) == "--movem-restart") {
@@ -1709,6 +1792,7 @@ int main(int argc, char** argv)
     stop68000();
     reset68000();
     unresetFpZero();
+    irqDelayAfterMaskLowering();
 
     if (failures) {
         std::printf("[moira_rules_test] FAIL: %d check(s)\n", failures);
@@ -1721,6 +1805,6 @@ int main(int argc, char** argv)
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68EC030 plain-020 path with a 68030 "
-                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset\n");
+                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write\n");
     return 0;
 }

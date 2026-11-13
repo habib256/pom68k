@@ -370,7 +370,7 @@ boot.
   règles ciblées, mais aucun corpus différentiel ne juge le 020. Le fetch
   général à file de préfetch repose encore sur les boots Mac II et LC.
 - [ ] **Donner un gate CPU aux rangs qui n'ont qu'un boot.** Rang 11 (pipe
-  de préfetch + poll IPL en mode 5), rang 13 (`irqDelay`), rang 21 (/BERR
+  de préfetch + poll IPL en mode 5), rang 21 (/BERR
   du 68020), moitié 010/020 du rang 15, rang 20 (watchpoints sous MMU, sans
   gate), et le rang 37 sur 68040 (`v8_ramsize` ne joue que le 020 et le
   030).
