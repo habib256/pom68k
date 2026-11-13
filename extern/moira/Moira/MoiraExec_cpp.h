@@ -1840,6 +1840,14 @@ Moira::execCas2(u16 opcode)
     // software completions. POM68K: exclude them from the 020 data latch.
     if constexpr (C == Core::C68020) {
         if (mmuPlain020()) mmuRmw = true;
+        // [D] WinUAE @ Hatari e77819f7, fresh-seed vector "random/tt
+        // seed=5109 #261": on the 68030 both operand reads of CAS2 are the
+        // read half of a locked read-modify-write, as CAS's and TAS's are
+        // (above, and execTas) — write-probed, M set on both pages even
+        // when the compare fails and nothing is written. POM68K had the
+        // 68030 on CAS and TAS only. Gate: moira_rules_test
+        // (cas2IsReadModifyWrite030).
+        if (cpuModel == Model::M68030) [[unlikely]] mmuRmw = true;
     }
     // [B] MC68040UM-1993 §7.4.5: CAS2 operands are locked, implicitly
     // noncacheable, and resolve matching dirty data before the read.
@@ -1865,6 +1873,9 @@ Moira::execCas2(u16 opcode)
             writeM<C, M, S>(ea1, reg.d[du1]);
             writeM<C, M, S>(ea2, reg.d[du2]);
 
+            if constexpr (C == Core::C68020) {
+                if (cpuModel == Model::M68030) mmuRmw = false;  // not the prefetch
+            }
             prefetch<C, POLL>();
             CYCLES_68020 (15);
             return;
@@ -1902,6 +1913,9 @@ Moira::execCas2(u16 opcode)
         writeD<S>(dc2, data2);
     }
 
+    if constexpr (C == Core::C68020) {
+        if (cpuModel == Model::M68030) mmuRmw = false;
+    }
     prefetch<C, POLL>();
 
     CYCLES_68020 (12)

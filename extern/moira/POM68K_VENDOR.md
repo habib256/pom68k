@@ -44,9 +44,9 @@ pair):
 | | | how to re-measure |
 |---|---|---|
 | distinct `pom*` extension identifiers | **112** (65 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **539** | `grep -rn POM68K Moira/ \| wc -l` |
+| `POM68K`-marked lines | **540** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **16 of 26** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **93** | this file |
+| patch groups in the inventory below | **94** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h`, `MoiraState.h` | — |
 
 Eighty-six patch groups, two of which (the JIT seam, row 22, and the ATC
@@ -248,6 +248,7 @@ gate in the last column of each row.
 | 91 | **68000 STOP, back-ported from NeoST** — `execStop` takes its operand from IRC and makes no bus access on the 68000, charging its 4 cycles itself (NeoST `2fc53a8`, `9f20046`); `stopGraceUntil` holds an interrupt the operand unmasks until STOP+8 and `execute()` takes a later one on a 4-cycle boundary counted from the STOP, advancing the clock to it (`993ce5e`, `2fc53a8`); `<cstdlib>` is included explicitly (`c9925da`). `stopGraceUntil` is serialized (`MoiraState.h`, host format v31) and cleared by reset. The 68010 and the 68020 family keep upstream's paths | `Moira.h`, `Moira.cpp`, `MoiraExec_cpp.h`, `MoiraState.h` | [B] M68000UM Rev 8 § 8.11 (STOP 4(0/0)); [D] fx68k @ 0602ee46 and Hatari @ f0736b24 as NeoST read them. [F] Hatari takes the pending-interrupt case at STOP+12 where fx68k gives STOP+8: settled by a capture. `sst68000` has no STOP vectors, so nothing else in the tree holds this. | `moira_rules_test` (stop68000) |
 | 92 | **68000 reset timing, back-ported from NeoST** — `Moira::reset` spends 6 cycles, not 4, between its two prefetch reads on the 68000 (NeoST `9f20046`). Every 68000 machine's clock is two cycles later from power-on | `Moira.cpp` | [D] fx68k @ 0602ee46 as NeoST read it (microcode trap8/trap9/b); the M68000 User's Manual gives only the total, 40(6/0). Could not land before the Portable board stopped depending on host slicing (CHANGELOG 2026-11-11 (fourteenth), (fifteenth)) | `moira_rules_test` (reset68000) |
 | 93 | **The FP data registers are value-initialised** — `fpu.fp[8]` had no initialiser; `fpuResetState()` writes the reset NaNs, but a core that has not been reset yet is serialized as well (the Portable and PowerBook 100 are held in reset by their Power Manager, and `PortableCpu::hardReset` defers the first `reset()` to the release edge), so a save state taken there carried 80 heap bytes. No guest can observe it: every path to an FPU instruction passes a reset | `Moira.h` | POM68K determinism defect, found by `portable_slicing_etalon` failing at frame 0 under a loaded host (CHANGELOG 2026-11-12 (seventh)); no guest-visible claim | `portable_slicing_etalon`; `moira_rules_test` (unresetFpZero) |
+| 94 | **CAS2 is a locked read-modify-write on the 68030** — `execCas2` sets `mmuRmw` for the 68030 as `execCas` and `execTas` do, and clears it before the closing prefetch: both operand reads are write-probed and both pages marked modified, compare failing or not | `MoiraExec_cpp.h` | [D] WinUAE @ Hatari e77819f7, fresh-seed vector `random/tt seed=5109 #261` (2026-11-13): the fork left both page descriptors with U alone. The 68030 was on CAS and TAS only; no Macintosh software is known to depend on it | `moira_rules_test` (`cas2IsReadModifyWrite030`) |
 
 Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54, 56, 59-75 and 79-86 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
 when nothing arms them); rows 48 and 55 are performance alone, with no architectural effect. Row 58 is evidence documentation only. The ten files carrying no `POM68K` marker at all —

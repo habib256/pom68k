@@ -275,6 +275,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
+- **Is CAS2 a locked read-modify-write on the 68030, as CAS and TAS are?** → [It is since 2026-11-13; a fresh-seed sweep found it](#2026-11-13-cas2-rmw-030)
 - **How many instructions run between an SR write that unmasks an interrupt and the interrupt, per model, and what holds it?** → [None on the 68000/010, two from the 68020 up; a `moira_rules_test` cell](#2026-11-13-irq-delay-gate)
 - **Which 68030 boards have a gate that fails if the native backend silently falls back?** → [The Duo and the PowerBook 140/180 joined the seven others](#2026-11-13-native-gates-pb-duo)
 - **Does the moment a fetch window is armed still change guest state under the 68040 D-cache?** → [No: the August reproducer passes on both hosts](#2026-11-13-arm-moment-040)
@@ -1352,6 +1353,55 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-13-cas2-rmw-030"></a>
+## 2026-11-13 (thirteenth) — A fresh-seed sweep of the 68030 finds one defect in 11 174 vectors: CAS2 was not a read-modify-write on the 68030, CAS and TAS were
+
+**The sweep.** `fuzz030.py` against the strict oracle, the fourteen cells
+of `sst68030_solo` in their order, seeds 5101 to 5114, 800 vectors a
+cell, written to a scratch directory (nothing under `tests/data`).
+Generation and replay take one minute with the NumPy interpreter of
+`build-oracle/venv`.
+
+| Replay | Passed |
+|---|---|
+| Before | 11 171 / 11 174 |
+| After the fix | 11 172 / 11 174 |
+
+The two that remain are ruling D28 (FBcc taken to an odd target: the
+fork raises the address error the manual asks for, the oracle sets the PC
+and raises nothing).
+
+**The defect.** `random/tt seed=5109 #261`: `CAS2.W` whose first compare
+fails. The oracle leaves both operand pages' descriptors Used and
+Modified; the fork left them Used. `execCas` and `execTas` set `mmuRmw`
+for the plain 68020 and for the 68030; `execCas2` set it for the plain
+68020 only, so on a 68030 its two reads were ordinary reads and left no
+M bit. By the same code a write-protected operand would not have faulted
+on the read either; that is read from the source, not tested. Grade D: the oracle's reading, consistent with what the fork
+already did for the other two locked instructions. I did not look the
+rule up in the MC68030 manual.
+
+**The fix.** `mmuRmw` set for the 68030 in `execCas2`, and cleared before
+the prefetch that closes either path so that the fetch is not write-probed
+(the code page stays clean; the cell checks it). Inventory row 94.
+
+**Gate.** `moira_rules_test`, `cas2IsReadModifyWrite030`: a 68030 under a
+two-level map; `CAS2.W` and `CAS.W` with failing compares and `TAS`; the
+M bit of the operand pages and of the code page read back from the
+descriptors. Mutation: without the new line the CAS2 row reads 0/0 where
+1/1 is wanted; the CAS and TAS rows stay green.
+
+**Pinned corpora, unchanged:** `sst68030` 3 078 + 4 known / 3 082,
+`sst68030_solo` 5 592 / 5 592, `sst68030_rmw` 6 000 / 6 000.
+
+**Tiers**, a core change. AArch64: everything else 274/274, m040
+102/102, m030 139 of 145 passed and none failed when this was committed, the tier still running. x86-64 under Rosetta: `unit|jit` 186/186, m030
+145/145; its m040 tier was not rerun, the change being confined to
+`cpuModel == M68030`.
+
+**Not done.** The 68040 has no such sweep in its loop yet
+(`TODO.md`); the sweep is not pinned as a corpus.
 
 <a id="2026-11-13-jit-unmasked-ipl"></a>
 ## 2026-11-13 (twelfth) — The engine is held to the interpreter's two-instruction interrupt delay, without a ROM
