@@ -180,3 +180,11 @@ Entirely inside the backend, and deliberately so. AArch64 has more callee-
 saved general registers than x86-64 (x19–x28 vs rbx/rbp/r12–r15), which
 changes how many 68k registers are worth pinning — a backend-local decision
 that the IR must not, and does not, encode.
+
+x18 is not one of them, and not a scratch register either. Apple reserves
+it and macOS clears it on return from an interrupt, so a value kept there
+across two host instructions is lost now and then; that cost a carry in
+`ADDX` about once per 10^12 guest cycles until 2026-11-13 (`CHANGELOG`
+2026-11-13 (third)). `docs_test` § 9 refuses it as an operand, and
+`jit_asset_free_lockstep_test` runs a native loop that counts its own
+lost flags.
