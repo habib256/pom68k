@@ -2854,6 +2854,11 @@ Moira::pomJitWriteData(u32 addr, int bytes, u32 val) noexcept
 bool
 Moira::pomJitReadProg(u32 addr, u16 &out) noexcept
 {
+    // An odd target: execJsr does not read it.
+    // [B] MC68030UM-1989 §8.1.3 — no bus cycle, so no translation.
+    // Refused here, so the generated code replays the untouched JSR through
+    // the interpreter, which leaves irc exactly as it does on that path.
+    if (addr & 1) return false;
     try {
         if (fcSource != 0) return false;
         if (cpuModel == Model::M68030) {
@@ -2905,9 +2910,13 @@ Moira::pomJitJsr040(u32 instructionPc, u32 returnAddress, u32 target,
         reg.pc = target;
         // execJsr: a fault on the target fetch belongs to the next
         // instruction start, not to the retired JSR.
-        try {
-            queue.irc = u16(read<Core::C68020, AddrSpace::PROG, Word>(target));
-        } catch (const MmuBusError &) { }
+        // An odd target is not read (execJsr).
+        // [B] MC68030UM-1989 §8.1.3 — no bus cycle for an odd fetch.
+        if (!(target & 1)) {
+            try {
+                queue.irc = u16(read<Core::C68020, AddrSpace::PROG, Word>(target));
+            } catch (const MmuBusError &) { }
+        }
         prefetch<Core::C68020>();
         return true;
     } catch (const std::exception &exc) {
@@ -3635,7 +3644,13 @@ Moira::mmu040Fault(u32 addr, u32 val, int fc, bool write, int szCode,
     }
 
     mmu040Wb3Status = write ? u16(0x80 | (ssw & 0x7F)) : 0;
-    mmu040Wb3Data = val;
+    // [D] WinUAE cpummu.h mmu_put_byte/mmu_put_word @ Hatari e77819f7 take
+    // a uae_u8/uae_u16, so WB3D holds the store at its size: no carry-out
+    // of ADDI.W, no high bits of a BCD store's buffer value (those belong
+    // to the 68030 write buffer only, MMU_RAWBUF). sst68040 --strict-ram,
+    // "fault/identity seed=206 #503" stacked $0001xxxx. [F] for silicon.
+    // Settled by: the WB3D of a word-store fault on a real 68040.
+    mmu040Wb3Data = szCode == 0 ? (val & 0xFF) : szCode == 1 ? (val & 0xFFFF) : val;
     mmu040Wb2Status = 0;
     if (!write) ssw |= 0x0100;                          // RW
 
@@ -3846,7 +3861,13 @@ Moira::mmu040Write(u32 addr, u32 val, bool data)
     mmu040AccBase = addr;
     mmu040AccFirst = true;
     mmu040AccSplit = false;
-    mmu040FullVal = val;
+    // [D] WinUAE cpummu.c mmu_put_word_unaligned @ Hatari e77819f7 takes
+    // a uae_u16: WB3D of a split word store holds sixteen bits, not the
+    // operation's carry-out (ADDI.W #$185F,(A0) over $FD00 split across a
+    // page stacked $0001155F; sst68040 --strict-ram, "fault/identity
+    // seed=206 #251"). [F] for silicon. Settled by: the WB3D of a split
+    // word-store fault on a real 68040.
+    mmu040FullVal = S == Byte ? (val & 0xFF) : S == Word ? (val & 0xFFFF) : val;
     mmu040AccAddr = addr;                               // extBusError040
     mmu040AccVal = val;
     mmu040AccSz = S == Byte ? 0 : S == Word ? 1 : 2;

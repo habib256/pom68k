@@ -58,3 +58,8 @@
 # Line-F; the oracle evaluates the memory-indirect EA first and so marks a
 # page descriptor Used.
 040 fpuraw/tt seed=963 #543
+
+# D38 - --strict-ram only. An instruction ending on the last word of a page:
+# the fork reads the word after it (irc lookahead) and sets the next page's
+# descriptor U bit; the oracle translates that page only at the next step.
+040 fpuraw/identity seed=962 #1296

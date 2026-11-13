@@ -289,9 +289,10 @@ Moira::execShiftEa(u16 opcode)
 // [D] WinUAE gencpu.c i_ABCD/i_SBCD/i_NBCD @ Hatari e77819f7 (cpuemu_31/32
 // op_c108/op_8108/op_4810): the value a BCD store hands the bus is gencpu's
 // `uae_u16 newv`, the unclipped digit arithmetic, so a faulting store leaves
-// those sixteen bits in the 68030 write buffer and the 68040 WB3D, not the
-// sign-extended byte. Only the buffer sees the high bits — the low byte is the
-// result the core already computed. [F] for silicon: the buffer is internal.
+// those sixteen bits in the 68030 write buffer, not the sign-extended byte
+// (the 68040's WB3D takes the store at its size: mmu040Fault). Only the
+// buffer sees the high bits — the low byte is the result the core already
+// computed. [F] for silicon: the buffer is internal.
 // Settled by: the internal long of a $B frame a real 68030 stacks for a
 // faulting NBCD.
 // Gate: sst68030_rmw (NBCD, SBCD -(An) faults: unlisted-byte check).
@@ -3143,11 +3144,22 @@ Moira::execJsr(u16 opcode)
             // RTE restarts the callee. Taken here, the 040 frame stacked
             // the return address and an RTE skipped the call.
             // Gate: moira_rules_test (jsrTargetFetchFault).
+            //
+            // An odd target is not read at all:
+            // [B] MC68030UM-1989 §8.1.3 — an instruction fetch from an odd
+            // address takes the address error without running the bus
+            // cycle, so no translation either and no descriptor U bit on
+            // the target's page.
+            // [D] WinUAE @ Hatari e77819f7 — the JSR retires and the next
+            // opcode fetch raises it (sst68030_solo --strict-ram, "random/tt
+            // seed=709 #204", a U bit the fork set and the oracle did not).
             if constexpr (C == Core::C68020) {
                 if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) {
-                    try {
-                        queue.irc = (u16)read<C, AddrSpace::PROG, Word>(ea);
-                    } catch (const MmuBusError &) { }
+                    if (!(ea & 1)) {
+                        try {
+                            queue.irc = (u16)read<C, AddrSpace::PROG, Word>(ea);
+                        } catch (const MmuBusError &) { }
+                    }
                     prefetch<C>();
                     break;
                 }

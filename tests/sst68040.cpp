@@ -378,8 +378,26 @@ void setupVector(TestCpu& cpu, const Vector& v) {
         for (const RamCell& c : v.initial.ram) init[c.addr & 0xFFFFFF] = c.val;
         std::unordered_set<uint32_t> listed;
         for (const RamCell& c : v.fin.ram) listed.insert(c.addr & 0xFFFFFF);
+        // Ruling D37 (oracle/fuzz/disputes/NOTES.md): a MOVE16 fault frame
+        // ($7) carries the line address in EA ($08), WB2A ($20) and, for
+        // (Ax)+,(Ay)+, the line in WB1D/PD0-PD3 ($2C-$3B); the oracle's
+        // glue leaves zeros there. Those fields alone are not judged.
+        const auto initByte = [&](uint32_t a) {
+            const auto i = init.find(a & 0xFFFFFF); return i == init.end() ? 0 : int(i->second);
+        };
+        const uint32_t pc0 = v.initial.pc & 0xFFFFFF;
+        const bool move16 = ((initByte(pc0) << 8 | initByte(pc0 + 1)) & 0xFFC0) == 0xF600;
+        const uint32_t sp = v.fin.a[7] & 0xFFFFFF;
+        const bool frame7 = (cpu.mem[(sp + 6) & 0xFFFFFF] >> 4) == 0x7;
+        const auto ruledD37 = [&](uint32_t a) {
+            if (!move16 || !frame7) return false;
+            const uint32_t off = (a - sp) & 0xFFFFFF;
+            return (off >= 0x08 && off < 0x0C) || (off >= 0x20 && off < 0x24) ||
+                   (off >= 0x2C && off < 0x3C);
+        };
         for (uint32_t a : cpu.dirty) {
             if (listed.count(a)) continue;
+            if (ruledD37(a)) continue;
             const auto it = init.find(a);
             const uint8_t want = it == init.end() ? 0 : it->second;
             const uint8_t got = cpu.mem[a];

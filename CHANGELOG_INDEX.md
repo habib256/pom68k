@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 803 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 804 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -9,7 +9,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | Subsystem | Entries |
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 109 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 128 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 129 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 37 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 32 |
@@ -255,6 +255,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-11 (third)** — [The 68030 sweep's five vectors: one defect fixed (long displacements in the access log), four were ruling D28, one residue ruled D36](CHANGELOG.md#2026-11-11-030-sweep-leftovers)
 - **2026-11-11 (thirteenth)** — [NeoST's 68000 STOP back-ported (format v31); its reset timing is not, because two cycles at power-on leave the PowerBook 100 busy for ever](CHANGELOG.md#2026-11-11-neost-stop-port)
 - **2026-11-12** — [On the 68040, `LINK` ran in the interpreter inside every native block: one admission rule, in-block fallbacks 25.8 M → 1.75 M, Quadra 605 6 % faster after boot](CHANGELOG.md#2026-11-12-jit-040-head-poll)
+- **2026-11-13 (eighteenth)** — [Every pinned corpus judged strict: three FSAVE and WB3D fields, a JSR to an odd address that translated its target, and two rulings against the oracle](CHANGELOG.md#2026-11-13-strict-ram-all)
 - **2026-11-13 (eighth)** — [The four watchpoint hooks of the 68030/68040 translated paths have a gate; none had one](CHANGELOG.md#2026-11-13-watchpoints-mmu-gate)
 - **2026-11-13 (eleventh)** — [The 68030's pipe across a PMOVE to TC and the interrupt poll inside a DBRA loop have a cell: no row of the patch inventory is held by a boot alone any more](CHANGELOG.md#2026-11-13-pipe-ipl-gate)
 - **2026-11-13 (fifteenth)** — [A faulting PACK restarted with the wrong source register and packed the wrong byte; PACK and UNPK now move one word, as the oracle does](CHANGELOG.md#2026-11-13-pack-unpk-fault)

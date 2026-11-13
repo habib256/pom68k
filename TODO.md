@@ -383,20 +383,6 @@ boot.
   tourné que sur x86-64 (backend `x86-64`, et `threaded` sur quatre
   corpus). Reste la jambe `a64`. Le harnais ne juge pas le traducteur
   contre WinUAE : l'interpréteur reste le juge intermédiaire.
-- [ ] **Trancher les octets non listés que `--strict-ram` révèle.** Depuis
-  le 2026-11-13 (sixteenth) un octet que le cœur écrit et que l'oracle
-  laisse intact peut être jugé ; six corpus le sont. Restent :
-  (1) MOVE16 sur 68040, champs EA et WB2A de la frame $7 (~230 vecteurs de
-  `sst68040`/`sst68040_8k`) et PD1-PD3 de la forme `(Ax)+,(Ay)+` : WinUAE
-  n'affecte jamais `mmu_effective_addr` hors MOVEM (`cpummu.c`
-  @ Hatari e77819f7) et sa forme postincrémentée remplit un tampon local, la
-  glue remet ces globales à zéro — défaut de l'oracle à enregistrer comme
-  décision, le fork empile l'adresse de ligne ; (2) `sst68040_fpu` et
-  `sst68040_fpuh` (568 vecteurs, octets internes de la frame FSAVE et des
-  frames FPU) : non analysés ; (3) `sst68030_solo` `random/tt seed=709 #204`
-  et `sst68040` `mmu/identity seed=203 #506` : un bit U posé par le fetch
-  anticipé à la cible d'un JSR impair — la limite « fautes de préfetch
-  différées » de › Justesse 68030.
 - [ ] **Obtenir une preuve indépendante du 6888x.** La convergence
   numérique repose sur la même famille SoftFloat que l'oracle
   et l'interruption en cours d'instruction (format $9, BUSY) ne tient que
@@ -480,7 +466,9 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
 - [ ] **Modéliser les fautes de préfetch différées, 030 et 040.** Limite
   documentée : `irc` est lu à pc+2 dès le début de l'instruction, donc une
   instruction d'un mot dans le dernier mot d'une page peut fauter là où le
-  processeur réel attend que le mot serve.
+  processeur réel attend que le mot serve. Le même lookahead pose le bit U
+  de la page suivante que l'oracle ne traduit qu'au pas d'après (décision
+  D38, trois vecteurs en `--known`).
 - [ ] **Remplacer ou prouver le modèle « réexécuter l'instruction » du RTE
   $B.** Les accès antérieurs à la faute sont réémis (lecture de
   périphérique en double) et le RMW verrouillé à DF effacé est exclu. Le

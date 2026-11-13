@@ -95,6 +95,8 @@ EXPORT = [
     "tests/sst68030_fpuraw.known",
     "tests/sst68030_fpu2.known",
     "tests/sst68030_rmw.known",
+    "tests/sst68040.known",
+    "tests/sst68040_8k.known",
     "tests/sst68040_fpu.known",
     "tests/sst68040_fpu2.known",
     "tests/sst68040_fpuh.known",

@@ -578,7 +578,8 @@ add_executable(sst68040 tests/sst68040.cpp)
 target_link_libraries(sst68040 PRIVATE moira)
 set(POM68K_SST040_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/sst68040"
     CACHE PATH "Directory of oracle-generated SST040 .json vectors")
-add_test(NAME sst68040 COMMAND sst68040 "${POM68K_SST040_DIR}")
+add_test(NAME sst68040 COMMAND sst68040 "${POM68K_SST040_DIR}"
+         --known "${CMAKE_CURRENT_SOURCE_DIR}/tests/sst68040.known" --strict-ram)
 
 # O6.2 gates: LC II pseudo-VIA semantics + V8 memory controller.
 # The six CPU wrappers that coverage measured at 0.00 % in the asset-free tier

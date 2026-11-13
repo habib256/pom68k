@@ -45,7 +45,7 @@ endif()
 # on, and has no mmu_tt or random_tt cell.
 set(POM68K_SST030_SOLO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/sst68030_solo"
     CACHE PATH "Directory of WinUAE-solo SST030 vectors (all cells)")
-add_test(NAME sst68030_solo COMMAND sst68030 "${POM68K_SST030_SOLO_DIR}")
+add_test(NAME sst68030_solo COMMAND sst68030 "${POM68K_SST030_SOLO_DIR}" --strict-ram)
 
 # The raw F-line window on the 68030 + 68882, against the oracle in its
 # strict 6888x setting. The vectors of rulings D23b and D26-D29 are listed by
@@ -80,7 +80,8 @@ add_test(NAME sst68030_rmw
 # files soft-skips instead of failing the corpus manifest.
 set(POM68K_SST040_8K_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/sst68040_8k"
     CACHE PATH "Directory of oracle-generated SST040 vectors with 8 KB pages")
-add_test(NAME sst68040_8k COMMAND sst68040 "${POM68K_SST040_8K_DIR}")
+add_test(NAME sst68040_8k COMMAND sst68040 "${POM68K_SST040_8K_DIR}"
+         --known "${CMAKE_CURRENT_SOURCE_DIR}/tests/sst68040_8k.known" --strict-ram)
 
 # The raw F-line window on the FPU-less 68LC040: which garbage takes a plain
 # Line-F, which the illegal vector and which the "no FPU" format $4 frame.
@@ -95,7 +96,8 @@ set(POM68K_SST040_FPU_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/sst68040_fpu"
     CACHE PATH "Directory of oracle-generated SST040 vectors, integrated FPU")
 add_test(NAME sst68040_fpu
          COMMAND sst68040 "${POM68K_SST040_FPU_DIR}" --fpu
-                 --known "${CMAKE_CURRENT_SOURCE_DIR}/tests/sst68040_fpu.known")
+                 --known "${CMAKE_CURRENT_SOURCE_DIR}/tests/sst68040_fpu.known"
+                 --strict-ram)
 
 # Two instructions per vector on the full 68040: the first posts an FPU
 # exception, the second decides when it is delivered (ruling D24).
@@ -112,7 +114,8 @@ set(POM68K_SST040_FPUH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/sst68040_fpuh
     CACHE PATH "Directory of three-step SST040 vectors, FSAVE in the FPU handlers")
 add_test(NAME sst68040_fpuh
          COMMAND sst68040 "${POM68K_SST040_FPUH_DIR}" --fpu
-                 --known "${CMAKE_CURRENT_SOURCE_DIR}/tests/sst68040_fpuh.known")
+                 --known "${CMAKE_CURRENT_SOURCE_DIR}/tests/sst68040_fpuh.known"
+                 --strict-ram)
 
 # Evidence grades: pinned emulator/corpus revisions and checked manual editions.
 # Manual B/F headers use tests/core_manuals.lock and reviewed locators;

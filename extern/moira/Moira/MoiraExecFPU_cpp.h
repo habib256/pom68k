@@ -1186,8 +1186,14 @@ Moira::execFpuDatatype040(
     // CMDREG1B shows FSQRT as opmode $05, not $04 ([D] WinUAE fpp.c
     // fp_unimp_datatype "FSQRT 4->5" @ Hatari e77819f7).
     fpu.cmdreg1b = (ext & 0x7f) == 0x04 ? u16(ext | 1) : ext;
-    fpu.cmdreg3b = u16((ext & 0x03c3) | ((ext & 0x0038) >> 1) |
-                       ((ext & 0x0004) << 3));
+    // [D] WinUAE fpp.c fp_unimp_datatype @ Hatari e77819f7: the busy frame
+    // of an unsupported data type carries CMDREG1B only — reset_fsave_data
+    // leaves CMDREG3B zero, which the FPSP reads only with E3 set (never
+    // here). The fork used to fill it as the unimplemented-instruction frame
+    // does (sst68040_fpuh --strict-ram, frame offset $34, 545 vectors).
+    // [F] for silicon: the field's content with E3 clear. Settled by: an
+    // FSAVE after an unsupported-data-type exception on a real 68040.
+    fpu.cmdreg3b = 0;
     // A move out tags its source as what it is, an extended register,
     // whatever the destination format (same function: get_ftag(src, -1)).
     fpu.stag = fpuTag040(src, ((ext >> 13) & 7) == 3 ? -1 : size);
@@ -1217,7 +1223,13 @@ Moira::execFpuDatatype040(
         fpu.fpt[1] = fpu.et[1];
         fpu.fpt[2] = fpu.et[2];
         fpu.dtag = fpu.stag;
-    } else if (dst >= 0) {
+    } else if (dst >= 0 && fpuIsDyadic(ext)) {
+        // [D] WinUAE fpp.c fp_unimp_datatype @ Hatari e77819f7: FPT and
+        // DTAG hold the destination register of a dyadic operation only; a
+        // monadic one (FMOVE, FNEG, FSQRT...) leaves them zero
+        // (sst68040_fpuh --strict-ram, frame offsets $4C-$57, 12 vectors).
+        // [F] for silicon. Settled by: an FSAVE after a monadic
+        // unsupported-data-type exception on a real 68040.
         const FpuExtended &d = fpu.fp[dst & 7];
         fpu.fpt[0] = u32(d.high) << 16;
         fpu.fpt[1] = u32(d.low >> 32);
