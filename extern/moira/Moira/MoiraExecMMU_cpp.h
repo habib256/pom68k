@@ -573,6 +573,17 @@ Moira::mmuExecuteStart()
     mmuState[0] = mmuState[1] = mmuState[2] = 0;
     mmuIdx = mmuIdxDone = 0;
     for (auto &v : mmuAd) v = 0;
+    // The extended-EA results belong to this instruction too.
+    // [D] WinUAE cpummu030.c mmu030_disp_store @ Hatari e77819f7 — kept
+    // across instructions, so a $B frame carried the indexed EA of whatever
+    // instruction last computed one; under the JIT that instruction may have
+    // run as generated code, which keeps no such latch, and the same fault
+    // stacked two different frames (sst68030_jit, "random/tt seed=709 #340").
+    // Nothing reads the field back (RTE does not restore it); a vector starts
+    // from zero, so the corpora are unchanged.
+    // [F] for silicon: an internal register. Settled by: the $B frame a real
+    // 68030 stacks for a fault that follows an indexed-EA instruction.
+    mmuDispStore[0] = mmuDispStore[1] = 0;
     mmuFixupReg[0] = mmuFixupReg[1] = 0;
     mmuCcrSave = getCCR();
     mmuLogging = true;

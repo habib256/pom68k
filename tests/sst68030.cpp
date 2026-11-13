@@ -30,15 +30,21 @@
 
 #include "Moira.h"
 #include "SstKnown.h"
+#if SST_JIT
+#include "SstJitLockstep.h"
+#endif
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <set>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace {
@@ -90,6 +96,11 @@ public:
         for (uint32_t a : dirty) mem[a] = 0;
         dirty.clear();
     }
+#if SST_JIT
+    // The JIT's write guard: every store the core makes goes through
+    // write8, so translated code over a written byte is invalidated.
+    jit::CodeGuard* guard = nullptr;
+#endif
 
 private:
     moira::u8  read8(moira::u32 a) const override { return mem[a & 0xFFFFFF]; }
@@ -98,6 +109,9 @@ private:
     }
     void write8(moira::u32 a, moira::u8 v) const override {
         auto& self = *const_cast<TestCpu*>(this);
+#if SST_JIT
+        if (self.guard) self.guard->note(a & 0xFFFFFF, 1);
+#endif
         self.mem[a & 0xFFFFFF] = v;
         self.dirty.push_back(a & 0xFFFFFF);
     }
@@ -229,7 +243,10 @@ void loadState(TestCpu& cpu, const CpuState& s) {
     cpu.setIRC(r16(s.pc + 2));
 }
 
-bool runVector(TestCpu& cpu, const Vector& v, bool checkCycles, std::string& why) {
+bool gStrictRam = false;               // --strict-ram: judge unlisted bytes too
+bool gUnlisted = false;                // --unlisted: print every unlisted byte
+
+void setupVector(TestCpu& cpu, const Vector& v) {
     // O5: attach the 68882 for FP vectors, detach otherwise (byte-identical
     // legacy behaviour: F2xx = F-line). setFPUModel no-ops when unchanged,
     // so the jump table is only rebuilt at FPU/non-FPU file boundaries.
@@ -259,7 +276,16 @@ bool runVector(TestCpu& cpu, const Vector& v, bool checkCycles, std::string& why
     cpu.setTT0(v.initial.tt0);
     cpu.setTT1(v.initial.tt1);
     cpu.setMMUSR(v.initial.mmusr);
+}
 
+[[maybe_unused]] void scrubVector(TestCpu& cpu, const Vector& v) {
+    cpu.clearDirty();
+    for (const RamCell& c : v.initial.ram) cpu.mem[c.addr & 0xFFFFFF] = 0;
+    for (const RamCell& c : v.fin.ram)     cpu.mem[c.addr & 0xFFFFFF] = 0;
+}
+
+[[maybe_unused]] bool runVector(TestCpu& cpu, const Vector& v, bool checkCycles, std::string& why) {
+    setupVector(cpu, v);
     const moira::i64 c0 = cpu.getClock();
     // One instruction (+ its exception, if any) per step: the oracle's unit.
     for (long step = 0; step < (v.steps > 0 ? v.steps : 1); ++step) cpu.execute();
@@ -307,6 +333,30 @@ bool runVector(TestCpu& cpu, const Vector& v, bool checkCycles, std::string& why
         const uint8_t got = cpu.mem[c.addr & 0xFFFFFF];
         if (got != c.val) { if (ok){std::snprintf(buf,sizeof buf,"RAM[$%06X] got $%02X want $%02X",c.addr,got,c.val);why=buf;} ok=false; }
     }
+    // The final list holds only the bytes the oracle CHANGED (fuzz
+    // oracle_driver.py ram_diff: against the initial cells, zero elsewhere).
+    // A byte the core wrote that the list omits must therefore still hold
+    // its initial value; until 2026-11-13 such a byte was never looked at,
+    // which hid a stale write-back datum in a 68040 locked-read frame.
+    if (gStrictRam) {
+        std::unordered_map<uint32_t, uint8_t> init;
+        for (const RamCell& c : v.initial.ram) init[c.addr & 0xFFFFFF] = c.val;
+        std::unordered_set<uint32_t> listed;
+        for (const RamCell& c : v.fin.ram) listed.insert(c.addr & 0xFFFFFF);
+        for (uint32_t a : cpu.dirty) {
+            if (listed.count(a)) continue;
+            const auto it = init.find(a);
+            const uint8_t want = it == init.end() ? 0 : it->second;
+            const uint8_t got = cpu.mem[a];
+            if (got != want) {
+                if (ok){std::snprintf(buf,sizeof buf,"RAM[$%06X] got $%02X want $%02X (unlisted)",a,got,want);why=buf;} ok=false;
+                if (gUnlisted)
+                    std::printf("UNLISTED %s addr=%06X off=%d got=%02X want=%02X fmt=%04X\n", v.name.c_str(), a,
+                                int(a) - int(v.fin.a[7] & 0xFFFFFF), got, want,
+                                unsigned(cpu.mem[(v.fin.a[7] + 6) & 0xFFFFFF] << 8 | cpu.mem[(v.fin.a[7] + 7) & 0xFFFFFF]));
+            }
+        }
+    }
     if (!ok && gDump) {
         std::printf("      == %s\n", v.name.c_str());
         std::printf("         PC got %06X want %06X | SR got %04X want %04X | cyc got %ld want %ld\n",
@@ -339,11 +389,15 @@ std::set<std::string> parseNameList(const char* s) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    if (argc < 2) { std::fprintf(stderr,"usage: %s <dir> [--max N] [--only NAME,..] [--skip NAME,..] [--cycles] [--skip-translation] [--known FILE] [--verbose] [--dump] [--examples K]\n",argv[0]); return 2; }
+    if (argc < 2) { std::fprintf(stderr,"usage: %s <dir> [--max N] [--only NAME,..] [--skip NAME,..] [--cycles] [--skip-translation] [--known FILE] [--strict-ram] [--unlisted] [--verbose] [--dump] [--examples K] (sst68030_jit: [--slack N] [--cold] [--ring])\n",argv[0]); return 2; }
     const std::string dir = argv[1];
     long maxPerFile=-1; int examples=3; bool verbose=false, checkCycles=false, skipTranslation=false;
     std::set<std::string> only, skip;
     sstknown::List known;                   // --known FILE (tests/SstKnown.h)
+#if SST_JIT
+    sstjit::Options jitOpt;
+    jitOpt.fpu = true;                      // 68882 per vector; both cores alike
+#endif
     for (int i=2;i<argc;++i){ std::string a=argv[i];
         if      (a=="--max"&&i+1<argc) maxPerFile=std::strtol(argv[++i],nullptr,10);
         else if (a=="--examples"&&i+1<argc) examples=int(std::strtol(argv[++i],nullptr,10));
@@ -354,6 +408,13 @@ int main(int argc, char** argv) {
         else if (a=="--skip-translation") skipTranslation=true;
         else if (a=="--verbose") verbose=true;
         else if (a=="--dump") gDump=true;
+        else if (a=="--strict-ram") gStrictRam=true;
+        else if (a=="--unlisted") gUnlisted=true;
+#if SST_JIT
+        else if (a=="--slack"&&i+1<argc) jitOpt.slack=std::strtol(argv[++i],nullptr,10);
+        else if (a=="--cold") jitOpt.warm=false;
+        else if (a=="--ring") jitOpt.ring=true;
+#endif
         else if (a=="--known"&&i+1<argc) {
             if (!known.load(argv[++i])) { std::fprintf(stderr,"cannot open --known '%s'\n",argv[i]); return 2; }
         }
@@ -368,6 +429,12 @@ int main(int argc, char** argv) {
     if (files.empty()) { std::fprintf(stderr,"SKIP: [sst68030] '%s' holds no .json\n",dir.c_str()); return 0; }
 
     TestCpu cpu;
+#if SST_JIT
+    sstjit::Pair<TestCpu> pair;
+    sstjit::build(pair, moira::Model::M68030, jit::kGuest68030);
+    std::printf("[sst68030 --jit] backend=%s slack=%ld %s\n", pair.engine->backendName(),
+                jitOpt.slack, jitOpt.warm ? "warm" : "cold");
+#endif
     std::printf("[sst68030] dir=%s files=%zu cycles=%s mmu=%s\n", dir.c_str(), files.size(),
                 checkCycles?"on":"off(advisory)", skipTranslation?"SKIP-TRANSLATION(debug)":"full");
 
@@ -390,7 +457,11 @@ int main(int argc, char** argv) {
                 continue;
             }
             std::string why; bool ok;
+#if SST_JIT
+            try { ok = sstjit::run(pair, v, jitOpt, setupVector, scrubVector, why); }
+#else
             try { ok = runVector(cpu,v,checkCycles,why); }
+#endif
             catch (const std::exception& e) { ok=false; why=std::string("threw: ")+e.what(); }
             ++total;
             const bool isKnown = known.listed(v.name);
@@ -417,6 +488,9 @@ int main(int argc, char** argv) {
     std::printf("[sst68030] %s: %ld/%ld across %ld file(s),%s %ld mmu-skipped%s\n",
                 anyFail?"FAIL":"OK", grandPass, grandTotal, filesRun, knownNote.c_str(), grandMmuSkip,
                 anyFail?"  <<< MISMATCH":"");
+#if SST_JIT
+    if (!sstjit::report(pair, "sst68030")) return 1;
+#endif
     if (filesRun==0) { std::fprintf(stderr,"SKIP: [sst68030] no files matched\n"); return 0; }
     return anyFail?1:0;
 }

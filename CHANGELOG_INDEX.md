@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 800 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 803 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -9,7 +9,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | Subsystem | Entries |
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 109 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 125 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 128 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 37 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 32 |
@@ -257,10 +257,13 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-12** — [On the 68040, `LINK` ran in the interpreter inside every native block: one admission rule, in-block fallbacks 25.8 M → 1.75 M, Quadra 605 6 % faster after boot](CHANGELOG.md#2026-11-12-jit-040-head-poll)
 - **2026-11-13 (eighth)** — [The four watchpoint hooks of the 68030/68040 translated paths have a gate; none had one](CHANGELOG.md#2026-11-13-watchpoints-mmu-gate)
 - **2026-11-13 (eleventh)** — [The 68030's pipe across a PMOVE to TC and the interrupt poll inside a DBRA loop have a cell: no row of the patch inventory is held by a boot alone any more](CHANGELOG.md#2026-11-13-pipe-ipl-gate)
+- **2026-11-13 (fifteenth)** — [A faulting PACK restarted with the wrong source register and packed the wrong byte; PACK and UNPK now move one word, as the oracle does](CHANGELOG.md#2026-11-13-pack-unpk-fault)
 - **2026-11-13 (fourteenth)** — [A fresh-seed sweep of the 68040: 6 399 of 6 400, and the one left is open — a faulting PACK leaves its source register one byte low](CHANGELOG.md#2026-11-13-pack-040-open)
 - **2026-11-13 (fourth)** — [The moment a fetch window is armed no longer changes guest state under the 68040 D-cache: the August reproducer passes on both hosts](CHANGELOG.md#2026-11-13-arm-moment-040)
 - **2026-11-13 (ninth)** — [The full Quadra 630 gate, soaked after the x18 fix: 80 of 80 on the reference trace; and a rule cell for the 68020's external /BERR](CHANGELOG.md#2026-11-13-berr020-rule-and-q630-soak)
+- **2026-11-13 (seventeenth)** — [Every pinned oracle corpus replays through the translator: a host segfault on a guest pc of 0, and two frame latches that depended on the engine](CHANGELOG.md#2026-11-13-jit-corpus-replay)
 - **2026-11-13 (seventh)** — [A faulting MOVES gives the function-code pins back before its handler, held on the 68040 and in both directions](CHANGELOG.md#2026-11-13-moves-fc-gate)
+- **2026-11-13 (sixteenth)** — [The SST harnesses never looked at a byte the oracle left alone; judged, they find the 68030 write buffer of Scc, NBCD and SBCD, and an oracle defect in MOVE16 frames](CHANGELOG.md#2026-11-13-strict-ram)
 - **2026-11-13 (tenth)** — [An interrupt frame on an odd SSP, and the RTE that reads it back, have a cell on the 68020, 68030 and 68040](CHANGELOG.md#2026-11-13-odd-ssp-frame-gate)
 - **2026-11-13 (thirteenth)** — [A fresh-seed sweep of the 68030 finds one defect in 11 174 vectors: CAS2 was not a read-modify-write on the 68030, CAS and TAS were](CHANGELOG.md#2026-11-13-cas2-rmw-030)
 

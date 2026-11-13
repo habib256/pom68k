@@ -2033,6 +2033,78 @@ void cas2IsReadModifyWrite030()
     }
 }
 
+void packUnpkFaultRestoresAn()
+{
+    // [D] WinUAE gencpu.c i_PACK/i_UNPK @ Hatari e77819f7 (cpuemu_31/32
+    // op_8148/op_8188), "040 random/identity seed=5205 #483" of the
+    // 2026-11-13 fresh-seed sweep. PACK -(A3),-(A2) reads its two source
+    // bytes as ONE word at A3-2; a fault there restarts the instruction
+    // with A3 back at its entry value and SIZE=word in the SSW. The fork
+    // decremented A3 by hand without arming its fixup, and read two bytes.
+    // UNPK -(A3),-(A2) writes its pair as ONE word at A2-2, the
+    // instruction's last write: the frame holds the next PC and A2 stays
+    // decremented, A3 too (its read completed).
+    for (auto model : {moira::Model::M68030, moira::Model::M68040}) {
+        const bool is040 = model == moira::Model::M68040;
+        {   // PACK: the source word read takes /BERR, then RTE re-runs it
+            TestCpu c(model);
+            p32(c, 2 * 4, kHandler);
+            p16(c, kHandler, 0x4e73);               // RTE
+            stage(c, 0x854b, 0);                    // PACK -(A3),-(A2),#$0000
+            p16(c, kCode + 2, 0x0000); c.setIRC(0x0000);
+            p16(c, kHole, 0x0304);                  // packs to $34
+            c.setA(3, kHole + 2); c.setA(2, 0x30000);
+            c.holeArmed = true;
+            const bool contained = executeContained(c);
+            const uint32_t sp = c.getSP();
+            const uint16_t ssw = is040 ? g16(c, sp + 12) : g16(c, sp + 10);
+            const bool wordSize = is040 ? (ssw & 0x60) == 0x40 : (ssw & 0x30) == 0x20;
+            // In the handler the 68040 shows A3 at its entry value. The
+            // 68030 shows it one more long below: the oracle's frame carries
+            // the fixup encoding (gencpu gives PACK no size, so long) and
+            // mmu030fixupmod applies it until the RTE takes it back
+            // (cpummu030.c @ Hatari e77819f7). Only the round trip is
+            // architectural.
+            const uint32_t a3Handler = is040 ? kHole + 2 : kHole - 2;
+            CHECK(contained && c.getPC0() == kHandler && c.getA(3) == a3Handler &&
+                  c.getA(2) == 0x30000 && g32(c, sp + 2) == kCode && wordSize,
+                  "%s PACK -(A3),-(A2) source fault: PC0=%08X A3=%08X (want %08X) "
+                  "A2=%08X stacked PC %08X (want %08X) SSW %04X (want word size)",
+                  is040 ? "68040" : "68030", c.getPC0(), c.getA(3), a3Handler,
+                  c.getA(2), g32(c, sp + 2), kCode, ssw);
+            c.holeArmed = false;
+            for (int i = 0; i < 3 && c.getPC0() != kCode + 4; i++)
+                if (!executeContained(c)) break;
+            CHECK(c.getPC0() == kCode + 4 && c.getA(3) == kHole &&
+                  c.getA(2) == 0x2ffff && c.mem[0x2ffff] == 0x34,
+                  "%s PACK after RTE: PC0=%08X (want %08X) A3=%08X (want %08X) "
+                  "A2=%08X (want 0002FFFF) byte %02X (want 34)",
+                  is040 ? "68040" : "68030", c.getPC0(), kCode + 4, c.getA(3),
+                  kHole, c.getA(2), c.mem[0x2ffff]);
+        }
+        {   // UNPK: the destination word write takes /BERR
+            TestCpu c(model);
+            p32(c, 2 * 4, kHandler);
+            p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
+            stage(c, 0x858b, 0);                    // UNPK -(A3),-(A2),#$0000
+            p16(c, kCode + 2, 0x0000); c.setIRC(0x0000);
+            c.setA(3, 0x30001); c.setA(2, kHole + 2);
+            c.holeArmed = true; c.holeWritesOnly = true;
+            c.traceBus = true; c.busBase = kHole;
+            const bool contained = executeContained(c);
+            const uint32_t sp = c.getSP();
+            CHECK(contained && c.getPC0() == kHandler && c.getA(2) == kHole &&
+                  c.getA(3) == 0x30000 && c.holeTrips == 1 && c.bus == "W0" &&
+                  g32(c, sp + 2) == kCode + 4,
+                  "%s UNPK -(A3),-(A2) destination fault: PC0=%08X A2=%08X (want %08X) "
+                  "A3=%08X (want 00030000), %u /BERR(s) (want 1), bus \"%s\" (want "
+                  "\"W0\"), stacked PC %08X (want %08X, last write)",
+                  is040 ? "68040" : "68030", c.getPC0(), c.getA(2), kHole,
+                  c.getA(3), c.holeTrips, c.bus.c_str(), g32(c, sp + 2), kCode + 4);
+        }
+    }
+}
+
 int main(int argc, char** argv)
 {
     if (argc == 2 && std::string_view(argv[1]) == "--movem-restart") {
@@ -2080,6 +2152,7 @@ int main(int argc, char** argv)
     oddStackInterruptFrame();
     prefetchPipeAndIplPoll030();
     cas2IsReadModifyWrite030();
+    packUnpkFaultRestoresAn();
 
     if (failures) {
         std::printf("[moira_rules_test] FAIL: %d check(s)\n", failures);
@@ -2092,6 +2165,6 @@ int main(int argc, char** argv)
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68EC030 plain-020 path with a 68030 "
-                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write\n");
+                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, PACK/UNPK -(An) faults on the 68030/68040\n");
     return 0;
 }

@@ -261,6 +261,11 @@ Moira::reset()
     mmu040FaultAddr = mmu040EffAddr = 0;
     mmu040Ssw = 0;
     mmu040Wb3Address = mmu040Wb3Data = 0;
+    // The last write's datum, which a split locked read stacks as WB3D
+    // (mmu040Fault): left over, it made a reset core's frame depend on the
+    // stores made before the reset (found by sst68040_jit, whose translated
+    // core runs each vector twice; the oracle glue zeroes regs.wb3_data).
+    mmu040FullVal = 0;
     mmu040Wb3Status = mmu040Wb2Status = 0;
     mmu040Wb2Address = 0;
     for (auto &m : mmu040Move16) m = 0;

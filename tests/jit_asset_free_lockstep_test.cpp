@@ -1732,6 +1732,42 @@ bool runHeadPollLink() {
            s.instrs > warm.instrs;
 }
 
+// A user-mode guest at pc 0. Engine::key(0, user) is 0, which an empty
+// dispatch-cache slot also held, with a null block: the lookup matched and
+// the host dereferenced it (segfault found by sst68030_jit, 2026-11-13).
+bool runUserModePcZero() {
+    const auto refOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& ref = *refOwner;
+    const auto nativeOwner = std::make_unique<SyntheticCpu>();
+    SyntheticCpu& native = *nativeOwner;
+    for (SyntheticCpu* c : {&ref, &native}) {
+        resetCpu(*c);
+        put16(*c, 0x0000, 0x5280);      // ADDQ.L #1,D0
+        put16(*c, 0x0002, 0x60FC);      // BRA.S  0
+        c->setSR(0x0000);               // user mode, every level open
+        c->setUSP(kStack);
+        c->setPC(0); c->setPC0(0);
+        c->setIRD(0x5280); c->setIRC(0x60FC);
+        c->setD(0, 0);
+    }
+    native.jit.setEnabled(true);
+    for (int step = 0; step < 64; step++) {
+        const int64_t target = ref.getClock() + 37;
+        ref.executeUntil(target);
+        native.jit.executeUntil(target);
+        if (!sameCpu(ref, native, true)) {
+            std::printf("    pc-0 user loop divergence checkpoint=%d D0=%08X/%08X\n",
+                        step, ref.getD(0), native.getD(0));
+            return false;
+        }
+    }
+    const auto s = native.jit.stats().snapshot();
+    std::printf("    pc-0 user loop compiled=%llu runs=%llu D0=%08X\n",
+                (unsigned long long)s.blocksCompiled,
+                (unsigned long long)s.blocksRun, native.getD(0));
+    return s.blocksRun != 0 && native.getD(0) != 0 && native.getPC0() < 4;
+}
+
 bool runAddressSourceAluLockstep() {
     const auto refOwner = std::make_unique<SyntheticCpu>();
     SyntheticCpu& ref = *refOwner;
@@ -3758,6 +3794,8 @@ int main(int argc, char** argv) {
           "an interrupt unmasked by MOVE to SR lands two instructions later, natively too");
     check(runHeadPollLink(),
           "LINK, whose polls all precede its push, is native and interrupts land the same");
+    check(runUserModePcZero(),
+          "a user-mode loop at pc 0 runs translated (empty dispatch slot is not key 0)");
     check(runAddressSourceAluLockstep(),
           "ADD.L address-register source preserves value and flags natively");
     check(runBriefIndexedLockstep(),

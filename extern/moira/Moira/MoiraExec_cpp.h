@@ -242,7 +242,9 @@ Moira::execShiftEa(u16 opcode)
 
     looping<I>() ? noPrefetch<C>(4) : prefetch<C, POLL>();
     pomLastWrite030<C>();   // POM68K: the store below ends the instruction
-    writeM<C, M, S>(ea, shift<C, I, S>(1, data));
+    // [D] WinUAE gencpu memory shifts @ Hatari e77819f7: `uae_u16 val` —
+    // the word zero-extended in the 68030 write buffer.
+    writeM<C, M, S, MMU_RAWBUF>(ea, shift<C, I, S>(1, data));
 
     if constexpr (I == Instr::ROR || I == Instr::ROL) {
 
@@ -284,6 +286,49 @@ Moira::execShiftEa(u16 opcode)
     FINALIZE
 }
 
+// [D] WinUAE gencpu.c i_ABCD/i_SBCD/i_NBCD @ Hatari e77819f7 (cpuemu_31/32
+// op_c108/op_8108/op_4810): the value a BCD store hands the bus is gencpu's
+// `uae_u16 newv`, the unclipped digit arithmetic, so a faulting store leaves
+// those sixteen bits in the 68030 write buffer and the 68040 WB3D, not the
+// sign-extended byte. Only the buffer sees the high bits — the low byte is the
+// result the core already computed. [F] for silicon: the buffer is internal.
+// Settled by: the internal long of a $B frame a real 68030 stacks for a
+// faulting NBCD.
+// Gate: sst68030_rmw (NBCD, SBCD -(An) faults: unlisted-byte check).
+static inline u32
+pomGencpuBcdValue(Instr I, u32 src, u32 dst, bool x)
+{
+    const int s = i8(src), d = i8(dst), xb = x ? 1 : 0;
+    u16 newv;
+    switch (I) {
+        case Instr::ABCD: case Instr::ABCD_LOOP: {
+            const u16 lo = u16((s & 0xF) + (d & 0xF) + xb);
+            const u16 hi = u16((s & 0xF0) + (d & 0xF0));
+            newv = u16(hi + lo);
+            if (lo > 9) newv = u16(newv + 6);
+            if ((newv & 0x3F0) > 0x90) newv = u16(newv + 0x60);
+            break;
+        }
+        case Instr::NBCD: case Instr::NBCD_LOOP: {
+            u16 lo = u16(-(s & 0xF) - xb);
+            const u16 hi = u16(-(s & 0xF0));
+            if (lo > 9) lo = u16(lo - 6);
+            newv = u16(hi + lo);
+            if ((newv & 0x1F0) > 0x90) newv = u16(newv - 0x60);
+            break;
+        }
+        default: {                          // SBCD
+            const u16 lo = u16((d & 0xF) - (s & 0xF) - xb);
+            const u16 hi = u16((d & 0xF0) - (s & 0xF0));
+            newv = u16(hi + lo);
+            if (lo & 0xF0) newv = u16(newv - 6);
+            if ((((d & 0xFF) - (s & 0xFF) - xb) & 0x100) > 0xFF) newv = u16(newv - 0x60);
+            break;
+        }
+    }
+    return newv;
+}
+
 template <Core C, Instr I, Mode M, Size S> void
 Moira::execAbcdRg(u16 opcode)
 {
@@ -318,11 +363,16 @@ Moira::execAbcdEa(u16 opcode)
     POLL_IPL;
     readOp<C, M, S, IMPL_DEC>(dst, &ea2, &data2);
 
+    const u32 raw = pomGencpuBcdValue(I, data1, data2, reg.sr.x);
     u32 result = bcd<C, I, Byte>(data1, data2);
     looping<I>() ? noPrefetch<C>(4) : prefetch<C>();
 
     pomLastWrite030<C>();   // POM68K: the store below ends the instruction
-    writeM<C, M, Byte>(ea2, result);
+    if constexpr (C == Core::C68020) {
+        writeM<C, M, Byte, MMU_RAWBUF>(ea2, (raw & ~0xFFu) | (result & 0xFF));
+    } else {
+        writeM<C, M, Byte>(ea2, result);
+    }
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -5879,7 +5929,13 @@ Moira::execNbcdEa(u16 opcode)
         prefetch<C, POLL>();
     }
     pomLastWrite030<C>();   // POM68K: the store below ends the instruction
-    writeM<C, M, Byte>(ea, bcd<C, Instr::SBCD, Byte>(data, 0));
+    const u32 raw = pomGencpuBcdValue(Instr::NBCD, data, 0, this->reg.sr.x);
+    const u32 result = bcd<C, Instr::SBCD, Byte>(data, 0);
+    if constexpr (C == Core::C68020) {
+        writeM<C, M, Byte, MMU_RAWBUF>(ea, (raw & ~0xFFu) | (result & 0xFF));
+    } else {
+        writeM<C, M, Byte>(ea, result);
+    }
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -6009,15 +6065,29 @@ Moira::execPackPd(u16 opcode)
 
     } else {
 
-        reg.a[ax]--;
-        auto data1 = read<C, AddrSpace::DATA, Byte>(readA(ax));
+        // [D] WinUAE gencpu.c i_PACK @ Hatari e77819f7 (cpuemu_31/32
+        // op_8148): the source register gets its restart fixup before it
+        // is decremented, and the two packed bytes are ONE word read at
+        // Ax-2 — the 020/030/040 bus takes a word at any byte address, so
+        // a faulting read stacks SIZE=word with Ax back at its entry value.
+        // The open-coded decrement bypasses computeEA, which arms the fixup
+        // everywhere else. PACK is 020+ only (AVAILABILITY above).
+        // [F] Not checked against a manual or a real CPU. Settled by: a bus
+        // capture of PACK -(A0),-(A1) on a 68030.
+        // Gate: moira_rules_test packUnpkFaultRestoresAn; vector
+        // "040 random/identity seed=5205 #483" (fault SSW and A3).
+        if constexpr (C == Core::C68020) {
+            if (mmuPlain020() || cpuModel == Model::M68030 ||
+                cpuModel >= Model::M68EC040) [[unlikely]]
+                mmuArmFixup<Long>(ax, true);
+        }
+
+        reg.a[ax] -= 2;
+        u32 src = read<C, AddrSpace::DATA, Word>(readA(ax));
 
         u16 adj = (u16)readI<C, Word>();
 
-        reg.a[ax]--;
-        auto data2 = read<C, AddrSpace::DATA, Byte>(readA(ax));
-
-        u32 src = (data2 << 8 | data1) + adj;
+        src += adj;
         u32 dst = (src >> 4 & 0xF0) | (src & 0x0F);
 
         writeOp<C, M, Byte>(ay, dst);
@@ -6898,7 +6968,9 @@ Moira::execSccEa(u16 opcode)
 
         prefetch<C, POLL>();
         data = cond<I>() ? 0xFF : 0;
-        writeOp<C, M, S>(dst, ea, data);
+        // [D] WinUAE gencpu i_Scc @ Hatari e77819f7: `val` is an int, $FF or
+        // 0 — unsigned in the 68030 write buffer, as FScc (row 83).
+        writeOp<C, M, S, MMU_RAWBUF>(dst, ea, data);
     }
 
     //           00  10  20        00  10  20        00  10  20
@@ -7251,11 +7323,36 @@ Moira::execUnpkPd(u16 opcode)
 
     } else {
 
-        reg.a[ay]--;
-        write<C, AddrSpace::DATA, Byte>(readA(ay), dst & 0xFF);
+        // [D] WinUAE gencpu.c i_UNPK @ Hatari e77819f7 (cpuemu_31/32
+        // op_8188): the unpacked pair is ONE word write at Ay-2 and it is
+        // the instruction's last write — the 68030 arms Ay's fixup and
+        // stacks LASTWRITE, the 68040 stacks the next PC with Ay already
+        // decremented, exactly as writeOp does for an ordinary -(An)
+        // destination. [F] Not checked against a manual or a real CPU.
+        // Settled by: a bus capture of UNPK -(A0),-(A1) on a 68030.
+        // Gate: moira_rules_test packUnpkFaultRestoresAn.
+        if constexpr (C == Core::C68020) {
+            if (mmuPlain020() || cpuModel == Model::M68030) [[unlikely]]
+                mmuArmFixup<Long>(ay, true);
+        }
+        reg.a[ay] -= 2;
+        const u32 ea = readA(ay);
 
-        reg.a[ay]--;
-        write<C, AddrSpace::DATA, Byte>(readA(ay), dst >> 8 & 0xFF);
+        if constexpr (C == Core::C68020) {
+            if (cpuModel == Model::M68030) [[unlikely]] {
+                mmuState[1] |= 0x0100;              // LASTWRITE
+                mmuLastWritePc = reg.pc;
+            }
+            if (cpuModel >= Model::M68EC040) [[unlikely]] {
+                mmu040LastWrite = true;
+                mmu040LastWritePc = reg.pc;
+                write<C, AddrSpace::DATA, Word>(ea, dst & 0xFFFF);
+                mmu040LastWrite = false;
+                goto unpkWritten;
+            }
+        }
+        write<C, AddrSpace::DATA, Word>(ea, dst & 0xFFFF);
+    unpkWritten:;
     }
 
     prefetch<C>();
