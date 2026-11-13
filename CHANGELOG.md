@@ -276,7 +276,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
 - **Do the oracle corpora pass through the JIT, not only the interpreter?** → [Every pinned corpus does since 2026-11-13; the first run found a host segfault at guest pc 0](#2026-11-13-jit-corpus-replay)
-- **Do the SST harnesses judge bytes the oracle left untouched?** → [Only with `--strict-ram`, since 2026-11-13; six corpora are registered strict](#2026-11-13-strict-ram)
+- **Do the SST harnesses judge bytes the oracle left untouched?** → [With `--strict-ram`, since 2026-11-13; every pinned corpus is registered strict since the same day's eighteenth entry](#2026-11-13-strict-ram-all)
 - **Is CAS2 a locked read-modify-write on the 68030, as CAS and TAS are?** → [It is since 2026-11-13; a fresh-seed sweep found it](#2026-11-13-cas2-rmw-030)
 - **How many instructions run between an SR write that unmasks an interrupt and the interrupt, per model, and what holds it?** → [None on the 68000/010, two from the 68020 up; a `moira_rules_test` cell](#2026-11-13-irq-delay-gate)
 - **Which 68030 boards have a gate that fails if the native backend silently falls back?** → [The Duo and the PowerBook 140/180 joined the seven others](#2026-11-13-native-gates-pb-duo)
@@ -1355,6 +1355,66 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-13-strict-ram-all"></a>
+## 2026-11-13 (eighteenth) — Every pinned corpus judged strict: three FSAVE and WB3D fields, a JSR to an odd address that translated its target, and two rulings against the oracle
+
+Closes the list the [(sixteenth)](#2026-11-13-strict-ram) entry left open.
+`sst68040`, `sst68040_8k`, `sst68040_fpu`, `sst68040_fpuh` and
+`sst68030_solo` now run with `--strict-ram`, so every one of the eleven
+pinned corpora judges the bytes the oracle left alone.
+
+**Fixed** (row 98, all [D] WinUAE @ Hatari e77819f7 unless noted):
+
+1. *The busy FSAVE frame of an unsupported data type* (545 + 12 vectors of
+   `sst68040_fpuh`). The fork filled CMDREG3B (frame offset $34) as the
+   unimplemented-instruction frame does; `fp_unimp_datatype` sets CMDREG1B
+   only. And it put the destination register in FPT/DTAG ($4C-$57) for
+   FMOVE, FNEG, FSQRT; the oracle does that for a dyadic operation only.
+   The FPSP reads CMDREG3B only with E3 set, so no guest saw either.
+2. *WB3D held more than the store.* ADDI.W #$185F,(A0) over $FD00, faulting:
+   the fork stacked `$0001155F`, the carry-out included. WinUAE's
+   `mmu_put_byte`/`mmu_put_word` take a `uae_u8`/`uae_u16`. Both the split
+   store's latch and `mmu040Fault` now mask to the size. That also takes
+   back a side effect of the sixteenth entry: the BCD stores hand the raw
+   sixteen bits to the 68030 write buffer, and the 68040 WB3D must not see
+   them — the comment there said it should, and was wrong.
+3. *A JSR to an odd address translated its target* (`sst68030_solo`
+   `random/tt seed=709 #204`). The fork reads the target's first word for
+   the I-cache and ATC (row 87); at an odd address no fetch happens —
+   [B] MC68030UM-1989 §8.1.3, the address error runs no bus cycle — so the page
+   got a U bit no processor would set. The read is skipped, in the
+   interpreter and in `pomJitJsr040`; the 68030 JIT's `pomJitReadProg`
+   refuses an odd address, so generated code replays the untouched JSR
+   through the interpreter.
+
+**Ruled** (`oracle/fuzz/disputes/NOTES.md`):
+
+- **D37**, MOVE16 frames, ~228 vectors: EA, WB2A and WB1D/PD0-PD3 hold the
+  line in the fork and zeros in the oracle, whose values there are its
+  glue's reset, not a reading of the hardware. The harness exempts those
+  three fields on MOVE16 vectors with a $7 frame, nothing else.
+- **D38**, three vectors: an instruction ending on a page's last word, and
+  the fork's irc lookahead sets the next page's U bit one step before the
+  oracle. Kept — a real 030/040 prefetches ahead — and listed in
+  `tests/sst68040.known`, `tests/sst68040_8k.known` and
+  `tests/sst68040_fpu.known`. Its fault-side twin stays open in `TODO.md`.
+
+The description in `TODO.md` of the two U-bit vectors, "a JSR to an odd
+target", was right for the 68030 one only; the 68040 one is D38.
+
+**Gates.** The five corpus gates above, strict. `jit_sst68030_solo`,
+`jit_sst68040`, `jit_sst68040_fpu` and `jit_sst68040_fpuh` agree after the
+change (-O0 harness build); the 68030 replay ran one native instruction
+fewer, the odd-target JSR now replayed. Every pinned corpus green on the
+interpreter.
+
+**Tiers**, x86-64 host, RelWithDebInfo + native LTO build:
+`unit|jit|cpu-vectors` 227 / 228, the strict `sst68030_solo`, `sst68040`,
+`sst68040_8k`, `sst68040_fpu` and `sst68040_fpuh` and the eleven `jit_sst*`
+gates executed; `agent_binary_test` is this host's Retro68 toolchain, red
+before the change. `m030` 145 / 145, `m040` 102 / 102. The touched targets
+build under `-Werror`.
 
 <a id="2026-11-13-jit-corpus-replay"></a>
 ## 2026-11-13 (seventeenth) — Every pinned oracle corpus replays through the translator: a host segfault on a guest pc of 0, and two frame latches that depended on the engine

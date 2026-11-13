@@ -17,7 +17,7 @@ towards upstream had quietly expired while the file still read as if a rebase
 were the plan.
 
 What forced it, measured on this tree rather than remembered (re-measured
-2026-11-13 with rows 95–97 (PACK/UNPK one-word restart, the 68030 write
+2026-11-13 with rows 95–98 (PACK/UNPK one-word restart, the 68030 write
 buffer of Scc/BCD/shifts, two frame latches cleared per instruction);
 before that 2026-11-10 with rows 79–86 (memory bit fields touch only their bytes,
 MOVES fixup slot, MOVEM extension log, JMP odd-target PC, FScc and ADD/SUB
@@ -48,10 +48,10 @@ pair):
 | distinct `pom*` extension identifiers | **113** (65 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
 | `POM68K`-marked lines | **540** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **16 of 26** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **97** | this file |
+| patch groups in the inventory below | **98** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h`, `MoiraState.h` | — |
 
-Ninety-seven patch groups, two of which (the JIT seam, row 22, and the ATC
+Ninety-eight patch groups, two of which (the JIT seam, row 22, and the ATC
 performance work, row 16) are not patches over upstream's design but a second
 consumer of it. A re-sync is no longer a merge with conflicts; it is a port.
 
@@ -254,6 +254,7 @@ gate in the last column of each row.
 | 95 | **PACK/UNPK `-(An)` move one word and restart cleanly** — `execPackPd` arms Ax's restart fixup before decrementing it by hand and reads the packed pair as ONE word at Ax−2 before the adjustment; `execUnpkPd` arms Ay's fixup (68030, plain 68020) and writes ONE word at Ay−2 as the instruction's last write (LASTWRITE on the 68030, `mmu040LastWrite` on the 68040). The fixup carries the long encoding, so a 68030 handler sees Ax one long low until the RTE (`mmu030fixupmod`). `MOIRA_MIMIC_MUSASHI` path untouched | `MoiraExec_cpp.h` | [D] WinUAE gencpu.c `i_PACK`/`i_UNPK`, cpuemu_31/32 `op_8148`/`op_8188` @ Hatari e77819f7; fresh-seed vector `040 random/identity seed=5205 #483`. Before: a faulting source read left Ax a byte low and the restarted PACK stored the wrong byte. [F] bus cycles: no manual at hand; settled by a bus capture of `PACK -(A0),-(A1)` on a 68030 | `moira_rules_test` (`packUnpkFaultRestoresAn`, RTE round trip) |
 | 96 | **68030 write buffer of Scc, the BCD stores and the memory shifts** — Scc and the memory shifts store with `MMU_RAWBUF` (gencpu passes `val` unsigned); ABCD/SBCD `-(An)` and NBCD to memory hand the buffer gencpu's unclipped `uae_u16 newv` (`pomGencpuBcdValue`), the low byte staying the result the core computed. Internal frame content only | `MoiraExec_cpp.h` | [D] WinUAE gencpu `i_Scc`, `i_ABCD`/`i_SBCD`/`i_NBCD`, memory shifts, cpuemu_32 @ Hatari e77819f7; 243 `sst68030_rmw` vectors once unlisted bytes were judged. [F] for silicon (internal register), as row 83 | `sst68030_rmw --strict-ram` |
 | 97 | **Two frame latches no longer outlive their instruction** — `reset()` clears `mmu040FullVal` (the datum a split locked read stacks as WB3D), and `mmuExecuteStart` clears `mmuDispStore` (the 68030 extended-EA results a $B frame stacks). Both had made a frame depend on earlier instructions — under the JIT on instructions that ran as generated code, which keep neither | `Moira.cpp`, `MoiraExecMMU_cpp.h` | POM68K determinism; the oracle glue zeroes the same WinUAE globals per vector, so the corpora are unchanged. Found by `sst68040_jit` (`fault/identity/8k seed=607 #337`) and `sst68030_jit` (`random/tt seed=709 #340`) | `jit_sst68040_8k`, `jit_sst68030_solo` |
+| 98 | **What `--strict-ram` found in the remaining corpora** — the 68040 busy FSAVE frame of an unsupported data type carries CMDREG1B only (CMDREG3B zero) and FPT/DTAG only for a dyadic operation; the 68040 WB3D holds a byte or word store at its size (a split store's `mmu040FullVal` and `mmu040Fault` both masked: no ADDI.W carry-out, no 68030 write-buffer bits); a JSR to an odd target reads nothing there on the 68030/68040, so no translation and no descriptor U bit (`pomJitReadProg` refuses an odd address so the JIT replays through the interpreter) | `MoiraExecFPU_cpp.h`, `MoiraExecMMU_cpp.h`, `MoiraExec_cpp.h` | [D] WinUAE `fp_unimp_datatype`, `mmu_put_byte/word` (`uae_u8`/`uae_u16`) @ Hatari e77819f7; [B] MC68030UM-1989 §8.1.3 for the odd fetch; [F] for the silicon content of each field | `sst68040_fpuh`, `sst68040`, `sst68040_8k`, `sst68030_solo` with `--strict-ram` |
 
 Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54, 56, 59-75 and 79-86 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
 when nothing arms them); rows 48 and 55 are performance alone, with no architectural effect. Row 58 is evidence documentation only. The ten files carrying no `POM68K` marker at all —

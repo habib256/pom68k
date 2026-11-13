@@ -1,0 +1,10 @@
+# Vectors of tests/data/sst68040_8k on which the fork deliberately does not
+# follow the oracle: one name per line, grouped by ruling
+# (oracle/fuzz/disputes/NOTES.md). `sst68040 --known` counts a listed vector
+# that fails apart, and FAILS on one that passes or is missing: when a ruling
+# is settled, its block leaves this file in the same change.
+
+# D38 - --strict-ram only. An instruction ending on the last word of a page:
+# the fork reads the word after it (irc lookahead) and sets the next page's
+# descriptor U bit; the oracle translates that page only at the next step.
+040 fault/identity/8k seed=607 #264

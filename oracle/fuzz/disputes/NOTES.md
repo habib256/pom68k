@@ -33,6 +33,47 @@ Oracle in service: **WinUAE** (`oracle/uae`, hatari e77819f7
 `cpummu030.c` + gencpu). Retired: **Musashi** (MAME 0.276 `m68kmmu.h` +
 kstenerud 4.60 core).
 
+## D38. A descriptor U bit set by the irc lookahead at a page's end [fork kept, 2026-11-13]
+
+Seen only with `--strict-ram`, which judges bytes the oracle left alone.
+An instruction whose last word is the last word of a page (`PFLUSH (A1)` at
+`$11FFE`, `MOVE.L D3,(d16,A0)` at `$11FFC` on 8 KB pages, an FPU op at
+`$13FFC`): the fork's one-slot queue reads the word after the opcode
+together with it (`mmu040InstrStart` fetches ird and irc at the
+instruction's start, extension words then refill irc), so the next page is
+translated and its descriptor gets U. WinUAE translates that page only when
+the next opcode is fetched, one step later, outside the vector. Three
+vectors: `040 mmu/identity seed=203 #506` (`tests/sst68040.known`),
+`040 fault/identity/8k seed=607 #264` (`tests/sst68040_8k.known`),
+`040 fpuraw/identity seed=962 #1296` (`tests/sst68040_fpu.known`).
+
+Kept: a real 68030 and 68040 prefetch ahead of the instruction they decode
+(an instruction pipe, an instruction fetch unit), so a table search for the
+next page before the instruction retires is plausible silicon, and making
+irc lazy touches every handler that reads `queue.irc`. The fault side of
+the same lookahead is the open item `TODO.md` › Justesse 68030 « fautes de
+préfetch différées ». [F] Settled by: a bus capture of the table search
+around a one-word instruction on a page's last word.
+
+## D37. MOVE16 fault frames: EA, WB2A and the line in PD0-PD3 [fork kept, 2026-11-13]
+
+Seen only with `--strict-ram`: ~228 vectors of `sst68040`/`sst68040_8k`.
+A faulting MOVE16 stacks a format-$7 frame; the fork puts the line address
+(`& ~15`) in EA ($08) and WB2A ($20) and, for `(Ax)+,(Ay)+`, the line in
+WB1D/PD0-PD3 ($2C-$3B). The oracle stacks zeros there, and they are not its
+reading of the hardware: WinUAE assigns `mmu_effective_addr` only for MOVEM
+(`cpummu.c` @ Hatari e77819f7 does `&= ~15` on it for a MOVE16 fault and
+then `wb2_address = mmu_effective_addr`, so the value is whatever the glue
+left — `oracle/uae/glue.c` zeroes it per vector), and its postincrement form
+moves the line through a local buffer instead of `mmu040_move16`, so the PD
+words never see the data. An oracle artefact, not a ruling on silicon.
+
+The harness exempts these three fields, on MOVE16 vectors with a $7 frame
+only (`tests/sst68040.cpp`, strict check); everything else in those vectors
+is judged. [F] for silicon: MC68040UM-1993 § 8.4.6 names the fields, not
+their content for a MOVE16 line transfer. Settled by: a MOVE16 fault frame
+from a real 68040.
+
 ## D36. Access-log bytes of a format-$B frame after a fetch fault [fork kept, 2026-11-11]
 
 Two-step vector, 68030: a JSR, then the opcode fetch at its target takes a
@@ -832,12 +873,13 @@ in the same order: 11 171 / 11 174 on the first replay.
 The sweep is not pinned: 11 172 / 11 174 after the fix, the two D28
 vectors remaining.
 
-### Open: the 68040 fresh-seed sweep of 2026-11-13 (seeds 5201-5208)
+### Not disputes: the 68040 fresh-seed sweep of 2026-11-13 (seeds 5201-5208)
 core, mmu, random and fault with identity and tt, 800 a cell, 4 KB pages:
 6 399 / 6 400.
 - `040 random/identity seed=5205 #483`: `$854B`, PACK -(A3),-(A2), access
   fault — the oracle leaves A3 at its entry value, the fork one byte
-  lower. **Open** (`TODO.md`), not ruled.
+  lower. **Fixed the same day** (`POM68K_VENDOR.md` row 95): PACK arms its
+  restart fixup and reads one word, as gencpu does.
 
 ## The raw F-line window on the 68030 + 68882, and the oracle's strict setting (2026-11-07)
 
