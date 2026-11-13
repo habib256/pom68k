@@ -275,6 +275,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
+- **Does the moment a fetch window is armed still change guest state under the 68040 D-cache?** → [No: the August reproducer passes on both hosts](#2026-11-13-arm-moment-040)
 - **Why did a 68030/68040 guest take a wrong flag about once per 10^12 cycles on macOS/AArch64, and hang a Quadra 630 in its ROM's remainder routine?** → [The a64 generator held values in x18, which macOS clears on every interrupt](#2026-11-13-a64-x18)
 - **Why does `q630_ide_boot_etalon` fail once in a while, and did the transient-refusal retry cause it?** → [About one run in 70, and it predates the retry](#2026-11-13-q630-rare-divergence)
 - **Why were the LC III and the IIvx the slowest 68030 machines under the JIT?** → [A refused window cost 32 interpreted instructions](#2026-11-12-jit-transient-refusal)
@@ -1349,6 +1350,47 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-13-arm-moment-040"></a>
+## 2026-11-13 (fourth) — The moment a fetch window is armed no longer changes guest state under the 68040 D-cache: the August reproducer passes on both hosts
+
+**Closes** the open question left by
+[2026-08-23 (fourth)](#2026-08-23-arm-backoff), where a backoff
+growing with the refusal streak made both cache-active locksteps diverge
+at their first coarse boundary and the constant 32 was kept "because it
+is green".
+
+**Measured on `d15501fe`.** `jit_lockstep_a64_coarse_test` as registered
+(Quadra 605, `POM68K_040_DCACHE=1`, budget 50, 5 000 000 comparisons)
+with `POM68K_JIT_ARM_BACKOFF` forced:
+
+| Backoff | Windows armed | Refused | Result |
+|---|---|---|---|
+| 1 | 558 574 | 394 446 | identical |
+| 8 | 241 752 | 101 333 | identical |
+| 32 (default) | 155 712 | 30 019 | identical |
+| 64 | 137 054 | 16 519 | identical |
+
+Then the August prototype itself, rebuilt on `8fb98283` (same engine): a
+backoff of 1, 2, 4… up to the knob, reset on a successful arm.
+
+| Host and gate | Cap | Windows armed | Result |
+|---|---|---|---|
+| a64, coarse, 5 000 000 | 32 | 224 945 | identical |
+| a64, coarse, 5 000 000 | 256 | 206 270 | identical |
+| x86-64 under Rosetta, `jit_lockstep_x64_test` settings, 1 000 000 | 32 | 224 808 | identical |
+| x86-64 under Rosetta, same | 256 | 206 133 | identical |
+
+The immediate retry of 2026-11-12 (tenth) had already moved the arm
+moment on every transient refusal with both gates green; this is the same
+statement over a wider range.
+
+**Not known.** Which change cured it. The cache model was reworked
+several times between August and now (the replacement counter of
+2026-11-10 (twelfth) among them) and I did not bisect. The streak backoff
+is not adopted here: it is a performance question, and this entry only
+removes the correctness objection to it. No gate was added; the recipe is
+the registered command with the knob set.
 
 <a id="2026-11-13-a64-x18"></a>
 ## 2026-11-13 (third) — The a64 generator kept ADDX's carry in x18, which macOS clears on every interrupt: the Quadra 630 hang, and a random wrong flag on every 68030/68040 machine since 2026-08-31

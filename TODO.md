@@ -658,11 +658,6 @@ d'instruction.
 
 ### JIT justesse et parité des hôtes
 
-- [ ] **Expliquer pourquoi le moment d'armement d'une fenêtre change
-  l'état invité sous le D-cache 040.** Un backoff croissant a fait
-  diverger les deux locksteps cache actif au premier pas grossier
-  (`CHANGELOG` 2026-08-23 (fourth)) et a été retiré : le vert actuel tient
-  à la constante 32, pas à un invariant.
 - [ ] **Donner des gates natifs et un inventaire de stores aux plateformes
   030 récentes.** `Pb030Cpu` (neuf PowerBook) reçoit du code natif par
   `auto` sans aucun gate à `POM68K_JIT_REQUIRE_NATIVE` ; le
