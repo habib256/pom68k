@@ -832,6 +832,13 @@ in the same order: 11 171 / 11 174 on the first replay.
 The sweep is not pinned: 11 172 / 11 174 after the fix, the two D28
 vectors remaining.
 
+### Open: the 68040 fresh-seed sweep of 2026-11-13 (seeds 5201-5208)
+core, mmu, random and fault with identity and tt, 800 a cell, 4 KB pages:
+6 399 / 6 400.
+- `040 random/identity seed=5205 #483`: `$854B`, PACK -(A3),-(A2), access
+  fault — the oracle leaves A3 at its entry value, the fork one byte
+  lower. **Open** (`TODO.md`), not ruled.
+
 ## The raw F-line window on the 68030 + 68882, and the oracle's strict setting (2026-11-07)
 
 `gen030.py` gained the `fpuraw` family (the generator gen040 used for

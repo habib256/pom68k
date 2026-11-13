@@ -1354,6 +1354,31 @@ Newest first.
 
 ---
 
+<a id="2026-11-13-pack-040-open"></a>
+## 2026-11-13 (fourteenth) — A fresh-seed sweep of the 68040: 6 399 of 6 400, and the one left is open — a faulting PACK leaves its source register one byte low
+
+`fuzz040.py` against the oracle, families core, mmu, random and fault
+with `identity` and `tt`, seeds 5201 to 5208 in that order, 800 vectors a
+cell, 4 KB pages, written to a scratch directory:
+
+    for family in core mmu random fault; for mmu in identity tt:
+      build-oracle/venv/bin/python oracle/fuzz/fuzz040.py \
+        --a build-oracle/liboracle_uae.dylib --family F --mmu M \
+        --n 800 --seed S --out F_M.json        # S = 5201 … 5208
+    build/sst68040 <dir>
+
+`040 random/identity seed=5205 #483`: opcode `$854B`,
+`PACK -(A3),-(A2),#$4E71`, taking an access fault (format-$7 frame). The
+oracle's final state has A3 = `$788C0`, its entry value; the fork has
+`$788BF`. Everything else in the vector agrees up to that comparison (the
+runner stops at the first difference).
+
+Not fixed and not ruled: found at 12:50 with the session ending at 13:00,
+which leaves no room for a core change and its tiers. It is in `TODO.md`
+with the vector; the likely place is the register restore of the 68040
+restart model when one instruction predecrements the same register twice.
+That reading is mine and untested.
+
 <a id="2026-11-13-cas2-rmw-030"></a>
 ## 2026-11-13 (thirteenth) — A fresh-seed sweep of the 68030 finds one defect in 11 174 vectors: CAS2 was not a read-modify-write on the 68030, CAS and TAS were
 
@@ -1401,8 +1426,8 @@ tier finished green two minutes later). x86-64 under Rosetta: `unit|jit`
 186/186, m030 145/145; its m040 tier was not rerun, the change being
 confined to `cpuModel == M68030`.
 
-**Not done.** The 68040 has no such sweep in its loop yet
-(`TODO.md`); the sweep is not pinned as a corpus.
+**Not done.** The sweep is not pinned as a corpus. The 68040's turn is
+[(fourteenth)](#2026-11-13-pack-040-open).
 
 <a id="2026-11-13-jit-unmasked-ipl"></a>
 ## 2026-11-13 (twelfth) — The engine is held to the interpreter's two-instruction interrupt delay, without a ROM
