@@ -275,6 +275,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
+- **Why does `q630_ide_boot_etalon` fail once in a while, and did the transient-refusal retry cause it?** → [About one run in 70, and it predates the retry](#2026-11-13-q630-rare-divergence)
 - **Why were the LC III and the IIvx the slowest 68030 machines under the JIT?** → [A refused window cost 32 interpreted instructions](#2026-11-12-jit-transient-refusal)
 - **Why was the JIT never faster than the interpreter on the 68030 PowerBooks?** → [Power cycling: 2.6 million flushes per boot](#2026-11-12-pb030-wake-reset)
 - **Why did the JIT run an SE/30 under System 7 slower than the interpreter, and why did one x86-64 gate never finish?** → [The CACR hint on the GLUE board](#2026-11-12-glue-cacr-inventory)
@@ -1348,6 +1349,46 @@ Newest first.
 
 ---
 
+<a id="2026-11-13-q630-rare-divergence"></a>
+## 2026-11-13 (later) — `q630_ide_boot_etalon` fails about once in 70 runs, and did so before the transient-refusal retry
+
+**Corrects** the "one red I could not reproduce" paragraph of
+2026-11-12 (tenth): it does reproduce, and it is not that change's.
+
+**Measured.** The gate, instrumented to print clock, PC, a RAM hash and
+the ATA counters every 300 frames (phase 1 included), ran from 02:46 to
+06:05 on the M4, six instances at a time: three built from `94f7bb36`
+(before the retry) and three from `8fb98283`, 144 runs each.
+
+| Build | Runs | Failed | Passed with a different trace |
+|---|---|---|---|
+| `94f7bb36` | 144 | 3 | 0 |
+| `8fb98283` | 144 | 1 | 2 |
+
+The 282 other runs are identical line for line, and the two builds share
+one trace: the retry does not move the guest. Three failures are phase 1
+(Drive Setup stops at 57 ATA commands and 10 sectors instead of 365 and
+5 244); one is phase 3 (Cmd-N writes 0 sectors).
+
+**What the failing runs have in common.** Each is identical to the
+reference up to one 300-frame sample, then differs for good: phase 1
+between frames 19 800 and 20 100 once, between 22 200 and 22 500 twice,
+phase 3 between frames 10 200 and 10 500. In all four the first differing
+sample has the PC at `$40891988` or `$40891992`, a ROM address no passing
+run shows at any sample, and from there the clock advances further per
+frame than in a passing run.
+
+**Ruled out.** A host clock in the board, threads in the core, a shared
+writable image, uninitialised heap (`MallocPreScribble`), uninitialised
+stack (`-ftrivial-auto-var-init=pattern` and `=zero` builds give the
+reference trace), disk space.
+
+**Not known.** The cause; what the ROM routine at `$891988` is; whether
+the interpreter engine shows it; whether the x86-64 leg does; whether it
+predates the pinned bases of 2026-11-12. The two passing runs with a
+different trace were not kept, so where they differ is unknown. The
+instrumentation is not in the tree.
+
 <a id="2026-11-13-settle-irq-parked"></a>
 ## 2026-11-13 — The `CHECK_IRQ` settle is parked: it changes which block owns a device read, and the gate that says that read is native never ran it native
 
@@ -1490,6 +1531,9 @@ pass; the x86-64 leg passed too. The board reads no host clock and shares
 no file with the gates that ran beside it. I can neither attribute it to
 this change nor clear the change of it; it is recorded as open in
 `TODO.md`.
+
+> **Corrected:** it reproduces, at about one run in 70, and predates this
+> change — see [2026-11-13 (later)](#2026-11-13-q630-rare-divergence).
 
 <a id="2026-11-12-pb030-wake-reset"></a>
 ## 2026-11-12 (ninth) — The 68030 PowerBooks dropped all generated code 2.6 million times per boot: power cycling resets the CPU, and each reset flushed twice; boots 33-40 % faster, the JIT ahead of the interpreter at last
