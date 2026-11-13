@@ -1353,6 +1353,32 @@ Newest first.
 
 ---
 
+<a id="2026-11-13-odd-ssp-frame-gate"></a>
+## 2026-11-13 (tenth) — An interrupt frame on an odd SSP, and the RTE that reads it back, have a cell on the 68020, 68030 and 68040
+
+Row 15 of the patch inventory (the Lode Runner launch freeze of
+2026-07-17) was held by `lcii_launch_etalon` for the 68020-and-up half;
+`sst68000` holds the 68000's masked half. `moira_rules_test` gains
+`oddStackInterruptFrame`: SSP = `$8001`, a level-3 autovector interrupt,
+then the frame read byte for byte at `$7FF9` (SR, an even return PC,
+format/vector `$006C`, the offset scaled once), then the handler's RTE,
+which must come back to that PC with SSP = `$8001` and not through the
+format-error vector.
+
+Mutation: with the `& ~1` back on the four frame writes, the frame reads
+`SR=0500 PC=00100800 6C00` and the RTE lands on the format-error handler.
+
+The 68010 is left out: it shares the frame writer, but its own interrupt entry does not
+reach the handler with an odd SSP. A 68010 has a 16-bit bus and would
+take an address error there; I did not look at what the core does
+instead.
+
+Tiers: `moira_rules_test` on both hosts, `asset-none` 156/156 on AArch64
+and 155/155 on x86-64 under Rosetta.
+
+Row 11 is now the only one of the rows `TODO.md` listed as held by a
+boot alone.
+
 <a id="2026-11-13-berr020-rule-and-q630-soak"></a>
 ## 2026-11-13 (ninth) — The full Quadra 630 gate, soaked after the x18 fix: 80 of 80 on the reference trace; and a rule cell for the 68020's external /BERR
 
