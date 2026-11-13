@@ -1882,6 +1882,53 @@ void externalBusError020()
     }
 }
 
+void oddStackInterruptFrame()
+{
+    // POM68K_VENDOR.md row 15: from the 68010 up an interrupt taken while
+    // SSP is odd stacks its format-0 frame at the true addresses (masking
+    // A0 is the 68000's bus, and `sst68000` holds that half), with the
+    // vector offset scaled once; the RTE that follows reads the same bytes
+    // back. QuickDraw's three-byte stack temporaries make an odd SP
+    // routine on the LC II: the masked frame was one byte low and its RTE
+    // took a format error. Held until now by `lcii_launch_etalon`.
+    // The 68010 is not here: it shares the writer but its own interrupt
+    // entry does not survive an odd SSP, as a 16-bit bus would not.
+    constexpr uint32_t kOddSp = 0x8001, kFormatError = kHandler + 0x80;
+    for (moira::Model m : { moira::Model::M68020, moira::Model::M68030,
+                            moira::Model::M68040 }) {
+        TestCpu c(m);
+        p32(c, 27 * 4, kHandler);                       // level-3 autovector
+        p32(c, 14 * 4, kFormatError);
+        p16(c, kHandler, 0x4e73);                       // RTE
+        p16(c, kHandler + 2, kNop);
+        p16(c, kFormatError, kNop); p16(c, kFormatError + 2, kNop);
+        stage(c, kNop, 0);
+        for (int i = 1; i < 16; i++) p16(c, kCode + 2 * i, kNop);
+        c.setSR(0x2005);                                // mask 0, Z and C
+        for (int i = 0; i < 3; i++) c.execute();        // past the SR-write delay
+        c.setSP(kOddSp);
+        c.setIPL(3);
+        for (int i = 0; i < 6 && c.getPC0() != kHandler; i++) c.execute();
+        const uint32_t sp = c.getSP();
+        const uint32_t ret = g32(c, sp + 2);
+        CHECK(c.getPC0() == kHandler && sp == kOddSp - 8,
+              "model %d: interrupt on an odd SSP: PC0=%08X SP=%08X (want %08X, %08X)",
+              int(m), c.getPC0(), sp, kHandler, kOddSp - 8);
+        CHECK(g16(c, sp) == 0x2005 && ret > kCode && ret < kCode + 32 && !(ret & 1) &&
+              g16(c, sp + 6) == 27 * 4,
+              "model %d: frame at %08X is SR=%04X PC=%08X format/vector=%04X "
+              "(want 2005, an even PC in the NOPs, 006C)",
+              int(m), sp, g16(c, sp), ret, g16(c, sp + 6));
+        c.setIPL(0);
+        const bool contained = executeContained(c);     // RTE
+        CHECK(contained && c.getPC0() == ret && c.getSP() == kOddSp &&
+              (c.getSR() & 0xFF1F) == 0x2005,
+              "model %d: RTE from the odd frame: PC0=%08X SP=%08X SR=%04X "
+              "(want %08X, %08X, 2005; %08X is the format error handler)",
+              int(m), c.getPC0(), c.getSP(), c.getSR(), ret, kOddSp, kFormatError);
+    }
+}
+
 int main(int argc, char** argv)
 {
     if (argc == 2 && std::string_view(argv[1]) == "--movem-restart") {
@@ -1926,6 +1973,7 @@ int main(int argc, char** argv)
     movesReleasesAlternateFc();
     watchpointsUnderMmu();
     externalBusError020();
+    oddStackInterruptFrame();
 
     if (failures) {
         std::printf("[moira_rules_test] FAIL: %d check(s)\n", failures);
@@ -1938,6 +1986,6 @@ int main(int argc, char** argv)
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68EC030 plain-020 path with a 68030 "
-                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR\n");
+                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP\n");
     return 0;
 }
