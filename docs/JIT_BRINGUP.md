@@ -1220,7 +1220,7 @@ folded into an emitter change.
 
 | Gate | What it proves | Phase |
 |---|---|---|
-| `jit_duo230_boot_etalon` under a native backend | the one remaining 030 platform with no `jit_` registration — **registered 2026-11-13**, with `jit_pb140_boot_etalon` (Jaws) and `jit_pb180_boot_etalon` (Niagra); all three require the native backend | C.6 |
+| `jit_duo230_boot_etalon` under a native backend | the one remaining 030 platform with no `jit_` registration — **registered 2026-11-13**, with `jit_pb140_boot_etalon` (Jaws), `jit_pb180_boot_etalon` (Niagra) and `jit_pb180c_boot_etalon` (Pangola); all four require the native backend | C.6 |
 
 Everything else in phases A, B, C.1 and D is proved by gates that already
 exist (`ctest -N` lists them; `jit_lockstep_030*`, `jit_restart_write_030_test`,
