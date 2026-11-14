@@ -5,9 +5,13 @@
 // executable and what GuiAgentAutostart.h puts into the boot volume. Three
 // facts: it decodes as the MacBinary of an APPL named POM68KDisques with a
 // resource fork; when dev/scsiagent/build/POM68KDisques.bin exists (a
-// Retro68 build on this host) the two agree fork for fork — dates aside,
-// which the build stamps — so a rebuilt agent cannot ship stale; and each
-// packaging carries the file where findPath looks. Runs from the repository
+// Retro68 build on this host) and was built by the reference toolchain
+// (its POM68KDisques.toolchain stamp equals share/'s), the two agree fork
+// for fork — dates aside, which the build stamps — so a rebuilt agent cannot
+// ship stale; and each packaging carries the file where findPath looks.
+// Another toolchain emits other code from the same sources (CHANGELOG
+// 2026-10-14 (seventh)): its build is held to the application's identity
+// only, and the run says it was not compared. Runs from the repository
 // root; reads the tree, boots nothing.
 
 #include "HfsInject.h"
@@ -32,6 +36,10 @@ static std::string text(const std::string& path) {
     const std::vector<uint8_t> b = slurp(path);
     return std::string(b.begin(), b.end());
 }
+static std::string firstLine(const std::string& path) {
+    const std::string t = text(path);
+    return t.substr(0, t.find('\n'));
+}
 
 int main() {
     using namespace hfsinject;
@@ -52,10 +60,23 @@ int main() {
     } else {
         MacBinary fresh;
         check(decodeMacBinary(built, fresh, err), "the Retro68 build output decodes");
-        check(fresh.name == app.name && fresh.type == app.type && fresh.creator == app.creator &&
-              fresh.rsrc == app.rsrc && fresh.data == app.data,
-              "the shipped copy matches the Retro68 build fork for fork — copy "
-              "dev/scsiagent/build/POM68KDisques.bin to share/ otherwise");
+        check(fresh.name == app.name && fresh.type == app.type && fresh.creator == app.creator,
+              "the Retro68 build is the same application (" + fresh.name + " / " +
+              fresh.type + ")");
+        const std::string reference = firstLine("share/POM68KDisques.toolchain");
+        const std::string local = firstLine("dev/scsiagent/build/POM68KDisques.toolchain");
+        check(!reference.empty(), "share/POM68KDisques.toolchain names the reference toolchain");
+        if (!local.empty() && local == reference) {
+            check(fresh.rsrc == app.rsrc && fresh.data == app.data,
+                  "the shipped copy matches the build of the reference toolchain (" +
+                  reference + ") fork for fork — copy "
+                  "dev/scsiagent/build/POM68KDisques.bin to share/ otherwise");
+        } else {
+            std::printf("note: the build here is from %s, the shipped copy from %s; "
+                        "forks not compared (share/README.md)\n",
+                        local.empty() ? "an unstamped toolchain" : local.c_str(),
+                        reference.c_str());
+        }
     }
 
     struct Packaging { const char* file; const char* needle; };
@@ -72,6 +93,6 @@ int main() {
           "the runner looks for the shipped copy");
 
     if (gFails) { std::printf("FAILED (%d)\n", gFails); return 1; }
-    std::printf("PASS: share/POM68KDisques.bin is the agent, matches the build, and ships in every package\n");
+    std::printf("PASS: share/POM68KDisques.bin is the agent and ships in every package\n");
     return 0;
 }
