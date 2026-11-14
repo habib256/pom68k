@@ -17,7 +17,8 @@ towards upstream had quietly expired while the file still read as if a rebase
 were the plan.
 
 What forced it, measured on this tree rather than remembered (re-measured
-2026-11-14 with row 99 (deferred prefetch faults); before that 2026-11-13
+2026-11-14 with row 100 (the 68040 lock ends with its instruction); before
+that with row 99 (deferred prefetch faults); before that 2026-11-13
 with rows 95–98 (PACK/UNPK one-word restart, the 68030 write
 buffer of Scc/BCD/shifts, two frame latches cleared per instruction);
 before that 2026-11-10 with rows 79–86 (memory bit fields touch only their bytes,
@@ -47,12 +48,12 @@ pair):
 | | | how to re-measure |
 |---|---|---|
 | distinct `pom*` extension identifiers | **113** (65 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **546** | `grep -rn POM68K Moira/ \| wc -l` |
+| `POM68K`-marked lines | **550** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **16 of 26** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **99** | this file |
+| patch groups in the inventory below | **100** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h`, `MoiraState.h` | — |
 
-Ninety-nine patch groups, two of which (the JIT seam, row 22, and the ATC
+One hundred patch groups, two of which (the JIT seam, row 22, and the ATC
 performance work, row 16) are not patches over upstream's design but a second
 consumer of it. A re-sync is no longer a merge with conflicts; it is a port.
 
@@ -257,6 +258,7 @@ gate in the last column of each row.
 | 97 | **Two frame latches no longer outlive their instruction** — `reset()` clears `mmu040FullVal` (the datum a split locked read stacks as WB3D), and `mmuExecuteStart` clears `mmuDispStore` (the 68030 extended-EA results a $B frame stacks). Both had made a frame depend on earlier instructions — under the JIT on instructions that ran as generated code, which keep neither | `Moira.cpp`, `MoiraExecMMU_cpp.h` | POM68K determinism; the oracle glue zeroes the same WinUAE globals per vector, so the corpora are unchanged. Found by `sst68040_jit` (`fault/identity/8k seed=607 #337`) and `sst68030_jit` (`random/tt seed=709 #340`) | `jit_sst68040_8k`, `jit_sst68030_solo` |
 | 98 | **What `--strict-ram` found in the remaining corpora** — the 68040 busy FSAVE frame of an unsupported data type carries CMDREG1B only (CMDREG3B zero) and FPT/DTAG only for a dyadic operation; the 68040 WB3D holds a byte or word store at its size (a split store's `mmu040FullVal` and `mmu040Fault` both masked: no ADDI.W carry-out, no 68030 write-buffer bits); a JSR to an odd target reads nothing there on the 68030/68040, so no translation and no descriptor U bit (`pomJitReadProg` refuses an odd address so the JIT replays through the interpreter) | `MoiraExecFPU_cpp.h`, `MoiraExecMMU_cpp.h`, `MoiraExec_cpp.h` | [D] WinUAE `fp_unimp_datatype`, `mmu_put_byte/word` (`uae_u8`/`uae_u16`) @ Hatari e77819f7; [B] MC68030UM-1989 §8.1.3 for the odd fetch; [F] for the silicon content of each field | `sst68040_fpuh`, `sst68040`, `sst68040_8k`, `sst68030_solo` with `--strict-ram` |
 | 99 | **A prefetch fault waits until its word is used** — the one-slot `irc` lookahead (instruction start and every `readExt`) goes through `mmuLookaheadWord`/`mmu040LookaheadWord`: a fault there restores the fault latches and poisons `irc`; every read of `irc` is `ircWord()`, and a consumed poisoned word is fetched again where it lives, raising the fault inside the instruction that needs it. A long extension (`ircLong`) faults as one long access (68040 SSW size L, FA at its first word, MA for its second; the 68030 access-log index advanced before the read). On the 68040 an A-line, illegal or CHK instruction in a page's last word reports the access error instead (D39) | `Moira.h`, `MoiraDataflow_cpp.h`, `MoiraExec_cpp.h`, `MoiraExecFPU_cpp.h`, `MoiraExecMMU_cpp.h`, `MoiraExceptions_cpp.h` | [B] MC68030UM-1989 §8.1.2, MC68040UM-1993 §8.2.1 and §3.5; [D] WinUAE `next_iword/next_ilong_mmu030_state`, `next_ilong_mmu040` @ Hatari e77819f7 for the frame contents; [F] for the silicon frame of a long extension | `cpu_vectors030_test`/`cpu_vectors040_test` (`pagend` cells, 2 and 3 of 24 passed before), `moira_rules_test` (`deferredPrefetchFault`) |
+| 100 | **The 68040 lock ends with its instruction** — TAS, CAS and CAS2 clear `mmu040Lrmw` once their write (or failed-compare terminal write) is done, as CAS/CAS2 already cleared the 68030's `mmuRmw`. `mmu040InstrStart` clears it too, but generated code never runs that: a block entered after a locked instruction translated every data read as a locked write and set M on pages it only read | `MoiraExec_cpp.h` | [B] MC68040UM-1993 §7.4.5 (the locked sequence is the instruction's read and write) | `moira_rules_test` (`lockEndsWithTheInstruction040`, three checks red before), the `ttvar` sweep of 2026-11-14 through `sst68040_jit` |
 
 Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54, 56, 59-75 and 79-86 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
 when nothing arms them); rows 48 and 55 are performance alone, with no architectural effect. Row 58 is evidence documentation only. The ten files carrying no `POM68K` marker at all —

@@ -38,7 +38,7 @@ oracle/
 
 ## Public vectors and CI
 
-`tests/cpu_vectors/` ships 304 oracle-generated vectors with recipes and
+`tests/cpu_vectors/` ships 336 oracle-generated vectors with recipes and
 uncompressed SHA-256 identities. The root `cpu-vectors` tier always replays
 them, including from clean CI and ASan/UBSan checkouts. It rejects missing
 data and successful soft-skips. They supplement the large optional corpora;
@@ -150,6 +150,11 @@ Same machinery, `oracle_set_model(68040)`: `gen040.py` (families `core`
 `fuzz040.py` with the same flags, `sst040.py` = SST030 plus the eight 040
 MMU registers (`urp040 srp040 tc040 itt0 itt1 dtt0 dtt1 mmusr040`). A
 SST040 reader loads an SST030 corpus unchanged (missing keys read as 0).
+`--mmu tt` fixes the windows (ITT0 = everything, DTT0 = supervisor only);
+`--mmu ttvar` draws all four at random over the same identity tree — off,
+matching or missing, any S field, CM, U1/U0 and write protection — so a
+window hit, a window miss that walks the tree and a W-window write fault
+are all reached.
 There is no `loop.sh` equivalent: the 040 corpus under
 `tests/data/sst68040/` is pinned and replayed by the `sst68040` gate.
 

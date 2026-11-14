@@ -134,6 +134,23 @@ TT040_ALL = (0x00 << 24) | (0xFF << 16) | (1 << 15) | (1 << 14)
 TT040_SUPER = (0x00 << 24) | (0xFF << 16) | (1 << 15) | (1 << 13)
 
 
+def _random_tt040(rng: random.Random) -> int:
+    """One random 68040 transparent-translation register (§ 3.5.1)."""
+    if rng.random() < 0.25:
+        # E clear: inert. Only the implemented bits (MOVEC keeps
+        # $FFFFE364); state injection would otherwise plant reserved bits
+        # no 68040 can hold.
+        return rng.getrandbits(32) & 0xFFFFE364 & ~(1 << 15)
+    base = 0x00 if rng.random() < 0.6 else rng.randrange(1, 0x100)
+    mask = rng.choice([0x00, 0xFF, rng.randrange(0x100)])
+    s_field = rng.choice([0, 1, 2, 3])                 # user, super, any, any
+    cm = rng.randrange(4)
+    u = rng.randrange(4)
+    w = 1 if rng.random() < 0.3 else 0
+    return ((base << 24) | (mask << 16) | (1 << 15) | (s_field << 13)
+            | (u << 8) | (cm << 5) | (w << 2))
+
+
 # ── 040 opcode families ────────────────────────────────────────────────────
 
 def _op_move16(rng: random.Random) -> list[int]:
@@ -283,6 +300,18 @@ def gen_state(rng: random.Random, family: str = "core",
         st.urp040 = st.srp040 = ROOT_T
         st.itt0 = TT040_ALL
         st.dtt0 = TT040_SUPER
+    elif mmu == "ttvar":
+        # The tt cell with every window drawn at random: each of ITT0/1 and
+        # DTT0/1 is off, matches all (base 0) or misses (base ≠ 0 under a
+        # mask that leaves it compared), with a random S field, CM, U1/U0
+        # and W. A data access to a W window faults; an access no window
+        # matches walks the identity tree. M68040UM § 3.5.1 (TTR layout,
+        # W, S field) — whichever window matches, the oracle decides.
+        kinds = build_identity_tables(ram, rng)
+        st.tc040 = TC040_FUZZ
+        st.urp040 = st.srp040 = ROOT_T
+        st.itt0, st.itt1, st.dtt0, st.dtt1 = (
+            _random_tt040(rng) for _ in range(4))
     # else: MMU off (tc040.E = 0, roots/windows zero)
 
     if family in ("fault", "rmw"):

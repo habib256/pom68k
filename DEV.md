@@ -3396,7 +3396,7 @@ WinUAE/Hatari oracle; rulings D1-D23 in `oracle/fuzz/disputes/NOTES.md`),
 `sst68040` (**7 200/7 200** integer/random/MMU vectors).
 
 The smaller public corpus in `tests/cpu_vectors/` travels with a clean
-checkout: 136 030+68882 and 168 full-040 vectors, including faults and
+checkout: 136 030+68882 and 200 full-040 vectors, including faults and
 multi-instruction FPU sequences. `ctest -L cpu-vectors` verifies their
 identities and requires every vector to execute; these `asset-none` gates
 also run in CI and the nightly ASan/UBSan tier. Recipes and regeneration

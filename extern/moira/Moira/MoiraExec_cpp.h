@@ -1843,7 +1843,10 @@ Moira::execCas(u16 opcode)
         CYCLES_AL   ( 0,  0, 19,        0,  0, 19,        0,  0, 19)
     }
 
-    if constexpr (C == Core::C68020) mmuRmw = false;    // POM68K O4 slice 3
+    if constexpr (C == Core::C68020) {
+        mmuRmw = false;                                 // POM68K O4 slice 3
+        mmu040Lrmw = false;                             // POM68K: see execTas
+    }
 
     prefetch<C, POLL>();
 
@@ -1908,6 +1911,7 @@ Moira::execCas2(u16 opcode)
 
             if constexpr (C == Core::C68020) {
                 if (cpuModel == Model::M68030) mmuRmw = false;  // not the prefetch
+                mmu040Lrmw = false;                     // POM68K: see execTas
             }
             prefetch<C, POLL>();
             CYCLES_68020 (15);
@@ -1948,6 +1952,7 @@ Moira::execCas2(u16 opcode)
 
     if constexpr (C == Core::C68020) {
         if (cpuModel == Model::M68030) mmuRmw = false;
+        mmu040Lrmw = false;                             // POM68K: see execTas
     }
     prefetch<C, POLL>();
 
@@ -7119,6 +7124,14 @@ Moira::execTasEa(u16 opcode)
 
         // if (!isRegMode(M)) SYNC(2);
         writeOp<C, M, S>(dst, ea, data);
+
+        // POM68K: the 68040 lock covers the read and the write, not what
+        // follows. mmu040InstrStart clears the flag for the next
+        // interpreted instruction, but generated code does not run it: a
+        // block entered after TAS, CAS or CAS2 translated every data read as
+        // a locked write and set M on pages it only read. Gate:
+        // moira_rules_test (lockEndsWithTheInstruction040).
+        if constexpr (C == Core::C68020) mmu040Lrmw = false;
 
         prefetch<C, POLL>();
         SYNC(2);

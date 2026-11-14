@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 805 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 806 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -9,7 +9,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | Subsystem | Entries |
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 109 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 129 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 130 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 37 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 32 |
@@ -267,6 +267,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-13 (sixteenth)** — [The SST harnesses never looked at a byte the oracle left alone; judged, they find the 68030 write buffer of Scc, NBCD and SBCD, and an oracle defect in MOVE16 frames](CHANGELOG.md#2026-11-13-strict-ram)
 - **2026-11-13 (tenth)** — [An interrupt frame on an odd SSP, and the RTE that reads it back, have a cell on the 68020, 68030 and 68040](CHANGELOG.md#2026-11-13-odd-ssp-frame-gate)
 - **2026-11-13 (thirteenth)** — [A fresh-seed sweep of the 68030 finds one defect in 11 174 vectors: CAS2 was not a read-modify-write on the 68030, CAS and TAS were](CHANGELOG.md#2026-11-13-cas2-rmw-030)
+- **2026-11-14 (second)** — [Random transparent-translation windows on the 68040 find a translator defect: after TAS, CAS or CAS2, native reads marked their pages modified](CHANGELOG.md#2026-11-14-ttvar)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E
 
