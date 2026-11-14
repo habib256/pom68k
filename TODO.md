@@ -463,12 +463,6 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   émettent un mot puis un octet (grade F au site, `execBitFieldEa`). Le JIT
   compte deux accès ATC 040 pour suivre le cœur. *Bloqué : capture de bus de
   `BFEXTU (An){0:24}` sur un vrai 68030 ou 68040.*
-- [ ] **Modéliser les fautes de préfetch différées, 030 et 040.** Limite
-  documentée : `irc` est lu à pc+2 dès le début de l'instruction, donc une
-  instruction d'un mot dans le dernier mot d'une page peut fauter là où le
-  processeur réel attend que le mot serve. Le même lookahead pose le bit U
-  de la page suivante que l'oracle ne traduit qu'au pas d'après (décision
-  D38, trois vecteurs en `--known`).
 - [ ] **Remplacer ou prouver le modèle « réexécuter l'instruction » du RTE
   $B.** Les accès antérieurs à la faute sont réémis (lecture de
   périphérique en double) et le RMW verrouillé à DF effacé est exclu. Le

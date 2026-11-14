@@ -2263,6 +2263,43 @@ private:
     // mmuPipe members above); never faults — a short capture just ends
     void mmuCapturePipe();
 
+    // POM68K: deferred prefetch fault, 68030 and 68040.
+    // [B] MC68030UM-1989 §8.1.2 — a bus error on an instruction prefetch
+    // may be delayed until the processor attempts to use the prefetched
+    // information.
+    // [B] MC68040UM-1993 §8.2.1 — prefetch bus errors are deferred until
+    // the processor attempts to use the information.
+    // [D] WinUAE @ Hatari e77819f7 fetches each extension word at
+    // consumption (next_iword_mmu030_state, next_iword_mmu040), so the
+    // oracle agrees. Moira keeps `irc` one word ahead of the last consumed
+    // one; that lookahead goes through mmuLookaheadWord /
+    // mmu040LookaheadWord, which on a fault restore the fault latches and
+    // mark `irc` poisoned instead of raising. Every read of `irc` goes
+    // through ircWord(), and readExt/skipExt consume it: a poisoned word
+    // that is used is fetched again at the address it came from, which
+    // raises the fault where the instruction needs the word. Gate:
+    // sst68040/sst68030 "pagend" cells (an instruction ending on a page's
+    // last word, the next page invalid).
+    u16 mmuLookaheadWord(u32 addr);
+    template <Core C> u16 mmu040LookaheadWord(u32 addr);
+    void ircRefetch();
+    u16 ircWord() { if (ircPoison) [[unlikely]] ircRefetch(); return queue.irc; }
+    // [B] MC68040UM-1993 §3.5 — when the last word of a page is an A-line,
+    // illegal, CHK or unimplemented instruction and the next page is not
+    // resident, the 68040 reports the ATC access error, not the instruction's
+    // own exception. Called by those exception paths on the 68040.
+    void ircPoisonPreempts040() { if (ircPoison) [[unlikely]] ircRefetch(); }
+    bool ircPoison = false;
+    u32 ircPoisonAddr = 0;
+    // [D] WinUAE @ Hatari e77819f7 — next_ilong_mmu030_state and
+    // next_ilong_mmu040 read a long extension (immediate, ABS.L, 32-bit
+    // displacement) as one access: ircLong reads it and marks its
+    // address so a deferred fault inside it is raised as that long access.
+    // Leaves reg.pc on the low word, as the open-coded pairs did.
+    static constexpr u32 ircNoLong = 0xFFFFFFFF;
+    u32 ircLongAt = ircNoLong;
+    template <Core C> u32 ircLong();
+
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Logs the consumption of an extension word (WinUAE next_iword_mmu030_state)
     void mmuLogExtWord(u32 value);

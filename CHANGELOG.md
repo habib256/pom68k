@@ -276,6 +276,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
 - **Do the oracle corpora pass through the JIT, not only the interpreter?** → [Every pinned corpus does since 2026-11-13; the first run found a host segfault at guest pc 0](#2026-11-13-jit-corpus-replay)
+- **Does an instruction on a page's last word fault on the next page?** → [No: a prefetch fault waits until its word is used, since 2026-11-14; on the 68040 an A-line, illegal or CHK there reports the access error (D39)](#2026-11-14-deferred-prefetch-fault)
 - **Do the SST harnesses judge bytes the oracle left untouched?** → [With `--strict-ram`, since 2026-11-13; every pinned corpus is registered strict since the same day's eighteenth entry](#2026-11-13-strict-ram-all)
 - **Is CAS2 a locked read-modify-write on the 68030, as CAS and TAS are?** → [It is since 2026-11-13; a fresh-seed sweep found it](#2026-11-13-cas2-rmw-030)
 - **How many instructions run between an SR write that unmasks an interrupt and the interrupt, per model, and what holds it?** → [None on the 68000/010, two from the 68020 up; a `moira_rules_test` cell](#2026-11-13-irq-delay-gate)
@@ -1355,6 +1356,83 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-14-deferred-prefetch-fault"></a>
+## 2026-11-14 — A prefetch fault waits until its word is used: an instruction ending on a page's last word no longer faults on the next page
+
+The open `TODO.md` item « fautes de préfetch différées » turned out wider
+than its description. Moira keeps `irc` one word ahead of the last consumed
+word, both at the instruction start (`mmuExecuteStart`, `mmu040InstrStart`)
+and after every extension word (`readExt`). Any instruction whose last word
+is the last word of a page, followed by an invalid page, faulted on the
+next page: a one-word instruction at the opcode fetch, a two-word one after
+its immediate. Probe, before the change: 40 oracle vectors (NOP, MOVEQ,
+SWAP, ADDQ, ADDI.W against a page end on the 68040), 0 / 40 passed. The
+manuals settle it: MC68030UM-1989 §8.1.2 ("the processor may delay taking
+the exception until it attempts to use the prefetched information"),
+MC68040UM-1993 §8.2.1 ("bus errors that occur during instruction prefetches
+are deferred until the processor attempts to use the information"). The
+oracle agrees, because WinUAE fetches each extension word at consumption.
+Both locators were read in the locked PDFs (hashes match) and added to
+`tests/core_manuals.lock`.
+
+**The change** (`POM68K_VENDOR.md` row 99):
+
+- **Lookahead.** It goes through `mmuLookaheadWord` / `mmu040LookaheadWord`.
+  A fault there restores every latch the fault path writes and marks `irc`
+  poisoned instead of raising:
+  - on the 68030, the SSW, FA, WB2/WB3, stage B, `mmuRmw` and the RTE
+    substitution latch;
+  - on the 68040, MOVES, MOVEM CM, locked RMW, EA, SSW, FA and the
+    writebacks.
+- **Every read of `irc`** in the execution files goes through
+  `ircWord()`. `readExt` and `skipExt` count as consumption. A poisoned word
+  that is used is fetched again where it lives, which raises the fault in
+  the instruction that needs it. A poison left over from another address is
+  dropped: a one-word branch at a page's end does not use its lookahead, and
+  generated code never passes the instruction-start reset.
+- **Long extensions** (immediate, ABS.L, 32-bit displacements) go through
+  `ircLong`, and a deferred fault inside one is raised as the oracle raises
+  it:
+  - on the 68040, one long access (SSW size L, FA at its first word, MA
+    when only the second word's page faults);
+  - on the 68030, the access-log index advanced before the read.
+- **D39.** On the 68040 an A-line, illegal or CHK instruction in a page's
+  last word reports the access error instead of its own exception. This is
+  MC68040UM-1993 §3.5 word for word; the oracle takes the instruction's
+  exception. Grade B over D, so the fork follows the manual
+  (`oracle/fuzz/disputes/NOTES.md`, `oracle/README.md`).
+
+**The gate.** A new generator family, `pagend` (`gen030.py`, `gen040.py`):
+an instruction against the end of a plain identity page whose successor is
+made invalid. Three in four end exactly on the page's last word; the rest
+run their last extension word onto the bad page and must fault. The 68040
+cell starts every root and pointer descriptor with U set: the walk of the
+fork's lookahead sets them where the oracle never walks, which is D38's
+class (that ruling now says so), not this cell's question. One 24-vector
+recipe per model in `tests/cpu_vectors` (no known list, 136 + 168 vectors).
+Before the change, 2 / 24 passed on the 68030 and 3 / 24 on the 68040; on
+200-vector cells, 7 / 200 and 35 / 200. After it, 24 / 24, 200 / 200, and
+the same through the translator (`cpu_vectors0x0_jit_test`). The first pass
+left the long immediates, which faulted with a word-sized SSW (68040) or one
+access-log entry short (68030); `ircLong` closed them. `moira_rules_test`
+(`deferredPrefetchFault`) holds the cases the oracle cannot: an external
+/BERR on the word after the instruction, D39 on the 68LC040 and 68040, and
+the 68030 taking its own A-line, illegal or CHK exception.
+
+Every pinned corpus is unchanged on the interpreter at -O0, the 68000 one
+included (1 000 058 vectors). The 68030/68040 known lists still hold every
+listed case, D38 included. All eleven `jit_sst*` replays and both
+`cpu_vectors0x0_jit_test` pass. `jit_asset_free_lockstep_test` passed every
+sub-check before its 300 s timeout at -O0.
+
+**Tiers**, x86-64 host, RelWithDebInfo + native LTO build:
+`unit|jit|cpu-vectors` 227 / 228, with `moira_rules_test`, the four
+`cpu_vectors030/040` gates (interpreter and `_jit`) on the 136- and 168-vector corpora, the strict
+`sst68030_solo` and `sst68040*` gates and the eleven `jit_sst*` gates
+executed; `agent_binary_test` is this host's Retro68 toolchain, red before
+the change. `m030` 145 / 145, `m040` 102 / 102. The touched targets build
+under `-Werror`.
 
 <a id="2026-11-13-strict-ram-all"></a>
 ## 2026-11-13 (eighteenth) — Every pinned corpus judged strict: three FSAVE and WB3D fields, a JSR to an odd address that translated its target, and two rulings against the oracle

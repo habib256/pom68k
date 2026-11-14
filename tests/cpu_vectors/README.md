@@ -7,8 +7,8 @@ strict-FPU adapter), not an independent silicon reference.
 
 | Model | Vectors | Cells |
 |---|---:|---|
-| 68030 + 68882 | 112 | integer core, translated MMU and faults, FPU arithmetic, two-instruction FPU continuation |
-| full 68040 | 144 | the same, plus 8 KB pages and three-instruction FPU-handler/FSAVE sequences |
+| 68030 + 68882 | 136 | integer core, translated MMU and faults, FPU arithmetic, two-instruction FPU continuation, instructions against a page whose successor is invalid |
+| full 68040 | 168 | the same, plus 8 KB pages and three-instruction FPU-handler/FSAVE sequences |
 
 `manifest.json` records every generator option and seed, plus the count,
 uncompressed size and SHA-256 of each canonical JSON stream. The gzip files
@@ -16,7 +16,7 @@ keep this small corpus in the repository. The large optional corpora under
 `tests/data/` retain their separate `tests/sst_corpora.lock` identities.
 
 The existing SST harnesses compare registers, MMU/FPU state and RAM. These
-gates require all 256 vectors to execute, with zero MMU skips and no known
+gates require all 304 vectors to execute, with zero MMU skips and no known
 divergence list. Missing data, changed bytes, empty data or a harness that
 returns success after soft-skipping all fail the gate. Cycle accuracy is
 not claimed for these 030/040 vectors.

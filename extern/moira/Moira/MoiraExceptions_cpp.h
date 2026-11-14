@@ -655,6 +655,19 @@ Moira::execException(M68kException exc, int nr)
 template <Core C> void
 Moira::execException(M68kException exc, int nr)
 {
+    // [B] MC68040UM-1993 §3.5 — an A-line, illegal, CHK or unimplemented
+    // instruction in the last word of a page, the next page not resident:
+    // the ATC access error is reported instead (POM68K, Moira.h § ircPoison).
+    // [D] WinUAE @ Hatari e77819f7 takes the instruction's own exception
+    // (no lookahead to fault); the manual wins, NOTES.md D39.
+    if constexpr (C == Core::C68020) {
+        if (cpuModel >= Model::M68EC040 &&
+            (exc == M68kException::LINEA || exc == M68kException::LINEF ||
+             exc == M68kException::ILLEGAL || exc == M68kException::CHK)) {
+            ircPoisonPreempts040();
+        }
+    }
+
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K O4 slice 3: exception stacking is not part of the 68030
     // instruction-restart access log (WinUAE uses non-state accessors)

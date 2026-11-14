@@ -1305,6 +1305,63 @@ void jsrTargetFetchFault()
     }
 }
 
+// [B] MC68030UM-1989 §8.1.2, MC68040UM-1993 §8.2.1: a bus error on an
+// instruction prefetch is taken only when the word is used. The board's
+// /BERR answers kHole, the first word after the staged instruction. An
+// instruction that ends on kHole - 2 retires and the next opcode fetch
+// faults; one whose extension word is kHole faults inside itself.
+// [B] MC68040UM-1993 §3.5: on the 68040 an A-line, illegal or CHK
+// instruction in that last word reports the access error instead of its
+// own exception; the 68030 takes its own exception. WinUAE @ Hatari e77819f7
+// takes the instruction's exception on both (NOTES.md D39), so the
+// "pagend" cells of tests/cpu_vectors leave these three out.
+void deferredPrefetchFault()
+{
+    struct Case { uint16_t op; uint16_t ext; uint32_t at; int vector030; int vector040; const char* what; };
+    static const Case cases[] = {
+        { 0x4e71, kNop,   kHole - 2, 0,  0,  "NOP ending on the last word" },
+        { 0x0640, 0x1234, kHole - 4, 0,  0,  "ADDI.W ending on the last word" },
+        { 0x0640, 0x1234, kHole - 2, 2,  2,  "ADDI.W whose immediate is on the hole" },
+        { 0xa000, kNop,   kHole - 2, 10, 2,  "A-line on the last word" },
+        { 0x4afc, kNop,   kHole - 2, 4,  2,  "ILLEGAL on the last word" },
+        { 0x4181, kNop,   kHole - 2, 6,  2,  "CHK D1,D0 out of bounds on the last word" },
+    };
+    for (auto model : {moira::Model::M68030, moira::Model::M68LC040, moira::Model::M68040})
+    for (const auto& k : cases) {
+        TestCpu c(model);
+        for (int v : {2, 4, 6, 10}) p32(c, 4 * uint32_t(v), kHandler + 0x10 * uint32_t(v));
+        for (int v : {2, 4, 6, 10}) p16(c, kHandler + 0x10 * uint32_t(v), kNop);
+        stage(c, k.op, 0);
+        p16(c, k.at, k.op);
+        if (k.at == kHole - 4) p16(c, k.at + 2, k.ext);
+        c.setPC(k.at); c.setPC0(k.at);
+        c.setIRD(k.op); c.setIRC(k.at == kHole - 4 ? k.ext : kNop);
+        c.setD(0, 0x8000); c.setD(1, 0x10);
+        c.holeArmed = true;
+        const bool is040 = model >= moira::Model::M68EC040;
+        const int vector = is040 ? k.vector040 : k.vector030;
+        const bool contained = executeContained(c);
+        if (!vector) {
+            CHECK(contained && c.getPC() == kHole && c.getSP() == 0x8000,
+                  "%s model=%u: PC=%08X SP=%08X (want it retired at %08X, "
+                  "no exception)", k.what, unsigned(model), c.getPC(),
+                  c.getSP(), kHole);
+            CHECK(executeContained(c) && c.getPC0() == kHandler + 0x20 &&
+                  g32(c, c.getSP() + 2) == kHole,
+                  "%s model=%u: the next opcode fetch did not fault at %08X",
+                  k.what, unsigned(model), kHole);
+        } else {
+            CHECK(contained && c.getPC0() == kHandler + 0x10 * uint32_t(vector) &&
+                  g32(c, c.getSP() + 2) == (vector == 2 ? k.at : g32(c, c.getSP() + 2)) &&
+                  c.getD(0) == 0x8000,
+                  "%s model=%u: PC0=%08X stacked PC %08X D0=%08X (want vector %d "
+                  "at %08X)", k.what, unsigned(model), c.getPC0(),
+                  g32(c, c.getSP() + 2), c.getD(0), vector,
+                  kHandler + 0x10 * uint32_t(vector));
+        }
+    }
+}
+
 void stop68000()
 {
     // [B] M68000UM Rev 8 § 8.11: STOP is 4(0/0).
@@ -2138,6 +2195,7 @@ int main(int argc, char** argv)
     ec030UsesPlain020Path();
     cacrStrobesReadZero();
     jsrTargetFetchFault();
+    deferredPrefetchFault();
     fullEaLongDisplacementLog030();
 #if MOIRA_ENABLE_JIT
     atcReplayCopyOnWrite040();
@@ -2165,6 +2223,6 @@ int main(int argc, char** argv)
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68EC030 plain-020 path with a 68030 "
-                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, PACK/UNPK -(An) faults on the 68030/68040\n");
+                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, PACK/UNPK -(An) faults on the 68030/68040\n");
     return 0;
 }

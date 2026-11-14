@@ -1294,7 +1294,7 @@ interpreter and an engine-driven core, run a warm-up pass so the vector's
 own instruction is generated code on the judged pass, then run both to the
 same clock and compare every register, the clock and the whole 16 MB bus.
 The `jit_sst*` gates read the optional corpora (`asset-optional`); the
-`cpu_vectors0x0_jit_test` pair replays the 256 public vectors on every CI
+`cpu_vectors0x0_jit_test` pair replays the 304 public vectors on every CI
 host. They judge the translator against the interpreter on states no
 Macintosh boot reaches — their first run found a host segfault on a guest
 `pc` of 0 in user mode (an empty dispatch-cache slot had key 0) and two
@@ -1864,7 +1864,7 @@ are the safety argument for the whole path:
 * **no page-table walk, no U/M write-back** — `pomJitProbeData` only reads
   resident ATC entries, and refuses a write to a page not already marked
   modified, because that write owes the descriptor an M bit. The 68030
-  branch (`MoiraExecMMU_cpp.h:2482-2557`) probes DATA space, `fc = 5/1`,
+  branch (`MoiraExecMMU_cpp.h:2635-2710`) probes DATA space, `fc = 5/1`,
   not the program space the code probe uses: the 030 ATC matches `fc`
   exactly, so probing the data side with the program-space `fc` would miss
   every entry and refuse everything — an engine that looks merely slow;

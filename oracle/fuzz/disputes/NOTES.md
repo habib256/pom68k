@@ -33,6 +33,29 @@ Oracle in service: **WinUAE** (`oracle/uae`, hatari e77819f7
 `cpummu030.c` + gencpu). Retired: **Musashi** (MAME 0.276 `m68kmmu.h` +
 kstenerud 4.60 core).
 
+## D39. An A-line, illegal or CHK instruction on a page's last word, the next page invalid [fork follows the manual, 2026-11-14]
+
+MC68040UM-1993 §3.5: "An ATC access error is not reported immediately, if
+the last 16 bits of a page is either an A-line, illegal, CHK, or
+unimplemented instruction and the next page is non-resident. Instead, the
+M68040 attempts to prefetch the next instruction on the missing page, then
+the ATC access error exception is reported." The fork does that on the
+68040 family (`execException`, through the poisoned `irc` of the deferred
+prefetch fault: `Moira.h` § ircPoison); the 68030 takes the instruction's
+own exception, as its manual gives no such case. WinUAE @ Hatari e77819f7
+fetches the next opcode only at the next instruction, so it takes the
+A-line, illegal or CHK exception. The manual wins (grade B over D). No
+pinned vector holds the case: the `pagend` cells of `tests/cpu_vectors`
+leave those opcodes out, and `moira_rules_test` (`deferredPrefetchFault`)
+holds both models. Settled for silicon by: the frame a real 68040 stacks
+for `$A000` on a page's last word before a non-resident page.
+
+The rest of the same mechanism agrees with the oracle and needed no ruling:
+a prefetch fault is deferred until the word is used (MC68030UM-1989 §8.1.2,
+MC68040UM-1993 §8.2.1). The fork used to raise it at the instruction that
+merely ended on the page's last word; 2 of 24 `pagend` vectors passed on
+the 68030 and 3 of 24 on the 68040 before the change.
+
 ## D38. A descriptor U bit set by the irc lookahead at a page's end [fork kept, 2026-11-13]
 
 Seen only with `--strict-ram`, which judges bytes the oracle left alone.
@@ -49,11 +72,11 @@ vectors: `040 mmu/identity seed=203 #506` (`tests/sst68040.known`),
 
 Kept: a real 68030 and 68040 prefetch ahead of the instruction they decode
 (an instruction pipe, an instruction fetch unit), so a table search for the
-next page before the instruction retires is plausible silicon, and making
-irc lazy touches every handler that reads `queue.irc`. The fault side of
-the same lookahead is the open item `TODO.md` › Justesse 68030 « fautes de
-préfetch différées ». [F] Settled by: a bus capture of the table search
-around a one-word instruction on a page's last word.
+next page before the instruction retires is plausible silicon. The same
+walk also sets U on the 68040 root and pointer descriptors above an
+invalid next page, which the `pagend` cells avoid by starting them with U
+set. The fault side of the lookahead is deferred since 2026-11-14 (D39). [F] Settled by: a bus capture of the table search around
+a one-word instruction on a page's last word.
 
 ## D37. MOVE16 fault frames: EA, WB2A and the line in PD0-PD3 [fork kept, 2026-11-13]
 
