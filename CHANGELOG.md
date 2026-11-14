@@ -277,6 +277,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **Do the oracle corpora pass through the JIT, not only the interpreter?** → [Every pinned corpus does since 2026-11-13; the first run found a host segfault at guest pc 0](#2026-11-13-jit-corpus-replay)
 - **Why does `agent_binary_test` not compare the shipped agent with this host's build?** → [Different Retro68/GCC, different code: it compares only builds of the reference toolchain, since 2026-11-14](#2026-11-14-agent-toolchain)
+- **Is a memory-indirect pointer fetched inside the CAS/TAS lock?** → [No, since 2026-11-14: it is an ordinary read; found by the second fresh-seed sweep](#2026-11-14-second-sweep)
 - **Is there a fresh-seed sweep of both CPUs, interpreter and JIT?** → [`oracle/fuzz/sweep.sh`, since 2026-11-14; the first run found a 68030 MOVE frame and a 68882 frame operand](#2026-11-14-fresh-sweep)
 - **Do the 68040 corpora vary the transparent-translation windows?** → [Since 2026-11-14 (`--mmu ttvar`); the first sweep found the 68040 lock outliving TAS/CAS/CAS2 in generated code](#2026-11-14-ttvar)
 - **Does an instruction on a page's last word fault on the next page?** → [No: a prefetch fault waits until its word is used, since 2026-11-14; on the 68040 an A-line, illegal or CHK there reports the access error (D39)](#2026-11-14-deferred-prefetch-fault)
@@ -1359,6 +1360,92 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-14-second-sweep"></a>
+## 2026-11-14 (fifth) — Four more sweeps find six more: the CAS/TAS lock around a memory-indirect pointer, PACK/UNPK's write buffer, BKPT's data read, 68040 bit-field and JSR store restarts, the SR-write refill, a trace before an RTE rerun
+
+`oracle/fuzz/sweep.sh 75001 76001 2000`: 134 801 vectors over the same
+grid, 134 472 under `--strict-ram` on the first replay, the JIT lockstep
+clean in all 22 families. 327 divergences are standing rulings (D25, D26,
+D28, D29, D38), two are defects (`oracle/fuzz/disputes/NOTES.md`):
+
+- **CAS.B Dc,Du,([bd.L]) on the 68040** (`040 random/identity seed=75010
+  #758`). CAS and TAS arm the locked read-modify-write before `readOp`,
+  which also fetches the pointer of a memory-indirect EA, so a fault on
+  that pointer was reported as a locked write (SSW $0605). WinUAE fetches
+  it in `x_get_disp_ea_020`, before the locked read: a plain read, $0505.
+  `computeEAfull` suspends the lock around the pointer fetch and restores
+  it only on success — the frame is built after unwinding. The same flags
+  drive the 68030's RM bit and write probe, so the fix is shared. The 101
+  faulting CAS of the existing corpora fault on the operand itself and are
+  unchanged. Gate: `moira_rules_test` `indirectPointerNotLocked040` (CAS
+  and TAS; both read $0605 without the fix).
+- **PACK -(A2),-(A5) on the 68030** (`random/identity seed=76008 #1852`).
+  The faulting byte store stacked $FFFFFF9A in the data output buffer;
+  gencpu computes it from a `uae_u16`, $0000009A. UNPK's word store had the
+  same defect for words of $8000 and up. Both carry `MMU_RAWBUF`, as FScc,
+  ADD/SUB and the BCD stores already did (rows 83, 84, 96). Gate:
+  `moira_rules_test` `packUnpkFaultRestoresAn`, new write-buffer block.
+
+`POM68K_VENDOR.md` rows 103 and 104. Every pinned corpus is unchanged.
+
+A third sweep on the fixed core (`sweep.sh 77001 78001 2000`, 134 803
+vectors, 297 divergences, JIT lockstep clean) found one more:
+
+- **BKPT on the 68020 up** (`040 random/ttvar seed=77012 #456`). Upstream
+  stands in for the breakpoint acknowledge cycle with a data read at PC;
+  through the MMU that read walked the tables of the BKPT's own page,
+  setting U where the opcode had come through a transparent window, and
+  took an access fault where that page is invalid in the tables. The
+  020/030/040 acknowledge is a CPU-space cycle and WinUAE makes no access:
+  the stand-in now stays on the 68010 only. Gate: `moira_rules_test`
+  `bkptMakesNoDataAccess` (format $7008 without the fix). Row 105.
+
+The other 296 are rulings D25-D29 and D38. A fourth (`sweep.sh 79001
+80001 2000`, 134 834 vectors, 286 divergences, JIT lockstep clean) found
+two more:
+
+- **68040 stores that restart** (`040 random/ttvar seed=79012 #1850`).
+  The 68040 path takes every data store fault as the instruction's last
+  write (next PC, flags kept) unless the opcode is in a restart set (FPU
+  stores, MOVEP). A BFSET on a write-protected window — the field read
+  succeeds, the store faults — completed with its new flags where WinUAE
+  restarts it with the old ones. A scan of all 902 storing 68040 handlers
+  of the oracle finds the unmarked final stores: the bit-field family,
+  CAS2, JSR's push, MOVEM to memory and MOVEP. Bit fields and JSR join the
+  set; JSR now writes at A7-4 before decrementing A7, in `execJsr` and in
+  the JIT's `pomJitJsr040` alike, so a faulting push leaves A7 intact.
+  CAS2 reaches no store fault (its reads are write-probed), MOVEM has its
+  latch. Gate: `bitfieldStoreRestarts040` (BFSET and a user-mode JSR).
+  Row 106.
+- **EORI #,SR into user mode** (`040 random/tt seed=79011 #1749`).
+  `execAndisr` refilled the pipe with upstream's 68010 stand-in, a
+  data-space read at PC+2 translated with the new SR — a table walk for
+  the next instruction's page where the DTT covers supervisor accesses
+  only. On the 020+ core it is now the program-space read MOVE to SR
+  already made. Gate: `srWriteRefillIsAFetch`. Row 107.
+
+A fifth (`sweep.sh 81001 82001 2000`, 134 694 vectors, 312 divergences, JIT
+lockstep clean) found one more:
+
+- **No trace between a 68040 RTE and its rerun** (`040 core/off
+  seed=81001 #1204`). An RTE through a format-$1 throwaway frame whose SR
+  has T0, into a format-$7 access-error frame: the SR write armed the
+  68040 one-shot trace and the fork took vector 9 before the faulted
+  instruction reran. WinUAE's `do_specialties` skips the pending trace
+  (and interrupts) after `m68k_do_rte_mmu040` raises SPCFLAG_MMURESTART.
+  The trace half is applied; the interrupt half is noted, not modelled.
+  Gate: `rteRerunTakesNoTrace040`. Row 108.
+
+Five sweeps, 606 565 vectors, eight defects; none reached a machine
+etalon, all were fault-, frame- or trace-side.
+
+**Tiers** (x86-64, fresh RelWithDebInfo + LTO build of rows 103-108; a
+comment-only grade fix followed): `asset-none` 157/157; `sst*`, `jit_sst*`,
+`cpu_vectors*`, `savestate*`, `moira_*` 51/51, census 51 executed;
+`m030|m040` 246/246 in 1 h 37, census 245 executed, one soft-skip
+(`lcii_floppy144_etalon`, no 1.44 MB image); `build-werror` whole tree.
+Every pinned corpus unchanged. The M4/AArch64 leg is not run.
 
 <a id="2026-11-14-fresh-sweep"></a>
 ## 2026-11-14 (fourth) — A fresh-seed sweep of both CPUs finds two defects: a 68030 MOVE to (xxx).L stacked the long frame, and a trapped FMOVE out put an unnormalized exponent in the 68882 frame

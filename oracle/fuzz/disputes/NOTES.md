@@ -907,6 +907,64 @@ core, mmu, random and fault with identity and tt, 800 a cell, 4 KB pages:
   lower. **Fixed the same day** (`POM68K_VENDOR.md` row 95): PACK arms its
   restart fixup and reads one word, as gencpu does.
 
+### Not disputes: the fifth sweep of 2026-11-14 (seeds 81001-81043, 82001-82025)
+`oracle/fuzz/sweep.sh 81001 82001 2000` on the core with rows 101-107:
+134 694 vectors, 134 382 under `--strict-ram`, JIT lockstep clean.
+- `040 core/off seed=81001 #1204`: RTE through a format-$1 throwaway frame
+  (SR with T0) into a format-$7 access-error frame — the fork took the
+  one-shot trace before the rerun, WinUAE skips it after
+  SPCFLAG_MMURESTART. **Fixed the same day** (row 108).
+- Rulings, nothing new (311): 68040 D25 42, D26 34 (`fpuraw`), D38 10;
+  68030 D26 22, D28 116, D29 86 (`fpuraw`), D38 1 (`random/identity
+  seed=82008 #1526`, a JSR target page).
+
+### Not disputes: the fourth sweep of 2026-11-14 (seeds 79001-79043, 80001-80025)
+`oracle/fuzz/sweep.sh 79001 80001 2000` on the core with rows 101-105:
+134 834 vectors, 134 548 under `--strict-ram`, JIT lockstep clean.
+- `040 random/ttvar seed=79012 #1850`: BFSET (d16,A5){D6:3} on a
+  write-protected DTT window — the field read succeeds, the store faults;
+  the oracle restarts the instruction (its own PC, CCR $0B as it started),
+  the fork completed it (field flags kept). **Fixed the same day** (row
+  106), with JSR's push, after a scan of every oracle 68040 handler that
+  stores without marking its last write.
+- `040 random/tt seed=79011 #1749`: EORI #$B4C2,SR into user mode — the
+  fork walked the tables for the next instruction's page through a
+  data-space stand-in read the oracle does not make. **Fixed the same day**
+  (row 107).
+- Rulings, nothing new (284): 68040 D25 40, D26 22 (`fpuraw`), D38 8;
+  68030 D26 34, D27 2, D28 111, D29 63 (`fpuraw`), D28 3 and D38 1 in
+  `random`.
+
+### Not disputes: the third sweep of 2026-11-14 (seeds 77001-77043, 78001-78025)
+`oracle/fuzz/sweep.sh 77001 78001 2000`, replayed on the core with rows
+101-104: 134 803 vectors, 134 506 under `--strict-ram`, JIT lockstep clean
+in all 22 families.
+- `040 random/ttvar seed=77012 #456`: BKPT #3, its code fetched through
+  ITT1 — the fork set U on the BKPT's own page, the oracle never walked
+  it. **Fixed the same day** (`POM68K_VENDOR.md` row 105): upstream's
+  stand-in for the breakpoint acknowledge, a translated data read at PC,
+  is gone from the 68020 core.
+- Rulings, nothing new (296): 68040 D25 25, D26 35, D27 2 (FMOVEM control
+  registers to a memory-indirect PC-relative EA) in `fpuraw`, D38 6;
+  68030 D26 21, D28 128, D29 73 in `fpuraw`, D28 5 and D38 1 in `random`.
+
+### Not disputes: the second sweep of 2026-11-14 (seeds 75001-75043, 76001-76025)
+`oracle/fuzz/sweep.sh 75001 76001 2000`: 134 801 vectors, first replay
+134 472 / 134 801 under `--strict-ram`; the JIT lockstep clean in all 22
+families.
+- `040 random/identity seed=75010 #758`: CAS.B Dc,Du,([bd.L]) whose
+  memory-indirect pointer fetch takes an ATC fault — the oracle stacks a
+  plain read (SSW $0505), the fork a locked write ($0605). **Fixed the same
+  day** (`POM68K_VENDOR.md` row 103): the pointer is read outside the lock.
+- `random/identity seed=76008 #1852`: PACK -(A2),-(A5) whose byte store
+  faults — the data output buffer is $0000009A in the oracle, $FFFFFF9A in
+  the fork. **Fixed the same day** (row 104), with UNPK's word store.
+- Rulings, nothing new (327): 68040 D25 39 and D26 41 (`fpuraw`), D38 11
+  (instructions or steps whose last word is a page's last word, and
+  `040 random/identity seed=75010 #790`, JSR (A1)); 68030 D26 20, D28 132,
+  D29 76 (`fpuraw`), D28 7 (`random`), D38 1 (`random/identity
+  seed=76008 #584`, a JSR target page).
+
 ### Not disputes: the fresh-seed sweep of 2026-11-14 (seeds 71001-71043, 72001-72025)
 Every family of both generators, 1 000 vectors a cell, over off, identity,
 tt and (68040) ttvar, strict oracle on the 68030: 67 433 vectors (the

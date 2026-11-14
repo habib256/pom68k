@@ -273,10 +273,26 @@ Moira::computeEAfull(u32 an)
     // get_long(base)`). Upstream dereferenced on 100 like Musashi did.
     if ((iis & 0b011) == 0) {
         result = an + bd + xn;
-    } else if (iis & 0b100) {
-        result = readM<C, M, Long>(an + bd) + xn + od;
     } else {
-        result = readM<C, M, Long>(an + bd + xn) + od;
+        // [D] WinUAE cpuemu_31.c op_0af0 (CAS) @ Hatari e77819f7: the
+        // pointer of a memory-indirect EA is an ordinary read, made by
+        // x_get_disp_ea_020 before the locked operand read begins. CAS and
+        // TAS arm the lock (mmuRmw, mmu040Lrmw) before readOp, so suspend
+        // it here: a fault on the pointer is a plain read, not locked and
+        // not write-probed. Restored only on success — the fault frame is
+        // built after unwinding and must not see the lock.
+        // Fresh-seed vector: `040 random/identity seed=75010 #758`.
+        // Gate: moira_rules_test (indirectPointerNotLocked040).
+        bool rmw030 = false, rmw040 = false;
+        if constexpr (C == Core::C68020) {
+            rmw030 = mmuRmw; rmw040 = mmu040Lrmw;
+            mmuRmw = mmu040Lrmw = false;
+        }
+        const u32 pointer = (iis & 0b100) ? an + bd : an + bd + xn;
+        result = readM<C, M, Long>(pointer) + ((iis & 0b100) ? xn : 0) + od;
+        if constexpr (C == Core::C68020) {
+            mmuRmw = rmw030; mmu040Lrmw = rmw040;
+        }
     }
 
     // Add the number of extra cycles consumed in this addressing mode

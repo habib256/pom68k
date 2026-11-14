@@ -2166,6 +2166,176 @@ void lockEndsWithTheInstruction040()
     }
 }
 
+void indirectPointerNotLocked040()
+{
+    // The pointer of a memory-indirect EA is an ordinary read, fetched
+    // before the locked operand read of CAS or TAS begins. The fork armed
+    // the lock before the whole readOp, so an ATC fault on the pointer was
+    // reported as a locked write (SSW $06xx) where the oracle has a plain
+    // read ($05xx). [D] WinUAE cpuemu_31.c op_0af0 @ Hatari e77819f7
+    // ("040 random/identity seed=75010 #758", fresh-seed sweep 2026-11-14).
+    constexpr uint32_t kRoot = 0x4000, kPtr = 0x4200, kPages = 0x6000;
+    constexpr uint32_t kBad = 0x3f000;              // pointer on an invalid page
+    struct Case { uint16_t opcode; uint16_t ext[4]; const char* what; };
+    for (const Case& k : { Case{ 0x0af0, {0x0040, 0x01f1, 0x0003, 0xf000}, "CAS.B D0,D1,([bd.L])" },
+                           Case{ 0x4af0, {0x01f1, 0x0003, 0xf000, kNop},   "TAS ([bd.L])" } }) {
+        TestCpu c(moira::Model::M68040);
+        p32(c, kRoot, kPtr | 2);
+        p32(c, kPtr, kPages | 2);
+        for (uint32_t page = 0; page < 64; page++)       // identity, 256 KB
+            p32(c, kPages + page * 4, page << 12 | 1);
+        p32(c, kPages + (kBad >> 12) * 4, 0);            // ... but the pointer's page
+        p32(c, 2 * 4, kHandler);
+        p16(c, kHandler, kNop);
+        stage(c, k.opcode, 0);
+        for (unsigned i = 0; i < 4; i++) p16(c, kCode + 2 + 2 * i, k.ext[i]);
+        c.setIRC(k.ext[0]);
+        c.setURP040(kRoot); c.setSRP040(kRoot);
+        c.setTC040(0x8000);
+        const bool contained = executeContained(c);
+        const uint32_t sp = c.getSP();
+        const uint16_t format = g16(c, sp + 6), ssw = g16(c, sp + 0x0c);
+        const uint32_t fa = g32(c, sp + 0x14);
+        CHECK(contained && c.getPC0() == kHandler && format == 0x7008 &&
+              fa == kBad && (ssw & 0x0700) == 0x0500,
+              "68040 %s, pointer fetch on an invalid page: format %04X, fault "
+              "address %08X (want %08X), SSW %04X (want ATC|RW, no LK)", k.what,
+              format, fa, kBad, ssw);
+    }
+}
+
+void bkptMakesNoDataAccess()
+{
+    // BKPT on the 68020 up takes the illegal-instruction exception without
+    // a data access: its breakpoint acknowledge is a CPU-space cycle. The
+    // fork kept upstream's stand-in, a data read at PC through the MMU, so
+    // a 68040 whose code arrives through a transparent ITT window walked the
+    // tables of the BKPT's page — U set there, or an access fault when that
+    // page is invalid in the tables. [D] WinUAE (op_illg) @ Hatari e77819f7;
+    // "040 random/ttvar seed=77012 #456", fresh-seed sweep 2026-11-14.
+    constexpr uint32_t kRoot = 0x4000, kPtr = 0x4200, kPages = 0x6000;
+    TestCpu c(moira::Model::M68040);
+    p32(c, kRoot, kPtr | 2);
+    p32(c, kPtr, kPages | 2);
+    for (uint32_t page = 0; page < 64; page++)
+        p32(c, kPages + page * 4, page << 12 | 1);
+    p32(c, kPages + (kCode >> 12) * 4, 0);          // code page invalid in the tables
+    p32(c, 4 * 4, kHandler);
+    p16(c, kHandler, kNop);
+    stage(c, 0x4848, 0);                            // BKPT #0
+    c.setURP040(kRoot); c.setSRP040(kRoot);
+    c.setITT0(0x00ffc000);                          // every instruction fetch transparent
+    c.setTC040(0x8000);
+    const bool contained = executeContained(c);
+    const uint32_t sp = c.getSP();
+    CHECK(contained && c.getPC0() == kHandler && g16(c, sp + 6) == 0x0010 &&
+          g32(c, sp + 2) == kCode,
+          "68040 BKPT on a page reached through ITT0 only: PC0=%08X (want %08X), "
+          "format %04X (want 0010), stacked PC %08X (want %08X)", c.getPC0(),
+          kHandler, g16(c, sp + 6), g32(c, sp + 2), kCode);
+}
+
+void bitfieldStoreRestarts040()
+{
+    // A 68040 store that is not the instruction's marked last write
+    // restarts it: the frame holds the instruction's own PC and the flags
+    // it started with. BFCHG/BFCLR/BFSET/BFINS store through
+    // x_put_bitfield with mmu_restart still true, as do JSR's push, MOVEM
+    // to memory and MOVEP; the fork took a bit-field store fault as a last
+    // write (next PC, field flags kept). [D] WinUAE cpuemu_31.c op_eed0,
+    // op_4e90 and m68k_run_mmu040 @ Hatari e77819f7 ("040 random/ttvar
+    // seed=79012 #1850", fresh-seed sweep 2026-11-14).
+    constexpr uint32_t kRoot = 0x4000, kPtr = 0x4200, kPages = 0x6000;
+    constexpr uint32_t kRo = 0x21000;               // a write-protected page
+    struct Case { uint16_t opcode, ext; bool user; const char* what; };
+    for (const Case& k : { Case{ 0xeed0, 0x0008, false, "BFSET (A0){0:8}" },
+                           Case{ 0x4e90, kNop,   true,  "JSR (A0) from user mode, push faulting" } }) {
+        TestCpu c(moira::Model::M68040);
+        p32(c, kRoot, kPtr | 2);
+        p32(c, kPtr, kPages | 2);
+        for (uint32_t page = 0; page < 64; page++)
+            p32(c, kPages + page * 4, page << 12 | 1);
+        p32(c, kPages + (kRo >> 12) * 4, kRo | 4 | 1);  // W: write-protected
+        p32(c, 2 * 4, kHandler);
+        p16(c, kHandler, kNop);
+        stage(c, k.opcode, 0x1b);                   // X N V C set
+        p16(c, kCode + 2, k.ext); c.setIRC(k.ext);
+        c.setURP040(kRoot); c.setSRP040(kRoot);
+        c.setTC040(0x8000);
+        if (k.user) {
+            c.setA(0, 0x3000);
+            c.setSR(0x001b);
+            c.setUSP(kRo + 0x10); c.setSP(kRo + 0x10);
+        } else {
+            c.setA(0, kRo);
+        }
+        const bool contained = executeContained(c);
+        const uint32_t sp = c.getSP();
+        const uint16_t sr = g16(c, sp), format = g16(c, sp + 6);
+        const uint32_t pc = g32(c, sp + 2);
+        CHECK(contained && c.getPC0() == kHandler && format == 0x7008 && pc == kCode &&
+              (sr & 0x1f) == 0x1b && (!k.user || c.getUSP() == kRo + 0x10),
+              "68040 %s: format %04X (want 7008), stacked PC %08X (want %08X), "
+              "CCR %02X (want 1B), USP %08X", k.what, format, pc, kCode, sr & 0x1f,
+              c.getUSP());
+    }
+}
+
+void srWriteRefillIsAFetch()
+{
+    // ANDI/ORI/EORI to SR refill the pipe after the SR write with an
+    // instruction fetch, as MOVE to SR does. Upstream's stand-in was a
+    // data-space read, translated with the new SR's function code: after
+    // EORI #$2000,SR to user mode, a 68040 whose code is covered by an ITT
+    // and whose DTT matches supervisor accesses only walked the tables for
+    // the next instruction's page. [D] WinUAE @ Hatari e77819f7 (no data
+    // access); "040 random/tt seed=79011 #1749", fresh-seed sweep 2026-11-14.
+    constexpr uint32_t kRoot = 0x4000, kPtr = 0x4200, kPages = 0x6000;
+    TestCpu c(moira::Model::M68040);
+    p32(c, kRoot, kPtr | 2);
+    p32(c, kPtr, kPages | 2);
+    for (uint32_t page = 0; page < 64; page++)
+        p32(c, kPages + page * 4, page << 12 | 1);
+    stage(c, 0x0a7c, 0);                            // EORI #$2000,SR
+    p16(c, kCode + 2, 0x2000); c.setIRC(0x2000);
+    c.setURP040(kRoot); c.setSRP040(kRoot);
+    c.setITT0(0x00ffc000);                          // all instruction fetches
+    c.setDTT0(0x00ffa000);                          // supervisor data only
+    c.setTC040(0x8000);
+    const bool contained = executeContained(c);
+    CHECK(contained && c.getPC0() == kCode + 4 && (c.getSR() & 0x2000) == 0 &&
+          (g32(c, kRoot) & 8) == 0 && (g32(c, kPages + (kCode >> 12) * 4) & 8) == 0,
+          "68040 EORI #$2000,SR into user mode: PC0=%08X SR=%04X, root %08X and code "
+          "page %08X descriptors (want U clear: no table walk)", c.getPC0(), c.getSR(),
+          g32(c, kRoot), g32(c, kPages + (kCode >> 12) * 4));
+}
+
+void rteRerunTakesNoTrace040()
+{
+    // An RTE that resumes a 68040 format-$7 frame reruns the faulted
+    // instruction with no trace in between, even when an SR it loaded on
+    // the way (here a format-$1 throwaway frame with T0 set) armed the
+    // one-shot trace. [D] WinUAE newcpu.c do_specialties (SPCFLAG_MMURESTART)
+    // @ Hatari e77819f7; "040 core/off seed=81001 #1204", fresh-seed sweep
+    // 2026-11-14.
+    TestCpu c(moira::Model::M68040);
+    p32(c, 9 * 4, kHandler);                        // trace
+    p16(c, kHandler, kNop);
+    p16(c, 0x3000, kNop);
+    stage(c, 0x4e73, 0);                            // RTE
+    constexpr uint32_t sp = 0x1800;
+    c.setSP(sp);
+    p16(c, sp + 0, 0x6000); p32(c, sp + 2, 0x0000dead); p16(c, sp + 6, 0x1000);   // throwaway, T0|S
+    p16(c, sp + 8, 0x2000); p32(c, sp + 10, 0x3000);    p16(c, sp + 14, 0x7008);  // access error
+    for (uint32_t i = 16; i < 8 + 60; i += 2) p16(c, sp + i, 0);
+    const bool contained = executeContained(c);
+    CHECK(contained && c.getPC0() == 0x3000 && c.getSP() == sp + 8 + 60 &&
+          c.getSR() == 0x2000,
+          "68040 RTE through a T0 throwaway frame into a format-$7 frame: "
+          "PC0=%08X (want 00003000) SP=%08X (want %08X) SR=%04X (want 2000), "
+          "no trace before the rerun", c.getPC0(), c.getSP(), sp + 8 + 60, c.getSR());
+}
+
 void packUnpkFaultRestoresAn()
 {
     // [D] WinUAE gencpu.c i_PACK/i_UNPK @ Hatari e77819f7 (cpuemu_31/32
@@ -2236,6 +2406,29 @@ void packUnpkFaultRestoresAn()
                   c.getA(3), c.holeTrips, c.bus.c_str(), g32(c, sp + 2), kCode + 4);
         }
     }
+    // The 68030's short frame stacks the pending store zero-extended: gencpu
+    // computes both from a uae_u16 ("random/identity seed=76008 #1852" of
+    // the 2026-11-14 sweep: $0000009A, the fork had $FFFFFF9A).
+    struct Store { uint16_t opcode, adj; uint8_t hi, lo; uint32_t a3, a2, want; const char* what; };
+    for (const Store& k : { Store{ 0x854b, 0x0000, 0x09, 0x0a, 0x30002, kHole + 1, 0x0000009a,
+                                   "PACK -(A3),-(A2) byte $9A" },
+                            Store{ 0x858b, 0x7700, 0x98, 0x00, 0x30001, kHole + 2, 0x00008008,
+                                   "UNPK -(A3),-(A2),#$7700 word $8008" } }) {
+        TestCpu c(moira::Model::M68030);
+        p32(c, 2 * 4, kHandler);
+        p16(c, kHandler, kNop);
+        stage(c, k.opcode, 0);
+        p16(c, kCode + 2, k.adj); c.setIRC(k.adj);
+        c.mem[0x30000] = k.hi; c.mem[0x30001] = k.lo;
+        c.setA(3, k.a3); c.setA(2, k.a2);
+        c.holeArmed = true; c.holeWritesOnly = true;
+        const bool contained = executeContained(c);
+        const uint32_t sp = c.getSP();
+        CHECK(contained && c.getPC0() == kHandler && g16(c, sp + 6) == 0xa008 &&
+              g32(c, sp + 0x18) == k.want,
+              "68030 %s, store fault: format %04X (want A008), data output "
+              "buffer %08X (want %08X)", k.what, g16(c, sp + 6), g32(c, sp + 0x18), k.want);
+    }
 }
 
 int main(int argc, char** argv)
@@ -2288,6 +2481,11 @@ int main(int argc, char** argv)
     prefetchPipeAndIplPoll030();
     cas2IsReadModifyWrite030();
     lockEndsWithTheInstruction040();
+    indirectPointerNotLocked040();
+    bkptMakesNoDataAccess();
+    bitfieldStoreRestarts040();
+    srWriteRefillIsAFetch();
+    rteRerunTakesNoTrace040();
     packUnpkFaultRestoresAn();
 
     if (failures) {
@@ -2301,6 +2499,6 @@ int main(int argc, char** argv)
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68030 MOVE to (xxx).L last write, 68EC030 plain-020 path with a 68030 "
-                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, the 68040 lock ending with TAS/CAS/CAS2, PACK/UNPK -(An) faults on the 68030/68040\n");
+                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, the 68040 lock ending with TAS/CAS/CAS2, a memory-indirect pointer read outside the lock, BKPT without a data access, 68040 bit-field and JSR store faults restart, the SR-write refill as a fetch, no trace before a format-$7 rerun, PACK/UNPK -(An) faults on the 68030/68040\n");
     return 0;
 }

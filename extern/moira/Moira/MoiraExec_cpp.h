@@ -958,6 +958,17 @@ Moira::execAndisr(u16 opcode)
         // ANDI #$DFFF,SR returns to user mode and re-reads pc0+4 as user
         // program (the old dummy read was pc0+6 in DATA space).
         fullPrefetch<C, POLL>();
+    } else if constexpr (C == Core::C68020) {
+        // The pipe refill after the SR write is an instruction fetch, as
+        // execMoveToSr has it: upstream's data-space stand-in went through
+        // the data translation, with the new SR's function code — after
+        // EORI #,SR to user mode a 68040 whose code is covered by an ITT
+        // only (DTT supervisor-only) walked the tables of the next
+        // instruction's page. [D] WinUAE @ Hatari e77819f7 (no data access
+        // there); "040 random/tt seed=79011 #1749", fresh-seed sweep
+        // 2026-11-14. Gate: moira_rules_test (srWriteRefillIsAFetch).
+        (void)read<C, AddrSpace::PROG, Word>(reg.pc + 2);
+        prefetch<C, POLL>();
     } else {
         (void)read<C, AddrSpace::DATA, Word>(reg.pc + 2);
         prefetch<C, POLL>();
@@ -3117,7 +3128,16 @@ Moira::execJsr(u16 opcode)
             }
 
             // Save return address on stack
-            push<C, Long, POLL>(reg.pc);
+            // [D] WinUAE cpuemu_31.c op_4e90 @ Hatari e77819f7: the 68040
+            // writes at A7-4 and only then decrements A7. The push is not a
+            // marked last write, so a fault there restarts the JSR with A7
+            // intact (mmu040Fault, bitfieldStoreRestarts040).
+            if (C == Core::C68020 && cpuModel >= Model::M68EC040) {
+                write<C, AddrSpace::DATA, Long, POLL>(reg.sp - 4, reg.pc);
+                reg.sp -= 4;
+            } else {
+                push<C, Long, POLL>(reg.pc);
+            }
 
             // Jump to new address
             reg.pc = ea;
@@ -6097,7 +6117,13 @@ Moira::execPackPd(u16 opcode)
         src += adj;
         u32 dst = (src >> 4 & 0xF0) | (src & 0x0F);
 
-        writeOp<C, M, Byte>(ay, dst);
+        // [D] WinUAE gencpu.c i_PACK @ Hatari e77819f7: the byte is an int
+        // expression over a uae_u16, so a faulting 68030 store stacks it
+        // zero-extended in the data output buffer (MMU_RAWBUF), as rows 83,
+        // 84 and 96 for FScc, ADD/SUB and the BCD stores. Fresh-seed vector
+        // "random/identity seed=76008 #1852" ($0000009A, not $FFFFFF9A).
+        // Gate: moira_rules_test packUnpkFaultRestoresAn (write buffer).
+        writeOp<C, M, Byte, MMU_RAWBUF>(ay, dst);
     }
 
     prefetch<C>();
@@ -6283,6 +6309,7 @@ Moira::execRte(u16 opcode)
     [[maybe_unused]] u16 fword = 0;     // POM68K slice 4: last format word
     bool rte030WritePending = false;
     bool rteFpuMid = false;
+    bool rerun040 = false;          // format $7: the faulted instruction reruns
     u16 rte030WriteSsw = 0;
     u32 rte030WriteAddr = 0, rte030WriteData = 0;
     u8 rte030Fixup[2] = {};
@@ -6474,6 +6501,8 @@ Moira::execRte(u16 opcode)
                         mmu040MovemArmed = true;
                     }
 
+                    rerun040 = true;
+
                     if (ssw040 & 0x2000) {              // MMU_SSW_CT
                         u32 dst = base + 60;
                         writeM<C, M, Word>(dst + 0, readM<C, M, Word>(base + 0));
@@ -6646,6 +6675,19 @@ Moira::execRte(u16 opcode)
     }
 
     setSR(newsr);
+
+    // [D] WinUAE newcpu.c do_specialties @ Hatari e77819f7: after an RTE
+    // to a format-$7 frame (m68k_do_rte_mmu040 raises SPCFLAG_MMURESTART)
+    // the pending trace is not taken — "can't have interrupt when 040/060
+    // CPU reruns faulted instruction"; T1 still traces the rerun itself.
+    // The one-shot trace setSR arms when the old SR had T0 or T1 (the
+    // throwaway frame of "040 core/off seed=81001 #1204", fresh-seed sweep
+    // 2026-11-14) is dropped here. WinUAE also defers the interrupt to
+    // after the rerun; the fork does not model that yet. [F] for silicon.
+    // Settled by: a trace of a real 68040 returning through a throwaway
+    // frame with T0 set into an access-error frame.
+    // Gate: moira_rules_test (rteRerunTakesNoTrace040).
+    if (rerun040) trace040Pending = false;
 
     if (rteFpuMid) fpuCompleteBusy(true);
 
@@ -7361,12 +7403,12 @@ Moira::execUnpkPd(u16 opcode)
             if (cpuModel >= Model::M68EC040) [[unlikely]] {
                 mmu040LastWrite = true;
                 mmu040LastWritePc = reg.pc;
-                write<C, AddrSpace::DATA, Word>(ea, dst & 0xFFFF);
+                write<C, AddrSpace::DATA, Word, MMU_RAWBUF>(ea, dst & 0xFFFF);
                 mmu040LastWrite = false;
                 goto unpkWritten;
             }
         }
-        write<C, AddrSpace::DATA, Word>(ea, dst & 0xFFFF);
+        write<C, AddrSpace::DATA, Word, MMU_RAWBUF>(ea, dst & 0xFFFF);
     unpkWritten:;
     }
 

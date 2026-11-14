@@ -14,7 +14,7 @@
 #   SEED040/SEED030  first seed of each CPU; each cell takes the next one
 #   N                vectors per cell (default 1000)
 #   OUT              output directory, gigabytes at the default N (default
-#                    ${TMPDIR:-/tmp}/pom68k-sweep-SEED040, outside the tree)
+#                    BUILD/sweep-SEED040: git-ignored, and not a RAM tmpfs)
 #   BUILD            build tree with sst68030/sst68040[_jit] (default build)
 # The oracle is build-oracle/liboracle_uae.so, or $POM68K_ORACLE_SO.
 # Exit status: 0 when nothing diverged, 1 otherwise (rulings included —
@@ -24,8 +24,8 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."             # project root
 [ $# -ge 2 ] || { sed -n 13,21p "$0"; exit 2; }
 S040=$1; S030=$2; N=${3:-1000}
-OUT=$(realpath -m "${4:-${TMPDIR:-/tmp}/pom68k-sweep-$S040}")
 BUILD=$(realpath "${5:-build}")
+OUT=$(realpath -m "${4:-$BUILD/sweep-$S040}")
 A=$(realpath "${POM68K_ORACLE_SO:-build-oracle/liboracle_uae.so}")
 [ -f "$A" ] || { echo "no oracle at $A — see oracle/README.md"; exit 2; }
 for t in sst68030 sst68040 sst68030_jit sst68040_jit; do

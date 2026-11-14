@@ -242,3 +242,5 @@ overwrites it, including a one-gate `ctest -R`.
 | Nov 10 22:38 +04 | aarch64 | default | 141 | 141 | 0 | 0 | m030 tier with the 68030 CACR read mask $3313 (upstream f7844ac, row 86): 141/141 executed, zero skips |
 | Nov 14 13:46 +04 | x86_64 | default | 246 | 245 | 1 | 0 | Fresh-seed sweep fixes (68030 MOVE to (xxx).L last write, 6888x move-out frame operand, save-state v32): ctest -L 'm030\|m040' -j16, 246/246 in 5901.61 s; census 245 executed / 1 soft-skipped (lcii_floppy144_etalon, no 1.44 MB image) / 0 failed |
 | Nov 14 13:40 +04 | x86_64 | default | 37 | 37 | 0 | 0 | Same change: jit_sst*, cpu_vectors*, savestate*, moira_* -j8, 37/37; census 37 executed / 0 soft-skipped |
+| Nov 14 22:29 +04 | x86_64 | default | 246 | 245 | 1 | 0 | Sweeps 2-5 fixes (VENDOR rows 103-108): ctest -L 'm030\|m040' -j16, 246/246 in 5847.73 s |
+| Nov 14 22:24 +04 | x86_64 | default | 51 | 51 | 0 | 0 | Same change: sst*, jit_sst*, cpu_vectors*, savestate*, moira_* -j8, 51/51; census 51 executed / 0 soft-skipped |

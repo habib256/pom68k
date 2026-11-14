@@ -344,8 +344,8 @@ boot.
 - [ ] **Écrire les familles brutes qui manquent au balayage.** Le
   balayage de graines neuves est une étape de la boucle depuis le
   2026-11-14 (`oracle/fuzz/sweep.sh` : toutes les familles des deux
-  générateurs, interprète et JIT ; première passe, 67 433 vecteurs, deux
-  défauts — `oracle/fuzz/disputes/NOTES.md`). Un corpus épinglé est un
+  générateurs, interprète et JIT ; cinq passes le 2026-11-14, 606 565
+  vecteurs, huit défauts corrigés — `oracle/fuzz/disputes/NOTES.md`). Un corpus épinglé est un
   plancher, et une famille aléatoire ne remplace pas une famille par
   fenêtre de décodage (`fline`, 2026-11-07). Reste la famille des
   extensions complètes d'EA réservées, et des listes d'opcodes `pagend`

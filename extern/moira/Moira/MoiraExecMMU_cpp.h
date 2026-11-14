@@ -2990,10 +2990,14 @@ Moira::pomJitJsr040(u32 instructionPc, u32 returnAddress, u32 target,
     queue.ird = opcode;
 
     try {
-        // execJsr's exact architectural order. push() deliberately leaves
-        // mmu040LastWrite armed: if the following instruction-space access
-        // faults, execMmu040BusError stacks the post-push/next-PC frame.
-        push<Core::C68020, Long, POLL>(returnAddress);
+        // [D] WinUAE cpuemu_31.c op_4e90 @ Hatari e77819f7 — execJsr's
+        // exact order: the 68040 writes at A7-4, then decrements A7. A fault on that push
+        // restarts the JSR with A7 intact (execMmu040BusError, JSR in its
+        // restart set; moira_rules_test bitfieldStoreRestarts040). A fault
+        // on the target fetch is dropped below and retaken by the next
+        // instruction (D35).
+        write<Core::C68020, AddrSpace::DATA, Long, POLL>(reg.sp - 4, returnAddress);
+        reg.sp -= 4;
         reg.pc = target;
         // execJsr: a fault on the target fetch belongs to the next
         // instruction start, not to the retired JSR.
@@ -4138,9 +4142,22 @@ Moira::execMmu040BusError()
     // next-instruction PC, without specifying a partial MOVEP sequence.
     // Settled by: a real 68040 capture of a faulting MOVEP.W/.L store.
     // Gate: moira_rules_test (byte faults, data window, cache and RTE).
+    // [D] WinUAE cpuemu_31.c op_eac0-op_eff9 @ Hatari e77819f7: BFCHG,
+    // BFCLR, BFSET and BFINS store through x_put_bitfield with mmu_restart
+    // still true — a faulting field store restarts the instruction with the
+    // flags it started with (m68k_run_mmu040 restores cznv/x). A scan of
+    // every 68040 handler that stores finds this family, CAS2, JSR's push
+    // (op_4e90: put_long, then A7 -= 4), MOVEM to memory and MOVEP
+    // unmarked; MOVEP is handled above and MOVEM by its latch, CAS2 reaches
+    // no store fault (its reads are write-probed). A fault inside a JSR can
+    // only be the push or a memory-indirect pointer: a fault on its target
+    // fetch is retaken by the next instruction (ruling D35).
+    // Fresh-seed vector "040 random/ttvar seed=79012 #1850".
+    // Gate: moira_rules_test (bitfieldStoreRestarts040).
     u32 framePc;
     if (mmu040LastWrite && (queue.ird & 0xFE00) != 0xF200 &&
-        (queue.ird & 0xF1B8) != 0x0188) {
+        (queue.ird & 0xF1B8) != 0x0188 && (queue.ird & 0xF8C0) != 0xE8C0 &&
+        (queue.ird & 0xFFC0) != 0x4E80) {
         framePc = mmu040LastWritePc;
         mmu040LastWrite = false;
     } else {

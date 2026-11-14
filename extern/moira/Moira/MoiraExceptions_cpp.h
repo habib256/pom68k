@@ -732,7 +732,18 @@ Moira::execException(M68kException exc, int nr)
             flags &= ~State::TRACE_EXC;
 
             SYNC(2);
-            (void)readM<C, Mode::DN, Word>(reg.pc);
+            // [D] WinUAE @ Hatari e77819f7: BKPT is op_illg on the 68020 up,
+            // no access at all. Upstream stands in for the breakpoint
+            // acknowledge cycle with a data read at PC; on the 020/030/040
+            // that cycle is a CPU-space acknowledge, never a translated data
+            // read, and the stand-in walked the tables of the BKPT's own page
+            // (U set where the opcode came through a transparent window) and
+            // could fault there. Kept for the 68010, which has no MMU.
+            // Fresh-seed vector "040 random/ttvar seed=77012 #456".
+            // [F] Bus timing of the 020+ acknowledge cycle. Settled by: a bus
+            // capture of BKPT on a real 68030 or 68040.
+            // Gate: moira_rules_test (bkptMakesNoDataAccess).
+            if constexpr (C != Core::C68020) (void)readM<C, Mode::DN, Word>(reg.pc);
             SYNC(2);
 
             // Write stack frame
