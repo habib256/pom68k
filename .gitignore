@@ -112,3 +112,4 @@ dev/Retro68-build/
 # they sit beside — private media, and a test in flight leaves one in the
 # working directory. Never tracked.
 *.pomundo
+__pycache__/
