@@ -976,15 +976,9 @@ Moira::execBra(u16 opcode)
     AVAILABILITY(S == Long ? Core::C68020 : Core::C68000)
 
     u32 oldpc = reg.pc;
-    u32 disp = S == Byte ? (u8)opcode : queue.irc;
+    u32 disp = S == Byte ? (u8)opcode : S == Long ? ircLong<C>() : ircWord();
 
     SYNC(2);
-
-    if constexpr (S == Long) {
-
-        readExt<C>();
-        disp = disp << 16 | queue.irc;
-    }
 
     u32 newpc = U32_ADD(oldpc, SEXT<S>(disp));
 
@@ -1048,7 +1042,7 @@ Moira::execBcc(u16 opcode)
     // WinUAE's get_ilong(2) does not advance the pc either.
     if constexpr (C == Core::C68020) {
         if (cpuModel >= Model::M68EC040) {
-            u32 d40 = S == Byte ? (u8)opcode : queue.irc;
+            u32 d40 = S == Byte ? (u8)opcode : ircWord();
             if constexpr (S == Long) {
                 d40 = d40 << 16 | (u16)read<C, AddrSpace::PROG, Word>(reg.pc + 2);
             }
@@ -1063,13 +1057,7 @@ Moira::execBcc(u16 opcode)
 
     if (cond<I>()) {
 
-        u32 disp = S == Byte ? (u8)opcode : queue.irc;
-
-        if (S == Long) {
-
-            readExt<C>();
-            disp = disp << 16 | queue.irc;
-        }
+        u32 disp = S == Byte ? (u8)opcode : S == Long ? ircLong<C>() : ircWord();
 
         u32 newpc = U32_ADD(oldpc, SEXT<S>(disp));
 
@@ -1609,13 +1597,7 @@ Moira::execBsr(u16 opcode)
     AVAILABILITY(S == Long ? Core::C68020 : Core::C68000)
 
     u32 oldpc = reg.pc;
-    u32 disp = S == Byte ? (u8)opcode : queue.irc;
-
-    if (S == Long) {
-
-        readExt<C>();
-        disp = disp << 16 | queue.irc;
-    }
+    u32 disp = S == Byte ? (u8)opcode : S == Long ? ircLong<C>() : ircWord();
 
     u32 newpc = U32_ADD(oldpc, SEXT<S>(disp));
     u32 retpc = U32_ADD(reg.pc, S == Long || S == Word ? 2 : 0);
@@ -1801,8 +1783,8 @@ Moira::execCas(u16 opcode)
     AVAILABILITY(Core::C68020)
 
     int dst = _____________xxx(opcode);
-    int dc  = _____________xxx(queue.irc);
-    int du  = _______xxx______(queue.irc);
+    int dc  = _____________xxx(ircWord());
+    int du  = _______xxx______(ircWord());
 
     u32 ea, data;
 
@@ -1873,15 +1855,15 @@ Moira::execCas2(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    int dc1 = _____________xxx(queue.irc);
-    int du1 = _______xxx______(queue.irc);
-    int rn1 = xxxx____________(queue.irc);
+    int dc1 = _____________xxx(ircWord());
+    int du1 = _______xxx______(ircWord());
+    int rn1 = xxxx____________(ircWord());
 
     readExt<C>();
 
-    int dc2 = _____________xxx(queue.irc);
-    int du2 = _______xxx______(queue.irc);
-    int rn2 = xxxx____________(queue.irc);
+    int dc2 = _____________xxx(ircWord());
+    int du2 = _______xxx______(ircWord());
+    int rn2 = xxxx____________(ircWord());
 
     readExt<C>();
 
@@ -2152,7 +2134,7 @@ Moira::execChkCmp2(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    u32 ext = queue.irc;
+    u32 ext = ircWord();
     int src = _____________xxx(opcode);
     int dst = xxxx____________(ext);
     u32 ea, data1, data2;
@@ -2660,7 +2642,7 @@ Moira::execDbcc(u16 opcode)
     // path returns before either); stacked PC = the DBcc instruction.
     if constexpr (C == Core::C68020) {
         if (cpuModel >= Model::M68EC040) {
-            u32 t40 = U32_ADD(reg.pc, (i16)queue.irc);
+            u32 t40 = U32_ADD(reg.pc, (i16)ircWord());
             if (t40 & 1) {
                 execAddressError040<C>(t40, reg.pc0);
                 FINALIZE
@@ -2675,7 +2657,7 @@ Moira::execDbcc(u16 opcode)
         if (!cond<I>()) {
 
             int dn = _____________xxx(opcode);
-            u32 newpc = U32_ADD(reg.pc, (i16)queue.irc);
+            u32 newpc = U32_ADD(reg.pc, (i16)ircWord());
 
             bool takeBranch = readD<Word>(dn) != 0;
 
@@ -2700,7 +2682,7 @@ Moira::execDbcc(u16 opcode)
             if constexpr (C == Core::C68020) {
                 if (cpuModel == Model::M68030 && (newpc & 1)) {
                     mmuLogReset();
-                    mmuLogExtWord(u16(queue.irc));
+                    mmuLogExtWord(u16(ircWord()));
                     execAddressError030<C>(newpc, newpc);
                     return;
                 }
@@ -2742,7 +2724,7 @@ Moira::execDbcc(u16 opcode)
             SYNC(2);
 
             int dn = _____________xxx(opcode);
-            i16 disp = (i16)queue.irc;
+            i16 disp = (i16)ircWord();
 
             u32 newpc = U32_ADD(reg.pc, disp);
 
@@ -2824,7 +2806,7 @@ Moira::execDbcc(u16 opcode)
                 SYNC(6);
                 reg.pc = newpc;
                 reg.pc0 = reg.pc;
-                queue.ird = queue.irc;
+                queue.ird = ircWord();
                 queue.irc = opcode;
                 POLL_IPL;
                 return;
@@ -3922,9 +3904,7 @@ Moira::execMove8(u16 opcode)
         reg.sr.v = 0;
         reg.sr.c = 0;
 
-        u32 ea2 = queue.irc << 16;
-        readExt<C>();
-        ea2 |= queue.irc;
+        u32 ea2 = ircLong<C>();
 
         // Check for address error
         if (misaligned<C, S>(ea2)) {
@@ -4572,9 +4552,9 @@ Moira::execMoves(u16 opcode)
     AVAILABILITY(Core::C68010)
     SUPERVISOR_MODE_ONLY
 
-    auto old = queue.irc;
+    auto old = ircWord();
 
-    if (queue.irc & 0x800) {    // Rg -> Ea
+    if (ircWord() & 0x800) {    // Rg -> Ea
 
         auto arg = readI<C, Word>();
         int src = xxxx____________(arg);
@@ -6234,7 +6214,7 @@ Moira::execRtd(u16 opcode)
     }
 
     u32 newpc = readM<C, M, Long>(reg.sp);
-    reg.sp += 4 + i16(queue.irc);
+    reg.sp += 4 + i16(ircWord());
 
     // Check for address error
     if (misaligned<C>(newpc)) {
@@ -6250,7 +6230,7 @@ Moira::execRtd(u16 opcode)
     if constexpr (C == Core::C68020) {
         if (cpuModel == Model::M68030 && (newpc & 1)) {
             mmuLogReset();
-            mmuLogExtWord(u16(queue.irc));
+            mmuLogExtWord(u16(ircWord()));
             mmuLogExtWord(newpc);
             execAddressError030<C>(newpc, reg.pc0);
             FINALIZE
@@ -6260,7 +6240,7 @@ Moira::execRtd(u16 opcode)
         // POM68K Q2: 68040 RTD restores A7 completely before faulting
         // (WinUAE op_4e74_31: a7 -= 4 + offs); stacked PC = the RTD.
         if (cpuModel >= Model::M68EC040 && (newpc & 1)) {
-            reg.sp -= 4 + i16(queue.irc);
+            reg.sp -= 4 + i16(ircWord());
             execAddressError040<C>(newpc, reg.pc0);
             FINALIZE
             return;
@@ -7016,7 +6996,7 @@ Moira::execStop(u16 opcode)
     // that carried them is gone. Leaving STOP (exception, then RTE) reloads
     // the queue, so the stale IRC is never used.
     u16 src;
-    if constexpr (C == Core::C68000) { src = queue.irc; reg.pc += 2; SYNC(4); }
+    if constexpr (C == Core::C68000) { src = ircWord(); reg.pc += 2; SYNC(4); }
     else                              { src = (u16)readI<C, Word>(); }
 
     setSR(src);

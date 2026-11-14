@@ -609,10 +609,63 @@ def _op_fpuh(rng: random.Random) -> list[int]:
     return _op_fpu(rng) + [0xF280, 0x0000]
 
 
+def pagend_words(rng: random.Random) -> tuple[list[int], int]:
+    """An instruction placed against the end of a page whose successor is
+    invalid (the "pagend" family, 2026-11-14). Returns the words and how many
+    bytes before the page end the instruction starts. Most end exactly on
+    the page's last word, so only the prefetch past them touches the bad
+    page (MC68030UM-1989 §8.1.2, MC68040UM-1993 §8.2.1: that fault is
+    deferred until the word is used, and never used here); the rest run
+    their last extension word into the bad page and must fault. A-line,
+    illegal, CHK and F-line stay out: on the 68040 the manual reports the
+    ATC fault for them (§3.5) where the oracle does not (NOTES.md D39)."""
+    r = rng.randrange(8)
+    imm = rng.getrandbits(16)
+    back = (rng.randrange(1, 64) * -2) & 0xFF          # BRA.S into the same page
+    fits = [
+        ([0x4E71], 2),                                  # NOP
+        ([0x7000 | r << 9 | rng.getrandbits(8)], 2),    # MOVEQ #i,Dn
+        ([0x4840 | r], 2),                              # SWAP Dn
+        ([0x5080 | rng.randrange(8) << 9 | r], 2),      # ADDQ.L #q,Dn
+        ([0x4880 | r], 2),                              # EXT.W Dn
+        ([0x4480 | r], 2),                              # NEG.L Dn
+        ([0x4240 | r], 2),                              # CLR.W Dn
+        ([0x6000 | back], 2),                           # BRA.S back
+        ([0x6700 | back], 2),                           # BEQ.S back, either way
+        ([0x4E40 | rng.randrange(16)], 2),              # TRAP #n
+        ([0x0640 | r, imm], 4),                         # ADDI.W #i,Dn
+        ([0x303C | r << 9, imm], 4),                    # MOVE.W #i,Dn
+        ([0x6000, (-rng.randrange(4, 256, 2)) & 0xFFFF], 4),  # BRA.W back
+        ([0x43E8, imm], 4),                             # LEA d16(A0),A1
+        ([0x0680 | r, rng.getrandbits(16), imm], 6),    # ADDI.L #i,Dn
+    ]
+    crosses = [
+        ([0x0640 | r, imm], 2),                         # ADDI.W: #i on the bad page
+        ([0x203C | r << 9, rng.getrandbits(16), imm], 2),  # MOVE.L #i,Dn
+        ([0x0680 | r, rng.getrandbits(16), imm], 4),    # ADDI.L: low word bad
+        ([0x6000, (-rng.randrange(4, 256, 2)) & 0xFFFF], 2),  # BRA.W: disp bad
+    ]
+    return rng.choice(fits if rng.random() < 0.75 else crosses)
+
+
+def place_pagend(st: State, ram: dict[int, int], rng: random.Random,
+                 page_size: int, invalidate, candidates: list[int]) -> list[int]:
+    """Pick a page from `candidates` whose predecessor is also a candidate,
+    make it invalid through `invalidate(page)`, and start the pagend
+    instruction against its start. Returns the words."""
+    pages = [p for p in candidates if p - 1 in candidates]
+    page = rng.choice(pages)
+    invalidate(page)
+    words, back = pagend_words(rng)
+    st.pc = (page * page_size - back) & MASK
+    return words
+
+
 FPU_FAMILIES = ("fpu", "fpuraw", "fpu2", "fpuh")
 FAMILIES = {"random": _op_random, "core": _op_core, "mmu": _op_mmu,
             "fault": _op_fault, "fpu": _op_fpu, "fpuraw": _op_fpuraw,
-            "fpu2": _op_fpu2, "rmw": _op_rmw, "fpuh": _op_fpuh}
+            "fpu2": _op_fpu2, "rmw": _op_rmw, "fpuh": _op_fpuh,
+            "pagend": None}
 
 
 def gen_state(rng: random.Random, family: str = "core",
@@ -667,7 +720,20 @@ def gen_state(rng: random.Random, family: str = "core",
 
     # The op is generated before the family-specific RAM seeding so the
     # seeding can aim at its operands (FRESTORE frame planting below).
-    words = FAMILIES[family](rng)
+    if family == "pagend":
+        # Plain identity pages from the code page up: the instruction sits
+        # against the end of one, its successor is made invalid.
+        assert mmu == "identity", "pagend needs a translated identity map"
+
+        def invalidate(page: int) -> None:
+            _w32(ram, TABLE_BASE + page * 4, DT_INVALID)
+            kinds[page] = "invalid"
+
+        words = place_pagend(st, ram, rng, PAGE_SIZE, invalidate,
+                             [i for i in range(CODE_BASE >> PAGE_SHIFT, N_PAGES)
+                              if i not in kinds])
+    else:
+        words = FAMILIES[family](rng)
 
     if family in FPU_FAMILIES:
         # 68881/68882 initial state (O5 slice 1): special values in every

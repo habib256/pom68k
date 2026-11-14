@@ -1966,13 +1966,7 @@ Moira::execFBcc(u16 opcode)
     if (cc) {
 
         u32 oldpc = reg.pc;                 // address of the displacement
-        u32 disp = queue.irc;
-
-        if constexpr (S == Long) {
-
-            readExt<C>();
-            disp = disp << 16 | queue.irc;
-        }
+        u32 disp = S == Long ? ircLong<C>() : ircWord();
 
         u32 newpc = U32_ADD(oldpc, SEXT<S>(disp));
 
@@ -2038,7 +2032,7 @@ Moira::execFDbcc(u16 opcode)
     if (!cc) {
 
         int dn = _____________xxx(opcode);
-        u32 newpc = U32_ADD(reg.pc, (i16)queue.irc);
+        u32 newpc = U32_ADD(reg.pc, (i16)ircWord());
 
         bool takeBranch = readD<Word>(dn) != 0;
         ck = takeBranch ? FPU_CK_FDBCC_TAKEN : FPU_CK_FDBCC_EXP;
@@ -2054,7 +2048,7 @@ Moira::execFDbcc(u16 opcode)
             if constexpr (C == Core::C68020) {
                 if (cpuModel == Model::M68030 && (newpc & 1)) {
                     mmuLogReset();
-                    mmuLogExtWord(u16(queue.irc));
+                    mmuLogExtWord(u16(ircWord()));
                     execAddressError030<C>(newpc, newpc);
                     FINALIZE
                     return;
@@ -2623,7 +2617,7 @@ Moira::execFGen(u16 opcode)
     // Router for the general F-line window (WinUAE fpuop_arithmetic,
     // fpp.c:3168-3617). The extension word is peeked here and consumed by
     // the sub-handlers.
-    u16 ext = queue.irc;
+    u16 ext = ircWord();
 
     // POM68K: on the 68040 family the EA fields $3D-$3F are not FPU
     // opcodes at all — a plain Line-F ahead of every FPU consideration

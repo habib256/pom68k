@@ -39,7 +39,8 @@ from gen030 import (MASK, VEC_BASE, CODE_BASE, DATA_BASE,
                     build_vector_table, _w16, _w32,
                     _op_random, _op_core, _op_fault,
                     _op_fpu, _op_fpuraw, _op_fpu2, _op_fpuh, _op_rmw,
-                    _fp_special_words, HANDLER_BASE, HANDLER_STRIDE)
+                    _fp_special_words, HANDLER_BASE, HANDLER_STRIDE,
+                    place_pagend)
 
 # ── 040 MMU table builder (M68040UM § 3.1/3.2) ─────────────────────────────
 TC040_FUZZ = 0x8000        # E=1, P=0 → 4K pages
@@ -238,7 +239,8 @@ FAMILIES = {"random": _op_random, "core": _op_core040, "mmu": _op_mmu040,
             "sysraw": _op_sysraw040, "rmw": _op_rmw, "fpuh": _op_fpuh,
             "fpu2": _op_fpu2,
             "fault": _op_fault040, "fpu": _op_fpu,
-            "fline": _op_fpuraw, "fpuraw": _op_fpuraw}
+            "fline": _op_fpuraw, "fpuraw": _op_fpuraw,
+            "pagend": None}
 
 
 def gen_state(rng: random.Random, family: str = "core",
@@ -306,7 +308,28 @@ def gen_state(rng: random.Random, family: str = "core",
         else:
             st.a[0] = rng.getrandbits(32)
 
-    words = FAMILIES[family](rng)
+    if family == "pagend":
+        # The instruction sits against the end of a plain identity page
+        # whose successor is made invalid. Every resident root and pointer
+        # descriptor starts with U set: the fork's prefetch walk towards the
+        # invalid page sets them where the oracle never walks (D38's class),
+        # and that is not what this cell measures.
+        assert mmu == "identity", "pagend needs a translated identity map"
+        _w32(ram, ROOT_T, PTR_T | UDT_RESIDENT | 0x08)
+        for k, pi in enumerate(MAPPED_PI):
+            _w32(ram, PTR_T + 4 * pi, (PAGE_T + k * 0x100) | UDT_RESIDENT | 0x08)
+
+        def invalidate(page: int) -> None:
+            _w32(ram, PAGE_T + MAPPED_PI.index(page >> PGI_BITS) * 0x100
+                 + (page & ((1 << PGI_BITS) - 1)) * 4, 0)
+            kinds[page] = "invalid"
+
+        words = place_pagend(st, ram, rng, PAGE_SIZE, invalidate,
+                             [i for i in range(CODE_BASE >> PAGE_SHIFT,
+                                               (5 << 18) >> PAGE_SHIFT)
+                              if i not in kinds])
+    else:
+        words = FAMILIES[family](rng)
 
     if family in FPU_FAMILIES:
         # Same seeding as gen030's fpu family: a special value in every FP

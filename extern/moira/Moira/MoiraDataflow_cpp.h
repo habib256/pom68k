@@ -13,7 +13,8 @@ template <Core C> void
 Moira::skipExt()
 {
     if constexpr (C == Core::C68020) {
-        if (cpuModel == Model::M68030) [[unlikely]] mmuLogExtWord(queue.irc);
+        if (cpuModel == Model::M68030) [[unlikely]] mmuLogExtWord(ircWord());
+        if (ircPoison) [[unlikely]] ircRefetch();   // POM68K: Moira.h § ircPoison
     }
     reg.pc += 2;
 }
@@ -73,7 +74,7 @@ Moira::computeEA(u32 n) {
         case 5: // (d,An)
         {
             u32 an = readA(n);
-            i16  d = (i16)queue.irc;
+            i16  d = (i16)ircWord();
 
             result = U32_ADD(an, d);
             if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { skipExt<C>(); }
@@ -91,7 +92,7 @@ Moira::computeEA(u32 n) {
                     break;
                 }
 
-                if (queue.irc & 0x100) {
+                if (ircWord() & 0x100) {
                     result = computeEAfull<C, M, S, F>(readA(n));
                 } else {
                     result = computeEAbrief<C, M, S, F>(readA(n));
@@ -99,11 +100,11 @@ Moira::computeEA(u32 n) {
 
             } else {
 
-                i8   d = (i8)queue.irc;
+                i8   d = (i8)ircWord();
                 u32 an = readA(n);
-                u32 xi = readR((queue.irc >> 12) & 0b1111);
+                u32 xi = readR((ircWord() >> 12) & 0b1111);
 
-                result = U32_ADD3(an, d, ((queue.irc & 0x800) ? xi : SEXT<Word>(xi)));
+                result = U32_ADD3(an, d, ((ircWord() & 0x800) ? xi : SEXT<Word>(xi)));
 
                 SYNC(2);
                 if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { skipExt<C>(); }
@@ -112,7 +113,7 @@ Moira::computeEA(u32 n) {
         }
         case 7: // ABS.W
         {
-            result = (i16)queue.irc;
+            result = (i16)ircWord();
             pomSetRB<C>(queue.irc);  // POM68K: 68010-only (Moira.h pomSetRB)
 
             if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { skipExt<C>(); }
@@ -127,9 +128,7 @@ Moira::computeEA(u32 n) {
                 if (cpuModel == Model::M68030) [[unlikely]] {
                     bool logSave = mmuLogging;
                     mmuLogging = false;
-                    result = queue.irc << 16;
-                    readExt<C>();
-                    result |= queue.irc;
+                    result = ircLong<C>();
                     pomSetRB<C>(queue.irc);  // POM68K: 68010-only (Moira.h pomSetRB)
                     if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { reg.pc += 2; }
                     mmuLogging = logSave;
@@ -138,9 +137,7 @@ Moira::computeEA(u32 n) {
                 }
             }
 
-            result = queue.irc << 16;
-            readExt<C>();
-            result |= queue.irc;
+            result = ircLong<C>();
             pomSetRB<C>(queue.irc);  // POM68K: 68010-only (Moira.h pomSetRB)
 
             if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { skipExt<C>(); }
@@ -148,7 +145,7 @@ Moira::computeEA(u32 n) {
         }
         case 9: // (d,PC)
         {
-            i16  d = (i16)queue.irc;
+            i16  d = (i16)ircWord();
 
             result = U32_ADD(reg.pc, d);
             if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { skipExt<C>(); }
@@ -164,7 +161,7 @@ Moira::computeEA(u32 n) {
                     break;
                 }
 
-                if (queue.irc & 0x100) {
+                if (ircWord() & 0x100) {
                     result = computeEAfull<C, M, S, F>(reg.pc);
                 } else {
                     result = computeEAbrief<C, M, S, F>(reg.pc);
@@ -172,10 +169,10 @@ Moira::computeEA(u32 n) {
 
             } else {
 
-                i8   d = (i8)queue.irc;
-                u32 xi = readR((queue.irc >> 12) & 0b1111);
+                i8   d = (i8)ircWord();
+                u32 xi = readR((ircWord() >> 12) & 0b1111);
 
-                result = U32_ADD3(reg.pc, d, ((queue.irc & 0x800) ? xi : SEXT<Word>(xi)));
+                result = U32_ADD3(reg.pc, d, ((ircWord() & 0x800) ? xi : SEXT<Word>(xi)));
                 SYNC(2);
                 if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { skipExt<C>(); }
             }
@@ -204,7 +201,7 @@ Moira::computeEAbrief(u32 an)
     // | REGISTER | LW | SCALE   | 0  | DISPLACEMENT                         |
     // -----------------------------------------------------------------------
 
-    u16 ext   = queue.irc;
+    u16 ext   = ircWord();
     u16 rn    = xxxx____________ (ext);
     u16 lw    = ____x___________ (ext);
     u16 scale = _____xx_________ (ext);
@@ -229,7 +226,7 @@ Moira::computeEAfull(u32 an)
     // | REGISTER | LW | SCALE   | 1  | BS | IS | BD SIZE  | 0  | IIS        |
     // -----------------------------------------------------------------------
 
-    u16  ext   = queue.irc;
+    u16  ext   = ircWord();
     u16  rn    = xxxx____________ (ext);
     u16  lw    = ____x___________ (ext);
     u16  scale = _____xx_________ (ext);
@@ -303,7 +300,7 @@ Moira::computeEAdisp030(u32 base)
     const u32 pcBefore = reg.pc;
 
     u32 result;
-    if (queue.irc & 0x100) {
+    if (ircWord() & 0x100) {
         result = computeEAfull<C, M, S, F>(base);
     } else {
         result = computeEAbrief<C, M, S, F>(base);
@@ -785,9 +782,7 @@ Moira::readI()
         if (cpuModel == Model::M68030) [[unlikely]] {
             bool logSave = mmuLogging;
             mmuLogging = false;
-            result = queue.irc << 16;
-            readExt<C>();
-            result |= queue.irc;
+            result = ircLong<C>();
             readExt<C>();
             mmuLogging = logSave;
             mmuLogExtWord(result);
@@ -800,21 +795,19 @@ Moira::readI()
 
         case Byte:
 
-            result = (u8)queue.irc;
+            result = (u8)ircWord();
             readExt<C>();
             break;
 
         case Word:
 
-            result = queue.irc;
+            result = ircWord();
             readExt<C>();
             break;
 
         case Long:
 
-            result = queue.irc << 16;
-            readExt<C>();
-            result |= queue.irc;
+            result = ircLong<C>();
             readExt<C>();
             break;
 
@@ -923,7 +916,7 @@ Moira::prefetch()
         if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) [[unlikely]] return;
     }
 
-    queue.ird = queue.irc;
+    queue.ird = ircWord();
 #if MOIRA_ENABLE_JIT
     // POM68K JIT code window, 020 flavor (Moira.h § pomJitFetch020); the
     // cycle-exact 68000/68010 cores take the pomJitFetch000 flavor instead,
@@ -995,6 +988,18 @@ Moira::noPrefetch(int delay)
     if (delay) SYNC(delay);
 }
 
+// POM68K: one long extension word pair (Moira.h § ircLongAt).
+template <Core C> u32
+Moira::ircLong()
+{
+    ircLongAt = reg.pc;
+    u32 value = ircWord() << 16;
+    readExt<C>();
+    value |= ircWord();
+    ircLongAt = ircNoLong;
+    return value;
+}
+
 template <Core C> void
 Moira::readExt()
 {
@@ -1004,10 +1009,11 @@ Moira::readExt()
     // next_iword_mmu030_state); the refill of irc is Moira's one-slot
     // lookahead, translated but unlogged.
     if constexpr (C == Core::C68020) {
+        if (ircPoison) [[unlikely]] ircRefetch();   // POM68K: Moira.h § ircPoison
         if (cpuModel == Model::M68030) [[unlikely]] {
-            mmuLogExtWord(queue.irc);
+            mmuLogExtWord(ircWord());
             reg.pc += 2;
-            queue.irc = mmuFetchWord(reg.pc);
+            queue.irc = mmuLookaheadWord(reg.pc);
             return;
         }
         // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
@@ -1028,7 +1034,7 @@ Moira::readExt()
                 ++pomJitTiming.fetchWords040;
 #endif
 
-            queue.irc = mmu040FetchWord<C>(reg.pc);
+            queue.irc = mmu040LookaheadWord<C>(reg.pc);
             return;
         }
     }
@@ -1066,9 +1072,7 @@ Moira::readExt()
         if (cpuModel == Model::M68030) [[unlikely]] {
             bool logSave = mmuLogging;
             mmuLogging = false;
-            u32 value = queue.irc << 16;
-            readExt<C>();
-            value |= queue.irc;
+            u32 value = ircLong<C>();
             readExt<C>();
             mmuLogging = logSave;
             mmuLogExtWord(value);
@@ -1076,14 +1080,13 @@ Moira::readExt()
         }
     }
 
-    u32 result = queue.irc;
-    readExt<C>();
-
+    u32 result;
     if constexpr (S == Long) {
-
-        result = result << 16 | queue.irc;
-        readExt<C>();
+        result = ircLong<C>();
+    } else {
+        result = ircWord();
     }
+    readExt<C>();
 
     return result;
 }

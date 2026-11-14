@@ -38,7 +38,7 @@ oracle/
 
 ## Public vectors and CI
 
-`tests/cpu_vectors/` ships 256 oracle-generated vectors with recipes and
+`tests/cpu_vectors/` ships 304 oracle-generated vectors with recipes and
 uncompressed SHA-256 identities. The root `cpu-vectors` tier always replays
 them, including from clean CI and ASan/UBSan checkouts. It rejects missing
 data and successful soft-skips. They supplement the large optional corpora;
@@ -87,6 +87,7 @@ eager writes. `cache040_test` supplies their host-bus witnesses.
 | **D32** | A later-fragment physical 040 data/fill /BERR retains the initial logical FA with MA clear; second-page ATC faults set MA | `cpummu.c misalignednotfirst:989–997` @ Hatari e77819f7 unconditionally sets MA | MC68040UM-1993 §§8.4.6.2/8.4.6.4 independently define MA and initial FA; `cache040_test` holds 8 592 cases, 2 016 pre-fix frame failures | primary-manual ruling; no new corpus exception or oracle payload |
 | **D33** | Root/pointer U writes follow the next successful descriptor read | `cpummu.c:695–742` @ Hatari e77819f7 writes U before fetching the next descriptor | MC68040UM-1993 Figure 3-10 (PDF p. 60) explicitly schedules the delayed write; `cache040_test --descriptor-faults` pins traces and partial history | primary-manual/source-reading ruling; no oracle patch or corpus exception |
 | **D34** | MOVEM with CM reuses stacked EA only for indexed/PC-relative modes | `gencpu.c start_mmu040_movem` @ Hatari e77819f7 reuses it for all modes | MC68040UM-1993 §8.4.6.2 lists modes 110 and 111/010–011; §8.4.6.7 repeats the operand prefix. Bare-core, state and JIT continuation witnesses | primary-manual/source-reading ruling; no patched oracle or corpus exception |
+| **D39** | 68040: an A-line, illegal or CHK instruction on a page's last word before a non-resident page reports the ATC access error | Takes the instruction's own exception (`gencpu.c` @ Hatari e77819f7 fetches the next opcode only at the next instruction) | MC68040UM-1993 §3.5 names exactly this case; `moira_rules_test` (`deferredPrefetchFault`) holds it on both models | primary-manual ruling; the `pagend` cells of `tests/cpu_vectors` leave the three opcodes out, no corpus exception |
 
 D23b — FRESTORE of a 68040 frame accepted by a 68882 — left this table on
 2026-11-07: the acceptance was WinUAE's permissive setting, not the

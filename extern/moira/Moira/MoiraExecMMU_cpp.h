@@ -527,6 +527,86 @@ Moira::mmuCapturePipe()
     }
 }
 
+// POM68K: deferred prefetch fault (Moira.h § ircPoison). mmuPageFault's latches
+// describe the fault being raised; a lookahead that does not raise must
+// leave them, and the locked-RMW and RTE flags it clears, as they were.
+u16
+Moira::mmuLookaheadWord(u32 addr)
+{
+    const auto ssw = mmuSsw;           const auto fa = mmuFaultAddr;
+    const auto stageB = mmuStageB;     const auto wb3d = mmuWb3Data;
+    const auto wb2a = mmuWb2Address;   const auto wb2s = mmuWb2Status;
+    const auto wb3s = mmuWb3Status;    const auto rmw = mmuRmw;
+    const auto subst = mmuRteSubstArmed;
+    try {
+        return mmuFetchWord(addr);
+    } catch (MmuBusError &) {
+        mmuSsw = ssw;           mmuFaultAddr = fa;
+        mmuStageB = stageB;     mmuWb3Data = wb3d;
+        mmuWb2Address = wb2a;   mmuWb2Status = wb2s;
+        mmuWb3Status = wb3s;    mmuRmw = rmw;
+        mmuRteSubstArmed = subst;
+        ircPoison = true;
+        ircPoisonAddr = addr;
+        return 0;
+    }
+}
+
+template <Core C> u16
+Moira::mmu040LookaheadWord(u32 addr)
+{
+    const auto moves = mmu040Moves;      const auto movem = mmu040MovemArmed;
+    const auto lrmw = mmu040Lrmw;        const auto ea = mmu040EffAddr;
+    const auto ssw = mmu040Ssw;          const auto fa = mmu040FaultAddr;
+    const auto wb3a = mmu040Wb3Address;  const auto wb3d = mmu040Wb3Data;
+    const auto wb3s = mmu040Wb3Status;   const auto wb2s = mmu040Wb2Status;
+    const auto wb2a = mmu040Wb2Address;
+    try {
+        return mmu040FetchWord<C>(addr);
+    } catch (MmuBusError &) {
+        mmu040Moves = moves;      mmu040MovemArmed = movem;
+        mmu040Lrmw = lrmw;        mmu040EffAddr = ea;
+        mmu040Ssw = ssw;          mmu040FaultAddr = fa;
+        mmu040Wb3Address = wb3a;  mmu040Wb3Data = wb3d;
+        mmu040Wb3Status = wb3s;   mmu040Wb2Status = wb2s;
+        mmu040Wb2Address = wb2a;
+        ircPoison = true;
+        ircPoisonAddr = addr;
+        return 0;
+    }
+}
+
+// The poisoned word is used: fetch it again, which raises the deferred
+// fault (or, if a handler mapped the page meanwhile, returns the word).
+// A consumed `irc` is always the word at reg.pc; a poison left by an
+// instruction that did not use its lookahead (a one-word branch at a
+// page's end, then generated code that never passes the instruction-start
+// reset) names another address and is simply dropped.
+void
+Moira::ircRefetch()
+{
+    ircPoison = false;
+    if (ircPoisonAddr != reg.pc) return;
+    const bool inLong = ircLongAt != ircNoLong;
+    if (cpuModel >= Model::M68EC040) {
+        // [D] WinUAE next_ilong_mmu040 @ Hatari e77819f7 — a long
+        // extension faults as one long access: SSW size L, FA at its first
+        // word, MA when only its second word's page faults.
+        // [F] for silicon. Settled by: the frame of a real 68040 for an
+        // immediate long whose low word sits on a non-resident page.
+        if (inLong) (void)mmu040Read<Core::C68020, Long>(ircLongAt, false);
+        queue.irc = mmu040FetchWord<Core::C68020>(ircPoisonAddr);
+    } else {
+        // [D] WinUAE next_iword_mmu030_state / next_ilong_mmu030_state
+        // @ Hatari e77819f7 — the access-log index advances before the
+        // read, so a fault on the word stacks idx one past idx_done.
+        const bool bump = mmuLogging || inLong;
+        if (bump) pomMmuBumpIdx();
+        queue.irc = mmuFetchWord(ircPoisonAddr);
+        if (bump && mmuIdx > 0) mmuIdx--;   // fetched: its consumer logs it
+    }
+}
+
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Logs the value of a completed instruction-level access
 // (ACCESS_EXIT_GET/PUT in WinUAE cpummu030.h)
@@ -587,6 +667,8 @@ Moira::mmuExecuteStart()
     mmuFixupReg[0] = mmuFixupReg[1] = 0;
     mmuCcrSave = getCCR();
     mmuLogging = true;
+    ircPoison = false;
+    ircLongAt = ircNoLong;
     mmuRmw = false;
     mmuOpcodeV = 0xFFFFFFFF;
 
@@ -637,7 +719,7 @@ Moira::mmuExecuteStart()
         // consumption time. Moira's queue is therefore refetched here and
         // the queue-refill prefetches at instruction end are suppressed.
         queue.ird = mmuFetchWord(reg.pc);
-        queue.irc = mmuFetchWord(reg.pc + 2);
+        queue.irc = mmuLookaheadWord(reg.pc + 2);
 
     } catch (MmuBusError &) {
 
@@ -1564,7 +1646,7 @@ Moira::execPGen(u16 opcode)
     // check S before fetching the extension word.
     SUPERVISOR_MODE_ONLY
 
-    auto ext = queue.irc;
+    auto ext = ircWord();
 
     switch (ext >> 13 & 7) {
 
@@ -2328,8 +2410,9 @@ Moira::mmu040InstrStart()
     // translation at every instruction start (WinUAE x_prefetch(0)) and
     // extension words at consumption time (readExt); the queue-refill
     // prefetches at instruction end are suppressed. The irc lookahead at
-    // pc + 2 is Moira's one-slot model (known limit, shared with the
-    // 030: visible only when an instruction sits at a page's last word).
+    // pc + 2 is Moira's one-slot model; its fault is deferred until the
+    // word is used (Moira.h § ircPoison), its descriptor U bit is not
+    // (NOTES.md D38).
     POLL_IPL;
 
     mmu040EffAddr = 0;
@@ -2340,6 +2423,8 @@ Moira::mmu040InstrStart()
     mmu040Lrmw = false;
     mmuFixupReg[0] = mmuFixupReg[1] = 0;
     mmu040CcrSave = u8(getCCR());
+    ircPoison = false;
+    ircLongAt = ircNoLong;
 
 #if MOIRA_ENABLE_JIT
     // POM68K JIT code window (Moira.h § PomJitWindow). Placed AFTER the
@@ -2369,7 +2454,7 @@ Moira::mmu040InstrStart()
         if (pomJitTimingProbe) pomJitTiming.fetchWords040 += 2;
 #endif
         queue.ird = mmu040FetchWord<C>(reg.pc);
-        queue.irc = mmu040FetchWord<C>(reg.pc + 2);
+        queue.irc = mmu040LookaheadWord<C>(reg.pc + 2);
 
     } catch (MmuBusError &) {
 
@@ -2848,7 +2933,7 @@ Moira::pomJitWriteData(u32 addr, int bytes, u32 val) noexcept
 }
 
 // A native JSR/JMP target read (execJsr/execJmp eventually publish the first
-// target word in queue.irc). The 030 keeps its explicit mode-5 path; the 040
+// target word in ircWord()). The 030 keeps its explicit mode-5 path; the 040
 // uses the same read<PROG> funnel as the interpreted instruction, including
 // ITT/ATC/cache/fault behaviour.
 bool
@@ -2897,6 +2982,8 @@ Moira::pomJitJsr040(u32 instructionPc, u32 returnAddress, u32 target,
     mmu040Lrmw = false;
     mmuFixupReg[0] = mmuFixupReg[1] = 0;
     mmu040CcrSave = u8(getCCR());
+    ircPoison = false;
+    ircLongAt = ircNoLong;
 
     reg.pc0 = instructionPc;
     reg.pc = returnAddress;

@@ -39,11 +39,18 @@
           "n": 16,
           "steps": 2,
           "seed": 2026111304
+        },
+        {
+          "family": "pagend",
+          "mmu": "identity",
+          "n": 24,
+          "steps": 1,
+          "seed": 2026111305
         }
       ],
-      "sha256": "f8a0d8f411de8773100bb5c45511e8d52b011f7dbc55fa533c8603c5724d3ba9",
-      "bytes": 17922607,
-      "vectors": 112
+      "sha256": "d06e78c6d3507770b00c2ccc664d5e091317c29dbef0d5d5f08ced88094c65b5",
+      "bytes": 23052827,
+      "vectors": 136
     },
     "040": {
       "file": "040.json.gz",
@@ -97,11 +104,18 @@
           "n": 16,
           "steps": 3,
           "seed": 2026111406
+        },
+        {
+          "family": "pagend",
+          "mmu": "identity",
+          "n": 24,
+          "steps": 1,
+          "seed": 2026111407
         }
       ],
-      "sha256": "d840c0c36735f9c456736bdd49e6ce8e557ea10f7da1958933d358c471929522",
-      "bytes": 25023533,
-      "vectors": 144
+      "sha256": "bed0d32515352375d5f460c0e26102937fb0d97094b41f961bc4b2f4914cbda9",
+      "bytes": 30883021,
+      "vectors": 168
     }
   }
 }
