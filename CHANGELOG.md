@@ -276,6 +276,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
 - **Do the oracle corpora pass through the JIT, not only the interpreter?** → [Every pinned corpus does since 2026-11-13; the first run found a host segfault at guest pc 0](#2026-11-13-jit-corpus-replay)
+- **Why does `agent_binary_test` not compare the shipped agent with this host's build?** → [Different Retro68/GCC, different code: it compares only builds of the reference toolchain, since 2026-11-14](#2026-11-14-agent-toolchain)
 - **Do the 68040 corpora vary the transparent-translation windows?** → [Since 2026-11-14 (`--mmu ttvar`); the first sweep found the 68040 lock outliving TAS/CAS/CAS2 in generated code](#2026-11-14-ttvar)
 - **Does an instruction on a page's last word fault on the next page?** → [No: a prefetch fault waits until its word is used, since 2026-11-14; on the 68040 an A-line, illegal or CHK there reports the access error (D39)](#2026-11-14-deferred-prefetch-fault)
 - **Do the SST harnesses judge bytes the oracle left untouched?** → [With `--strict-ram`, since 2026-11-13; every pinned corpus is registered strict since the same day's eighteenth entry](#2026-11-13-strict-ram-all)
@@ -1357,6 +1358,36 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-14-agent-toolchain"></a>
+## 2026-11-14 (third) — `agent_binary_test` compares the shipped agent only with a build of the same toolchain
+
+`agent_binary_test` had been red on the x86-64 host since 2026-10-14: its
+Retro68 (`f99ecb5`, GCC 16.1.0) builds a `POM68KDisques.bin` whose
+resource fork differs by about 23 000 bytes from the copy shipped on
+2026-09-14, from unchanged sources. The gate demanded fork-for-fork
+equality with any local build, so the red was a toolchain fact rather than
+a defect, and it hid every other result of the `unit` tier on that host.
+
+The fix pins the reference toolchain instead of re-shipping (user's
+decision). `dev/scsiagent/CMakeLists.txt` writes
+`POM68KDisques.toolchain` beside the output: `Retro68 <commit> GCC
+<version>`, the commit read from the Retro68 source tree. The new
+`share/POM68KDisques.toolchain` names the toolchain of the shipped copy.
+The test compares the forks only when the two lines are equal; otherwise it
+holds the build to the same name, type and creator and prints that the
+forks were not compared. The shipped copy predates the stamp, so its line is
+`unrecorded` and no build compares against it until a refresh records one
+(TODO § Preuve). Proof of the strict branch: with `share/`'s line set to
+this host's stamp, the test fails on the 23 000 bytes, as before.
+
+The local build is not left unproven: every agent etalon loads
+`dev/scsiagent/build/` before `share/`, and the 59 `agent` gates (boot on
+40 machines, autostart, SCSI mailbox) pass with it on this host, none
+skipped.
+
+**Tiers**: `agent_binary_test` passes; the 59 `ctest -R agent` gates pass
+with the local build; `docs_test` passes.
 
 <a id="2026-11-14-ttvar"></a>
 ## 2026-11-14 (second) — Random transparent-translation windows on the 68040 find a translator defect: after TAS, CAS or CAS2, native reads marked their pages modified
