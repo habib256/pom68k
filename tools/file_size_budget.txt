@@ -12,7 +12,7 @@ cmake/Pom68kAgentGates.cmake             76
 cmake/Pom68kAudioGates.cmake             12
 cmake/Pom68kComponentGates.cmake         668
 cmake/Pom68kCorpusGates.cmake             12
-cmake/Pom68kCpuGates.cmake               182
+cmake/Pom68kCpuGates.cmake               191
 cmake/Pom68kDaynaGates.cmake             36
 cmake/Pom68kDevTools.cmake               161
 cmake/Pom68kFloppyGates.cmake            19

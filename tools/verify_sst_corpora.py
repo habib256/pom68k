@@ -28,7 +28,7 @@ import sys
 from pathlib import Path
 
 CORPORA = ("sst68000", "sst68030", "sst68030_solo", "sst68030_fpuraw",
-           "sst68030_fpu2", "sst68030_rmw",
+           "sst68030_fpu2", "sst68030_fpuh", "sst68030_rmw",
            "sst68040", "sst68040_8k", "sst68040_fline", "sst68040_fpu",
            "sst68040_fpu2", "sst68040_fpuh")
 
@@ -76,6 +76,16 @@ HEADER = """\
 #         --strict-fpu --steps 2 --n 2000 --seed S --out fpu2_M.json
 #   Replayed with `sst68030 --known tests/sst68030_fpu2.known` (21 vectors,
 #   all ruling D23b).
+# sst68030_fpuh — THREE steps per vector on the 68030 + 68882, strict
+#   oracle: an FPU instruction, an FNOP, and `FSAVE -(A7)` planted as the
+#   first word of the handlers of vectors 48 to 55, so that the IDLE frame a
+#   handler saves is in the vector. Generated 2026-11-14, 6 000 vectors: for
+#   each mmu in off, identity, tt, seeds 1311 to 1313:
+#         oracle/fuzz/fuzz030.py --a liboracle_uae.so --family fpuh --mmu M
+#         --strict-fpu --steps 3 --n 2000 --seed S --out fpuh_M.json
+#   Replayed with `sst68030 --strict-ram`, no known list: the exceptional
+#   operand of a trapped move-out is the normalized source, rounded with
+#   softfloat's carried precision (POM68K_VENDOR.md row 102).
 # sst68030_rmw — integer instructions whose LAST access is a write to memory
 #   through an address register aimed at a bad page (ALU to memory, ADDQ,
 #   immediates, NEG/NOT/CLR, bit operations, memory shifts, Scc, TAS, NBCD,

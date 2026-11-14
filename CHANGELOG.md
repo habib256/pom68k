@@ -277,6 +277,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **Do the oracle corpora pass through the JIT, not only the interpreter?** → [Every pinned corpus does since 2026-11-13; the first run found a host segfault at guest pc 0](#2026-11-13-jit-corpus-replay)
 - **Why does `agent_binary_test` not compare the shipped agent with this host's build?** → [Different Retro68/GCC, different code: it compares only builds of the reference toolchain, since 2026-11-14](#2026-11-14-agent-toolchain)
+- **Is there a fresh-seed sweep of both CPUs, interpreter and JIT?** → [`oracle/fuzz/sweep.sh`, since 2026-11-14; the first run found a 68030 MOVE frame and a 68882 frame operand](#2026-11-14-fresh-sweep)
 - **Do the 68040 corpora vary the transparent-translation windows?** → [Since 2026-11-14 (`--mmu ttvar`); the first sweep found the 68040 lock outliving TAS/CAS/CAS2 in generated code](#2026-11-14-ttvar)
 - **Does an instruction on a page's last word fault on the next page?** → [No: a prefetch fault waits until its word is used, since 2026-11-14; on the 68040 an A-line, illegal or CHK there reports the access error (D39)](#2026-11-14-deferred-prefetch-fault)
 - **Do the SST harnesses judge bytes the oracle left untouched?** → [With `--strict-ram`, since 2026-11-13; every pinned corpus is registered strict since the same day's eighteenth entry](#2026-11-13-strict-ram-all)
@@ -1358,6 +1359,56 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-14-fresh-sweep"></a>
+## 2026-11-14 (fourth) — A fresh-seed sweep of both CPUs finds two defects: a 68030 MOVE to (xxx).L stacked the long frame, and a trapped FMOVE out put an unnormalized exponent in the 68882 frame
+
+`oracle/fuzz/sweep.sh` is new: every family of `fuzz040.py` and
+`fuzz030.py` over every MMU setup each accepts, against the oracle (strict
+6888x on the 68030), replayed by the interpreter under `--strict-ram` and
+by the JIT lockstep harness. Its first run, seeds 71001-71043 and
+72001-72025, 1 000 a cell: 67 433 vectors, 68040 41 420 / 41 458, 68030
+25 874 / 25 975. Every divergence was classified
+(`oracle/fuzz/disputes/NOTES.md`); 129 are rulings already taken (D25,
+D26, D28, D29, D38, D39), five are two defects, both fixed:
+
+- **MOVE `<memory>`,(xxx).L on the 68030** (`random/identity seed=72008
+  #106`). `execMove8` writes before fetching the destination's second word
+  (68000 order) and so calls `writeM` itself; it armed the last-write
+  marker for the 68040 only. A 68030 store fault stacked the long $B at
+  the instruction's own PC with the old flags, where every other MOVE
+  destination stacks the short $A with the next PC — the frame a System 7
+  VM handler sees on a paged-out destination. `moira_rules_test`
+  (`moveAbsLongLastWrite030`) fails without the fix (format $B008, PC
+  $1000).
+- **The exceptional operand of a trapped FMOVE out on the 6888x** (three
+  fresh `fpuh` vectors, and the six the TODO had carried since 2026-11-07
+  as "six bytes of IDLE frame", offset $29). WinUAE normalizes the source
+  in place before the exception capture reads it; the fork normalized a
+  copy inside `fpuPutDest`, so an unnormalized register put its raw
+  exponent in the frame (`$CC42` for `$CC3D`). Regenerating that family's
+  seeds 1311-1313 then showed four more, offsets $2E-$2F: a single-precision
+  OVFL/UNFL rounds its operand with softfloat's intermediate precision,
+  which `saveFloat32Internal` never sets — it is whatever the previous
+  operation left. The oracle resets it per vector (its patch 14); the fork
+  carried it across vectors, and across save states. `fpuResetState` now
+  clears softfloat's intermediate result, and its two carried bytes travel
+  in `pomVisitState`: **save-state format v32**.
+
+Pinned: `sst68030_fpuh` (seeds 1311-1313, 6 000 vectors, recipe in
+`tests/sst_corpora.lock`), 6 000 / 6 000 with no known list, and
+`jit_sst68030_fpuh`. `POM68K_VENDOR.md` rows 101 and 102. The TODO's
+sweep item now names only the families still missing.
+
+**Tiers** (x86-64, fresh RelWithDebInfo + LTO build): every interpreter
+corpus gate, `moira_rules_test` and `moira_state_test`, 16/16; `jit_sst*`,
+`cpu_vectors*`, `savestate*`, `moira_*`, 37/37, census 37 executed;
+`asset-none` 157/157 after the repository contracts were updated (one
+soft-skip, `dir2hfs_selftest`: no `machfs` here); `m030|m040` 246/246 in
+1 h 38 at `-j16`, census 245 executed, one soft-skip
+(`lcii_floppy144_etalon`, no 1.44 MB image). Every machine pin held: the
+two fixes change only fault and FSAVE frames no boot reaches. The fresh
+sweep through the JIT lockstep is also clean on the fixed core.
 
 <a id="2026-11-14-agent-toolchain"></a>
 ## 2026-11-14 (third) — `agent_binary_test` compares the shipped agent only with a build of the same toolchain

@@ -1813,6 +1813,11 @@ private:
     // Power-up / null-frame state (MC68881UM-1989 § 6.4.2.1: control registers
     // zeroed, data registers = nonsignaling NaN $7FFF FFFF...FFFF)
     void fpuResetState();
+    // softfloat's intermediate-result precision (high byte) and rounding
+    // mode (low byte): the only part of fpuFloatStatus that outlives an
+    // instruction (fpuResetState). Out of line: float_status is opaque here.
+    u16 pomFpuCarriedModes() const;
+    void pomSetFpuCarriedModes(u16 modes);
     void fpuCompleteBusy(bool wait);
     template <Core C> void fpuRunBusy(int cycles, u16 opcode, u16 ext);
 
@@ -2777,8 +2782,9 @@ private:
 #include "MoiraExceptions.h"
 #include "MoiraDasm.h"
 
-    // Per-instance arithmetic scratch, opaque to clients and excluded from
-    // instruction-boundary archives. Gates: fpu_context_test, moira_state_test.
+    // Per-instance arithmetic scratch, opaque to clients. Instruction-boundary
+    // archives carry only its two carried modes (pomFpuCarriedModes).
+    // Gates: fpu_context_test, moira_state_test.
     std::unique_ptr<::float_status> fpuFloatStatus;
 };
 

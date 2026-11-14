@@ -73,6 +73,12 @@ template<class Ar> void Moira::pomVisitState(Ar& ar)
     ar(fpu.cmdreg1b, fpu.cmdreg3b, fpu.stag, fpu.dtag, fpu.wbtm66,
        fpu.grs, fpu.wbte15, fpu.e1, fpu.e3, fpu.t, fpu.fpiarCu,
        fpu.fpt, fpu.et, fpu.wbt);
+    // softfloat's intermediate-result precision and rounding mode outlive
+    // the instruction that set them: a later single-precision move-out
+    // rounds its trapped operand with them (fpuResetState). Format v32.
+    u16 fpuModes = pomFpuCarriedModes();
+    ar(fpuModes);
+    if constexpr (Ar::loading) pomSetFpuCarriedModes(fpuModes);
 
     // Public restart latch, also available to hosts that re-arm it after
     // RTE. Ignore the stale EA of an inactive latch: native MOVEM does not

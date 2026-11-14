@@ -41,6 +41,16 @@
 #         --strict-fpu --steps 2 --n 2000 --seed S --out fpu2_M.json
 #   Replayed with `sst68030 --known tests/sst68030_fpu2.known` (21 vectors,
 #   all ruling D23b).
+# sst68030_fpuh — THREE steps per vector on the 68030 + 68882, strict
+#   oracle: an FPU instruction, an FNOP, and `FSAVE -(A7)` planted as the
+#   first word of the handlers of vectors 48 to 55, so that the IDLE frame a
+#   handler saves is in the vector. Generated 2026-11-14, 6 000 vectors: for
+#   each mmu in off, identity, tt, seeds 1311 to 1313:
+#         oracle/fuzz/fuzz030.py --a liboracle_uae.so --family fpuh --mmu M
+#         --strict-fpu --steps 3 --n 2000 --seed S --out fpuh_M.json
+#   Replayed with `sst68030 --strict-ram`, no known list: the exceptional
+#   operand of a trapped move-out is the normalized source, rounded with
+#   softfloat's carried precision (POM68K_VENDOR.md row 102).
 # sst68030_rmw — integer instructions whose LAST access is a write to memory
 #   through an address register aimed at a bad page (ALU to memory, ADDQ,
 #   immediates, NEG/NOT/CLR, bit operations, memory shifts, Scc, TAS, NBCD,
@@ -254,6 +264,10 @@ sst68030_fpuraw | fpuraw_tt.json | 97728672 | bca9adca1a21d8d0d1ab3e839620ec4658
 sst68030_fpu2 | fpu2_identity.json | 97780326 | 3d85b5330228abbeb99c9d9888c025750c1fd93f0b0a15297937c21e332d8ae9
 sst68030_fpu2 | fpu2_off.json | 53967123 | 0191528184199ca4745354545441cbc5c230c17ad41dd050c11c3fe4547e38f3
 sst68030_fpu2 | fpu2_tt.json | 97799751 | 8feaad6dfadd9d2b22ac94762b56ffc2f54ba6313a814314db311a06da3e969c
+
+sst68030_fpuh | fpuh_identity.json | 97843319 | 9a8c439b2094f57ccbaa709a324559c5560608c4e4a5985f034d609d3370958f
+sst68030_fpuh | fpuh_off.json | 53997892 | b178a71dc34757e9de14850dbb860838ec78bf4c163052f7675fac910912d40f
+sst68030_fpuh | fpuh_tt.json | 97859138 | d21cd6882ae00344b3feecbede12d8efe43ebc88059b662674bdbb2db7fe2f5c
 
 sst68030_rmw | rmw_identity.json | 134834669 | 6611d0f2a0cdd0d837cf600f419d344a7529191f6abf77464834431d5cf30e2f
 sst68030_rmw | rmw_tt.json | 134868014 | 1a4b9cdbe26bc7c87d54e11d886c17936e2c9b0d4030f8b09fce95bfeef80a5b

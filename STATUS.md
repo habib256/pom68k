@@ -17,7 +17,7 @@ carry `tools/gate_execution_census.py`'s executed/soft-skipped pair: quote the
 pair, never the green total alone — a soft-skipped gate exited 0 and proved
 nothing about the behaviour it names.
 
-## Union across hosts — 587 gates
+## Union across hosts — 589 gates
 
 | `ctest -L` | selects |
 |---|---|
@@ -26,12 +26,12 @@ nothing about the behaviour it names.
 | `etalon-core` | 16 |
 | `gui` | 3 |
 | `interp-only` | 7 |
-| `jit` | 66 |
+| `jit` | 67 |
 | `jit-fast` | 8 |
 | `m030` | 145 |
 | `m040` | 102 |
 | `smoke` | 9 |
-| `unit` | 208 |
+| `unit` | 210 |
 | `wasm` | 46 |
 
 `-L` is a regex over each label: `jit` also selects `jit-fast`, `etalon`
@@ -40,51 +40,51 @@ scheduling slots are per-host manifest facts and live in the sections below.
 
 ## Registered on aarch64
 
-582 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
+584 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
 
 | dimension | value | gates |
 |---|---|---|
 | assets | none | 158 |
-| assets | optional | 37 |
+| assets | optional | 39 |
 | assets | required | 387 |
 | host | a64 | 4 |
-| host | any | 572 |
+| host | any | 574 |
 | host | native | 6 |
-| scope | component | 169 |
-| scope | engine | 32 |
+| scope | component | 170 |
+| scope | engine | 33 |
 | scope | profile | 376 |
 | scope | repository | 5 |
 | tier | daily | 158 |
-| tier | full | 408 |
+| tier | full | 410 |
 | tier | platform | 16 |
-| slots_src | assumed | 462 |
+| slots_src | assumed | 464 |
 | slots_src | measured | 120 |
 
-Scheduling cost if every gate ran at once: 817 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 819 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## Registered on x86_64
 
-583 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
+585 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
 
 | dimension | value | gates |
 |---|---|---|
 | assets | none | 157 |
-| assets | optional | 37 |
+| assets | optional | 39 |
 | assets | required | 389 |
-| host | any | 572 |
+| host | any | 574 |
 | host | native | 6 |
 | host | x64 | 5 |
-| scope | component | 169 |
-| scope | engine | 33 |
+| scope | component | 170 |
+| scope | engine | 34 |
 | scope | profile | 376 |
 | scope | repository | 5 |
 | tier | daily | 157 |
-| tier | full | 410 |
+| tier | full | 412 |
 | tier | platform | 16 |
-| slots_src | assumed | 470 |
+| slots_src | assumed | 472 |
 | slots_src | measured | 113 |
 
-Scheduling cost if every gate ran at once: 942 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 944 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## PRODUCT_LLE on aarch64
 
@@ -240,3 +240,5 @@ overwrites it, including a one-gate `ctest -R`.
 | Nov 10 12:17 +04 | aarch64 | default | 24 | 24 | 0 | 0 | Final normal build: 24 CPU/JIT/state/docs gates, public vectors and SoftFloat boundary regressions |
 | Nov 10 20:50 +04 | aarch64 | default | 102 | 101 | 1 | 0 | m040 tier (Moira release cut, dead 040 i-cache overlay removed): 102/102 passed; one soft-skip (q605_serial_etalon, serprobe not built) then executed alone and passed with the probe built |
 | Nov 10 22:38 +04 | aarch64 | default | 141 | 141 | 0 | 0 | m030 tier with the 68030 CACR read mask $3313 (upstream f7844ac, row 86): 141/141 executed, zero skips |
+| Nov 14 13:46 +04 | x86_64 | default | 246 | 245 | 1 | 0 | Fresh-seed sweep fixes (68030 MOVE to (xxx).L last write, 6888x move-out frame operand, save-state v32): ctest -L 'm030\|m040' -j16, 246/246 in 5901.61 s; census 245 executed / 1 soft-skipped (lcii_floppy144_etalon, no 1.44 MB image) / 0 failed |
+| Nov 14 13:40 +04 | x86_64 | default | 37 | 37 | 0 | 0 | Same change: jit_sst*, cpu_vectors*, savestate*, moira_* -j8, 37/37; census 37 executed / 0 soft-skipped |
