@@ -1294,7 +1294,7 @@ interpreter and an engine-driven core, run a warm-up pass so the vector's
 own instruction is generated code on the judged pass, then run both to the
 same clock and compare every register, the clock and the whole 16 MB bus.
 The `jit_sst*` gates read the optional corpora (`asset-optional`); the
-`cpu_vectors0x0_jit_test` pair replays the 304 public vectors on every CI
+`cpu_vectors0x0_jit_test` pair replays the 336 public vectors on every CI
 host. They judge the translator against the interpreter on states no
 Macintosh boot reaches — their first run found a host segfault on a guest
 `pc` of 0 in user mode (an empty dispatch-cache slot had key 0) and two

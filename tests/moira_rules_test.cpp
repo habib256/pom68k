@@ -2090,6 +2090,50 @@ void cas2IsReadModifyWrite030()
     }
 }
 
+void lockEndsWithTheInstruction040()
+{
+    // The 68040's locked read-modify-write (TAS, CAS, CAS2) translates its
+    // reads as writes, so the operand page is marked modified
+    // (MC68040UM-1993 §7.4.5 for the locked sequence). The lock ends with
+    // the instruction. A read that follows — here the data door generated
+    // code uses, which runs no instruction-start bookkeeping — must leave
+    // its page with U alone. Before 2026-11-14 the flag outlived the
+    // instruction and the x86-64 translator set M on every page a block read
+    // after TAS ("040 random/ttvar/8k seed=2026111470 #927").
+    constexpr uint32_t kRoot = 0x4000, kPtr = 0x4200, kPages = 0x6000;
+    constexpr uint32_t kFirst = 0x20010, kSecond = 0x21010, kRead = 0x30000;
+    struct Case { uint16_t opcode; uint16_t ext[3]; unsigned words; const char* what; };
+    for (const Case& k : { Case{ 0x4ad0, {kNop, kNop, kNop},     0, "TAS (A0)" },
+                           Case{ 0x0cd0, {0x0080, kNop, kNop},   1, "CAS.W, compare failing" },
+                           Case{ 0x0cfc, {0x8080, 0x90c1, kNop}, 2, "CAS2.W, compare failing" } }) {
+        TestCpu c(moira::Model::M68040);
+        p32(c, kRoot, kPtr | 2);
+        p32(c, kPtr, kPages | 2);
+        for (uint32_t page = 0; page < 64; page++)       // identity, 256 KB
+            p32(c, kPages + page * 4, page << 12 | 1);
+        p16(c, kFirst, 0x1234); p16(c, kSecond, 0x5678); p16(c, kRead, 0x9ABC);
+        stage(c, k.opcode, 0);
+        for (unsigned i = 0; i < 3; i++) p16(c, kCode + 2 + 2 * i, k.ext[i]);
+        c.setIRC(k.ext[0]);
+        c.setA(0, kFirst); c.setA(1, kSecond);
+        c.setD(0, 0); c.setD(1, 0);                      // neither compare matches
+        c.setURP040(kRoot); c.setSRP040(kRoot);
+        c.setTC040(0x8000);
+        const bool contained = executeContained(c);
+        const auto desc = [&](uint32_t addr) { return g32(c, kPages + (addr >> 12) * 4); };
+        CHECK(contained && c.faults == 0 && c.getPC0() == kCode + 2 + 2 * k.words,
+              "68040 %s under translation: PC0=%08X, %d fault(s)", k.what,
+              c.getPC0(), c.faults);
+        CHECK((desc(kFirst) & 0x10) != 0,
+              "68040 %s: the operand page is not modified (%08X)", k.what, desc(kFirst));
+        uint32_t value = 0;
+        const bool read = c.pomJitReadData(kRead, 2, value);
+        CHECK(read && value == 0x9ABC && (desc(kRead) & 0x18) == 0x08,
+              "68040 %s, then a data read: read=%d value=%04X descriptor %08X "
+              "(want U without M)", k.what, read, value, desc(kRead));
+    }
+}
+
 void packUnpkFaultRestoresAn()
 {
     // [D] WinUAE gencpu.c i_PACK/i_UNPK @ Hatari e77819f7 (cpuemu_31/32
@@ -2210,6 +2254,7 @@ int main(int argc, char** argv)
     oddStackInterruptFrame();
     prefetchPipeAndIplPoll030();
     cas2IsReadModifyWrite030();
+    lockEndsWithTheInstruction040();
     packUnpkFaultRestoresAn();
 
     if (failures) {
@@ -2223,6 +2268,6 @@ int main(int argc, char** argv)
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68EC030 plain-020 path with a 68030 "
-                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, PACK/UNPK -(An) faults on the 68030/68040\n");
+                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, the 68040 lock ending with TAS/CAS/CAS2, PACK/UNPK -(An) faults on the 68030/68040\n");
     return 0;
 }

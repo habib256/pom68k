@@ -66,7 +66,7 @@ def main() -> int:
                     choices=["core", "mmu", "random", "fault", "fpu",
                              "fline", "fpuraw", "fpu2", "sysraw", "rmw",
                              "fpuh", "pagend"])
-    ap.add_argument("--mmu", default="off", choices=["off", "identity", "tt"])
+    ap.add_argument("--mmu", default="off", choices=["off", "identity", "tt", "ttvar"])
     ap.add_argument("--page", default="4k", choices=["4k", "8k"],
                     help="page size of the generated trees (TC.P)")
     ap.add_argument("--steps", type=int, default=1,

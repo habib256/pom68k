@@ -341,10 +341,10 @@ boot.
   descripteurs indirects ou longs, ni violation de limite, et la cellule
   `tt` ne parcourt jamais l'arbre. Les géométries réelles ne sont prouvées
   que par les boots. `oracle/README.md` annonce plus que le code ne fait.
-- [ ] **Varier les TTR du fuzzer 040 et balayer des graines neuves à
-  chaque passe.** Les pages de 8 Ko ont leur corpus (`sst68040_8k`,
-  4 000 vecteurs, recette dans `tests/sst_corpora.lock`) ; reste la
-  disposition des TTR, figée (ITT0 = tout, DTT0 = superviseur seul). Deux
+- [ ] **Balayer des graines neuves du fuzzer 040 à chaque passe.** Les
+  pages de 8 Ko ont leur corpus (`sst68040_8k`, 4 000 vecteurs, recette
+  dans `tests/sst_corpora.lock`) ; les TTR varient depuis le 2026-11-14
+  (`--mmu ttvar`, deux cellules dans `tests/cpu_vectors/`). Deux
   leçons : le 2026-11-06, 13 100 vecteurs de graines neuves ont trouvé
   trois défauts que les 7 200 épinglés ne contenaient pas ; le 2026-11-07,
   une famille ciblée (`fline`, la fenêtre F-line brute) est partie de

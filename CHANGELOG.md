@@ -276,6 +276,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
 - **Do the oracle corpora pass through the JIT, not only the interpreter?** → [Every pinned corpus does since 2026-11-13; the first run found a host segfault at guest pc 0](#2026-11-13-jit-corpus-replay)
+- **Do the 68040 corpora vary the transparent-translation windows?** → [Since 2026-11-14 (`--mmu ttvar`); the first sweep found the 68040 lock outliving TAS/CAS/CAS2 in generated code](#2026-11-14-ttvar)
 - **Does an instruction on a page's last word fault on the next page?** → [No: a prefetch fault waits until its word is used, since 2026-11-14; on the 68040 an A-line, illegal or CHK there reports the access error (D39)](#2026-11-14-deferred-prefetch-fault)
 - **Do the SST harnesses judge bytes the oracle left untouched?** → [With `--strict-ram`, since 2026-11-13; every pinned corpus is registered strict since the same day's eighteenth entry](#2026-11-13-strict-ram-all)
 - **Is CAS2 a locked read-modify-write on the 68030, as CAS and TAS are?** → [It is since 2026-11-13; a fresh-seed sweep found it](#2026-11-13-cas2-rmw-030)
@@ -1356,6 +1357,62 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-14-ttvar"></a>
+## 2026-11-14 (second) — Random transparent-translation windows on the 68040 find a translator defect: after TAS, CAS or CAS2, native reads marked their pages modified
+
+Every 68040 corpus so far used one window layout: ITT0 matching everything
+and DTT0 matching supervisor accesses (`--mmu tt`), or none at all.
+`gen040.py` gains `--mmu ttvar`: over the same identity tree, each of ITT0,
+ITT1, DTT0 and DTT1 is drawn off, matching (base 0) or missing (a nonzero
+base left compared by the mask), with a random S field, CM, U1/U0 and, one
+window in three, W. A window hit, a miss that walks the tree and a
+write-protected window's fault are all reached.
+
+The first replay failed 1 220 of 1 780 vectors, all on a TTR register
+itself. The generator had drawn the inert (E clear) windows as 32 random
+bits, and state injection, unlike MOVEC, keeps reserved bits the fork
+masks with `$FFFFE364`. A generator defect: an inert window now draws the
+implemented bits only.
+
+Fresh-seed sweep, seeds 2026111461-2026111474, 1 500 vectors per cell
+before halts, `core`, `mmu`, `random`, `fault`, `rmw`, `sysraw` and `fline`
+× 4 KB and 8 KB pages, `--strict-ram`: 17 966 / 17 971 through the
+interpreter. The five others are the kept ruling D38 (a descriptor U bit
+set by the irc lookahead at a page's end), now listed in
+`oracle/fuzz/disputes/NOTES.md`.
+
+Through the translator (`sst68040_jit`, judged against the interpreter):
+17 970 / 17 971. `040 random/ttvar/8k seed=2026111470 #927` is
+`TAS (A4)` then `MOVEA.L (-23258,A2),A2`; the x86-64 backend set M on the
+page the MOVEA only read, the threaded backend and `--cold` did not.
+Variants pinned it on TAS, CAS and CAS2 followed by any data read, even
+across a NOP. The cause is in the fork: the 68040 lock flag
+`mmu040Lrmw`, which makes a read translate as a write, was cleared only by
+`mmu040InstrStart`. Generated code does not run that function, so a block
+entered after a locked instruction read every operand as a locked write.
+The 68030's `mmuRmw` already had both guards (CAS/CAS2 clear it, the block
+prologue clears it, `Moira.h` § PomJitLayout); the 68040 had neither. TAS,
+CAS and CAS2 now end their lock themselves (`POM68K_VENDOR.md` row 100),
+which serves both backends. `moira_rules_test`
+(`lockEndsWithTheInstruction040`) reads through the translator's data
+door after each of the three; its three checks were red before the fix.
+After it: 17 971 / 17 971 through the translator.
+
+Two cells are pinned in `tests/cpu_vectors/040.json.gz` (168 → 200
+vectors): `fault × ttvar`, 16 vectors, seed 2026111432, and `rmw × ttvar`
+on 8 KB pages, 16 vectors, seed 2026111417. The manifest requires every
+vector of a recipe to be kept, and a `fault × ttvar` cell halts about one
+vector in seven, so these are the first halt-free seeds found. The 030
+corpus is unchanged.
+
+**Tiers**, x86-64 host, RelWithDebInfo + native LTO build:
+`unit|jit|cpu-vectors` 227 / 228, with `moira_rules_test`, the four
+`cpu_vectors030/040` gates (interpreter and `_jit`) on the 136- and
+200-vector corpora, the strict `sst68030_solo` and `sst68040*` gates and the
+eleven `jit_sst*` gates executed; `agent_binary_test` is this host's Retro68
+toolchain, red before the change. `m030` 145 / 145, `m040` 102 / 102. The
+touched targets build under `-Werror`.
 
 <a id="2026-11-14-deferred-prefetch-fault"></a>
 ## 2026-11-14 — A prefetch fault waits until its word is used: an instruction ending on a page's last word no longer faults on the next page

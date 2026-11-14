@@ -69,6 +69,9 @@ the next opcode is fetched, one step later, outside the vector. Three
 vectors: `040 mmu/identity seed=203 #506` (`tests/sst68040.known`),
 `040 fault/identity/8k seed=607 #264` (`tests/sst68040_8k.known`),
 `040 fpuraw/identity seed=962 #1296` (`tests/sst68040_fpu.known`).
+The `ttvar` sweep of 2026-11-14 (14 cells, 17 971 vectors, seeds
+2026111461-2026111474) met five more, all an instruction ending at `$10FFE`,
+`$11FFC` or `$11FFE` with the next page walked: nothing new.
 
 Kept: a real 68030 and 68040 prefetch ahead of the instruction they decode
 (an instruction pipe, an instruction fetch unit), so a table search for the

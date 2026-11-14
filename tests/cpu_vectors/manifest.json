@@ -111,11 +111,26 @@
           "n": 24,
           "steps": 1,
           "seed": 2026111407
+        },
+        {
+          "family": "fault",
+          "mmu": "ttvar",
+          "n": 16,
+          "steps": 1,
+          "seed": 2026111432
+        },
+        {
+          "family": "rmw",
+          "mmu": "ttvar",
+          "n": 16,
+          "steps": 1,
+          "seed": 2026111417,
+          "page": "8k"
         }
       ],
-      "sha256": "bed0d32515352375d5f460c0e26102937fb0d97094b41f961bc4b2f4914cbda9",
-      "bytes": 30883021,
-      "vectors": 168
+      "sha256": "0ca88b4e835e9ec92a941c69e2020f604349bbbc149ac464681cec1e71584a2e",
+      "bytes": 38163352,
+      "vectors": 200
     }
   }
 }
