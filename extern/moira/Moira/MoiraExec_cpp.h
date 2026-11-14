@@ -3930,6 +3930,16 @@ Moira::execMove8(u16 opcode)
             mmu040LastWrite = true;
             mmu040LastWritePc = reg.pc + 2;
         }
+        // [D] WinUAE gencpu.c gen_set_fault_pc @ Hatari e77819f7 — the
+        // 68030 marks the same store as the last write: a fault stacks the
+        // short format $A with the next instruction's PC, as writeOp does
+        // for every other MOVE destination. This path calls writeM itself
+        // and had no mark, so a memory-to-ABS.L MOVE stacked a $B frame.
+        // Gate: moira_rules_test (moveAbsLongLastWrite030).
+        if (C == Core::C68020 && cpuModel == Model::M68030) {
+            mmuState[1] |= 0x0100;                  // LASTWRITE
+            mmuLastWritePc = reg.pc + 2;
+        }
         writeM<C, Mode::AL, S>(ea2, data);
         if (C == Core::C68020 && cpuModel >= Model::M68EC040)
             mmu040LastWrite = false;

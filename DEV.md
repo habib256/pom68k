@@ -280,6 +280,10 @@ JIT translations directly, via `jitMapChanged()` ([§4](#4-jit--the-second-execu
   `MoiraSnapshot` delegates to it. The host archive and file format stay
   outside Moira. `moira_state_test` loads fresh bare CPUs at executed
   PMMU/FPU continuation boundaries and checks resumed execution.
+- **Format v32** adds softfloat's intermediate-result precision and
+  rounding mode: a trapped single-precision FMOVE out rounds the
+  exceptional operand of its 6888x frame with the previous operation's
+  values. Versions through v31 are refused.
 - **Format v31** adds Moira's 68000 STOP iteration phase
   (`stopGraceUntil`): a machine saved while stopped wakes on the same
   4-cycle boundary. Versions through v30 are refused.

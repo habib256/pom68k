@@ -622,6 +622,37 @@ Moira::fpuResetState()
     fpu.stag = fpu.dtag = fpu.wbtm66 = fpu.grs = fpu.wbte15 = 0;
     fpu.e1 = fpu.e3 = fpu.t = false;
     for (int i = 0; i < 3; i++) fpu.fpt[i] = fpu.et[i] = fpu.wbt[i] = 0;
+
+    // [D] WinUAE fpp.c pom_fpu_clear_internal (oracle/uae VENDOR.md patch
+    // 14) @ Hatari e77819f7 — softfloat's last intermediate result is FPU
+    // state too. saveFloat32Internal leaves the precision and rounding mode
+    // of the previous operation in place, and getFloatInternalOverflow/
+    // Underflow round with them: the exceptional operand of a single-
+    // precision move-out that traps depended on what ran before the reset
+    // (sst68030 fpuh, frame offsets $2C-$2F). The two survivors are carried
+    // by pomVisitState (format v32). [F] for silicon: the 6888x's own value.
+    // Settled by: an FSAVE after a trapped FMOVE.S out on a real 68882.
+    ::float_status &fs = *fpuFloatStatus;
+    fs.floatx80_internal_sign = 0;
+    fs.floatx80_internal_exp = fs.floatx80_internal_exp0 = 0;
+    fs.floatx80_internal_sig = fs.floatx80_internal_sig0 =
+        fs.floatx80_internal_sig1 = 0;
+    fs.floatx80_internal_precision = 80;
+    fs.floatx80_internal_mode = float_round_nearest_even;
+}
+
+u16
+Moira::pomFpuCarriedModes() const
+{
+    return u16(u8(fpuFloatStatus->floatx80_internal_precision) << 8 |
+               u8(fpuFloatStatus->floatx80_internal_mode));
+}
+
+void
+Moira::pomSetFpuCarriedModes(u16 modes)
+{
+    fpuFloatStatus->floatx80_internal_precision = int8_t(modes >> 8);
+    fpuFloatStatus->floatx80_internal_mode = int8_t(modes & 0xff);
 }
 
 void
@@ -3047,6 +3078,16 @@ Moira::execFMove(u16 opcode)
     fpuMakeStatus();
     if (fpuModel == FPUModel::M68040 || (fpu.fpcr & 0x7f00))
         fpu.fpiar = reg.pc0;
+
+    // [D] WinUAE fpp.c put_fp_value2 @ Hatari e77819f7 — the move-out
+    // normalizes its source IN PLACE (normalize_or_fault_if_no_denormal_
+    // support, fpp_normalize), and the exception capture that follows
+    // reads that same operand: the 6888x IDLE frame's exceptional operand
+    // carries the normalized exponent. fpuPutDest normalizes its own copy.
+    // [F] for silicon: what a real 68882 leaves there for an unnormalized
+    // register. Settled by: an FSAVE after FMOVE.L of an unnormal that
+    // overflows, on a real 68882. Gate: sst68030_fpuh (offset $28-$29).
+    fpuNormalize(value);
 
     const int dstSize = (ext >> 10) & 7;
     const u32 integerNonmaskable = fpuModel == FPUModel::M68040 &&

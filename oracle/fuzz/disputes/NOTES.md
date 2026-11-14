@@ -907,6 +907,34 @@ core, mmu, random and fault with identity and tt, 800 a cell, 4 KB pages:
   lower. **Fixed the same day** (`POM68K_VENDOR.md` row 95): PACK arms its
   restart fixup and reads one word, as gencpu does.
 
+### Not disputes: the fresh-seed sweep of 2026-11-14 (seeds 71001-71043, 72001-72025)
+Every family of both generators, 1 000 vectors a cell, over off, identity,
+tt and (68040) ttvar, strict oracle on the 68030: 67 433 vectors (the
+`ttvar` cells keep 81-94 %, `pagend` runs on identity only). First replay
+with `--strict-ram`, interpreter: 68040 41 420 / 41 458, 68030
+25 874 / 25 975.
+- `random/identity seed=72008 #106`: MOVE.W (d16,A7),(xxx).L whose store
+  faults — the oracle stacks the short $A, the fork the long $B. **Fixed
+  the same day** (`POM68K_VENDOR.md` row 101): `execMove8` armed the last
+  write for the 68040 only.
+- `fpuh/* seed=72023-72025` (three): the IDLE frame's exceptional operand
+  of a trapped FMOVE out, offset $29 — the source register held an
+  unnormalized value; the oracle's frame has the normalized exponent.
+  **Fixed the same day** (row 102), with four more of the same family at
+  seeds 1311-1313 (offsets $2E-$2F, single-precision OVFL/UNFL, softfloat's
+  carried precision). Pinned as `sst68030_fpuh`, 6 000 / 6 000.
+- Rulings, nothing new. 68040 (37): D25 15 and D26 14 (`fpuraw`); D38 8,
+  descriptor U bits of the page after an instruction or step ending at
+  `$10FFE`, `$12FFE` or `$13FFE`, and `040 random/ttvar seed=71012 #635`,
+  the same lookahead on a JSR target page; D39 1, `040 pagend/identity
+  seed=71043 #287`: `$48DC`, MOVEM to (A4)+, an illegal form on a page's
+  last word (the `pagend` list leaves illegal opcodes out, not illegal EA
+  forms). 68030 (97): D26 11, D28 56 and D29 29 (`fpuraw`); D28 1,
+  `random/tt seed=72009 #354`.
+The JIT lockstep (`sst68030_jit`, `sst68040_jit`, x86-64 backend) replays
+every cell without a divergence. The sweep is not pinned beyond
+`sst68030_fpuh`.
+
 ## The raw F-line window on the 68030 + 68882, and the oracle's strict setting (2026-11-07)
 
 `gen030.py` gained the `fpuraw` family (the generator gen040 used for

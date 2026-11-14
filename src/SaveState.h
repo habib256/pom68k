@@ -318,7 +318,9 @@ inline constexpr char     kMagic[8]  = {'P','O','M','6','8','K','S','S'};
 // cache-model mode. RAM alone cannot reconstruct stale or copyback bytes.
 // v31: Moira's 68000 STOP iteration phase (stopGraceUntil): a machine saved
 // while stopped must wake on the same 4-cycle boundary.
-inline constexpr u32      kVersion   = 31;
+// v32: softfloat's intermediate-result precision and rounding mode, which a
+// trapped single-precision FMOVE out rounds its 6888x frame operand with.
+inline constexpr u32      kVersion   = 32;
 
 struct Header {
     u32 version     = kVersion;

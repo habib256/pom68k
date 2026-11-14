@@ -158,6 +158,18 @@ are all reached.
 There is no `loop.sh` equivalent: the 040 corpus under
 `tests/data/sst68040/` is pinned and replayed by the `sst68040` gate.
 
+## Fresh-seed sweeps, both CPUs
+
+A pinned corpus is a floor, not a coverage: fresh seeds keep finding what
+the pinned vectors never drew. `fuzz/sweep.sh SEED040 SEED030 [N] [OUT]
+[BUILD]` generates every family of `fuzz040.py` and `fuzz030.py` over every
+MMU setup each accepts (strict 6888x on the 68030), N vectors a cell
+(default 1 000), then replays each family with the interpreter
+(`--strict-ram`) and with the JIT lockstep harness, and writes
+`summary.txt`. Every divergence is read against `fuzz/disputes/NOTES.md`
+before it is called new; the sweep itself is not pinned, a fix pins what
+holds it. The 2026-11-14 sweep (NOTES.md) is the reference run.
+
 ## Licensing / provenance
 
 The WinUAE core is GPL-compatible (GPLv2+). `uae/VENDOR.md` carries the

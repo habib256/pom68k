@@ -66,6 +66,13 @@ add_test(NAME sst68030_fpu2
                  --known "${CMAKE_CURRENT_SOURCE_DIR}/tests/sst68030_fpu2.known"
                  --strict-ram)
 
+# Three steps per vector on the 68030 + 68882, strict oracle: FSAVE planted
+# at the head of the FPU exception handlers puts the IDLE frame in the vector.
+set(POM68K_SST030_FPUH_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/sst68030_fpuh"
+    CACHE PATH "Directory of SST030 vectors whose FPU handlers FSAVE, strict oracle")
+add_test(NAME sst68030_fpuh
+         COMMAND sst68030 "${POM68K_SST030_FPUH_DIR}" --strict-ram)
+
 # Write faults on the last access of read-modify-write instructions, 68030:
 # the short frame $A, the next instruction's PC, the flags already final.
 set(POM68K_SST030_RMW_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/sst68030_rmw"
@@ -137,6 +144,7 @@ add_test(NAME sst_corpora_lock_test
                  --dir sst68030_solo=${POM68K_SST030_SOLO_DIR}
                  --dir sst68030_fpuraw=${POM68K_SST030_FPURAW_DIR}
                  --dir sst68030_fpu2=${POM68K_SST030_FPU2_DIR}
+                 --dir sst68030_fpuh=${POM68K_SST030_FPUH_DIR}
                  --dir sst68030_rmw=${POM68K_SST030_RMW_DIR}
                  --dir sst68040=${POM68K_SST040_DIR}
                  --dir sst68040_8k=${POM68K_SST040_8K_DIR}
@@ -169,6 +177,7 @@ add_test(NAME jit_sst68030 COMMAND sst68030_jit "${POM68K_SST030_DIR}")
 add_test(NAME jit_sst68030_solo COMMAND sst68030_jit "${POM68K_SST030_SOLO_DIR}")
 add_test(NAME jit_sst68030_fpuraw COMMAND sst68030_jit "${POM68K_SST030_FPURAW_DIR}")
 add_test(NAME jit_sst68030_fpu2 COMMAND sst68030_jit "${POM68K_SST030_FPU2_DIR}")
+add_test(NAME jit_sst68030_fpuh COMMAND sst68030_jit "${POM68K_SST030_FPUH_DIR}")
 add_test(NAME jit_sst68030_rmw COMMAND sst68030_jit "${POM68K_SST030_RMW_DIR}")
 # The 336 public vectors (tests/cpu_vectors/) through the translator: the
 # same replay with no optional data, so CI exercises it on every host.

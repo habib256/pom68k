@@ -39,8 +39,8 @@ une optimisation côté hôte POM68K ne rapproche pas de NeoST.
 - **Les additions 68030/68040 et le JIT sont prouvés dans POM68K, pas
   prêts à exporter.** Corpus différentiels verts contre WinUAE strict,
   premier oracle FPU 68040, D23b/D24 tranchées par le manuel — mais :
-  1. les restes nommés ne sont pas corrigés (D25–D29, six octets de
-     frame IDLE 68882) ; depuis le 2026-11-10 (`CHANGELOG`, sixième à
+  1. les restes nommés D25–D29 ne sont pas tranchés (les six octets de
+     frame IDLE 68882 le sont depuis le 2026-11-14) ; depuis le 2026-11-10 (`CHANGELOG`, sixième à
      onzième), les champs de bits mémoire ne touchent plus que leurs
      octets, les restes 030 du balayage de 60 000 vecteurs sont réglés et
      `sst68030_rmw` n'a plus de liste de divergences ;
@@ -341,25 +341,16 @@ boot.
   descripteurs indirects ou longs, ni violation de limite, et la cellule
   `tt` ne parcourt jamais l'arbre. Les géométries réelles ne sont prouvées
   que par les boots. `oracle/README.md` annonce plus que le code ne fait.
-- [ ] **Balayer des graines neuves du fuzzer 040 à chaque passe.** Les
-  pages de 8 Ko ont leur corpus (`sst68040_8k`, 4 000 vecteurs, recette
-  dans `tests/sst_corpora.lock`) ; les TTR varient depuis le 2026-11-14
-  (`--mmu ttvar`, deux cellules dans `tests/cpu_vectors/`). Deux
-  leçons : le 2026-11-06, 13 100 vecteurs de graines neuves ont trouvé
-  trois défauts que les 7 200 épinglés ne contenaient pas ; le 2026-11-07,
-  une famille ciblée (`fline`, la fenêtre F-line brute) est partie de
-  3 074 / 4 500 là où la famille `random` ne plaçait que quatre vecteurs
-  épinglés. Un corpus épinglé est un plancher, pas une couverture, et une
-  famille aléatoire ne remplace pas une famille par fenêtre de décodage.
-  Faire du balayage de graines neuves une étape de la boucle
-  (`oracle/fuzz/loop.sh` n'a pas d'équivalent 040), et écrire les familles
-  brutes qui manquent : extensions complètes d'EA réservées, et le
-  pendant 68040 de la famille `rmw` (écritures fautives des instructions
-  RMW, `sst68030_rmw`). La fenêtre
-  `$F400-$F7FF` (CINV/CPUSH/PFLUSH/PTEST/MOVE16) a la sienne (`sysraw`,
-  6 000 / 6 000 au premier rejeu, non épinglée). La fenêtre cpID 1 du
-  68030 a la sienne depuis le 2026-11-07 (`sst68030_fpuraw`, 6 000
-  vecteurs contre l'oracle strict).
+- [ ] **Écrire les familles brutes qui manquent au balayage.** Le
+  balayage de graines neuves est une étape de la boucle depuis le
+  2026-11-14 (`oracle/fuzz/sweep.sh` : toutes les familles des deux
+  générateurs, interprète et JIT ; première passe, 67 433 vecteurs, deux
+  défauts — `oracle/fuzz/disputes/NOTES.md`). Un corpus épinglé est un
+  plancher, et une famille aléatoire ne remplace pas une famille par
+  fenêtre de décodage (`fline`, 2026-11-07). Reste la famille des
+  extensions complètes d'EA réservées, et des listes d'opcodes `pagend`
+  qui écartent aussi les formes d'EA illégales (D39 s'y glisse par
+  MOVEM).
 - [ ] **Donner au corpus FPU du 68040 les exceptions armées et les
   caches.** `sst68040_fpu` (7 500 vecteurs) pose FPCR avec des exceptions
   armées sur un vecteur sur dix seulement, et aucun corpus 68040 n'a
@@ -508,14 +499,6 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   simplification : à faire avec le mécanisme de D24 étendu au vecteur 55,
   des vecteurs à deux instructions, et une liste de divergences connues
   le temps de régénérer. Noté le 2026-11-07 en lisant § 9.7 pour D24.
-- [ ] **Six octets de frame IDLE 68882 après une sortie mémoire qui
-  trappe.** Famille `fpuh` (FSAVE en tête des handlers, trois pas, sur la
-  branche `engine/next`), 68030 + 68882, oracle strict : 5 977 / 6 000 ;
-  17 sont D23b, six sont une sortie FMOVE vers la mémoire ou un entier
-  dont l'exception est prise, et dont la frame IDLE sauvée par le handler
-  diffère d'un octet (offset $29 : `fpuh/tt seed=1313 #1298`, `#869`,
-  `#1388`, `#1501`, `fpuh/off seed=1311 #1078`, `#1393`). Même famille sur
-  le 68040 : voir rang 51 de la branche.
 - [ ] **Trancher FMOVE.P vers Dn (D25) et le pas (An)± du k-facteur
   dynamique (D26).** D25 : Line-F ici (`fpu040_test`), trappe de type de
   donnée dans l'oracle — 27 vecteurs. D26 : le fork avance An de 12, la

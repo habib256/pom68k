@@ -1637,6 +1637,38 @@ void aluWriteBuffer030()
     }
 }
 
+// MOVE <memory>,(xxx).L: on the 68000 order the destination's second word
+// is fetched after the write, so this handler calls writeM itself instead of
+// writeOp, and it marked the store as the last write for the 68040 only. A
+// 68030 /BERR there stacked a long $B frame at the instruction's own PC; the
+// short $A frame with the next instruction's PC is what every other MOVE
+// destination stacks. [D] WinUAE gencpu.c gen_set_fault_pc @ Hatari
+// e77819f7 ("random/identity seed=72008 #106", fresh-seed sweep 2026-11-14).
+void moveAbsLongLastWrite030()
+{
+    TestCpu c(moira::Model::M68030);
+    p32(c, 2 * 4, kHandler);
+    p16(c, kHandler, kNop);
+    stage(c, 0x33d1, 0);                            // MOVE.W (A1),(xxx).L
+    p32(c, kCode + 2, kHole);
+    p16(c, kCode + 6, kNop);
+    c.setIRC(uint16_t(kHole >> 16));
+    p16(c, 0x3000, 0x8001);                         // a negative source word
+    c.setA(1, 0x3000);
+    c.holeArmed = true;
+    c.holeWritesOnly = true;
+    const bool contained = executeContained(c);
+    const uint32_t sp = c.getSP();
+    const uint16_t format = g16(c, sp + 6);
+    const uint32_t pc = g32(c, sp + 2);
+    const uint16_t sr = g16(c, sp);
+    CHECK(contained && c.getPC0() == kHandler && format == 0xa008 &&
+          pc == kCode + 6 && (sr & 0x0f) == 0x08,
+          "68030 MOVE.W (A1),(xxx).L /BERR on the store: format %04X (want A008), "
+          "stacked PC %08X (want %08X), CCR %X (want N)", format, pc, kCode + 6,
+          sr & 0x1f);
+}
+
 // The CACR clear bits are command strobes that read back as zero.
 // [B] MC68030UM-1989 §6.3.1 — CI, CEI (§6.3.1.8/.9), CD and CED
 // (§6.3.1.3/.4) are "always read as a zero"; WinUAE's 68030 read mask is
@@ -2236,6 +2268,7 @@ int main(int argc, char** argv)
     jmpOddTargetPc030();
     fsccWriteBuffer030();
     aluWriteBuffer030();
+    moveAbsLongLastWrite030();
     ec030UsesPlain020Path();
     cacrStrobesReadZero();
     jsrTargetFetchFault();
@@ -2267,7 +2300,7 @@ int main(int argc, char** argv)
                 "shapes, five-bit FBcc predicate, 68040 FPU store fault, 68040 TTR "
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
-                "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68EC030 plain-020 path with a 68030 "
+                "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68030 MOVE to (xxx).L last write, 68EC030 plain-020 path with a 68030 "
                 "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, the 68040 lock ending with TAS/CAS/CAS2, PACK/UNPK -(An) faults on the 68030/68040\n");
     return 0;
 }
