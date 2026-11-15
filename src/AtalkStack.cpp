@@ -558,12 +558,11 @@ void AtalkStack::handleAtp(const Addr& src, uint8_t dstSock, const uint8_t* p,
             if (it->need == 0) {
                 if (it->respCount >= 0) it->resp.resize(it->respCount);
                 if (it->xo) {
-                    std::vector<uint8_t> rel;
-                    rel.push_back(kAtpTRel);
-                    rel.push_back(0);
-                    put16(rel, tid);
-                    rel.resize(8, 0);
-                    sendDdp(it->dst, it->srcSock, kDdpAtp, rel.data(), rel.size());
+                    // A fixed array: GCC 15 reports a false stringop-overflow
+                    // on push_back followed by resize(8) of a small vector.
+                    const uint8_t rel[8] = {kAtpTRel, 0, uint8_t(tid >> 8),
+                                            uint8_t(tid), 0, 0, 0, 0};
+                    sendDdp(it->dst, it->srcSock, kDdpAtp, rel, sizeof rel);
                 }
                 auto done = std::move(it->done);
                 auto resp = std::move(it->resp);
