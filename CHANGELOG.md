@@ -1401,8 +1401,14 @@ values before word sign extension and scaling, preserving side-effect-free
 preflight and native admission. The five isolated failures pass; the
 asset-free gate adds byte/word/long base aliases and scaled word/long
 address-index aliases with ordinary and packed CCR: 1 245 native
-instructions and zero slow instructions in each run. x64's existing alias
-fallback policy is unchanged.
+instructions and zero slow instructions in each run. x64 keeps its alias
+fallback, but its `aliases()` only compared the destination's base: the
+first x86-64 CI run of this gate diverged at checkpoint 13 on
+`MOVE.W (A0)+,0(A2,A0.W*2)`, compiled natively with the stale index. It
+now also refuses an address-register index equal to the updated source
+(71 slow instructions per run on x86-64, lockstep exact). The same CI run
+met GCC 15 on the new ubuntu-26.04 image, whose false
+`-Wstringop-overflow` on the ATP TRel vector is avoided with a fixed array.
 
 The missing 6 000-vector 030 `fpuh` corpus was regenerated from seeds
 1311–1313 and all three original size/SHA-256 pins matched before use.

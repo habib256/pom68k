@@ -382,8 +382,11 @@ private:
         if (src.idx != EA_PI && src.idx != EA_PD) return false;
         switch (dst.idx) {
             case EA_AN: case EA_AI: case EA_PI: case EA_PD: case EA_DI:
-            case EA_IX:
                 return dst.reg == src.reg;
+            case EA_IX: case EA_IXPC:   // the index sees the update too
+                return (dst.idx == EA_IX && dst.reg == src.reg) ||
+                       ((!dst.fullFormat || !dst.indexSuppressed) &&
+                        dst.ixReg == 8 + src.reg);
             default:
                 return false;
         }
