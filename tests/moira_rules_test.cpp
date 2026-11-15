@@ -1039,6 +1039,56 @@ void ptestFlagsInvalidAtTheLimit()
           c.getPC0(), c.getMMUSR());
 }
 
+void ptestLongDescriptorLimits()
+{
+    // [D] WinUAE cpummu030.c mmu030_table_search @ Hatari e77819f7:
+    // limits are inclusive; a violation stops BEFORE fetching the child.
+    // Cover root and table limits, both bound directions, both PTEST R/W,
+    // and stopping at level one without consulting the next table's limit.
+    for (bool rootLimit : {false, true}) for (bool lower : {false, true})
+    for (int delta : {-1, 0, 1}) for (bool read : {false, true})
+    for (int depth : {1, 2}) {
+        TestCpu c(moira::Model::M68030);
+        stage(c, 0xf010, 0);                       // PTEST (A0)
+        const uint16_t modes = uint16_t(0x8100 | (depth << 10) |
+                                       (read ? 0x0200 : 0) | (1 << 5) | 5);
+        p16(c, kCode + 2, modes); c.setIRC(modes);  // result descriptor -> A1
+        p16(c, kCode + 4, kNop);
+        // TC.E=0 keeps code/stack accesses out of the synthetic tables;
+        // PTEST still walks them (D5). IS=8, TIA=TIB=6, PS=12.
+        c.setTC(0x00c86600u);
+        constexpr uint32_t root = 0x4000, leaf = 0x5000;
+        const uint32_t boundary = 2;
+        const uint32_t index = boundary + delta;
+        const uint32_t bounded = (lower ? 0x80000000u : 0) |
+                                 (boundary << 16) | 3;
+        c.setCRP((uint64_t(rootLimit ? bounded : 0x7fff0003u) << 32) | root);
+        const uint32_t rootIndex = rootLimit ? index : 1;
+        const uint32_t leafIndex = rootLimit ? 1 : index;
+        const uint32_t parent = root + rootIndex * 8;
+        const uint32_t child = leaf + leafIndex * 8;
+        p32(c, parent, rootLimit ? 0x7fff0003u : bounded);
+        p32(c, parent + 4, leaf);
+        p32(c, child, 1); p32(c, child + 4, 0x30000);
+        c.setA(0, (rootIndex << 18) | (leafIndex << 12));
+        const bool violation = (lower ? delta < 0 : delta > 0) &&
+                               (rootLimit || depth > 1);
+        const uint16_t want = violation ? uint16_t(0x4400 | (rootLimit ? 0 : 1))
+                                        : uint16_t(depth);
+        const uint32_t address = violation ? (rootLimit ? 0 : parent)
+                                           : (depth == 1 ? parent : child);
+        c.execute();
+        CHECK(c.getMMUSR() == want && c.getA(1) == address &&
+              c.getPC0() == kCode + 4 &&
+              g32(c, parent) == (rootLimit ? 0x7fff0003u : bounded) &&
+              g32(c, child) == 1,
+              "68030 PTEST %s %s delta=%d R=%d level=%d: MMUSR=%04X/%04X "
+              "descriptor=%08X/%08X", rootLimit ? "root" : "table",
+              lower ? "lower" : "upper", delta, read, depth,
+              c.getMMUSR(), want, c.getA(1), address);
+    }
+}
+
 void ec030UsesPlain020Path()
 {
     // POM68K_SURFACE.md § 1.2: the current 68EC030 implementation uses
@@ -2454,6 +2504,7 @@ int main(int argc, char** argv)
     clrReadsOnlyOn68000();
     bitfieldMemoryAccesses();
     ptestFlagsInvalidAtTheLimit();
+    ptestLongDescriptorLimits();
     fpuIgnoredOn68000And68010();
     tableSearchBusError030();
     movesFixupSlot030();

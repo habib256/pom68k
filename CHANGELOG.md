@@ -600,6 +600,18 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-15 (sixth) — PTEST bounds and A64 indexed MOVE source aliases](#2026-11-15-ptest-a64-alias)
+
+- [2026-11-15 (fifth) — Long descriptors join the 68030 two-level oracle geometry](#2026-11-15-mmu030-long)
+
+- [2026-11-15 (fourth) — The 68030 oracle walks two levels with 4 KB pages](#2026-11-15-mmu030-4k)
+
+- [2026-11-15 (third) — Reserved full-extension EAs get a dedicated oracle family](#2026-11-15-earaw)
+
+- [2026-11-15 (second) — Legal MOVEM forms return to the page-end oracle coverage](#2026-11-15-pagend-movem)
+
+- [2026-11-15 — The CPU sweep entry point accepts macOS oracle builds](#2026-11-15-oracle-sweep-macos)
+
 - **2026-11-11 (fourth)** — [An idle SCC no longer costs a call per slice: Mac Plus 19-20 % faster; five other levers measured and left alone](#2026-11-11-scc-quiet-tick)
 - **2026-11-11 (third)** — [The 68030 sweep's five vectors: one defect fixed (long displacements in the access log), four were ruling D28, one residue ruled D36](#2026-11-11-030-sweep-leftovers)
 - **2026-11-11 (later)** — [A fault on a JSR's target fetch belongs to the next instruction on the 68030/68040; the 68040 frame no longer stacks the return address](#2026-11-11-jsr-target-fault)
@@ -1360,6 +1372,179 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-15-ptest-a64-alias"></a>
+## 2026-11-15 (sixth) — Table-limit fuzzing finds PTEST ignoring bounds; the full A64 corpus finds stale indexed MOVE addresses
+
+The `4k-limits` geometry adds two upper and two lower bounds to long table
+descriptors, protecting the infrastructure groups. Its `limits` probes use
+valid writable leaves and read/write immediately before, on and after the
+inclusive bound. Seeds 152100–152104, 300 attempts each for fault/rmw/mmu/
+random/limits: 1 498 retained (two MMU double-fault halts discarded).
+One new defect: `mmu/identity seed=152102 #86 geometry=4k-limits` returned
+MMUSR $0002 instead of $4401. The ordinary bus walk checked limits, but
+PTEST's older `mmuWalkTables` explicitly ignored them. It now keeps the
+current descriptor's attributes and size separately from its child's type,
+checks before counting/fetching the child, and reports the preceding
+address/count with L|I. The 48 root/table, upper/lower, read/write, depth and
+boundary controls in `ptestLongDescriptorLimits` had 12 failures before
+and none after. Vendor row 109. All 1 498 retained vectors then agree under
+strict RAM comparison and A64 native-required lockstep.
+
+The full AArch64 SST replay, with profit score zero and native execution
+required, found five RAM differences: 040 fpuraw/off seed 961 #747/#1073,
+040 fpuraw/tt seed 963 #564; 030 fpuraw/off seed 721 #1257/#1730. These are
+following MOVE instructions, not FPU arithmetic. A source (An)+ or -(An)
+changed the base used by an indexed destination, but A64 preflight computed
+the destination from the old register. The fix adjusts scratch base/index
+values before word sign extension and scaling, preserving side-effect-free
+preflight and native admission. The five isolated failures pass; the
+asset-free gate adds byte/word/long base aliases and scaled word/long
+address-index aliases with ordinary and packed CCR: 1 245 native
+instructions and zero slow instructions in each run. x64's existing alias
+fallback policy is unchanged.
+
+The missing 6 000-vector 030 `fpuh` corpus was regenerated from seeds
+1311–1313 and all three original size/SHA-256 pins matched before use.
+Every optional corpus, including the 68000, matches `sst_corpora.lock`.
+After rebuilding, all 24 full-corpus gates pass: 67 874 interpreter vectors
+under strict RAM (245 documented oracle differences), and the same 67 874
+vectors in AArch64 lockstep without a divergence. All twelve JIT corpora
+execute native code (983 755 native instructions in total), no soft skip.
+The corpus totals are 030: 3 082 / 5 592 / 6 000 / 6 000 / 6 000 / 6 000
+(base, solo, fpuraw, fpu2, fpuh, rmw); 040: 7 200 / 4 000 / 4 500 / 7 500 /
+6 000 / 6 000 (base, 8k, fline, fpu, fpu2, fpuh). This closes the named
+AArch64 corpus-replay TODO, not the remaining machine-tier or hardware
+fidelity work.
+The public corpus adds 32 boundary probes (seed 2026111541), covering all
+12 bound-direction/position/read-write combinations, for 424/328 vectors.
+Both public pins reproduce exactly; all six public gates and the source-
+grade/documentation gates pass. The source line citations and vendor counts
+are refreshed. The broader CPU/JIT stability goal remains open.
+
+<a id="2026-11-15-mmu030-long"></a>
+## 2026-11-15 (fifth) — Long descriptors join the 68030 two-level oracle geometry
+
+`--geometry 4k-2level-long` retains PS=12, IS=8, TIA=TIB=6 but selects
+8-byte descriptors at both levels through a type-3 root pointer. The first
+longword holds attributes (and the unlimited ascending table limit), the
+second the table/page address. Leaf tables now end at $208FFF; protection
+of table pages, page-end invalidation and descriptor strides follow that
+size. The sweep appends these cells after the previous geometries so their
+seed assignments stay stable.
+
+Seeds 152000–152005, 100 attempts per family fault/core/mmu/rmw/pagend/earaw:
+598 retained, two double-fault halts discarded in `mmu`. Every retained
+vector agrees with the oracle under strict RAM comparison and with the
+AArch64 JIT (profit score zero, native required). All 100 fault vectors
+update attributes at both levels while leaving the address halves intact.
+No new core defect or oracle dispute.
+
+The legacy-reproduction check caught an unintended physical-address field
+in invalid short descriptors during the refactor. Restore their literal
+zero before pinning; both previous corpus identities reproduce unchanged.
+The public corpus adds 64 long-descriptor cases (core/fault/rmw/pagend),
+reaching 392 030 vectors and 328 040 vectors. Both new pins reproduce
+exactly; all six cpu-vectors gates pass with native execution required,
+and the documentation gate passes. Mixed short/long tables,
+indirection, limit violations, FCL/SRE and early termination remain open.
+No core implementation change or speed claim.
+
+<a id="2026-11-15-mmu030-4k"></a>
+## 2026-11-15 (fourth) — The 68030 oracle walks two levels with 4 KB pages
+
+`fuzz030.py --geometry 4k-2level` adds PS=12, IS=8, TIA=TIB=6,
+short descriptors: a root at $200000 and 64 leaf tables at $201000–$204FFF.
+The full code range and table pages are protected from generated holes,
+write protection and remaps. Fault offsets and page-end placement use the
+selected geometry. The legacy 32 KB one-level geometry remains the default;
+its existing public recipes reproduced unchanged before adding new ones.
+The page-end candidate membership uses a set, keeping order and random
+choices while avoiding a quadratic scan over 4 096 pages.
+
+Seeds 151910–151915, 200 attempts each, identity translation, families
+fault/core/mmu/rmw/pagend/earaw: 1 194 retained, six oracle double-fault
+halts discarded in `mmu`. Strict RAM comparison agrees on 1 191; three
+D38 lookahead differences remain (NOTES.md), two now visible in first-level
+U bits. All 1 194 pass AArch64 JIT lockstep with native execution required
+and profit score zero. All 200 fault vectors update descriptors at both
+levels. An early replay while generation was still writing was interrupted
+and excluded; completed cells were replayed separately.
+
+The sweep appends all 030 families under this identity geometry, preserving
+older seed assignments. The public corpus adds 64 vectors (core, fault,
+rmw, pagend), reaching 328 per CPU, 656 total. All six cpu-vectors gates
+pass with native required; a second regeneration reproduces both pins
+exactly. No core implementation change or performance claim. FCL/SRE, long/indirect descriptors, early termination, root limits and
+a TT setup that actually misses remain open in TODO.
+
+<a id="2026-11-15-earaw"></a>
+## 2026-11-15 (third) — Reserved full-extension EAs get their own oracle family and public vectors
+
+The shared `earaw` generator uses legal MOVE.L load/store, LEA and PEA
+opcodes with full-format indexed EAs (An, and PC for loads/LEA). It draws
+BD size, bit 3, I/IS and both suppression bits independently, preserving
+reserved encodings instead of sanitizing them. Four trailing words supply
+the largest base/outer displacement pair. This is grade-D oracle agreement,
+including the existing D17 ruling, not a hardware claim for reserved words.
+A 10 000-draw check reaches all 256 combinations of those fields.
+
+Fresh seeds 151700–151702 (030, off/identity/tt) and 151800–151803
+(040, off/identity/tt/ttvar), 500 attempts per cell: 1 500 and 1 958
+vectors agree with the oracle under strict RAM comparison and with the
+AArch64 JIT lockstep (`POM68K_JIT_PROFIT_SCORE=0`, native required).
+The 42 halted ttvar generations are excluded, not counted as passes.
+No new core defect or oracle dispute. `sweep.sh` appends the family so
+older cells retain their seed assignments.
+
+The public corpus adds 128 vectors per CPU, split off/identity, for totals
+264/328. Regeneration reproduces both pins exactly; all six cpu-vectors
+gates pass with native execution required. The named missing-raw-family
+TODO is closed. No CPU implementation change or speed measurement.
+
+<a id="2026-11-15-pagend-movem"></a>
+## 2026-11-15 (second) — Legal MOVEM forms return to the page-end oracle coverage
+
+The shared `pagend_words` list excluded MOVEM entirely, avoiding the illegal
+postincrement store previously seen as D39 but losing multi-register
+transfers at the boundary. Add an explicit list of eight legal forms:
+word/long stores through (An) and -(An), loads through (An) and (An)+.
+Each places the register mask either on the last valid word or on the first
+word of the invalid successor page. No random EA-mode bits can introduce
+an illegal MOVEM form.
+
+Seeds 151500 (030) and 151600 (040), 500 vectors each: all 1 000 agree
+with WinUAE under strict RAM comparison and pass AArch64 lockstep with
+native execution required and profit score zero. A 10 000-seed generator
+check reaches all 16 form/boundary combinations without an illegal EA.
+The public corpus is regenerated at its existing recipes: only pagend
+vectors change (23 on 030, 22 on 040), with 14 and 11 MOVEM vectors now
+pinned. A second regeneration reproduces both SHA-256 identities exactly.
+All six cpu-vectors gates pass, sequentially. No CPU implementation
+change and no speed measurement. The remaining raw-family task is reserved
+full-extension EAs.
+
+<a id="2026-11-15-oracle-sweep-macos"></a>
+## 2026-11-15 — The CPU sweep entry point accepts macOS oracle builds
+
+`oracle/fuzz/sweep.sh` assumed GNU `realpath -m`, `nproc`, and a `.so`
+oracle. On the ARM Mac it stopped before generating anything despite the
+available `liboracle_uae.dylib`. Use Python (already required by the fuzzers)
+for absolute paths and CPU count, clamp generation workers to at least one,
+and fall back to `.dylib` while preserving `POM68K_ORACLE_SO` overrides.
+`POM68K_SWEEP_JOBS` now permits serial generation on a shared host; use
+NumPy from the oracle's virtual environment to avoid the bytewise Python
+RAM scan. Shell syntax and whitespace checks pass.
+
+The completed serial sweep (151300/151400, 100 vectors per cell) replays
+6 748 vectors: 24 known oracle differences, no new core defect. Both CPU
+families pass AArch64 lockstep. Crucially, the first 68030 replay compiled
+zero blocks because its default profit score is 64: the sweep now sets
+`POM68K_JIT_PROFIT_SCORE=0` for JIT replay. All 2 595 68030 vectors then
+pass with `POM68K_JIT_REQUIRE_NATIVE=1`, native execution in every family.
+The 4 153 68040 vectors already executed native code. Details and ruling
+counts: `oracle/fuzz/disputes/NOTES.md`. No speed or A/B tests were run;
+the larger first generation was interrupted, not counted as a full sweep.
 
 <a id="2026-11-14-second-sweep"></a>
 ## 2026-11-14 (fifth) — Four more sweeps find six more: the CAS/TAS lock around a memory-indirect pointer, PACK/UNPK's write buffer, BKPT's data read, 68040 bit-field and JSR store restarts, the SR-write refill, a trace before an RTE rerun

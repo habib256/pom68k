@@ -1337,7 +1337,8 @@ bool emitAluResult(Asm& a, const Layout& L, AluOperation kind, int bits,
     return true;
 }
 
-void addrOf(Asm& a, const Layout& L, const Ea& ea, int bits) {
+void addrOf(Asm& a, const Layout& L, const Ea& ea, int bits,
+            int updatedAn = -1, int update = 0) {
     const unsigned step = ea.reg == 7 && bits == 8 ? 2u : unsigned(bits / 8);
     switch (ea.idx) {
         case EA_AI: case EA_PI:
@@ -1353,9 +1354,20 @@ void addrOf(Asm& a, const Layout& L, const Ea& ea, int bits) {
             else if (ea.idx == EA_IX)
                 loadGuestRegister(a, L, 9, true, unsigned(ea.reg));
             else a.movW(9, ea.base);
+            // MOVE probes both operands before committing source (An)+/-.
+            // Its indexed destination nevertheless observes that update in
+            // both the base and an address-register index. Adjust scratch
+            // values only, before word sign extension and index scaling.
+            const auto adjust = [&](unsigned hostReg) {
+                if (update > 0) a.addImmW(hostReg, hostReg, unsigned(update));
+                if (update < 0) a.subImmW(hostReg, hostReg, unsigned(-update));
+            };
+            if (ea.idx == EA_IX && ea.reg == updatedAn &&
+                (!ea.fullFormat || !ea.baseSuppressed)) adjust(9);
             if (!ea.fullFormat || !ea.indexSuppressed) {
                 loadGuestRegister(a, L, 10, ea.ixReg >= 8,
                                   unsigned(ea.ixReg & 7));
+                if (ea.ixReg >= 8 && (ea.ixReg & 7) == updatedAn) adjust(10);
                 if (!ea.ixLong) a.sxtH(10, 10);
                 if (ea.ixShift) a.lslW(10, 10, unsigned(ea.ixShift));
                 a.addW(9, 9, 10);
@@ -2140,6 +2152,9 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
              dst.idx == EA_PD || dst.idx == EA_DI) &&
             !dependentPostincDestination)
             return false;
+        const int sourceStep = src.reg == 7 && bits == 8 ? 2 : bits / 8;
+        const int sourceUpdate = src.idx == EA_PI ? sourceStep :
+                                 src.idx == EA_PD ? -sourceStep : 0;
         const int sz = bits == 8 ? 0 : bits == 16 ? 1 : 2;
         // A postincrement source whose sole access uses the pre-update /
         // rollback helper is safe to validate against the split base cost.
@@ -2263,7 +2278,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 memProbe(a, L, ir.super, 4, false, slow, AtcRoute(srcAccess), true, -1,
                          true, false);
                 a.strX(14, 1, 120);                  // source line bytes
-                addrOf(a, L, dst, bits);
+                addrOf(a, L, dst, bits, sourceUpdate ? src.reg : -1, sourceUpdate);
                 const int writeHit = a.label();
                 memProbe(a, L, ir.super, 4, true, slow, AtcRoute(dstAccess), false, writeHit,
                          true, false);
@@ -2306,7 +2321,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
                 // Prove the destination before the exact source read. Once a
                 // device FIFO has been popped it must never be replayed just
                 // because the destination translation was unavailable.
-                addrOf(a, L, dst, bits);
+                addrOf(a, L, dst, bits, sourceUpdate ? src.reg : -1, sourceUpdate);
                 memProbe(a, L, ir.super, bits / 8, true, slow, AtcRoute(dstAccess));
                 a.strX(14, 1, 120);              // proved destination bytes
 
@@ -2334,7 +2349,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             addrOf(a, L, src, bits);
             memProbe(a, L, ir.super, bits / 8, false, slow, AtcRoute(srcAccess));
             a.strX(14, 1, 120);            // source host pointer
-            addrOf(a, L, dst, bits);
+            addrOf(a, L, dst, bits, sourceUpdate ? src.reg : -1, sourceUpdate);
             memProbe(a, L, ir.super, bits / 8, true, slow, AtcRoute(dstAccess));
             a.strX(14, 1, 96);             // destination host pointer
 
@@ -2406,7 +2421,7 @@ bool emitRegInstr(Asm& a, const Layout& L, const BlockIr& ir, const Instr& in,
             // for the store and suppress the ordinary tail update below.
             if (restartWrite && dst.idx != EA_PI)
                 emitLogicFlags(a, L, 11, bits);
-            addrOf(a, L, dst, bits);
+            addrOf(a, L, dst, bits, sourceUpdate ? src.reg : -1, sourceUpdate);
             if (restartWrite && dst.idx != EA_PI) {
                 // At Moira's last-write point reg.pc has consumed every
                 // extension, while pc0 still names this instruction. An

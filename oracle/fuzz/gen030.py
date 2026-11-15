@@ -10,7 +10,8 @@
 # Layout of the 16 MB bus (physical):
 #   $000000  vector table (256 * 4, via VBR=0 or relocated)
 #   $001000  supervisor stacks (ISP/MSP), $002000 user stack
-#   $004000  MMU translation tables (root/pointer/page levels)
+#   $004000  legacy 32K translation table
+#   $200000  4K two-level tables (root at $200000, leaves at $201000)
 #   $010000  code page (PC starts here, logical — identity or remapped)
 #   $020000+ data pages (targets of generated operands)
 
@@ -71,32 +72,79 @@ DT_INVALID = 0
 DT_PAGE = 1
 
 
+def mmu_layout(geometry: str) -> tuple[int, int, int, int]:
+    """Page shift, TC, root address and contiguous leaf-descriptor base."""
+    if geometry == "32k":
+        return PAGE_SHIFT, TC_FUZZ, TABLE_BASE, TABLE_BASE
+    if geometry in ("4k-2level", "4k-2level-long", "4k-limits"):
+        # IS=8, TIA=TIB=6, PS=12: 64 tables of 64 page descriptors.
+        tc = (1 << 31) | (12 << 20) | (8 << 16) | (6 << 12) | (6 << 8)
+        return 12, tc, 0x200000, 0x201000
+    raise ValueError(f"unknown 030 MMU geometry: {geometry}")
+
+
 def build_identity_table(ram: dict[int, int], rng: random.Random,
                          holes: int = 4, wp_pages: int = 4,
-                         remaps: int = 4) -> dict:
-    """Single-level identity map with a few invalid / write-protected /
-    remapped pages sprinkled in. Returns {page_index: kind} for the
-    generator to aim operands at interesting pages."""
+                         remaps: int = 4, geometry: str = "32k") -> dict:
+    """Identity map with invalid, write-protected and remapped leaves.
+    The default retains the original corpus recipe byte for byte.
+    """
+    shift, _, root, leaves = mmu_layout(geometry)
+    count = 1 << (24 - shift)
+    stride = 8 if geometry in ("4k-2level-long", "4k-limits") else 4
     kinds: dict[int, str] = {}
-    for idx in range(N_PAGES):
-        phys = idx << PAGE_SHIFT
-        _w32(ram, TABLE_BASE + idx * 4, phys | DT_PAGE)
-    # Never break the infrastructure pages (vectors/stacks/tables/code/pads).
-    protected = set(range(0, (CODE_BASE + PAGE_SIZE) >> PAGE_SHIFT))
-    candidates = [i for i in range(N_PAGES) if i not in protected]
+    if geometry in ("4k-2level", "4k-2level-long", "4k-limits"):
+        for index in range(64):
+            target = leaves + index * 64 * stride
+            if stride == 8:
+                # WinUAE cpummu030.c mmu030_table_search: type 3 selects
+                # eight-byte entries; limit/flags precede the table address.
+                _w32(ram, root + index * stride, 0x7FFF0003)
+                _w32(ram, root + index * stride + 4, target)
+            else:
+                _w32(ram, root + index * stride, target | 2)
+
+    def page(index: int, physical: int, flags: int) -> None:
+        addr = leaves + index * stride
+        # Legacy invalid short entries are literal zero, including address bits.
+        _w32(ram, addr, flags if stride == 8 or flags == DT_INVALID
+             else physical | flags)
+        if stride == 8:
+            _w32(ram, addr + 4, physical)
+
+    for idx in range(count):
+        page(idx, idx << shift, DT_PAGE)
+    # Cover the whole code range, pads and stacks, plus the new tables.
+    protected = set(range((CODE_BASE + max(0x4000, 1 << shift)) >> shift))
+    table_end = (leaves + count * stride + (1 << shift) - 1) >> shift
+    protected.update(range(root >> shift, table_end))
+    candidates = [i for i in range(count) if i not in protected]
     picks = rng.sample(candidates, min(len(candidates), holes + wp_pages + remaps))
     for i, idx in enumerate(picks):
-        ent = TABLE_BASE + idx * 4
         if i < holes:
-            _w32(ram, ent, DT_INVALID)
+            page(idx, idx << shift, DT_INVALID)
             kinds[idx] = "invalid"
         elif i < holes + wp_pages:
-            _w32(ram, ent, (idx << PAGE_SHIFT) | (1 << 2) | DT_PAGE)  # WP
+            page(idx, idx << shift, (1 << 2) | DT_PAGE)  # WP
             kinds[idx] = "wp"
         else:
             other = rng.choice(candidates)
-            _w32(ram, ent, (other << PAGE_SHIFT) | DT_PAGE)
+            page(idx, other << shift, DT_PAGE)
             kinds[idx] = f"remap->{other}"
+    if geometry == "4k-limits":
+        # Long table descriptors bound the NEXT index. Keep the groups
+        # containing code/handlers/stacks and translation tables usable.
+        protected_groups = {index >> 6 for index in protected}
+        groups = [index for index in range(64) if index not in protected_groups]
+        for number, group in enumerate(rng.sample(groups, 4)):
+            lower = number % 2 != 0
+            limit = rng.randrange(1, 64) if lower else rng.randrange(63)
+            flags = (0x80000000 if lower else 0) | (limit << 16) | 3
+            _w32(ram, root + group * stride, flags)
+            for index in range(64):
+                violates = index < limit if lower else index > limit
+                if violates:
+                    kinds[group * 64 + index] = "limit-lower" if lower else "limit-upper"
     return kinds
 
 
@@ -111,6 +159,28 @@ def _op_random(rng: random.Random) -> list[int]:
     """Any 16-bit word + up to 5 random extension words. Illegal patterns
     are valuable too (they must take identical exception paths)."""
     return [rng.getrandbits(16) for _ in range(1 + rng.randrange(6))]
+
+
+def _op_earaw(rng: random.Random) -> list[int]:
+    """Full-format indexed EAs, including reserved encodings (D17).
+
+    Draw BD size, bit 3 and I/IS independently: do not silently sanitize
+    reserved words. Legal opcodes isolate EA decoding from illegal modes.
+    Four trailing words cover the largest base + outer displacement.
+    This compares emulator behavior; reserved encodings are not a claim
+    about hardware.
+    """
+    an, dn = rng.randrange(8), rng.randrange(8)
+    op = rng.choice([
+        0x2030 | dn << 9 | an,  # MOVE.L indexed(An),Dn
+        0x203B | dn << 9,       # MOVE.L indexed(PC),Dn
+        0x2180 | an << 9 | dn,  # MOVE.L Dn,indexed(An)
+        0x41F0 | dn << 9 | an,  # LEA indexed(An),An
+        0x41FB | dn << 9,       # LEA indexed(PC),An
+        0x4870 | an,            # PEA indexed(An)
+    ])
+    ext = rng.getrandbits(16) | 0x0100
+    return [op, ext] + [rng.getrandbits(16) for _ in range(4)]
 
 
 def _op_core(rng: random.Random) -> list[int]:
@@ -639,12 +709,19 @@ def pagend_words(rng: random.Random) -> tuple[list[int], int]:
         ([0x43E8, imm], 4),                             # LEA d16(A0),A1
         ([0x0680 | r, rng.getrandbits(16), imm], 6),    # ADDI.L #i,Dn
     ]
+    # Enumerate legal MOVEM EAs rather than randomizing the mode bits:
+    # register -> memory forbids (An)+; memory -> register forbids -(An).
+    # An illegal form would measure D39 instead of deferred prefetch.
+    movem = [0x4890, 0x48A0, 0x4C90, 0x4C98,  # word
+             0x48D0, 0x48E0, 0x4CD0, 0x4CD8]  # long
+    fits.extend(([op | r, imm], 4) for op in movem)
     crosses = [
         ([0x0640 | r, imm], 2),                         # ADDI.W: #i on the bad page
         ([0x203C | r << 9, rng.getrandbits(16), imm], 2),  # MOVE.L #i,Dn
         ([0x0680 | r, rng.getrandbits(16), imm], 4),    # ADDI.L: low word bad
         ([0x6000, (-rng.randrange(4, 256, 2)) & 0xFFFF], 2),  # BRA.W: disp bad
     ]
+    crosses.extend(([op | r, imm], 2) for op in movem)
     return rng.choice(fits if rng.random() < 0.75 else crosses)
 
 
@@ -653,7 +730,8 @@ def place_pagend(st: State, ram: dict[int, int], rng: random.Random,
     """Pick a page from `candidates` whose predecessor is also a candidate,
     make it invalid through `invalidate(page)`, and start the pagend
     instruction against its start. Returns the words."""
-    pages = [p for p in candidates if p - 1 in candidates]
+    eligible = set(candidates)
+    pages = [p for p in candidates if p - 1 in eligible]
     page = rng.choice(pages)
     invalidate(page)
     words, back = pagend_words(rng)
@@ -665,12 +743,18 @@ FPU_FAMILIES = ("fpu", "fpuraw", "fpu2", "fpuh")
 FAMILIES = {"random": _op_random, "core": _op_core, "mmu": _op_mmu,
             "fault": _op_fault, "fpu": _op_fpu, "fpuraw": _op_fpuraw,
             "fpu2": _op_fpu2, "rmw": _op_rmw, "fpuh": _op_fpuh,
-            "pagend": None}
+            "pagend": None, "earaw": _op_earaw,
+            "limits": lambda rng: rng.choice(([0x2010], [0x2080]))}
 
 
 def gen_state(rng: random.Random, family: str = "core",
-              mmu: str = "off") -> State:
+              mmu: str = "off", geometry: str = "32k") -> State:
     """One complete initial state. mmu: off | identity | tt."""
+    shift, tc, root, leaves = mmu_layout(geometry)
+    page_size, n_pages = 1 << shift, 1 << (24 - shift)
+    stride = 8 if geometry in ("4k-2level-long", "4k-limits") else 4
+    table_end = (leaves + n_pages * stride + page_size - 1) >> shift
+    rp = ((0x7FFF << 16 | (3 if stride == 8 else 2)) << 32) | root
     st = State()
     ram: dict[int, int] = {}
     build_vector_table(ram)
@@ -692,16 +776,36 @@ def gen_state(rng: random.Random, family: str = "core",
 
     kinds: dict[int, str] = {}
     if mmu == "identity":
-        kinds = build_identity_table(ram, rng)
-        st.tc, st.crp = TC_FUZZ, CRP_FUZZ
-        st.srp = CRP_FUZZ
+        kinds = build_identity_table(ram, rng, geometry=geometry)
+        st.tc, st.crp = tc, rp
+        st.srp = rp
     elif mmu == "tt":
         # MMU enabled but everything matches TT0 (transparent): base $00,
         # mask $FF (all a31-24 values), E bit 15, both FC ignored via mask.
-        kinds = build_identity_table(ram, rng)
-        st.tc, st.crp, st.srp = TC_FUZZ, CRP_FUZZ, CRP_FUZZ
+        kinds = build_identity_table(ram, rng, geometry=geometry)
+        st.tc, st.crp, st.srp = tc, rp, rp
         st.tt0 = (0x00 << 24) | (0xFF << 16) | (1 << 15) | (1 << 10) | (7 << 4)
     # else: MMU off (tc.E = 0)
+
+    if family == "limits":
+        assert geometry == "4k-limits" and mmu == "identity", \
+            "limits requires the 4k-limits identity geometry"
+        groups = sorted({index >> 6 for index, kind in kinds.items()
+                         if kind.startswith("limit-")})
+        group = rng.choice(groups)
+        entry = root + group * stride
+        flags = sum(ram[entry + i] << (24 - 8 * i) for i in range(4))
+        limit = (flags >> 16) & 0x7FFF
+        index = rng.choice([i for i in (limit - 1, limit, limit + 1)
+                            if 0 <= i < 64])
+        page = group * 64 + index
+        # A valid, writable identity leaf makes success/failure depend only
+        # on the parent limit, including the inclusive boundary itself.
+        _w32(ram, leaves + page * stride, DT_PAGE)
+        _w32(ram, leaves + page * stride + 4, page << shift)
+        st.a[0] = (page << shift) + 0x100
+        _w32(ram, st.a[0], rng.getrandbits(32))
+        st.pc &= ~7  # keep the one-word probe away from a prefetch boundary
 
     if family in ("fault", "rmw"):
         # Aim A0 at one of the table's bad pages (O4 slice 3); with no
@@ -709,13 +813,13 @@ def gen_state(rng: random.Random, family: str = "core",
         # Offsets deliberately include odd addresses and page boundaries
         # so unaligned sub-accesses straddle good/bad pages.
         bad = sorted(kinds)
-        page = rng.choice(bad) if bad else (DATA_BASE >> PAGE_SHIFT)
+        page = rng.choice(bad) if bad else (DATA_BASE >> shift)
         offset = rng.choice([
-            rng.randrange(PAGE_SIZE) & ~1,
-            rng.randrange(PAGE_SIZE) | 1,
-            0, 1, 2, PAGE_SIZE - 1, PAGE_SIZE - 2, PAGE_SIZE - 3, PAGE_SIZE - 4,
+            rng.randrange(page_size) & ~1,
+            rng.randrange(page_size) | 1,
+            0, 1, 2, page_size - 1, page_size - 2, page_size - 3, page_size - 4,
         ])
-        st.a[0] = ((page << PAGE_SHIFT) + offset) & MASK
+        st.a[0] = ((page << shift) + offset) & MASK
         st.a[1] = (DATA_BASE + rng.randrange(0, 0x10000)) & ~1
 
     # The op is generated before the family-specific RAM seeding so the
@@ -726,12 +830,13 @@ def gen_state(rng: random.Random, family: str = "core",
         assert mmu == "identity", "pagend needs a translated identity map"
 
         def invalidate(page: int) -> None:
-            _w32(ram, TABLE_BASE + page * 4, DT_INVALID)
+            _w32(ram, leaves + page * stride, DT_INVALID)
             kinds[page] = "invalid"
 
-        words = place_pagend(st, ram, rng, PAGE_SIZE, invalidate,
-                             [i for i in range(CODE_BASE >> PAGE_SHIFT, N_PAGES)
-                              if i not in kinds])
+        words = place_pagend(st, ram, rng, page_size, invalidate,
+                             [i for i in range(CODE_BASE >> shift, n_pages)
+                              if i not in kinds and not
+                              (root >> shift <= i < table_end)])
     else:
         words = FAMILIES[family](rng)
 

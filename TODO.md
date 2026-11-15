@@ -48,8 +48,9 @@ une optimisation côté hôte POM68K ne rapproche pas de NeoST.
      de données, garde d'écriture dans le code traduit reposent sur
      `codeSpan`/`jitGuard_` fournis par nos cartes ; le contrat de
      surface le décrit, un premier portage le prouvera ;
-  3. pas de jambe AArch64 récente (tier 030 ARM dû depuis septembre, delta
-     a64 de +6 % jamais attribué).
+  3. les corpus CPU/JIT sont rejoués sur AArch64 depuis le 2026-11-15
+     (`CHANGELOG`, sixième) ; restent le tier 030 des machines sur ARM
+     dû depuis septembre et le delta a64 de +6 % jamais attribué.
 
 **Ordre de travail** (le détail vit dans `§ Moteur`) :
 
@@ -302,9 +303,10 @@ macOS) vit dans le `TODO.md` de NeoST.
 Un cœur ne déménage qu'avec sa preuve. Aujourd'hui les gates sans
 Macintosh existent (`sst68000`/`030`/`040`, `fpu_sanity`, `fpu040_test`,
 `cache040_test`, `berr030_test`, `callm_rtm_test`, `moira_rules_test`,
-`jit_asset_free_lockstep_test`) mais leurs corpus ne sont ni épinglés ni
-exécutés en CI, et plusieurs rangs de l'inventaire ne tiennent que par un
-boot.
+`jit_asset_free_lockstep_test`). Un corpus public est épinglé et exécuté
+en CI ; les grands corpus sont
+épinglés dans `tests/sst_corpora.lock` et restent des assets optionnels.
+Plusieurs rangs de l'inventaire ne tiennent encore que par un boot.
 
 - [ ] **Rejuger les décisions prises contre un manuel, là où aucun gate
   ne tombe.** La politique est alignée depuis le 2026-11-06 : un manuel
@@ -335,22 +337,14 @@ boot.
   n'existent que sur deux hôtes et le disque privé : les publier (asset de
   release, sortie WinUAE sans donnée Apple), ou les remplacer par des
   corpus à recette une fois celle-ci retrouvée.
-- [ ] **Élargir la géométrie MMU du fuzzer 030.** `gen030.py` n'a qu'un TC
-  (pages de 32 Ko, un niveau, descripteurs courts, CRP sans limite) : ni
-  FCL/SRE, ni tables à plusieurs niveaux, ni terminaison anticipée, ni
-  descripteurs indirects ou longs, ni violation de limite, et la cellule
-  `tt` ne parcourt jamais l'arbre. Les géométries réelles ne sont prouvées
-  que par les boots. `oracle/README.md` annonce plus que le code ne fait.
-- [ ] **Écrire les familles brutes qui manquent au balayage.** Le
-  balayage de graines neuves est une étape de la boucle depuis le
-  2026-11-14 (`oracle/fuzz/sweep.sh` : toutes les familles des deux
-  générateurs, interprète et JIT ; cinq passes le 2026-11-14, 606 565
-  vecteurs, huit défauts corrigés — `oracle/fuzz/disputes/NOTES.md`). Un corpus épinglé est un
-  plancher, et une famille aléatoire ne remplace pas une famille par
-  fenêtre de décodage (`fline`, 2026-11-07). Reste la famille des
-  extensions complètes d'EA réservées, et des listes d'opcodes `pagend`
-  qui écartent aussi les formes d'EA illégales (D39 s'y glisse par
-  MOVEM).
+- [ ] **Élargir la géométrie MMU du fuzzer 030.** `gen030.py` couvre les
+  pages de 32 Ko à un niveau et celles de 4 Ko
+  à deux niveaux, avec descripteurs courts ou longs et CRP sans limite.
+  Restent : FCL/SRE, terminaison anticipée, descripteurs indirects,
+  tables mêlant descripteurs courts et longs,
+  limites des pointeurs racines dans le fuzzer (les limites de tables
+  sont couvertes, les racines ont un gate ciblé) ; la cellule `tt` ne
+  parcourt jamais l'arbre.
 - [ ] **Donner au corpus FPU du 68040 les exceptions armées et les
   caches.** `sst68040_fpu` (7 500 vecteurs) pose FPCR avec des exceptions
   armées sur un vecteur sur dix seulement, et aucun corpus 68040 n'a
@@ -367,13 +361,6 @@ boot.
   un bus 16 bits : erreur d'adresse attendue. Aucun Macintosh n'a de
   68010 ; à trancher pour NeoST et l'amont, avec le corpus `sst68000`
   comme juge du côté 68000.
-- [ ] **Passer le rejeu des corpus à travers le JIT sur AArch64.** Les
-  gates `jit_sst68030*`/`jit_sst68040*` et `cpu_vectors0x0_jit_test`
-  (`tests/SstJitLockstep.h`, `CHANGELOG` 2026-11-13 (seventeenth)) jugent
-  le traducteur contre l'interpréteur sur chaque corpus épinglé ; ils n'ont
-  tourné que sur x86-64 (backend `x86-64`, et `threaded` sur quatre
-  corpus). Reste la jambe `a64`. Le harnais ne juge pas le traducteur
-  contre WinUAE : l'interpréteur reste le juge intermédiaire.
 - [ ] **Obtenir une preuve indépendante du 6888x.** La convergence
   numérique repose sur la même famille SoftFloat que l'oracle
   et l'interruption en cours d'instruction (format $9, BUSY) ne tient que

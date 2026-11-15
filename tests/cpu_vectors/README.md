@@ -7,16 +7,34 @@ strict-FPU adapter), not an independent silicon reference.
 
 | Model | Vectors | Cells |
 |---|---:|---|
-| 68030 + 68882 | 136 | integer core, translated MMU and faults, FPU arithmetic, two-instruction FPU continuation, instructions against a page whose successor is invalid |
-| full 68040 | 200 | the same, plus 8 KB pages, three-instruction FPU-handler/FSAVE sequences and faults under random transparent-translation windows |
+| 68030 + 68882 | 424 | integer core, translated MMU and faults, FPU arithmetic, two-instruction FPU continuation, instructions against a page whose successor is invalid |
+| full 68040 | 328 | the same, plus 8 KB pages, three-instruction FPU-handler/FSAVE sequences and faults under random transparent-translation windows |
 
 `manifest.json` records every generator option and seed, plus the count,
 uncompressed size and SHA-256 of each canonical JSON stream. The gzip files
 keep this small corpus in the repository. The large optional corpora under
 `tests/data/` retain their separate `tests/sst_corpora.lock` identities.
 
+The page-end cells include legal MOVEM word/long loads and stores, with
+the register mask ending the valid page or crossing into the invalid page.
+Illegal EA forms are excluded to keep the D39 ruling out of these cells.
+
+Each model also includes 128 `earaw` vectors (MMU off and identity):
+full-format indexed MOVE.L, LEA and PEA, with independently drawn reserved
+and legal extension fields. Reserved results pin oracle behavior, not a
+hardware guarantee.
+
+The 68030 adds 64 vectors using 4 KB pages and two levels of short
+descriptors: core, fault, read-modify-write and page-end cells. The old
+32 KB one-level recipes retain their identities. Another 64 vectors use
+the same four families with long descriptors at both levels; attributes
+and addresses occupy separate longwords. Mixed short/long tables and
+root limits are not covered by these recipes. Another 32 `limits` probes
+cover upper/lower table bounds, just before/on/after the inclusive boundary,
+and reads/writes: all twelve combinations at seed 2026111541.
+
 The existing SST harnesses compare registers, MMU/FPU state and RAM. These
-gates require all 336 vectors to execute, with zero MMU skips and no known
+gates require all 752 vectors to execute, with zero MMU skips and no known
 divergence list. Missing data, changed bytes, empty data or a harness that
 returns success after soft-skipping all fail the gate. Cycle accuracy is
 not claimed for these 030/040 vectors.

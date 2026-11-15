@@ -33,6 +33,28 @@ Oracle in service: **WinUAE** (`oracle/uae`, hatari e77819f7
 `cpummu030.c` + gencpu). Retired: **Musashi** (MAME 0.276 `m68kmmu.h` +
 kstenerud 4.60 core).
 
+## ARM64 fresh-seed sweep, 2026-11-15
+
+`sweep.sh 151300 151400 100`, generated serially with NumPy: 6 748
+vectors, 6 724 agree with WinUAE under `--strict-ram`. All 24 differences
+match existing rulings:
+
+- 68040: D25 3, D26 4 (`fpuraw`); D38 2 (`sysraw/identity seed=151332
+  #31`, CINVA at $10FFE; `random/ttvar seed=151311 #58`, MOVE to SR,
+  program-space refill after the SR change marks a table descriptor Used).
+- 68030: D26 1, D28 10 (odd floating-branch targets), D29 4 (EA $3D/$3E),
+  all in `fpuraw`.
+
+The 4 153 68040 vectors pass AArch64 lockstep with native code executed.
+The initial 2 595-vector 68030 replay passed but compiled **zero blocks**:
+A64's default profit score of 64 excludes these short vectors. Replayed
+all ten 68030 families with `POM68K_JIT_PROFIT_SCORE=0` and
+`POM68K_JIT_REQUIRE_NATIVE=1`: all pass and every family executes native
+code. The sweep now sets score zero for JIT replay. This is conformance
+coverage, not a speed measurement; no A/B timing was run on the shared host.
+The earlier 151100/151200 generation was interrupted and is not a complete
+sweep. No core change or new pinned exception follows from this pass.
+
 ## D39. An A-line, illegal or CHK instruction on a page's last word, the next page invalid [fork follows the manual, 2026-11-14]
 
 MC68040UM-1993 §3.5: "An ATC access error is not reported immediately, if
@@ -1044,3 +1066,45 @@ fork follows the oracle — row 46.)
 The corpus is pinned as `sst68030_fpuraw` (6 000 vectors, strict oracle)
 with `tests/sst68030_fpuraw.known`: D23b 3, D26 15, D27 2, D28 114, D29 63,
 and one open defect (two tail bytes of a $B frame).
+
+### Not disputes: full-extension EA family (2026-11-15)
+`earaw`, 500 attempts per cell: 030 seeds 151700–151702, off/identity/tt,
+1 500/1 500; 040 seeds 151800–151803, off/identity/tt/ttvar, 1 958/1 958.
+The ttvar generator discarded 42 halted cases. Strict RAM comparison and
+AArch64 native-required JIT lockstep agree on every retained vector,
+including reserved full-extension fields (D17). This establishes oracle
+agreement, not silicon behavior for reserved encodings. Public recipes
+pin 128 cases per CPU (MMU off and identity).
+
+### Not new disputes: 68030 4 KB two-level geometry (2026-11-15)
+`--geometry 4k-2level --mmu identity`, seeds 151910–151915, 200 attempts
+per family fault/core/mmu/rmw/pagend/earaw: 1 194 retained, six `mmu`
+double-fault halts discarded. Strict RAM agrees on 1 191. Three D38 cases:
+- `pagend seed=151914 #13`: ADDQ.L at $F7FFFE, next page $F80000;
+  first-level descriptor byte $2000FB is $0A in the fork, $02 in WinUAE.
+- `pagend seed=151914 #100`: BEQ.S at $4BFFFE, taken to $4BFF86;
+  lookahead at $4C0000 sets U at $20004F ($0A vs $02).
+- `earaw seed=151915 #48`: LEA indexed(PC),A2 at $11FFA consumes through
+  $11FFE; lookahead at $12000 sets U at $20104B ($09 vs $01).
+The first two extend the known lookahead effect to a root-table descriptor;
+the third is its leaf-page form. No core change or new ruling.
+All 1 194 retained vectors pass AArch64 native-required JIT lockstep.
+
+### Not disputes: 68030 long-descriptor geometry (2026-11-15)
+`--geometry 4k-2level-long --mmu identity`, seeds 152000–152005,
+100 attempts per family fault/core/mmu/rmw/pagend/earaw: 598 retained,
+two `mmu` double-fault halts discarded. All retained cases agree under
+strict RAM comparison and AArch64 native-required JIT lockstep. Both
+levels use long descriptors with unlimited ascending limits; the 100
+fault cases update attributes at both levels and preserve address halves.
+No new defect or ruling. The public corpus adds 64 long-descriptor cases.
+
+### Not a dispute: PTEST ignored long-descriptor limits (2026-11-15)
+`4k-limits`, identity, seeds 152100–152104, 300 attempts per family
+fault/rmw/mmu/random/limits: 1 498 retained, two MMU double-fault halts
+skipped. `mmu/identity seed=152102 #86 geometry=4k-limits`: MMUSR $0002 in
+the fork, $4401 in WinUAE. PTEST's separate table walk explicitly ignored
+long-descriptor limits; the bus walk already checked them. Fixed (vendor
+row 109); 48 targeted root/table controls, 12 failing before, all passing
+after. The retained sweep then agrees with strict RAM and A64 JIT lockstep.
+The `limits` family supplies successful boundary controls as well as faults.

@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 809 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 815 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,8 +8,8 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 109 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 132 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 110 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 137 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 37 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 32 |
@@ -135,6 +135,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-12 (third)** — [The x86-64 leg, run at last: unit and 68030 tiers hold, one red cell of mine fixed, two 68040 agent gates crash on the x64 backend (open)](CHANGELOG.md#2026-11-12-x64-leg)
 - **2026-11-13 (fifth)** — [The Duo and the 68030 PowerBooks get a gate that fails when the native backend is not the one running](CHANGELOG.md#2026-11-13-native-gates-pb-duo)
 - **2026-11-13 (third)** — [The a64 generator kept ADDX's carry in x18, which macOS clears on every interrupt: the Quadra 630 hang, and a random wrong flag on every 68030/68040 machine since 2026-08-31](CHANGELOG.md#2026-11-13-a64-x18)
+- **2026-11-15 (sixth)** — [Table-limit fuzzing finds PTEST ignoring bounds; the full A64 corpus finds stale indexed MOVE addresses](CHANGELOG.md#2026-11-15-ptest-a64-alias)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 
@@ -270,6 +271,11 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-14 (fifth)** — [Four more sweeps find six more: the CAS/TAS lock around a memory-indirect pointer, PACK/UNPK's write buffer, BKPT's data read, 68040 bit-field and JSR store restarts, the SR-write refill, a trace before an RTE rerun](CHANGELOG.md#2026-11-14-second-sweep)
 - **2026-11-14 (fourth)** — [A fresh-seed sweep of both CPUs finds two defects: a 68030 MOVE to (xxx).L stacked the long frame, and a trapped FMOVE out put an unnormalized exponent in the 68882 frame](CHANGELOG.md#2026-11-14-fresh-sweep)
 - **2026-11-14 (second)** — [Random transparent-translation windows on the 68040 find a translator defect: after TAS, CAS or CAS2, native reads marked their pages modified](CHANGELOG.md#2026-11-14-ttvar)
+- **2026-11-15** — [The CPU sweep entry point accepts macOS oracle builds](CHANGELOG.md#2026-11-15-oracle-sweep-macos)
+- **2026-11-15 (fifth)** — [Long descriptors join the 68030 two-level oracle geometry](CHANGELOG.md#2026-11-15-mmu030-long)
+- **2026-11-15 (fourth)** — [The 68030 oracle walks two levels with 4 KB pages](CHANGELOG.md#2026-11-15-mmu030-4k)
+- **2026-11-15 (second)** — [Legal MOVEM forms return to the page-end oracle coverage](CHANGELOG.md#2026-11-15-pagend-movem)
+- **2026-11-15 (third)** — [Reserved full-extension EAs get their own oracle family and public vectors](CHANGELOG.md#2026-11-15-earaw)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E
 

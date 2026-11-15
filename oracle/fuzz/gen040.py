@@ -37,7 +37,7 @@ from oracle_driver import State
 from gen030 import (MASK, VEC_BASE, CODE_BASE, DATA_BASE,
                     STACK_ISP, STACK_MSP, STACK_USP,
                     build_vector_table, _w16, _w32,
-                    _op_random, _op_core, _op_fault,
+                    _op_random, _op_core, _op_fault, _op_earaw,
                     _op_fpu, _op_fpuraw, _op_fpu2, _op_fpuh, _op_rmw,
                     _fp_special_words, HANDLER_BASE, HANDLER_STRIDE,
                     place_pagend)
@@ -257,7 +257,7 @@ FAMILIES = {"random": _op_random, "core": _op_core040, "mmu": _op_mmu040,
             "fpu2": _op_fpu2,
             "fault": _op_fault040, "fpu": _op_fpu,
             "fline": _op_fpuraw, "fpuraw": _op_fpuraw,
-            "pagend": None}
+            "pagend": None, "earaw": _op_earaw}
 
 
 def gen_state(rng: random.Random, family: str = "core",

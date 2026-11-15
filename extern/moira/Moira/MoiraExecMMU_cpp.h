@@ -260,9 +260,8 @@ Moira::mmuUpdateDescriptor(u32 tptr, int type, u32 entry, int rw) const
 // Translation-table walk (§ 9.5.2). Short (4-byte) and long (8-byte)
 // descriptors, early termination (page descriptor above the last level),
 // indirect descriptors on the last populated level, FCL initial lookup,
-// early abort on WP (write access) and S-only (user access). Limit fields
-// of long descriptors are ignored (Musashi ignores them too; revisit with
-// the translation corpora). Returns true when resolved; sr gets the
+// early abort on WP (write access) and S-only (user access). Long-descriptor
+// limits are checked before the child fetch. Returns true when resolved; sr gets the
 // accumulated flags | level count.
 bool
 Moira::mmuWalkTables(u32 addrIn, int type, u32 table, int fc, int limit,
@@ -275,6 +274,13 @@ Moira::mmuWalkTables(u32 addrIn, int type, u32 table, int fc, int limit,
     int bitpos = (reg.tc & 0x01000000) ? 16 : 12;       // [B] MC68030UM-1989 §9.5.5.1: function-code lookup. — FCL (§ 9.5.5.1)
     int pageshift = is;
     bool resolved = false;
+
+    // [D] WinUAE cpummu030.c mmu030_table_search @ Hatari e77819f7.
+    // POM68K: a limit belongs to the descriptor that points at the next
+    // table, including the root; its type selects the CHILD's size.
+    const u64 root = ((reg.tc & 0x02000000) && (fc & 4)) ? reg.srp : reg.crp;
+    u32 descriptor = u32(root >> 32);
+    bool descriptorLong = true;
 
     addrIn <<= is;
 
@@ -292,6 +298,22 @@ Moira::mmuWalkTables(u32 addrIn, int type, u32 table, int fc, int limit,
         const u32 tableIndex =
             (bitpos == 16) ? u32(fc) : addrIn >> ((32 - indexbits) & 31);
         u32 entry, entry2;
+
+        // [D] WinUAE @ Hatari e77819f7: no limit check for the FC
+        // lookup, or after reaching a leaf at the final table level.
+        // Stop before counting/fetching a child; addrOut remains the
+        // descriptor that imposed the bound (zero for the root).
+        if (descriptorLong && bitpos != 16 &&
+            (type == 2 || type == 3 || (type == 1 && indexbits))) {
+            const u32 bound = (descriptor >> 16) & 0x7fff;
+            const bool outside = (descriptor & 0x80000000) ? tableIndex < bound
+                                                          : tableIndex > bound;
+            if (outside) {
+                sr |= 0x4400;  // L | I
+                resolved = true;
+                break;
+            }
+        }
 
         bitpos -= 4;
         // [F] Retired Musashi comparison: local patched revision unavailable.
@@ -347,6 +369,8 @@ Moira::mmuWalkTables(u32 addrIn, int type, u32 table, int fc, int limit,
                     type = int(entry) & 3;
                 }
 
+                descriptor = entry;
+                descriptorLong = false;
                 table = entry & 0xfffffff0;
                 mmuUpdateSR(type, entry, fc, false, sr);
                 if (!ptest) mmuUpdateDescriptor(addrOut, type, entry, rw);
@@ -375,6 +399,8 @@ Moira::mmuWalkTables(u32 addrIn, int type, u32 table, int fc, int limit,
                     type = int(entry) & 3;
                 }
 
+                descriptor = entry;
+                descriptorLong = true;
                 table = entry2 & 0xfffffff0;
                 mmuUpdateSR(type, entry, fc, true, sr);
                 if (!ptest) mmuUpdateDescriptor(addrOut, type, entry, rw);

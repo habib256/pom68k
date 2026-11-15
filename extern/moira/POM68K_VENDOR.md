@@ -17,6 +17,7 @@ towards upstream had quietly expired while the file still read as if a rebase
 were the plan.
 
 What forced it, measured on this tree rather than remembered (re-measured
+2026-11-15 with row 109 (PTEST long-descriptor limits); before that
 2026-11-14 with row 100 (the 68040 lock ends with its instruction); before
 that with row 99 (deferred prefetch faults); before that 2026-11-13
 with rows 95–98 (PACK/UNPK one-word restart, the 68030 write
@@ -48,12 +49,12 @@ pair):
 | | | how to re-measure |
 |---|---|---|
 | distinct `pom*` extension identifiers | **116** (65 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **550** | `grep -rn POM68K Moira/ \| wc -l` |
+| `POM68K`-marked lines | **551** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **16 of 26** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **108** | this file |
+| patch groups in the inventory below | **109** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h`, `MoiraState.h` | — |
 
-One hundred and eight patch groups, two of which (the JIT seam, row 22, and the ATC
+One hundred and nine patch groups, two of which (the JIT seam, row 22, and the ATC
 performance work, row 16) are not patches over upstream's design but a second
 consumer of it. A re-sync is no longer a merge with conflicts; it is a port.
 
@@ -267,6 +268,7 @@ gate in the last column of each row.
 | 106 | **68040 bit-field stores and JSR's push restart their instruction** — `execMmu040BusError` takes a store fault as the instruction's last write (next PC, flags kept) unless the opcode is in its restart set; BFCHG/BFCLR/BFSET/BFINS (`$E8C0` family) and JSR (`$4E80`) join the FPU stores and MOVEP there. JSR writes at A7-4 before decrementing A7 (`execJsr` and the JIT's `pomJitJsr040`), so a faulting push leaves A7 intact. A scan of every 68040 handler of the oracle that stores finds exactly these, CAS2 and MOVEM unmarked; CAS2 reaches no store fault (write-probed reads), MOVEM has its latch | `MoiraExecMMU_cpp.h`, `MoiraExec_cpp.h` | [D] WinUAE cpuemu_31.c (`op_eed0`, `op_4e90`; `mmu_restart` left true) and `m68k_run_mmu040` @ Hatari e77819f7; fresh-seed vector `040 random/ttvar seed=79012 #1850` (BFSET on a write-protected DTT window). [F] for silicon: whether a 68040 completes these stores through its write-back buffers instead | `moira_rules_test` (`bitfieldStoreRestarts040`, BFSET and a user-mode JSR) |
 | 107 | **The SR-write refill of ANDI/ORI/EORI to SR is an instruction fetch on the 68020 up** — `execAndisr` kept upstream's 68010 stand-in, a data-space read at PC+2, translated with the new SR's function code; on the C68020 core it is now the program-space read `execMoveToSr` already made | `MoiraExec_cpp.h` | [D] WinUAE @ Hatari e77819f7 (no data access); fresh-seed vector `040 random/tt seed=79011 #1749` (EORI #,SR to user mode, DTT supervisor-only: a walk of the next instruction's page) | `moira_rules_test` (`srWriteRefillIsAFetch`) |
 | 108 | **No trace between a 68040 RTE and the rerun it resumes** — `execRte` drops the one-shot trace (`trace040Pending`) when it unstacked a format-$7 access-error frame: an SR loaded on the way with T0 or T1 set (a format-$1 throwaway frame) no longer takes vector 9 before the faulted instruction reruns. T1 in the final SR still traces the rerun. WinUAE also defers interrupt recognition past the rerun; the fork does not model that half | `MoiraExec_cpp.h` | [D] WinUAE newcpu.c `do_specialties` (SPCFLAG_MMURESTART from `m68k_do_rte_mmu040`) @ Hatari e77819f7; fresh-seed vector `040 core/off seed=81001 #1204`. [F] for silicon, and the interrupt half unmodelled | `moira_rules_test` (`rteRerunTakesNoTrace040`) |
+| 109 | **PTEST enforces long-descriptor limits** — retain the current descriptor's attributes and size independently of its child type; check inclusive upper/lower bounds before counting or fetching a child, including CRP/SRP limits. A violation reports L\|I and the preceding descriptor address/count; an explicitly requested PTEST level stops before consulting the next bound. No U/M updates | `MoiraExecMMU_cpp.h` (`mmuWalkTables`) | [D] WinUAE `mmu030_table_search` @ Hatari e77819f7; fresh vector `mmu/identity seed=152102 #86 geometry=4k-limits` returned $0002 instead of $4401. Ordinary bus translation already checked limits | `moira_rules_test` (`ptestLongDescriptorLimits`, 48 root/table, upper/lower, R/W, level and boundary combinations); 12 failed before the fix |
 
 Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54, 56, 59-75 and 79-86 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
 when nothing arms them); rows 48 and 55 are performance alone, with no architectural effect. Row 58 is evidence documentation only. The ten files carrying no `POM68K` marker at all —

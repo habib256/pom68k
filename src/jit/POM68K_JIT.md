@@ -162,7 +162,7 @@ what it does and does not drive today:
 The per-opcode question is **not** a block boundary: `Backend::canEmit()` is
 an encoding-only answer — consulted by the opcode census
 (`POM68K_JIT_HISTO`), by `jit_backend_test`, and by `A64Backend::compile()`
-as the dispatch test in front of `emitRegInstr` (`JitBackendA64.cpp:4836-4838`;
+as the dispatch test in front of `emitRegInstr` (`JitBackendA64.cpp:4851-4853`;
 the x64 emitters carry their own switch and never call it). The coverage
 floor is a separate thing and is not built on it: `compile()` counts what
 the emitter actually produced and refuses a block below
@@ -1574,9 +1574,9 @@ forms still replay. § 8 lists the admitted transactions and their refusals.
 > **The 68k seam below the backends is no longer 040-only, and the scope
 > box is now the only thing holding the line.** `pomJitProbeData` grew an
 > 030 branch (data-space fc, write-protect and owed-M-bit refusals,
-> `MoiraExecMMU_cpp.h:2363-2438`) and `pomJitReadData`/`pomJitWriteData`
+> `MoiraExecMMU_cpp.h:2661-2736`) and `pomJitReadData`/`pomJitWriteData`
 > reach `mmuRead`/`mmuWrite` on an 030 instead of `mmu040Read`/`Write`
-> (`:2452-2459`, `:2477-2484`). `jit_lockstep_030_test` gives the family the
+> (`MoiraExecMMU_cpp.h:2908-2930`, `MoiraExecMMU_cpp.h:2933-2955`). `jit_lockstep_030_test` gives the family the
 > differential coverage it lacked. The emitters' side of the 030 contract
 > is lockstep-proved since 2026-08-18 — generated 030 code is reachable by
 > an explicit `POM68K_JIT_BACKEND=x64|a64`, no unsafe override — and since

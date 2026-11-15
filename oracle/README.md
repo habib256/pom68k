@@ -38,7 +38,7 @@ oracle/
 
 ## Public vectors and CI
 
-`tests/cpu_vectors/` ships 336 oracle-generated vectors with recipes and
+`tests/cpu_vectors/` ships 752 oracle-generated vectors with recipes and
 uncompressed SHA-256 identities. The root `cpu-vectors` tier always replays
 them, including from clean CI and ASan/UBSan checkouts. It rejects missing
 data and successful soft-skips. They supplement the large optional corpora;
@@ -166,9 +166,46 @@ the pinned vectors never drew. `fuzz/sweep.sh SEED040 SEED030 [N] [OUT]
 MMU setup each accepts (strict 6888x on the 68030), N vectors a cell
 (default 1 000), then replays each family with the interpreter
 (`--strict-ram`) and with the JIT lockstep harness, and writes
-`summary.txt`. Every divergence is read against `fuzz/disputes/NOTES.md`
+`summary.txt`. JIT replay sets `POM68K_JIT_PROFIT_SCORE=0` so short vectors
+compile on AArch64/68030 too; inspect the native counters, or set
+`POM68K_JIT_REQUIRE_NATIVE=1` on a native host to require native execution.
+Every divergence is read against `fuzz/disputes/NOTES.md`
 before it is called new; the sweep itself is not pinned, a fix pins what
-holds it. The 2026-11-14 sweep (NOTES.md) is the reference run.
+holds it. The script accepts Linux `.so` and macOS `.dylib` oracle builds
+(or an explicit `POM68K_ORACLE_SO`) and uses at least one generation worker.
+Build `sst68030`, `sst68040`, `sst68030_jit` and `sst68040_jit` first.
+Use a Python environment with NumPy on `PATH` (for example
+`PATH="$PWD/build-oracle/venv/bin:$PATH" bash oracle/fuzz/sweep.sh 151100 151200`).
+Without NumPy, each vector scans 16 MB through the pure-Python fallback.
+Set `POM68K_SWEEP_JOBS=1` to generate serially on a shared host; prefix
+the command with `nice -n 15` to lower priority for generation and replay.
+The 2026-11-14 sweep (NOTES.md) is the reference run.
+
+The shared `earaw` family targets full-format indexed effective addresses
+on both CPUs: MOVE.L loads/stores, LEA and PEA, including PC-relative loads
+and LEA. BD size, bit 3, I/IS and suppression bits are drawn independently,
+including reserved encodings (see D17). It compares emulator behavior, not
+silicon-defined behavior for reserved words. The sweep appends these cells
+after the older families so their existing seed assignments stay stable.
+
+`fuzz030.py --geometry 4k-2level` selects 4 KB pages and two levels of
+short descriptors (IS=8, TIA=TIB=6). Its tables occupy $200000–$204FFF;
+the generator protects them and the full code region from holes/remaps.
+Fault offsets and page-end placement use the selected page size. The
+legacy `32k` geometry remains the default and keeps its recipes unchanged.
+The sweep appends identity-MMU cells for every family with this geometry.
+The `4k-2level-long` geometry uses eight-byte descriptors at both levels,
+with a type-3 root pointer, unlimited ascending limits, separate flags and
+addresses, and leaves extending through $208FFF. The sweep appends its
+identity cells after the short-descriptor geometry.
+`4k-limits` adds upper and lower bounds to four long table descriptors,
+leaving infrastructure reachable. Its `limits` family probes each bound's
+predecessor, equality and successor with MOVE.L reads/writes; leaf pages
+are made valid and writable so only the parent bound decides. The public
+32-vector recipe covers all twelve direction/position/access combinations.
+FCL/SRE, mixed short/long tables, indirect descriptors, early termination
+and bounded root pointers remain outside the fuzzer's coverage; `tt` still
+bypasses the whole tree. Root limits have a targeted `moira_rules_test` gate.
 
 ## Licensing / provenance
 

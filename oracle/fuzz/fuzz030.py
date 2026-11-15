@@ -52,8 +52,11 @@ def main() -> int:
     ap.add_argument("--b", help="optional second oracle .so (differential mode)")
     ap.add_argument("--family", default="core",
                     choices=["core", "mmu", "random", "fault", "fpu",
-                             "fpuraw", "fpu2", "rmw", "fpuh", "pagend"])
+                             "fpuraw", "fpu2", "rmw", "fpuh", "pagend", "earaw", "limits"])
     ap.add_argument("--mmu", default="off", choices=["off", "identity", "tt"])
+    ap.add_argument("--geometry", default="32k",
+                    choices=["32k", "4k-2level", "4k-2level-long", "4k-limits"],
+                    help="030 translation-tree geometry (default preserves old recipes)")
     ap.add_argument("--strict-fpu", action="store_true",
                     help="6888x as the manual has it: opmodes $40-$7F take a "
                          "Line-F, FRESTORE refuses a 68040 frame (default: "
@@ -79,8 +82,11 @@ def main() -> int:
 
     vectors, n_dispute, n_halt = [], 0, 0
     for i in range(args.n):
-        st = gen_state(rng, family=args.family, mmu=args.mmu)
+        st = gen_state(rng, family=args.family, mmu=args.mmu, geometry=args.geometry)
         name = f"{args.family}/{args.mmu} seed={args.seed} #{i}"
+
+        if args.geometry != "32k":
+            name += f" geometry={args.geometry}"
 
         fa, rama, ca = run_one(oa, st, args.steps)
         # A negative step is the oracle halting on a double fault (a PMOVE

@@ -523,7 +523,7 @@ void installBriefIndexedLoop(SyntheticCpu& c) {
 // memory sources use PreflightAll (or the proved atomic cache-pair door).
 // Byte/word/long values make the destination cost and packed flag widths
 // independently visible.
-void installIndexedMoveDestinationLoop(SyntheticCpu& c) {
+void installIndexedMoveDestinationLoop(SyntheticCpu& c, bool aliases = false) {
     installVectors(c);
     put16(c, kCode + 0x00, 0x7203);    // MOVEQ #3,D1 (signed word index)
     put16(c, kCode + 0x02, 0x7480);    // MOVEQ #-128,D2
@@ -541,7 +541,26 @@ void installIndexedMoveDestinationLoop(SyntheticCpu& c) {
     put16(c, kCode + 0x1C, 0x21B2);    // MOVE.L 4(A2,D1.W*2),16(A0,D1.W)
     put16(c, kCode + 0x1E, 0x1204);
     put16(c, kCode + 0x20, 0x1010);
-    put16(c, kCode + 0x22, 0x60DC);    // BRA.S kCode
+    if (aliases) {
+        // Source updates must be visible to destination base/index math,
+        // while preflight failure must still leave the registers untouched.
+        const uint16_t words[] = {
+            0x1198, 0x1040,   // MOVE.B (A0)+,64(A0,D1.W)
+            0x11A0, 0x1048,   // MOVE.B -(A0),72(A0,D1.W)
+            0x3198, 0x1050,   // MOVE.W (A0)+,80(A0,D1.W)
+            0x31A0, 0x1058,   // MOVE.W -(A0),88(A0,D1.W)
+            0x2198, 0x1060,   // MOVE.L (A0)+,96(A0,D1.W)
+            0x21A0, 0x1068,   // MOVE.L -(A0),104(A0,D1.W)
+            0x3598, 0x8200,   // MOVE.W (A0)+,0(A2,A0.W*2)
+            0x31A0, 0x8C00,   // MOVE.W -(A0),0(A0,A0.L*4)
+            0x60BC,           // BRA.S kCode
+        };
+        for (unsigned i = 0; i < sizeof(words) / sizeof(words[0]); ++i)
+            put16(c, kCode + 0x22 + i * 2, words[i]);
+        put32(c, kData + 0x100, 0x13579bdf);
+    } else {
+        put16(c, kCode + 0x22, 0x60DC);    // BRA.S kCode
+    }
     put16(c, kData + 0x200, 0x2468);
     put32(c, kData + 0x20A, 0x89AB'CDEFu);
 }
@@ -1847,15 +1866,15 @@ bool runBriefIndexedLockstep() {
            native.mem[kData + 0x88] == 0xFF && native.getA(7) == kStack;
 }
 
-bool runIndexedMoveDestinationLockstep(bool packedCcr) {
+bool runIndexedMoveDestinationLockstep(bool packedCcr, bool aliases = false) {
     jit::ResolvedConfig config = injectedJitConfig();
     config.packedCcr = packedCcr;
     const auto refOwner = std::make_unique<SyntheticCpu>(config);
     SyntheticCpu& ref = *refOwner;
     const auto nativeOwner = std::make_unique<SyntheticCpu>(config);
     SyntheticCpu& native = *nativeOwner;
-    installIndexedMoveDestinationLoop(ref);
-    installIndexedMoveDestinationLoop(native);
+    installIndexedMoveDestinationLoop(ref, aliases);
+    installIndexedMoveDestinationLoop(native, aliases);
     resetCpu(ref);
     resetCpu(native);
     for (SyntheticCpu* c : {&ref, &native}) {
@@ -1877,15 +1896,17 @@ bool runIndexedMoveDestinationLockstep(bool packedCcr) {
         }
     }
     const auto s = native.jit.stats().snapshot();
-    std::printf("    indexed MOVE destination packed=%d compiled=%llu "
+    std::printf("    indexed MOVE destination packed=%d aliases=%d compiled=%llu "
                 "runs=%llu native=%llu slow=%llu\n",
-                int(packedCcr),
+                int(packedCcr), int(aliases),
                 (unsigned long long)s.blocksCompiled,
                 (unsigned long long)s.blocksRun,
                 (unsigned long long)s.instrs,
                 (unsigned long long)s.slowInstrs);
     const uint32_t base = kData + 0x100;
-    return s.blocksCompiled != 0 && s.blocksRun != 0 && s.slowInstrs == 0 &&
+    return s.blocksCompiled != 0 && s.blocksRun != 0 &&
+           ((aliases && std::strcmp(native.jit.backendName(), "aarch64")) ||
+            s.slowInstrs == 0) &&
            native.mem[base + 3] == 0x80 &&
            native.mem[base + 7] == 0x80 && native.mem[base + 8] == 0x01 &&
            native.mem[base + 11] == 0x81 && native.mem[base + 12] == 0x23 &&
@@ -1893,7 +1914,7 @@ bool runIndexedMoveDestinationLockstep(bool packedCcr) {
            native.mem[base + 15] == 0x24 && native.mem[base + 16] == 0x68 &&
            native.mem[base + 19] == 0x89 && native.mem[base + 20] == 0xAB &&
            native.mem[base + 21] == 0xCD && native.mem[base + 22] == 0xEF &&
-           (native.getSR() & 0x18) == 0x18;
+           (native.getSR() & (aliases ? 0x10 : 0x18)) == (aliases ? 0x10 : 0x18);
 }
 
 enum class IndexedMoveBoundary { Device, Fault };
@@ -3804,6 +3825,10 @@ int main(int argc, char** argv) {
           "brief-indexed MOVE destinations stay native across every memory protocol");
     check(runIndexedMoveDestinationLockstep(true),
           "packed CCR keeps indexed MOVE byte/word/long flags and writes exact");
+    check(runIndexedMoveDestinationLockstep(false, true),
+          "indexed MOVE sees source updates in base and index (native on A64)");
+    check(runIndexedMoveDestinationLockstep(true, true),
+          "packed CCR preserves indexed MOVE aliases (native on A64)");
     check(runIndexedMoveBoundary(IndexedMoveBoundary::Device, false),
           "indexed MOVE executes one exact MMIO write from canonical CCR code");
     check(runIndexedMoveBoundary(IndexedMoveBoundary::Fault, false),

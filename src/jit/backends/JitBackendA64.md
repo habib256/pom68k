@@ -25,6 +25,18 @@ the token is deliberately absent on 030. Its 68030 paths carry split cost
 validation, restartable writes and emitted i-cache accounting; the dedicated
 long 030 lockstep and platform boots keep that automatic path gated.
 
+**Indexed MOVE after a source address update (2026-11-15).** A source
+`(An)+` or `-(An)` updates the value seen by the destination's base and
+address-register index. Both operand mappings are still proved before
+publishing that update: the destination address calculation adjusts scratch
+registers, before word-index sign extension and scaling. This keeps refused
+mappings replayable and does not turn these admitted forms into fallbacks.
+The raw FPU corpora exposed five failures in following MOVE instructions,
+not in FPU execution itself; the asset-free gate now holds byte/word/long
+base aliases and word/long scaled address-index aliases, with ordinary and
+packed CCR, all native on A64. The x64 backend retains its existing alias
+fallback policy.
+
 **The peripheral-phase access-clock bias (JIT_BRINGUP § C.4nonies) is
 carried by this backend since 2026-08-22.** `pom68kJitRead/Write` bias
 the clock around an exact access thunk by the instruction's would-be
