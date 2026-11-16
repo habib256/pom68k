@@ -62,6 +62,8 @@ archive (`tests/sst_corpora.lock` names each one by hash and by recipe;
 `tests/fetch_sst_68000.sh` fetches SingleStepTests). Point
 `-DMOIRA_POM68K_SST_ROOT=<dir>` at them; an absent corpus soft-skips and
 proves nothing.
+The 68030/68040 runners compare unlisted RAM writes too (`--strict-ram`)
+and use the same scoped or named oracle rules as the parent repository.
 
 ## What the fork adds
 

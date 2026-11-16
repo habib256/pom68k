@@ -600,6 +600,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-16 (ninth) — Standalone corpus replay keeps the repository's RAM checks](#2026-11-16-release-strict-ram)
 - [2026-11-16 (eighth) — Packed zero cannot shift by an unconverted k-factor](#2026-11-16-packed-zero-shift)
 - [2026-11-16 (seventh) — A 020/030 FPU handler can return through the frame the CPU stacks](#2026-11-16-fpu-frame2-return)
 - [2026-11-16 (sixth) — The inspector had kept the old 68030 table rules](#2026-11-16-inspection-shared-walk)
@@ -1380,6 +1381,23 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-16-release-strict-ram"></a>
+## 2026-11-16 (ninth) — Standalone corpus replay keeps the repository's RAM checks
+
+The standalone CMake template omitted `--strict-ram` from its 030/040
+corpus commands. It also omitted the two 040 D38 known-rule lists: without
+strict RAM, the descriptor-history differences those lists hold were
+invisible. The old standalone gates passed both corpora, whereas direct
+strict replay exposed their two already documented unlisted RAM writes.
+
+The export now enables strict RAM on every runner supporting it, supplies
+the original 040 and 8 KB-page rule lists, and includes the 030 handler
+corpus in its hash-verification command. No oracle payload or ruling is
+changed. A fresh 139-file worktree export, built outside POM68K with both
+interpreter configurations and the native AArch64 JIT, passes all 45
+unit/JIT/corpus gates. The saved LastTest log census proves 45 executed,
+zero soft-skips and zero failures. The parent include-closure check passes.
 
 <a id="2026-11-16-packed-zero-shift"></a>
 ## 2026-11-16 (eighth) — Packed zero cannot shift by an unconverted k-factor

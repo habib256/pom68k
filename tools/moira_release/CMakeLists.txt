@@ -185,6 +185,9 @@ set(MOIRA_POM68K_SST_ROOT "${T}/data" CACHE PATH "Root of the external CPU corpo
 function(moira_pom68k_corpus name runner)
     cmake_parse_arguments(C "FPU" "KNOWN" "" ${ARGN})
     set(cmd ${runner} "${MOIRA_POM68K_SST_ROOT}/${name}")
+    if(NOT runner STREQUAL "sst68000")
+        list(APPEND cmd --strict-ram)
+    endif()
     if(C_FPU)
         list(APPEND cmd --fpu)
     endif()
@@ -201,8 +204,8 @@ moira_pom68k_corpus(sst68030_fpuraw sst68030 KNOWN sst68030_fpuraw.known)
 moira_pom68k_corpus(sst68030_fpu2   sst68030 KNOWN sst68030_fpu2.known)
 moira_pom68k_corpus(sst68030_fpuh   sst68030 KNOWN sst68030_fpuh.known)
 moira_pom68k_corpus(sst68030_rmw    sst68030 KNOWN sst68030_rmw.known)
-moira_pom68k_corpus(sst68040        sst68040)
-moira_pom68k_corpus(sst68040_8k     sst68040)
+moira_pom68k_corpus(sst68040        sst68040 KNOWN sst68040.known)
+moira_pom68k_corpus(sst68040_8k     sst68040 KNOWN sst68040_8k.known)
 moira_pom68k_corpus(sst68040_fline  sst68040)
 moira_pom68k_corpus(sst68040_fpu    sst68040 FPU KNOWN sst68040_fpu.known)
 moira_pom68k_corpus(sst68040_fpu2   sst68040 FPU KNOWN sst68040_fpu2.known)
@@ -215,6 +218,7 @@ if(Python3_FOUND)
             --dir sst68030_solo=${MOIRA_POM68K_SST_ROOT}/sst68030_solo
             --dir sst68030_fpuraw=${MOIRA_POM68K_SST_ROOT}/sst68030_fpuraw
             --dir sst68030_fpu2=${MOIRA_POM68K_SST_ROOT}/sst68030_fpu2
+            --dir sst68030_fpuh=${MOIRA_POM68K_SST_ROOT}/sst68030_fpuh
             --dir sst68030_rmw=${MOIRA_POM68K_SST_ROOT}/sst68030_rmw
             --dir sst68040=${MOIRA_POM68K_SST_ROOT}/sst68040
             --dir sst68040_8k=${MOIRA_POM68K_SST_ROOT}/sst68040_8k
