@@ -296,7 +296,9 @@ void Moira::fpuFromPackedV(const FpuExtended &v, u32 wrd[3], int kfactor)
         u32 packInt = 0;
         u64 packFrac = 0;
         i32 len = kf;               // softfloat saved len into kfactor
-        while (len > 0) {
+        // POM68K: SoftFloat returns zero before replacing kfactor with
+        // its digit count. Any remaining zero digits need no shift.
+        while (len > 0 && significand != 0) {
             len--;
             u64 digit = significand % 10;
             significand /= 10;

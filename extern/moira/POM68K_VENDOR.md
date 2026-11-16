@@ -17,7 +17,8 @@ towards upstream had quietly expired while the file still read as if a rebase
 were the plan.
 
 What forced it, measured on this tree rather than remembered (re-measured
-2026-11-16 with row 113 (external-FPU format-2 returns); before that
+2026-11-16 with row 114 (packed-zero host shift guard); before that
+with row 113 (external-FPU format-2 returns); before that
 with row 112 (shared read-only inspection geometry); before that
 with rows 110–111 (shared PTEST walk and direct-root writes); before that
 2026-11-15 with row 109 (PTEST long-descriptor limits); before that
@@ -52,12 +53,12 @@ pair):
 | | | how to re-measure |
 |---|---|---|
 | distinct `pom*` extension identifiers | **116** (65 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **546** | `grep -rn POM68K Moira/ \| wc -l` |
+| `POM68K`-marked lines | **547** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **17 of 27** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **113** | this file |
+| patch groups in the inventory below | **114** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h`, `MoiraState.h`, `MoiraMmu030Walk.h` | — |
 
-One hundred and thirteen patch groups, two of which (the JIT seam, row 22, and the ATC
+One hundred and fourteen patch groups, two of which (the JIT seam, row 22, and the ATC
 performance work, row 16) are not patches over upstream's design but a second
 consumer of it. A re-sync is no longer a merge with conflicts; it is a port.
 
@@ -279,6 +280,8 @@ gate in the last column of each row.
 | 112 | **Inspection shares the CPU's descriptor geometry without live bus accesses** — `MoiraMmu030Walk.h` extracts the common algorithm behind bus searches, PTEST and `src/Mmu030Peek.h`. A compile-time history policy and caller-provided physical descriptor callbacks preserve read-only inspection; WP/S are reported independently of invalid mappings. The old inspection walker ignored early-page/root bounds, applied root bounds to FC lookup, and used the parent size for indirect targets | `MoiraMmu030Walk.h`, `MoiraExecMMU_cpp.h`, `Moira.cpp` | [B] MC68030UM-1989 §§9.5.3,9.5.5.1,9.7.1; the CPU algorithm is unchanged, inspection now follows it | `debug_inspection_test` (`peekGeometry030`, 46 geometry cases with byte-identical descriptor checks; 16 fail with the former inspector); `moira_rules_test` and strict SST replay cover the CPU paths |
 
 | 113 | **External 6888x exceptions return through the ordinary format-2 RTE path** — `execFpuException` selects format $2 and the F-line instruction address below the 040; integrated-040 format $3/EA is unchanged. Scoped D23a oracle rules normalize only the format/IA fields and compare every remaining register and RAM byte | `MoiraExecFPU_cpp.h` | [B] MC68030UM-1989 §10.4.20, Figure 10-45 (checked PDF pp. 542–543). WinUAE's format $3 on a 030 was rejected by its own RTE; the old fork took vector 14 instead of returning | `fpu_sanity` (16 model/FPU/destination combinations, real RTE plus next NOP; 48 checks failed before); five pinned corpora and `sst_known_contract_test` |
+
+| 114 | **Packed signed zero never shifts by the incoming k-factor** — SoftFloat returns zero before replacing the k-factor with the decimal digit count. Stop when the remaining significand is zero, so k-factors above 17 cannot cause a negative host shift while emitting zero digits | `MoiraExecFPU_cpp.h` | local SoftFloat zero-return contract; UBSan reports a negative shift (minimal k=18 gives -4). The identical WinUAE loop is guarded by oracle patch 16; numerical output and flags are preserved | `fpu_sanity` (`packedZeros`, 1 024 static/dynamic signed-seven-bit k-factor transfers, both FPUs and both zero signs); strict FPU corpora under UBSan |
 
 Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54, 56, 59-75 and 79-86 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
 when nothing arms them); rows 48 and 55 are performance alone, with no architectural effect. Row 58 is evidence documentation only. The ten files carrying no `POM68K` marker at all —

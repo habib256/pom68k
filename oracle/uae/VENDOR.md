@@ -176,6 +176,16 @@ is vendored and linked — `-Wl,--gc-sections` trims the .so on ELF,
    exception applies to table roots, which perform a function-code lookup,
    whereas a direct root does not. Focused `earlyfcl` probes hold this case.
 
+16. `upstream/fpp_softfloat.c`, packed zero digit emission (2026-11-16) —
+   `floatx80_to_floatdecimal` returns signed zero before replacing the
+   caller's k-factor with its digit count. A positive k-factor above 17
+   consequently reached a negative shift count in `fp_from_pack`, even
+   though every digit was zero. Stop when the remaining significand is
+   zero: all further contributions are zero, and no out-of-range shift
+   is evaluated. Moira's corresponding loop receives the same guard.
+   This is a host undefined-behavior fix; the packed image and FPU flags
+   retain their previous values.
+
 No other vendored file is modified.
 
 ## Shim strategy

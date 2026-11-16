@@ -711,7 +711,9 @@ static void fp_from_pack(fpdata *fp, uae_u32 *wrd, int kfactor)
 		pack_int = 0;
 		pack_frac = 0;
 		len = kfactor; // SoftFloat saved len to kfactor variable
-		while (len > 0) {
+		/* POM68K: zero returns before SoftFloat writes its digit count.
+		 * Remaining zero digits need no shift, including k-factor >17. */
+		while (len > 0 && significand != 0) {
 			len--;
 			digit = significand % 10;
 			significand /= 10;

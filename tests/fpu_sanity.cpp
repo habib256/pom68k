@@ -106,6 +106,42 @@ void checkFp(TestCpu& cpu, int n, uint32_t w0, uint32_t w1, uint32_t w2, const c
           what, n, w[0], w[1], w[2], w0, w1, w2);
 }
 
+
+// A zero conversion returns before SoftFloat writes its decimal digit count.
+// Exercise all signed seven-bit k-factors, including positive values >17.
+void packedZeros() {
+    int transfers = 0;
+    for (auto model : {moira::FPUModel::M68881, moira::FPUModel::M68882})
+    for (bool negative : {false, true}) {
+        std::vector<uint16_t> program;
+        for (bool dynamic : {false, true}) for (unsigned k = 0; k < 128; ++k) {
+            program.push_back(0xF210);               // FMOVE.P FP0,(A0)
+            program.push_back(uint16_t(dynamic ? 0x7C10 : 0x6C00 | k));
+        }
+        TestCpu cpu;
+        run(cpu, program, 0, true);
+        cpu.setFPUModel(model);
+        const uint32_t zero[3] = {negative ? 0x80000000u : 0, 0, 0};
+        cpu.setFP(0, zero);
+        uint8_t want[12] = {};
+        want[0] = negative ? 0x80 : 0;
+        uint32_t next = 0x1000;
+        for (bool dynamic : {false, true}) for (unsigned k = 0; k < 128; ++k) {
+            std::memset(cpu.mem.data() + 0x4000, 0xA5, 12);
+            cpu.setA(0, 0x4000);
+            cpu.setD(1, 0xDEADBE80u | k);             // only low seven bits count
+            cpu.execute();
+            next += 4;
+            CHECK(std::memcmp(cpu.mem.data() + 0x4000, want, 12) == 0 &&
+                  cpu.getPC0() == next,
+                  "packed zero FPU=%d sign=%d dynamic=%d k=%u PC=%08X FPSR=%08X",
+                  int(model), negative, dynamic, k, cpu.getPC0(), cpu.getFPSR());
+            ++transfers;
+        }
+    }
+    std::printf("packed signed zero: %d static/dynamic k-factor transfers\n", transfers);
+}
+
 }  // namespace
 
 int main() {
@@ -184,6 +220,8 @@ int main() {
               "fmove.p 1.0{#3}: mem[4000] = %02X%02X%02X%02X..., want 00000001 0 0",
               cpu.mem[0x4000], cpu.mem[0x4001], cpu.mem[0x4002], cpu.mem[0x4003]);
     }
+
+    packedZeros();
 
     // 9 ── FMOVE.L #$20,FPCR ; FMOVE.L FPCR,D0 (control-register moves)
     run(cpu, { 0xF23C, 0x9000, 0x0000, 0x0020,      // fmove.l #$20,fpcr

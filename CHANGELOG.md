@@ -600,6 +600,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-16 (eighth) — Packed zero cannot shift by an unconverted k-factor](#2026-11-16-packed-zero-shift)
 - [2026-11-16 (seventh) — A 020/030 FPU handler can return through the frame the CPU stacks](#2026-11-16-fpu-frame2-return)
 - [2026-11-16 (sixth) — The inspector had kept the old 68030 table rules](#2026-11-16-inspection-shared-walk)
 - [2026-11-16 (fifth) — Threaded proof counts the direct window pump](#2026-11-16-threaded-window-census)
@@ -1379,6 +1380,27 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-16-packed-zero-shift"></a>
+## 2026-11-16 (eighth) — Packed zero cannot shift by an unconverted k-factor
+
+UBSan found a negative host shift in FMOVE.P: SoftFloat returns signed
+zero before replacing the incoming k-factor with its decimal digit count.
+The digit-emission loop therefore used k=18 as a length and shifted by -4,
+even though its digit was zero. Stop when the remaining significand is zero;
+all remaining contributions are zero. Apply the same guard to the matching
+WinUAE oracle loop. This preserves the packed image and current FPU flags;
+it does not settle exception-status policy for zero and out-of-range k-factors.
+
+`fpu_sanity` exercises 1 024 transfers: every static/dynamic signed-seven-bit
+k-factor, both zero signs, and both 68881/68882. The old core reproduces the
+UBSan failure; the corrected core passes ASan/UBSan. Strict-RAM replay of
+all five FPU corpora passes (26 674 vectors, with the existing 646 scoped or
+named divergences). The three previously aborting raw/two-instruction/handler
+corpora also pass under ASan/UBSan, covering 18 000 vectors. Both oracle smoke
+tests pass. Public-pin regeneration was attempted without writing fixtures
+but timed out in an effective-address recipe; no pin was changed and this
+attempt is not counted as a successful reproduction.
 
 <a id="2026-11-16-fpu-frame2-return"></a>
 ## 2026-11-16 (seventh) — A 020/030 FPU handler can return through the frame the CPU stacks
