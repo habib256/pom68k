@@ -600,6 +600,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-16 (sixth) — The inspector had kept the old 68030 table rules](#2026-11-16-inspection-shared-walk)
 - [2026-11-16 (fifth) — Threaded proof counts the direct window pump](#2026-11-16-threaded-window-census)
 - [2026-11-16 (fourth) — Public 030 JIT requires executed native code](#2026-11-16-public-jit-census)
 - [2026-11-16 (third) — Shared 68030 walk and direct-root ATC history](#2026-11-16-shared-mmu030-walk)
@@ -1377,6 +1378,41 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-16-inspection-shared-walk"></a>
+## 2026-11-16 (sixth) — The inspector had kept the old 68030 table rules
+
+The CPU's shared PTEST/bus walker left `src/Mmu030Peek.h` behind. A focused
+inspection matrix finds 16 failures among 46 cases: direct-root and early
+page limits are ignored, the root limit wrongly applies to an FC-table
+lookup, and indirect targets inherit the parent's descriptor size or are
+followed again instead of requiring a page. These are mapping defects:
+a debugger can show bytes where the CPU faults, or fail to show a real map.
+
+`MoiraMmu030Walk.h` now owns the descriptor algorithm without a CPU or
+Macintosh dependency. The CPU supplies live descriptor read/write
+callbacks; inspection supplies physical `peek8` reads with a compile-time
+read-only history policy. PTEST keeps its stopping level and /BERR wrapper.
+Inspection still ignores WP/S while rejecting invalid/limit outcomes,
+and applies the ordinary page offset after the shared walk. TT matching
+remains a caller decision. No state fields or save-state layout change.
+
+The algorithm's body matches the previous CPU body after register/callback
+substitutions and the explicit history policy. The 46 mapping controls,
+including byte-identical descriptor checks, pass in an isolated header-only
+ASan/UBSan harness with warnings as errors. The new seam and its inputs are
+recorded in `POM68K_SURFACE.md`; vendor row 112 records the extraction.
+
+The rebuilt `debug_inspection_test` passes all mapping and whole-machine
+inspection checks. The bare `moira_rules_test` also passes, including 176
+direct read-only walk controls that assert zero descriptor-write callbacks.
+Strict-RAM replay passes all 904 public vectors and 5 000 focused vectors
+on both the interpreter and AArch64 JIT. Native execution is observed:
+13 149 and 76 090 native instructions respectively, zero MMU skips; the
+focused run has zero slow instructions. Source grades, documentation,
+file-size budgets and the 135-file standalone include closure pass.
+The machine tier in progress still uses the preceding commit's binaries;
+it is not evidence for this extraction.
 
 <a id="2026-11-16-threaded-window-census"></a>
 ## 2026-11-16 (fifth) — Threaded proof must count its direct window pump

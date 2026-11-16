@@ -751,8 +751,7 @@ compilation et dans la documentation.
   intermédiaires (`fpu_context_test`, `CHANGELOG` 2026-11-10, quatrième).
   Reste le second portage de la même lignée dans `src/io/SoftFloat*.hpp`
   chez NeoST : choisir une seule implémentation et y porter les adaptations.
-- [ ] **Dédupliquer avant de porter.** `src/Mmu030Peek.h` réimplémente la
-  marche de tables et a déjà dérivé deux fois ; les quatre wrappers 040
+- [ ] **Dédupliquer avant de porter.** Les quatre wrappers 040
   sont des quasi-copies qui ont divergé, et la logique
   boost/`flushTicks`/`machineClock` est recopiée sur une demi-douzaine de
   wrappers 030 ; la sonde coprocesseur FC = 7 est émulée dans quatre

@@ -47,6 +47,7 @@
 #include "VaspMemory.h"
 
 #include <cstdio>
+#include <array>
 #include <cstring>
 #include <memory>
 #include <set>
@@ -140,6 +141,78 @@ void checkMappedPage(const char* fam, Target& t, const uint8_t* tables,
     std::snprintf(what, sizeof what,
                   "%s: the walk leaves every descriptor (U/M bits) untouched", fam);
     check(std::memcmp(before.data(), tables, tableBytes) == 0, what);
+}
+
+void peekGeometry030() {
+    // [B] MC68030UM-1989 §§9.5.3,9.5.5.1,9.7.1: mapping rules
+    // also hold for inspection, even when protection is deliberately ignored.
+    std::array<uint8_t, 0x10000> mem{};
+    bool outside = false;
+    auto peek = [&](uint32_t a) -> uint8_t {
+        if (a >= mem.size()) { outside = true; return 0; }
+        return mem[a];
+    };
+    auto put = [&](uint32_t a, uint32_t v) { put32(mem.data() + a, v); };
+    auto probe = [&](uint32_t tc, uint64_t root, uint32_t logical,
+                     bool valid, uint32_t expected, const char* what) {
+        const auto before = mem;
+        outside = false;
+        uint32_t physical = 0xDEADBEEF;
+        const bool ok = mmu030peek::translate(tc, root, root, logical, 5, peek, &physical);
+        check(ok == valid && (!ok || physical == expected) && !outside, what);
+        check(mem == before, "68030 inspection: descriptors remain byte-identical");
+    };
+    for (bool fcl : {false, true}) for (bool lower : {false, true})
+    for (int delta : {-1, 0, 1}) {
+        const uint32_t index = uint32_t(2 + delta);
+        const uint32_t bound = (lower ? 0x80000000u : 0) | (2u << 16);
+        const uint32_t tc = 0x80C86600 | (fcl ? 0x01000000 : 0);
+        const uint32_t logical = (index << 18) | 0x2134;
+        probe(tc, (uint64_t(bound | 1) << 32) | 0x30000,
+              logical, lower ? delta >= 0 : delta <= 0,
+              0x30000 + logical, "68030 inspection: direct-root bounds, including FCL");
+    }
+    // FCL consults FC[5] without applying the table root's limit to FC.
+    // Its long page descriptor then bounds the first logical index.
+    for (bool lower : {false, true}) for (int delta : {-1, 0, 1}) {
+        mem.fill(0);
+        const uint32_t logical = (uint32_t(2 + delta) << 18) | 0x2134;
+        put(0x4000 + 5 * 8, (lower ? 0x80000000u : 0) | (2u << 16) | 0x105);
+        put(0x4004 + 5 * 8, 0x30000);
+        probe(0x81C86600, (uint64_t(3) << 32) | 0x4000, logical,
+              lower ? delta >= 0 : delta <= 0, 0x30000 + logical,
+              "68030 inspection: FC lookup skips root bound, early page retains its bound");
+    }
+    for (int stride : {4, 8}) for (bool lower : {false, true})
+    for (int delta : {-1, 0, 1}) {
+        mem.fill(0);
+        const uint32_t flags = (lower ? 0x80000000u : 0) | (2u << 16) | 0x105;
+        put(0x4000 + stride, stride == 8 ? flags : 0x30005);
+        if (stride == 8) put(0x4004 + stride, 0x30000);
+        const uint32_t logical = (1u << 18) | (uint32_t(2 + delta) << 12) | 0x134;
+        probe(0x80C86600, (uint64_t(0x7FFF0000u | (stride == 8 ? 3 : 2)) << 32) | 0x4000,
+              logical, stride == 4 || (lower ? delta >= 0 : delta <= 0),
+              0x30000 + (logical & 0x3FFFF),
+              "68030 inspection: early-page limit follows descriptor size");
+    }
+    for (int stride : {4, 8}) for (int targetStride : {4, 8})
+    for (int kind : {0, 1, 2, 3}) {
+        mem.fill(0);
+        const uint32_t flags = 0x7FFF0000u | (stride == 8 ? 3 : 2);
+        put(0x4000 + stride, stride == 8 ? flags : 0x5002);
+        if (stride == 8) put(0x4004 + stride, 0x5000);
+        const uint32_t target = targetStride == 8 ? 0x6008 : 0x6004;
+        const uint32_t pointer = targetStride == 8 ? 3 : 2;
+        put(0x5000 + 2 * stride, stride == 8 ? pointer : target | pointer);
+        if (stride == 8) put(0x5004 + 2 * stride, target);
+        // WP/S must not hide a mapping from the debugger. Non-page indirect
+        // targets are invalid, rather than another recursively followed table.
+        put(target, (targetStride == 8 ? 0x104 : 0x30004) | uint32_t(kind));
+        if (targetStride == 8) put(target + 4, 0x30000);
+        probe(0x80C86600, (uint64_t(flags) << 32) | 0x4000,
+              (1u << 18) | (2u << 12) | 0x134, kind == 1, 0x30134,
+              "68030 inspection: indirect target DT determines size and must be a page");
+    }
 }
 
 void mmu030() {
@@ -451,6 +524,7 @@ void devices() {
 } // namespace
 
 int main() {
+    peekGeometry030();
     mmu030();
     mmu040();
     compact();

@@ -8,6 +8,7 @@
 #include "MoiraConfig.h"
 #include "Moira.h"
 #include "MoiraMacros.h"
+#include "MoiraMmu030Walk.h"
 
 #include <cstdio>
 #include <cstdlib>   // POM68K: explicit for std::getenv (NeoST c9925da, Emscripten 7)

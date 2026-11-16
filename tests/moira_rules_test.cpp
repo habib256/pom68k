@@ -49,6 +49,7 @@
 //    no-ops by default, which the corpora prove; this proves the hooks fire.
 
 #include "Moira.h"
+#include "MoiraMmu030Walk.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -1089,6 +1090,22 @@ void ptestLongDescriptorLimits()
     }
 }
 
+void readonlyWalk030(const TestCpu& c, uint32_t logical, uint8_t fc,
+                     uint16_t expectedStatus, uint32_t expectedPage)
+{
+    uint32_t page = 0, descriptor = 0;
+    uint16_t status = 0;
+    int count = 0, writes = 0;
+    bool ci = false;
+    moira::mmu030::tableWalk<false>(c.getTC(), c.getCRP(), c.getSRP(),
+        logical, fc, false, 0, [&](uint32_t a) { return g32(c, a); },
+        [&](uint32_t, uint32_t) { ++writes; }, page, ci, status, descriptor, count);
+    CHECK(status == expectedStatus && writes == 0 &&
+          ((status & 0xC400) || page == expectedPage),
+          "read-only 030 walk: status=%04X/%04X page=%08X/%08X writes=%d",
+          status, expectedStatus, page, expectedPage, writes);
+}
+
 void ptestEarlyAndIndirect030()
 {
     // [D] WinUAE mmu030_table_search @ Hatari e77819f7: early page
@@ -1116,6 +1133,8 @@ void ptestEarlyAndIndirect030()
               "PTEST early stride=%d lower=%d delta=%d depth=%d FC=%d: "
               "MMUSR=%04X/%04X A1=%08X/%08X", stride, lower, delta, depth, fc,
               c.getMMUSR(), want, c.getA(1), entry);
+        readonlyWalk030(c, c.getA(0), uint8_t(fc), uint16_t(want & 0xFFF0),
+                        0x30000 + (uint32_t(2 + delta) << 12));
     }
     for (int stride : {4, 8}) for (int targetStride : {4, 8})
     for (int kind : {0, 1, 2, 3}) for (int depth : {1, 2, 3, 4})
@@ -1148,6 +1167,8 @@ void ptestEarlyAndIndirect030()
               "PTEST indirect stride=%d target=%d DT=%d depth=%d FC=%d: "
               "MMUSR=%04X/%04X A1=%08X/%08X", stride, targetStride, kind, depth, fc,
               c.getMMUSR(), want, c.getA(1), address);
+        readonlyWalk030(c, c.getA(0), uint8_t(fc), kind != 1 ? 0x0400 :
+            uint16_t(0x0a00 | (targetStride == 8 && fc == 1 ? 0x2000 : 0)), 0x30000);
     }
 }
 

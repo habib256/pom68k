@@ -17,7 +17,8 @@ towards upstream had quietly expired while the file still read as if a rebase
 were the plan.
 
 What forced it, measured on this tree rather than remembered (re-measured
-2026-11-16 with rows 110–111 (shared PTEST walk and direct-root writes); before that
+2026-11-16 with row 112 (shared read-only inspection geometry); before that
+with rows 110–111 (shared PTEST walk and direct-root writes); before that
 2026-11-15 with row 109 (PTEST long-descriptor limits); before that
 2026-11-14 with row 100 (the 68040 lock ends with its instruction); before
 that with row 99 (deferred prefetch faults); before that 2026-11-13
@@ -50,12 +51,12 @@ pair):
 | | | how to re-measure |
 |---|---|---|
 | distinct `pom*` extension identifiers | **116** (65 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **545** | `grep -rn POM68K Moira/ \| wc -l` |
-| source files carrying a marker | **16 of 26** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **111** | this file |
-| files POM68K *adds* outright | `MoiraCache040.h`, `MoiraState.h` | — |
+| `POM68K`-marked lines | **546** | `grep -rn POM68K Moira/ \| wc -l` |
+| source files carrying a marker | **17 of 27** | `grep -rln POM68K Moira/ \| wc -l` |
+| patch groups in the inventory below | **112** | this file |
+| files POM68K *adds* outright | `MoiraCache040.h`, `MoiraState.h`, `MoiraMmu030Walk.h` | — |
 
-One hundred and eleven patch groups, two of which (the JIT seam, row 22, and the ATC
+One hundred and twelve patch groups, two of which (the JIT seam, row 22, and the ATC
 performance work, row 16) are not patches over upstream's design but a second
 consumer of it. A re-sync is no longer a merge with conflicts; it is a port.
 
@@ -272,6 +273,9 @@ gate in the last column of each row.
 | 109 | **PTEST enforces long-descriptor limits** — retain the current descriptor's attributes and size independently of its child type; check inclusive upper/lower bounds before counting or fetching a child, including CRP/SRP limits. A violation reports L\|I and the preceding descriptor address/count; an explicitly requested PTEST level stops before consulting the next bound. No U/M updates | `MoiraExecMMU_cpp.h` (`mmuTableWalkBody`; unified in row 110) | [D] WinUAE `mmu030_table_search` @ Hatari e77819f7; fresh vector `mmu/identity seed=152102 #86 geometry=4k-limits` returned $0002 instead of $4401. Ordinary bus translation already checked limits | `moira_rules_test` (`ptestLongDescriptorLimits`, 48 root/table, upper/lower, R/W, level and boundary combinations); 12 failed before the fix |
 | 110 | **PTEST and bus accesses share the 68030 table walk** — PTEST suppresses U/M writes and stops at its requested descriptor, before following an indirect pointer. The pointer's DT selects the target size, a non-page indirect target reports invalid without recursive indirection, and an early page checks its remaining bound even at the requested level. A descriptor-read fault returns the preceding completed address/count. Removed the separate `mmuWalkTables`, `mmuRootPointer`, `mmuUpdateSR` and `mmuUpdateDescriptor` implementations | `MoiraExecMMU_cpp.h`, `Moira.h` | [D] WinUAE `mmu030_table_search` @ Hatari e77819f7; `early`/`indirect` pilot seeds 161500–161503 found the separate walker diverging | `moira_rules_test` (`ptestEarlyAndIndirect030`, 176 controls); focused and public SST vectors |
 | 111 | **A direct-root write marks its ATC entry modified** — a DT=1 root has no memory-resident M bit, but its computed ATC mapping still acquires M on a write/PLOADW. Otherwise the write retry immediately invalidates the just-filled M-clear entry and the core takes a false bus error. A direct-root bound is also enforced with FCL enabled, as §9.7.1 explicitly requires; table roots still skip the bound at their FC lookup | `MoiraExecMMU_cpp.h` | [B] MC68030UM-1989 §§9.4 (ATC M on a valid write) and 9.7.1 (DT=1 constant-offset mapping). The oracle had the analogous invalidation followed by `atc[-1]`; oracle patch 15 corrects the missing M update and guards post-search retries | `moira_rules_test` (`directRootWrites030`, byte/word/long MOVE/MOVES, both roots, read-to-write transitions and repeated writes, observed by PTEST level zero; `directRootFclLimits030`, 120 direct-root PTEST/bus controls); oracle smoke |
+
+
+| 112 | **Inspection shares the CPU's descriptor geometry without live bus accesses** — `MoiraMmu030Walk.h` extracts the common algorithm behind bus searches, PTEST and `src/Mmu030Peek.h`. A compile-time history policy and caller-provided physical descriptor callbacks preserve read-only inspection; WP/S are reported independently of invalid mappings. The old inspection walker ignored early-page/root bounds, applied root bounds to FC lookup, and used the parent size for indirect targets | `MoiraMmu030Walk.h`, `MoiraExecMMU_cpp.h`, `Moira.cpp` | [B] MC68030UM-1989 §§9.5.3,9.5.5.1,9.7.1; the CPU algorithm is unchanged, inspection now follows it | `debug_inspection_test` (`peekGeometry030`, 46 geometry cases with byte-identical descriptor checks; 16 fail with the former inspector); `moira_rules_test` and strict SST replay cover the CPU paths |
 
 Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54, 56, 59-75 and 79-86 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
 when nothing arms them); rows 48 and 55 are performance alone, with no architectural effect. Row 58 is evidence documentation only. The ten files carrying no `POM68K` marker at all —

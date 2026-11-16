@@ -472,6 +472,15 @@ expected.
 
 ### 5.1 68030 (`M68030` only)
 
+- `MoiraMmu030Walk.h` exposes the table geometry as the header-only
+  `moira::mmu030::tableWalk<MaintainHistory>` algorithm. Its inputs are
+  TC/CRP/SRP, address, FC, access direction and stopping level, plus physical
+  descriptor read/write callbacks. The CPU provides live bus callbacks;
+  an inspector can use side-effect-free reads, `MaintainHistory=false`,
+  and level zero to resolve the complete mapping without U/M or ATC changes.
+  WP/S status is separate from invalid mappings (B/L/I), so inspection may
+  ignore protection. TC.E, FC=7 bypass, TT matching and the final page offset
+  remain caller decisions. This is not an ATC lookup or an access verdict.
 - Funnel: `read<>`/`write<>` → `mmuRead<C,S,F>`/`mmuWrite<C,S,F>` for every
   access (bus splitting, access log `mmuAd`/`mmuIdx`/`mmuIdxDone`);
   `mmuFetchWord` for every instruction word; `mmuTranslateAccess` per
