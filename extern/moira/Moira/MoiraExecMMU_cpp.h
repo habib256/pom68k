@@ -209,267 +209,6 @@ Moira::mmuMatchTT(u32 tt, u32 addr, int fc, int rw, u16 &sr) const
     return true;
 }
 
-// [B] MC68030UM-1989 §9.7.4: MMUSR flags.
-// MMUSR accumulation while walking (§ 9.7.4): M from page descriptors,
-// WP from any valid descriptor, S from long descriptors on user accesses.
-void
-Moira::mmuUpdateSR(int type, u32 entry, int fc, bool isLong, u16 &sr) const
-{
-    switch (type) {
-
-        case 0:                 // invalid — no flags
-
-            break;
-
-        case 1:                 // page descriptor
-
-            if (entry & 0x10) sr |= 0x0200;                     // M
-            [[fallthrough]];
-
-        case 2:                 // valid 4-byte
-        case 3:                 // valid 8-byte
-
-            if (entry & 0x04) sr |= 0x0800;                     // WP
-            if (isLong && !(fc & 4) && (entry & 0x100)) sr |= 0x2000; // S
-            break;
-
-        default:
-            break;
-    }
-}
-
-// [B] MC68030UM-1989 §9.5.4 and §9.8: table updates and PTEST/PLOAD.
-// History maintenance (§ 9.5.4): the walk sets U in every descriptor it
-// traverses, and U+M in the page descriptor on a write access that is not
-// write-protected. PTEST performs no updates (§ 9.8: it "does not alter the ATC"); PLOAD does.
-void
-Moira::mmuUpdateDescriptor(u32 tptr, int type, u32 entry, int rw) const
-{
-    if (type == 1 && !rw && !(entry & 0x10) && !(entry & 0x04)) {
-
-        mmuWrite32(tptr, entry | 0x08 | 0x10);                  // U + M
-    } else if (type != 0 && !(entry & 0x08)) {
-
-        mmuWrite32(tptr, entry | 0x08);                         // U
-    }
-}
-
-// [B] MC68030UM-1989 §9.5.2: table search; PTEST simplification below.
-// [F] Retired Musashi comparison: local patched revision unavailable.
-// Settled by: a replay with a pinned replacement oracle.
-// Translation-table walk (§ 9.5.2). Short (4-byte) and long (8-byte)
-// descriptors, early termination (page descriptor above the last level),
-// indirect descriptors on the last populated level, FCL initial lookup,
-// early abort on WP (write access) and S-only (user access). Long-descriptor
-// limits are checked before the child fetch. Returns true when resolved; sr gets the
-// accumulated flags | level count.
-bool
-Moira::mmuWalkTables(u32 addrIn, int type, u32 table, int fc, int limit,
-                     int rw, bool ptest, u32 &addrOut, u16 &sr) const
-{
-    int level = 0;
-    const u32 bits = reg.tc & 0xffff;                   // TIA..TID
-    const int pagesize = int(reg.tc >> 20) & 0xf;       // PS
-    const int is = int(reg.tc >> 16) & 0xf;             // IS
-    int bitpos = (reg.tc & 0x01000000) ? 16 : 12;       // [B] MC68030UM-1989 §9.5.5.1: function-code lookup. — FCL (§ 9.5.5.1)
-    int pageshift = is;
-    bool resolved = false;
-
-    // [D] WinUAE cpummu030.c mmu030_table_search @ Hatari e77819f7.
-    // POM68K: a limit belongs to the descriptor that points at the next
-    // table, including the root; its type selects the CHILD's size.
-    const u64 root = ((reg.tc & 0x02000000) && (fc & 4)) ? reg.srp : reg.crp;
-    u32 descriptor = u32(root >> 32);
-    bool descriptorLong = true;
-
-    addrIn <<= is;
-
-    // A host /BERR on a descriptor fetch ends the search: B|I, and the
-    // descriptor that faulted is not counted in N (Moira.h
-    // § mmuInTableSearch; [D] WinUAE descr_num-- @ Hatari e77819f7). Every fetch below follows
-    // its level++, so the fault always undoes exactly one count.
-    mmuInTableSearch = true;
-    try {
-    do {
-
-        const int indexbits = int(bits >> bitpos) & 0xf;
-        // Oracle quirk: indexbits == 0 shifts a u32 by 32, which on x86
-        // leaves the value unchanged — replicated with the & 31.
-        const u32 tableIndex =
-            (bitpos == 16) ? u32(fc) : addrIn >> ((32 - indexbits) & 31);
-        u32 entry, entry2;
-
-        // [D] WinUAE @ Hatari e77819f7: no limit check for the FC
-        // lookup, or after reaching a leaf at the final table level.
-        // Stop before counting/fetching a child; addrOut remains the
-        // descriptor that imposed the bound (zero for the root).
-        if (descriptorLong && bitpos != 16 &&
-            (type == 2 || type == 3 || (type == 1 && indexbits))) {
-            const u32 bound = (descriptor >> 16) & 0x7fff;
-            const bool outside = (descriptor & 0x80000000) ? tableIndex < bound
-                                                          : tableIndex > bound;
-            if (outside) {
-                sr |= 0x4400;  // L | I
-                resolved = true;
-                break;
-            }
-        }
-
-        bitpos -= 4;
-        // [F] Retired Musashi comparison: local patched revision unavailable.
-        // Settled by: a replay with a pinned replacement oracle.
-        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // POM68K D3 (WinUAE-arbitrated 2026-07-15): a level is the last
-        // one when the NEXT index field is zero (WinUAE last_table);
-        // Musashi's unmasked (bits >> bitpos) still saw the consumed
-        // upper fields, so indirection only ever fired at TID.
-        // POM68K: past TID (bitpos < 0) there is no next field; the former
-        // `!bitpos` test let `bits >> -4` through, which is UB (the hosts
-        // masked it to 28 and read 0 — same answer). Vendor row 36.
-        const bool indirect = ((bitpos <= 0 || !((bits >> bitpos) & 0xf)) && indexbits);
-
-        switch (type) {
-
-            case 0: // [B] MC68030UM-1989 §9.7.4: invalid descriptor status. — invalid descriptor → MMUSR I (§ 9.7.4)
-
-                // [F] Retired Musashi comparison: local patched revision unavailable.
-                // Settled by: a replay with a pinned replacement oracle.
-                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-                // POM68K D4 (WinUAE-arbitrated 2026-07-15): OR, don't
-                // assign — WP accumulated on the path stays visible
-                // (probe: PTESTW through a WP table descriptor into DT=0
-                // gives $0C02 on WinUAE; Musashi erased to $0402).
-                sr |= 0x0400;
-                resolved = true;
-                break;
-
-            case 1: // [B] MC68030UM-1989 §9.5.3.1: early termination. — page descriptor (or early termination, § 9.5.3.1)
-
-                if (!ptest) {
-
-                    table &= ~u32(0) << pagesize;
-                    addrOut = table + (addrIn >> pageshift);
-                }
-                // PTEST keeps addrOut at the last descriptor address
-                resolved = true;
-                break;
-
-            case 2: // [B] MC68030UM-1989 §9.5.1.3: short table descriptor. — valid 4-byte (short) descriptors (§ 9.5.1.3)
-
-                level++;
-                addrOut = table + (tableIndex << 2);
-                entry = mmuRead32(addrOut);
-                type = int(entry) & 3;
-
-                if (indirect && (type == 2 || type == 3)) {
-
-                    level++;
-                    addrOut = entry & 0xfffffffc;
-                    entry = mmuRead32(addrOut);
-                    type = int(entry) & 3;
-                }
-
-                descriptor = entry;
-                descriptorLong = false;
-                table = entry & 0xfffffff0;
-                mmuUpdateSR(type, entry, fc, false, sr);
-                if (!ptest) mmuUpdateDescriptor(addrOut, type, entry, rw);
-                break;
-
-            case 3: // [B] MC68030UM-1989 §9.5.1.4: long table descriptor. — valid 8-byte (long) descriptors (§ 9.5.1.4)
-
-                level++;
-                addrOut = table + (tableIndex << 3);
-                entry = mmuRead32(addrOut);
-                entry2 = mmuRead32(addrOut + 4);
-                type = int(entry) & 3;
-
-                if (indirect && (type == 2 || type == 3)) {
-
-                    level++;
-                    addrOut = entry2 & 0xfffffffc;
-                    entry = mmuRead32(addrOut);
-                    // [F] Retired Musashi comparison: local patched revision unavailable.
-                    // Settled by: a replay with a pinned replacement oracle.
-                    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-                    // POM68K D3 (WinUAE-arbitrated 2026-07-15): the
-                    // second long lives at +4. Musashi re-read +0; the
-                    // Musashi oracle has been fixed to match.
-                    entry2 = mmuRead32(addrOut + 4);
-                    type = int(entry) & 3;
-                }
-
-                descriptor = entry;
-                descriptorLong = true;
-                table = entry2 & 0xfffffff0;
-                mmuUpdateSR(type, entry, fc, true, sr);
-                if (!ptest) mmuUpdateDescriptor(addrOut, type, entry, rw);
-                break;
-
-            default:
-                break;
-        }
-
-        if (!ptest) {
-
-            // Early aborts: WP on a write access, S-only on a user access
-            if (!rw && (sr & 0x0800)) { break; }
-            if (!(fc & 4) && (sr & 0x2000)) { break; }
-        }
-
-        addrIn <<= indexbits;
-        pageshift += indexbits;
-
-    } while (level < limit && !resolved);
-    } catch (MmuTableSearchBusError &) {
-        mmuInTableSearch = false;
-        if (level > 0) level--;
-        sr = u16((sr | 0x8400) & 0xfff0) | u16(level);    // B | I
-        return true;
-    } catch (...) {
-        mmuInTableSearch = false;
-        throw;
-    }
-    mmuInTableSearch = false;
-
-    // [B] MC68030UM-1989 §9.7.4: invalid descriptor at the search limit.
-    // POM68K: a descriptor fetched AT the level limit is still examined —
-    // an invalid one reports I. The loop above examines a descriptor at
-    // the top of the next pass, which the limit prevents.
-    // MC68030UM-1989 § 9.7.4, Table 9-3, PTEST levels
-    //     1-7: "The I bit is set if the DT field of a table or a page
-    //     descriptor encountered during the search is set to invalid" —
-    //     whatever ended the search. (The former subsection citation did not exist in either checked edition.)
-    // [D] WinUAE cpummu030.c mmu030_table_search @ Hatari e77819f7 checks
-    //     each descriptor as fetched, before its level test.
-    // Found by fuzz vector "mmu/tt seed=1006 #1188" (PTESTR level 1 into a
-    // DT=0 descriptor: MMUSR $001 here, $401 there). Gate: moira_rules_test.
-    if (!resolved && type == 0) sr |= 0x0400;
-
-    sr = u16((sr & 0xfff0) | level);
-    return resolved;
-}
-
-// [B] MC68030UM-1989 §9.7.1 and §9.8: root selection and explicit searches.
-// Root pointer selection for PTEST/PLOAD walks: SRP when SRE is set and
-// FC is a supervisor code, else CRP (§ 9.7.1). Like both oracles, the
-// caller walks even when translation is off (TC.E = 0, dispute D5) — a
-// zeroed root pointer then reads as DT invalid → MMUSR I.
-void
-Moira::mmuRootPointer(int fc, u32 &table, int &type) const
-{
-    if ((reg.tc & 0x02000000) && (fc & 4)) {    // SRE
-
-        table = u32(reg.srp) & 0xfffffff0;
-        type = int(reg.srp >> 32) & 3;
-
-    } else {
-
-        table = u32(reg.crp) & 0xfffffff0;
-        type = int(reg.crp >> 32) & 3;
-    }
-}
-
 // [B] MC68030UM-1989 §9.2, §9.4, §9.5.2 and §8.4: translation architecture.
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 //
@@ -806,7 +545,9 @@ Moira::mmuBusWalk(u32 addr, u8 fc, bool write, u32 &pageAddr, bool &ci)
     pageAddr = 0;
     mmuInTableSearch = true;
     try {
-        mmuBusWalkBody(addr, fc, write, pageAddr, ci, status);
+        u32 descriptorAddress = 0; int descriptorCount = 0;
+        mmuTableWalkBody(addr, fc, write, 0, pageAddr, ci, status,
+                         descriptorAddress, descriptorCount);
     } catch (MmuTableSearchBusError &) {
         status |= 0x8400;                               // B | I
     } catch (...) {
@@ -817,9 +558,35 @@ Moira::mmuBusWalk(u32 addr, u8 fc, bool write, u32 &pageAddr, bool &ci)
     return status;
 }
 
+// [D] WinUAE mmu030_table_search @ Hatari e77819f7: PTEST uses the
+// ordinary search, but never changes history/ATC and stops at its level.
+u16
+Moira::mmuProbeWalk(u32 addr, u8 fc, bool write, int limit,
+                     u32 &descriptorAddress) const
+{
+    u16 status = 0; u32 page = 0; bool ci = false; int count = 0;
+    mmuInTableSearch = true;
+    try {
+        mmuTableWalkBody(addr, fc, write, limit, page, ci, status,
+                         descriptorAddress, count);
+    } catch (MmuTableSearchBusError &) {
+        if (count > 0) count--;
+        status |= 0x8400;
+    } catch (...) {
+        mmuInTableSearch = false;
+        throw;
+    }
+    mmuInTableSearch = false;
+    return u16((status & 0xFFF0) | count);
+}
+
+// [B] MC68030UM-1989 §§9.5.2–9.5.4 and §9.8 (PTEST).
+// One walk owns descriptor sizes, early/indirect termination and bounds.
+// limit == 0 maintains history for a bus access; PTEST supplies 1–7.
 void
-Moira::mmuBusWalkBody(u32 addr, u8 fc, bool write, u32 &pageAddr, bool &ci,
-                      u16 &status)
+Moira::mmuTableWalkBody(u32 addr, u8 fc, bool write, int limit,
+                        u32 &pageAddr, bool &ci, u16 &status,
+                        u32 &descrAddr, int &descrNum) const
 {
     const u32 tc = reg.tc;
 
@@ -843,9 +610,6 @@ Moira::mmuBusWalkBody(u32 addr, u8 fc, bool write, u32 &pageAddr, bool &ci,
     bool superViolation = false, writeProtected = false;
     bool earlyTermination = false;
     int t = 0;
-    int descrNum = 0;
-    u32 descrAddr = 0;
-
     // [B] MC68030UM-1989 §9.7.1: root pointer.
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // Root pointer (SRP when SRE and supervisor FC, § 9.7.1); reserved
@@ -856,6 +620,18 @@ Moira::mmuBusWalkBody(u32 addr, u8 fc, bool write, u32 &pageAddr, bool &ci,
     int descrSize = 8;
     int nextSize = 0;
     int type = int(descr0) & 3;
+    // Commit the address only after the whole descriptor was read: a
+    // PTEST /BERR returns the preceding completed descriptor and count.
+    auto fetch = [&](u32 address, int size) {
+        descrNum++;
+        const u32 first = mmuRead32(address);
+        const u32 second = size == 8 ? mmuRead32(address + 4) : 0;
+        descrAddr = address;
+        descr0 = first;
+        if (size == 8) descr1 = second;
+        descrSize = size;
+        type = int(first) & 3;
+    };
 
     switch (type) {
 
@@ -870,12 +646,7 @@ Moira::mmuBusWalkBody(u32 addr, u8 fc, bool write, u32 &pageAddr, bool &ci,
     if (tc & 0x01000000) {
 
         u32 tableAddr = (descrSize == 4 ? descr0 : descr1) & 0xFFFFFFF0;
-        descrNum++;
-        descrAddr = tableAddr + u32(fc) * nextSize;
-        descr0 = mmuRead32(descrAddr);
-        if (nextSize == 8) descr1 = mmuRead32(descrAddr + 4);
-        descrSize = nextSize;
-        type = int(descr0) & 3;
+        fetch(tableAddr + u32(fc) * nextSize, nextSize);
 
         switch (type) {
 
@@ -894,12 +665,13 @@ Moira::mmuBusWalkBody(u32 addr, u8 fc, bool write, u32 &pageAddr, bool &ci,
             if (descrSize == 8 && (descr0 & 0x100) && !super) superViolation = true;
             if (descr0 & 0x04) writeProtected = true;
 
-            if (!(descr0 & 0x08) && !superViolation) {
+            if (!limit && !(descr0 & 0x08) && !superViolation) {
                 descr0 |= 0x08;                             // U (history)
                 mmuWrite32(descrAddr, descr0);
             }
             status |= superViolation ? 0x2000 : 0;
             status |= writeProtected ? 0x0800 : 0;
+            if (limit && descrNum == limit) goto stopSearch;
         }
 
         {
@@ -915,13 +687,8 @@ Moira::mmuBusWalkBody(u32 addr, u8 fc, bool write, u32 &pageAddr, bool &ci,
                 if (!(descr0 & 0x80000000) && tableIndex > limit) { status |= 0x4400; goto stopSearch; }
             }
 
-            descrNum++;
-            descrAddr = tableAddr + tableIndex * nextSize;
+            fetch(tableAddr + tableIndex * nextSize, nextSize);
         }
-        descr0 = mmuRead32(descrAddr);
-        if (nextSize == 8) descr1 = mmuRead32(descrAddr + 4);
-        descrSize = nextSize;
-        type = int(descr0) & 3;
 
         switch (type) {
 
@@ -938,25 +705,26 @@ Moira::mmuBusWalkBody(u32 addr, u8 fc, bool write, u32 &pageAddr, bool &ci,
     // [B] MC68030UM-1989 §9.5.3.2: indirection.
     // Indirect descriptor on the last populated level (§ 9.5.3.2)
     {
+        if (limit && descrNum == limit) goto stopSearch;
         u32 indirect = (descrSize == 4 ? descr0 : descr1) & 0xFFFFFFFC;
-        descrNum++;
-        descrAddr = indirect;
-        descr0 = mmuRead32(descrAddr);
-        if (nextSize == 8) descr1 = mmuRead32(descrAddr + 4);
-        descrSize = nextSize;
-        type = int(descr0) & 3;
+        fetch(indirect, nextSize);
 
         if (type != 1) { status |= 0x0400; goto stopSearch; }
     }
 
 pageDescriptor:
 
+    // [B] MC68030UM-1989 §§9.4,9.7.1: a valid write marks the ATC
+    // modified even when its direct-root mapping has no memory M field.
+    // PTEST only examines descriptors; it must not synthesize that history.
+    if (!descrNum && !limit && write) status |= 0x0200;
+
     if (descrNum) {
 
         if (descrSize == 8 && (descr0 & 0x100) && !super) superViolation = true;
         if (descr0 & 0x04) writeProtected = true;
 
-        if (!superViolation) {
+        if (!limit && !superViolation) {
 
             bool dirty = false;
             if (!(descr0 & 0x10) && write && !writeProtected) { descr0 |= 0x10; dirty = true; }   // M
@@ -971,13 +739,13 @@ pageDescriptor:
 
     if (earlyTermination) {
 
-        if (descrNum || !(tc & 0x01000000)) {
-            if (descrSize == 8) {
-                u32 tableIndex = (addr & tmask[t]) >> tshift[t];
-                u32 limit = (descr0 & 0x7FFF0000) >> 16;
-                if ((descr0 & 0x80000000) && tableIndex < limit) { status |= 0x4400; goto stopSearch; }
-                if (!(descr0 & 0x80000000) && tableIndex > limit) { status |= 0x4400; goto stopSearch; }
-            }
+        // [B] MC68030UM-1989 §9.7.1: a DT=1 root still checks its
+        // limit with FCL enabled; no function-code table is consulted.
+        if (descrSize == 8) {
+            u32 tableIndex = (addr & tmask[t]) >> tshift[t];
+            u32 limit = (descr0 & 0x7FFF0000) >> 16;
+            if ((descr0 & 0x80000000) && tableIndex < limit) { status |= 0x4400; goto stopSearch; }
+            if (!(descr0 & 0x80000000) && tableIndex > limit) { status |= 0x4400; goto stopSearch; }
         }
         // [B] MC68030UM-1989 §9.5.3.1: early-termination address bits.
         // Unused index bits are added to the page address (§ 9.5.3.1)
@@ -2110,11 +1878,8 @@ Moira::execPTest(u16 opcode)
 
     } else {
 
-        u32 table, addrOut = 0;
-        int type;
-        mmuRootPointer(fc, table, type);
-        (void)mmuWalkTables(vAddr, type, table, fc, level, rw, true,
-                            addrOut, sr);
+        u32 addrOut = 0;
+        sr = mmuProbeWalk(vAddr, u8(fc), rw == 0, level, addrOut);
 
         if (modes & 0x100) writeA(modes >> 5 & 7, addrOut);
     }

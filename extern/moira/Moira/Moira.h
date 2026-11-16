@@ -2040,22 +2040,6 @@ private:
     // Transparent translation register match (§ 9.3)
     bool mmuMatchTT(u32 tt, u32 addr, int fc, int rw, u16 &sr) const;
 
-    // [B] MC68030UM-1989 §9.7.4: MMUSR fields.
-    // MMUSR bit accumulation from a fetched descriptor (§ 9.7.4)
-    void mmuUpdateSR(int type, u32 entry, int fc, bool isLong, u16 &sr) const;
-
-    // [B] MC68030UM-1989 §9.5.4: U/M descriptor maintenance.
-    // History (U) / modified (M) descriptor maintenance in RAM (§ 9.5.4)
-    void mmuUpdateDescriptor(u32 tptr, int type, u32 entry, int rw) const;
-
-    // [B] MC68030UM-1989 §9.5.2: general table search.
-    // Translation-table walk (§ 9.5.2); returns true when resolved
-    bool mmuWalkTables(u32 addrIn, int type, u32 table, int fc, int limit,
-                       int rw, bool ptest, u32 &addrOut, u16 &sr) const;
-
-    // Root pointer selection for a walk (SRP when SRE + supervisor FC)
-    void mmuRootPointer(int fc, u32 &table, int &type) const;
-
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // EA decode for the $F000-$F03F window (WinUAE MMUOP030 order:
     // computed before validation, side effects survive Line-F)
@@ -2320,8 +2304,11 @@ private:
     // Bus-level table search (WinUAE mmu030_table_search, level 0):
     // U/M maintenance, limit checks; returns MMUSR-style status bits
     u16 mmuBusWalk(u32 addr, u8 fc, bool write, u32 &pageAddr, bool &ci);
-    void mmuBusWalkBody(u32 addr, u8 fc, bool write, u32 &pageAddr, bool &ci,
-                        u16 &status);
+    void mmuTableWalkBody(u32 addr, u8 fc, bool write, int limit,
+                          u32 &pageAddr, bool &ci, u16 &status,
+                          u32 &descriptorAddress, int &descriptorCount) const;
+    u16 mmuProbeWalk(u32 addr, u8 fc, bool write, int limit,
+                      u32 &descriptorAddress) const;
 
     // [B] MC68030UM-1989 §9.5.2 and §9.7.4: descriptor bus errors.
     // POM68K: true while a 68030 table search fetches descriptors (the bus

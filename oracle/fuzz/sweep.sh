@@ -88,6 +88,29 @@ for f in core mmu random fault fpu fpuraw fpu2 rmw fpuh pagend earaw limits; do
     s=$((s+1))
 done
 
+# Bounded CRP with SRE: user MOVES/PTEST, unlimited supervisor fetch/stack.
+for geometry in 4k-2level 4k-2level-long; do
+    mkdir -p "$OUT/030/rootlimits"
+    echo "python3 fuzz030.py --a $A --family rootlimits --mmu identity --geometry $geometry --strict-fpu --n $N --seed $s --out $OUT/030/rootlimits/rootlimits_${geometry}_$s.json" >> "$cmds"
+    s=$((s+1))
+done
+
+# FC lookup precedes the address indices; per-FC mappings differ.
+for geometry in 4k-2level 4k-2level-long; do
+    mkdir -p "$OUT/030/fcl"
+    echo "python3 fuzz030.py --a $A --family fcl --mmu identity --geometry $geometry --strict-fpu --n $N --seed $s --out $OUT/030/fcl/fcl_${geometry}_$s.json" >> "$cmds"
+    s=$((s+1))
+done
+
+# Focused SRE, early termination, indirect/mixed descriptors and true TT hits.
+for f in sre early indirect mixed ttprobe earlyfcl; do
+    for geometry in 4k-2level 4k-2level-long; do
+        mkdir -p "$OUT/030/$f"
+        echo "python3 fuzz030.py --a $A --family $f --mmu identity --geometry $geometry --strict-fpu --n $N --seed $s --out $OUT/030/$f/${f}_${geometry}_$s.json" >> "$cmds"
+        s=$((s+1))
+    done
+done
+
 echo "generating $(wc -l < "$cmds") cells into $OUT"
 (cd oracle/fuzz && xargs -P "$JOBS" -I{} sh -c '{} > /dev/null' < "$cmds") \
     2> "$OUT/gen.err" || { echo "generation failed: $OUT/gen.err"; exit 2; }

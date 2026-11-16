@@ -203,9 +203,52 @@ leaving infrastructure reachable. Its `limits` family probes each bound's
 predecessor, equality and successor with MOVE.L reads/writes; leaf pages
 are made valid and writable so only the parent bound decides. The public
 32-vector recipe covers all twelve direction/position/access combinations.
-FCL/SRE, mixed short/long tables, indirect descriptors, early termination
-and bounded root pointers remain outside the fuzzer's coverage; `tt` still
-bypasses the whole tree. Root limits have a targeted `moira_rules_test` gate.
+The `rootlimits` family uses the `4k-2level` and `4k-2level-long` geometries
+with SRE enabled: supervisor code/frames use the unlimited SRP, while
+MOVES.L with SFC/DFC=1 and PTEST with FC=1 use a bounded CRP. Upper/lower
+root bounds are probed immediately before/on/after the inclusive boundary,
+with reads/writes and PTEST levels 1–7. The target leaf is valid/writable;
+probe data never overlaps code, stacks or translation tables. The two
+64-vector public recipes each cover all 24 bound/position/instruction/
+direction combinations. These cells are appended after the table-limit
+cells so existing sweep seeds do not change.
+The `fcl` family prepends an eight-entry function-code lookup table to
+the same short/long geometries. Private address and leaf tables map one
+logical operand to eight distinct physical pages; MOVES.L SFC/DFC and
+PTEST immediate FC select codes 0–7, with valid, write-protected or invalid
+target leaves. FC=7 MOVES is a translation-bypass control. Root upper-zero
+and lower-seven limits exercise their omission at the initial FC lookup.
+Supervisor code and exception stacks retain valid mappings. Each 64-vector
+public recipe (seed 2026111615) includes all 24 FC/leaf-kind combinations
+and both instruction kinds for every FC. The sweep appends these cells
+after `rootlimits`, preserving earlier seeds. Reserved FC values pin oracle
+behavior without making a silicon claim.
+The focused `sre`, `early`, `indirect`, `mixed` and `ttprobe` families
+in `mmu030_probes.py` extend both geometries. `sre` maps user/supervisor
+operands through distinct CRP/SRP trees, bounds either root in either
+direction and includes accesses through the other, unlimited root.
+`early` places a page descriptor in the root or first address table;
+`indirect` varies pointer/target sizes, non-16-byte-aligned pointers and
+valid/invalid target DT; `mixed` changes descriptor size between levels.
+All protect high-alias code, vectors, stacks and handlers with a correctly
+encoded TT1 window. These new families omit explicit zero initial RAM
+bytes; the oracle and replay buses are zero-filled.
+
+`ttprobe` distinguishes a transparent operand from its translated mapping
+with different data, including paged WP/invalid leaves. TT0 varies enable,
+address and FC base/masks, CI and R/W(M). MOVES, ordinary MOVE, PTEST at
+level zero or 1–7, TAS and CAS exercise direction and locked matching.
+The legacy `--mmu tt` recipe was misdescribed as a universal bypass: its
+low FC mask is zero, FC base is 7, RWM is clear and CI is set. Ordinary
+FCs still walk the tree; FC=7 already bypasses ordinary translation.
+Its bytes remain unchanged for old corpus reproducibility. Use `ttprobe`
+for true TT successes/misses. Oracle patch 15 fixes a direct-root write
+retry that formerly indexed the ATC with -1; root mapping itself follows
+MC68030UM §9.7.1, rather than that undefined oracle result.
+`earlyfcl` adds early pages with FCL active. A DT=1 root has no FC table;
+its limit remains active as §9.7.1 explicitly specifies. A table root uses
+an additional FC lookup before the existing early page. These cells append
+after the other focused families and keep their seed assignments stable.
 
 ## Licensing / provenance
 

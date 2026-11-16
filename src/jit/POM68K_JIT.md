@@ -1864,7 +1864,7 @@ are the safety argument for the whole path:
 * **no page-table walk, no U/M write-back** — `pomJitProbeData` only reads
   resident ATC entries, and refuses a write to a page not already marked
   modified, because that write owes the descriptor an M bit. The 68030
-  branch (`MoiraExecMMU_cpp.h:2635-2710`) probes DATA space, `fc = 5/1`,
+  branch (`MoiraExecMMU_cpp.h:2557-2632`) probes DATA space, `fc = 5/1`,
   not the program space the code probe uses: the 030 ATC matches `fc`
   exactly, so probing the data side with the program-space `fc` would miss
   every entry and refuse everything — an engine that looks merely slow;

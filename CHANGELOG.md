@@ -600,6 +600,11 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-16 (fifth) — Threaded proof counts the direct window pump](#2026-11-16-threaded-window-census)
+- [2026-11-16 (fourth) — Public 030 JIT requires executed native code](#2026-11-16-public-jit-census)
+- [2026-11-16 (third) — Shared 68030 walk and direct-root ATC history](#2026-11-16-shared-mmu030-walk)
+- [2026-11-16 (second) — Distinct 68030 mappings by function code](#2026-11-16-fcl)
+- [2026-11-16 — Bounded 68030 roots under SRE](#2026-11-16-root-limits)
 - [2026-11-15 (sixth) — PTEST bounds and A64 indexed MOVE source aliases](#2026-11-15-ptest-a64-alias)
 
 - [2026-11-15 (fifth) — Long descriptors join the 68030 two-level oracle geometry](#2026-11-15-mmu030-long)
@@ -1372,6 +1377,182 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-16-threaded-window-census"></a>
+## 2026-11-16 (fifth) — Threaded proof must count its direct window pump
+
+The first census guard in the preceding entry required compiled blocks
+for threaded too. An actual portable-backend replay rejected that claim:
+904/904 agree, with zero compiled blocks and 20 080 window instructions.
+The engine intentionally uses its direct window pump for a non-native
+backend; compiling a recorded block is not required for this accelerated
+fetch path. Requiring compilation would break the Windows/portable floor.
+
+The wrapper now requires positive executed engine work for all backends.
+AArch64/x86-64 still require compiled blocks, block runs and native
+instructions. Threaded requires block runs or window instructions, with
+positive instruction work; a pure trace with neither fails. The contract
+fixtures include the actual zero-block/window-only portable case, as well
+as the native zero-code false success. Product policy remains unchanged.
+
+<a id="2026-11-16-public-jit-census"></a>
+## 2026-11-16 (fourth) — The public 030 JIT gate had compiled zero blocks
+
+> **Superseded in part:** the threaded compiled-block requirement below is corrected by [the following entry](#2026-11-16-threaded-window-census); its direct window pump is valid executed engine work.
+
+The expanded public corpus passed its AArch64 JIT gate while executing
+zero compiled blocks: `blocks compiled=0 run=0 instrs=20042 native=0`,
+13 322 window instructions and 6 720 traced instructions. The product's
+profit score of 64 deliberately excludes these short 030 vectors, as the
+November 15 fresh-seed sweep had already found. That sweep set score zero;
+the public replay wrapper did not. An exact lockstep of two interpreter
+paths was still green.
+
+`cpu_vectors.py replay --jit` now sets profit score zero for its child
+process and requires an executed-block census. A selected AArch64 or
+x86-64 backend must execute native instructions; a selected threaded
+backend remains portable but must execute compiled blocks too. Missing
+counters, zero blocks or a native backend with zero native instructions
+are failures even when every vector comparison returns success. Nine
+contract tests include those false-success paths and verify the explicit
+score and valid threaded case. This changes test qualification, not the
+product's JIT policy or any vector pin.
+
+The qualified AArch64 public 030 replay then executes 904/904 vectors,
+1 566 compiled blocks, 1 800 block runs and 13 149 native instructions.
+The 158-gate asset-none run passes with 158 executed, zero soft skips and
+zero failures. Its initial 030 JIT invocation exposed the old zero-native
+contract; the strengthened public replay is recorded separately afterward.
+
+<a id="2026-11-16-shared-mmu030-walk"></a>
+## 2026-11-16 (third) — One 68030 walk owns PTEST, early pages and indirection; direct-root writes acquire ATC history
+
+The expanded MMU probes found divergences hidden by the earlier uniform
+translation trees. PTEST used an older, separate walker: it followed an
+indirect pointer even at the requested stopping level, used the parent's
+size for the pointed-to descriptor, recursively accepted a non-page target,
+and stopped before checking an early page's remaining limit. The shared
+`mmuTableWalkBody` now handles PTEST and bus searches. A nonzero PTEST level
+suppresses U/M writes, preserves descriptor count/address and stops at its
+requested level before indirection; early-page bounds still apply there.
+A descriptor read fault returns the preceding completed descriptor/count.
+The old `mmuWalkTables`, `mmuRootPointer`, `mmuUpdateSR` and
+`mmuUpdateDescriptor` are removed (vendor row 110). Of 176 focused controls,
+70 failed against the old library; the common walk fixes them.
+
+A separate direct-root write defect was shared with WinUAE: a DT=1 root
+has no memory-resident M bit, so the freshly filled ATC entry stayed
+unmodified. Its write retry immediately invalidated it again. The fork
+raised a false bus error; WinUAE passed -1 to an ATC accessor and wrote to
+an unrelated page (the pilot stored at $000100). MC68030UM §§9.4 and
+9.7.1 settle the new ruling: a valid write marks the ATC modified, and a
+direct root supplies a constant-offset mapping. Both implementations now
+set the root entry's ATC M bit for a write search. Oracle patch 15 also
+obtains freshly filled entries without a second write-hit invalidation
+(the debug address helpers can fill with a read search). Existing B/WP
+qualification remains. `directRootWrites030` observes read → write →
+repeated write, byte/word/long MOVE/MOVES through CRP/SRP, with PTEST level
+zero checking M; the oracle smoke holds six two-instruction counterparts.
+No undefined oracle root-write result is retained as reference evidence.
+
+The direct-root/FCL combination exposed another shared oracle defect:
+§9.7.1 explicitly retains a DT=1 root's limit with FCL enabled, although
+table roots skip their limit at the FC lookup. Direct roots have no such
+lookup. Both walks now enforce the bound in this case. The 120 controls
+of `directRootFclLimits030` had 20 failures against the pre-fix library
+and pass after; 72 descriptor-read /BERR controls also hold PTEST's
+previous-completed address/count, including a fault on the second longword
+and a requested level that must never reach the armed hole.
+
+`mmu030_probes.py` adds SRE with distinct bounded CRP/SRP roots, early
+root/table pages, indirect pointer/target sizes, mixed table sizes and
+TT0 successes/misses distinguishable from the paged operand. A high
+logical TT1 alias protects code, stacks, vectors and handlers. The old
+`--mmu tt` recipe was falsely described as a universal bypass: it encoded
+FC base 7, FC mask zero and RWM clear. Its bytes remain unchanged; the new
+`ttprobe` varies address/FC masks and R/W(M), including ordinary MOVE,
+MOVES, PTEST levels zero and 1–7, TAS and CAS. New probes omit explicit
+zero initial RAM bytes; existing recipes retain their exact streams.
+The sweep appends all new cells without shifting older seed assignments.
+
+The final focused sweep retains 7 000 vectors (seeds 161700–161713,
+500 per cell), all agreeing under strict RAM and AArch64 native-required
+lockstep: 106 430 native instructions, zero slow instructions, zero MMU
+skips. The aligned-indirection follow-up uses natural 4/8-byte target
+alignment, including targets not aligned to 16 bytes. Public recipes add
+224 focused vectors to the preceding 680: 904 030 vectors plus the
+unchanged 328-vector 040 stream. Both previous public prefixes reproduce
+identically; exact recipe counts and coverage pairs are recorded in the
+public README. All 57 declared local firmware/media assets match their
+pins before machine qualification.
+
+The 24 optional corpus gates execute without soft skips: 67 874 vectors
+per engine, 983 755 native instructions and no new oracle differences.
+ASan/UBSan pass the final rule suite and all 904 public 030 vectors
+(LeakSanitizer is unsupported on this Darwin host). The x86-64 build under
+Rosetta also passes the rules, public 030 native replay (13 144 native
+instructions), and the 1 000-vector early/FCL sweep. This is translated
+x86-64 validation, not a physical x86 host qualification. The broader
+145-gate machine 68030 tier is still running at commit time.
+
+<a id="2026-11-16-fcl"></a>
+## 2026-11-16 (second) — The 68030 oracle selects distinct operand mappings by function code
+
+The new `fcl` family prepends a function-code lookup to either existing
+4 KB two-level geometry. Every FC owns a private address table and operand
+leaf table: one logical address maps to eight physical pages carrying
+recognizable, distinct values. MOVES.L uses SFC/DFC; PTEST selects an
+immediate FC and levels 1–7, returning the descriptor address in A1.
+The selected leaf varies among valid, write-protected and invalid. FC=7
+MOVES is the bypass control, with a different datum at the untranslated
+address. Root limits alternate upper zero and lower seven: neither may
+be checked against the initial FC index. Infrastructure remains mapped,
+and the probe's data/table regions cannot overlap it. Reserved FCs are
+oracle behavior rather than a silicon claim.
+
+Seeds 161300/161301 retain all 600 vectors. Strict-RAM interpreter replay
+and AArch64 native-required lockstep agree on 600/600, zero MMU skips;
+the JIT executes 9 197 native instructions and zero slow instructions.
+No core correction is needed. Two 64-vector public recipes at seed
+2026111615 each cover all 24 FC/leaf-kind pairs and both MOVES/PTEST
+for every FC. The public totals become 680/328; previous vectors remain
+in place. The sweep appends FCL after root-limit probes, keeping prior
+seed assignments stable. Bounded SRP, distinct CRP/SRP mappings under
+SRE, mixed descriptors, indirect descriptors and early termination remain
+open.
+
+All six public CPU gates and the documentation/source-grade/size gates
+pass. The 552 earlier public 030 vectors reproduce identically; the 040
+stream retains its existing SHA-256. An audit of the new public vectors
+confirms the coverage pairs and checks the successful MOVES reads against
+their selected physical mapping, including the FC=7 bypass datum.
+
+<a id="2026-11-16-root-limits"></a>
+## 2026-11-16 — Bounded 68030 roots join the differential corpus under SRE
+
+The `rootlimits` family probes upper/lower CRP bounds with two levels of
+short or long descriptors. SRE keeps supervisor instruction fetches and
+exception frames on unlimited SRP, while MOVES.L SFC/DFC=1 and PTEST FC=1
+walk the bounded user root. Every probe chooses the predecessor, equality
+or successor of the inclusive limit, for read or write; PTEST draws levels
+1–7 and returns the last descriptor address. Valid writable target leaves
+isolate the root bound. Probe data avoids the infrastructure groups, so
+seeding it cannot corrupt code, stacks or translation tables.
+
+The public corpus adds 64 vectors per descriptor size, seed 2026111600.
+Each recipe covers all 24 bound/position/instruction/direction combinations;
+the 030 corpus now has 552 vectors, the unchanged 040 pin 328. Both new
+cells append to the sweep without renumbering any previous seed. This is
+oracle evidence, not a hardware ruling. FCL, bounded SRP, distinct user/
+supervisor mappings, mixed descriptors, indirect descriptors and early
+termination remain open.
+
+Fresh seeds 161200/161201 retain all 600 attempts and agree in strict-RAM
+interpreter replay and AArch64 native-required lockstep: 600 executed,
+zero MMU skips, 9 310 native instructions and zero slow instructions.
+The six public CPU gates, three documentation/source-grade/size gates
+and both oracle smoke tests pass. The original 424 public 030 vectors
+are unchanged, and the regenerated 040 stream retains its existing pin.
 
 <a id="2026-11-15-ptest-a64-alias"></a>
 ## 2026-11-15 (sixth) — Table-limit fuzzing finds PTEST ignoring bounds; the full A64 corpus finds stale indexed MOVE addresses

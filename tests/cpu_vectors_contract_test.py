@@ -36,10 +36,11 @@ class CorpusContract(unittest.TestCase):
         (self.directory / self.entry["file"]).write_bytes(gzip.compress(raw, mtime=0))
         self.entry.update(bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest(), vectors=len(rows))
 
-    def run_fake(self, output, code=0):
+    def run_fake(self, output, code=0, jit=False):
         completed = subprocess.CompletedProcess([], code, output, "")
-        with patch.object(vectors.subprocess, "run", return_value=completed), contextlib.redirect_stdout(io.StringIO()):
-            vectors.replay("030", self.entry, Path("runner"))
+        with patch.object(vectors.subprocess, "run", return_value=completed) as run, contextlib.redirect_stdout(io.StringIO()):
+            vectors.replay("030", self.entry, Path("runner"), jit=jit)
+        return run.call_args.kwargs
 
     def test_missing_payload_fails(self):
         self.entry["file"] = "missing.json.gz"
@@ -75,6 +76,29 @@ class CorpusContract(unittest.TestCase):
     def test_complete_run_passes(self):
         self.run_fake("[sst68030] dir=/home/skipper/data files=1\n"
                       "[sst68030] OK: 1/1 across 1 file(s), 0 mmu-skipped\n")
+
+    def test_jit_cannot_pass_without_executed_blocks_or_native_code(self):
+        summary = "[sst68030] OK: 1/1 across 1 file(s), 0 mmu-skipped\n"
+        footers = ["", "backend=aarch64 blocks compiled=0 run=0 instrs=0 native=0",
+                   "backend=aarch64 blocks compiled=1 run=1 instrs=2 native=0",
+                   "backend=x86-64 blocks compiled=1 run=1 instrs=2 native=0",
+                   "backend=threaded blocks compiled=0 run=0 instrs=0 native=0",
+                   "backend=threaded blocks compiled=0 run=0 instrs=2 native=0"]
+        for footer in footers:
+            with self.subTest(footer=footer), self.assertRaisesRegex(ValueError, "JIT replay"):
+                self.run_fake(summary + "[sst68030 --jit] " + footer +
+                              " slow=0 window=0 trace=2 interp=0\n", jit=True)
+
+    def test_jit_runs_short_vectors_and_keeps_threaded_portable(self):
+        summary = "[sst68030] OK: 1/1 across 1 file(s), 0 mmu-skipped\n"
+        for backend, native in [("aarch64", 1), ("x86-64", 1), ("threaded", 0)]:
+            blocks = 0 if backend == "threaded" else 1
+            window = 2 if backend == "threaded" else 0
+            footer = (f"[sst68030 --jit] backend={backend} blocks compiled={blocks} run={blocks} "
+                      f"instrs=2 native={native} slow=0 window={window} trace=0 interp=0\n")
+            with self.subTest(backend=backend), patch.dict(vectors.os.environ, {"POM68K_JIT_PROFIT_SCORE": "64"}):
+                kwargs = self.run_fake(summary + footer, jit=True)
+                self.assertEqual(kwargs["env"]["POM68K_JIT_PROFIT_SCORE"], "0")
 
 
 if __name__ == "__main__":

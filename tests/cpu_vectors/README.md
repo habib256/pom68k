@@ -3,11 +3,11 @@
 These are generated WinUAE outputs, with random RAM and CPU state. They
 contain no Apple ROM or system media. They are grade-D evidence from the
 oracle pinned in `oracle/uae/VENDOR.md` (Hatari `e77819f7`, with the local
-strict-FPU adapter), not an independent silicon reference.
+strict-FPU adapter and direct-root ATC correction), not an independent silicon reference.
 
 | Model | Vectors | Cells |
 |---|---:|---|
-| 68030 + 68882 | 424 | integer core, translated MMU and faults, FPU arithmetic, two-instruction FPU continuation, instructions against a page whose successor is invalid |
+| 68030 + 68882 | 904 | integer core, translated MMU and faults, FPU arithmetic, two-instruction FPU continuation, instructions against a page whose successor is invalid |
 | full 68040 | 328 | the same, plus 8 KB pages, three-instruction FPU-handler/FSAVE sequences and faults under random transparent-translation windows |
 
 `manifest.json` records every generator option and seed, plus the count,
@@ -28,16 +28,59 @@ The 68030 adds 64 vectors using 4 KB pages and two levels of short
 descriptors: core, fault, read-modify-write and page-end cells. The old
 32 KB one-level recipes retain their identities. Another 64 vectors use
 the same four families with long descriptors at both levels; attributes
-and addresses occupy separate longwords. Mixed short/long tables and
-root limits are not covered by these recipes. Another 32 `limits` probes
+and addresses occupy separate longwords. Mixed short/long tables remain
+outside these recipes. Another 32 `limits` probes
 cover upper/lower table bounds, just before/on/after the inclusive boundary,
 and reads/writes: all twelve combinations at seed 2026111541.
 
+Two 64-vector `rootlimits` cells (seed 2026111600, short then long
+descriptors) enable SRE and bound CRP while supervisor code and exception
+frames use unlimited SRP. MOVES.L user-data accesses and PTEST FC=1
+probe both root-bound directions at predecessor/equality/successor, for
+reads and writes. Each recipe covers all 24 combinations; valid writable
+leaves isolate the root limit. Bounded SRP and distinct CRP/SRP mappings
+under SRE are not covered.
+
+Two more 64-vector cells (`fcl`, seed 2026111615) add a function-code
+lookup before the address tree. Every FC has a distinct physical operand
+mapping. Each descriptor size covers all 24 FC/leaf-kind combinations
+(valid/WP/invalid), and MOVES.L and PTEST for each FC, including FC=7's
+MOVES bypass. Root bounds that must be ignored at the FC lookup vary
+between upper zero and lower seven. Reserved FCs describe oracle behavior.
+The additional focused probes below cover distinct CRP/SRP mappings.
+
+The six focused MMU families add 224 vectors, in both short- and long-
+descriptor geometries:
+
+| Family | Vectors per geometry | Seed (short / long) | Coverage |
+|---|---:|---|---|
+| `sre` | 16 | 2026111627 / 2026111627 | distinct user/supervisor mappings; all eight bounded-root/access-FC/bound-direction combinations |
+| `early` | 16 | 2026111620 / 2026111620 | root/first-level page termination; MOVES/PTEST, including a direct-root write |
+| `indirect` | 16 | 2026111620 / 2026111620 | short/long indirect targets, valid and non-page DT; natural target alignment includes addresses not aligned to 16 bytes |
+| `mixed` | 16 | 2026111620 / 2026111621 | short tables with long leaves and vice versa; MOVES/PTEST with user/supervisor FC |
+| `ttprobe` | 32 | 2026111620 / 2026111620 | TT address/FC masks and R/W(M), distinct transparent/paged operands, protected/invalid leaves, PTEST and locked operations |
+| `earlyfcl` | 16 | 2026111620 / 2026111620 | early pages under FCL; direct-root limits still apply without a function-code lookup |
+
+TT1 serves a high logical alias for infrastructure; operand accesses take
+the selected translation path. The new families omit explicit zero bytes
+from their initial RAM lists; both oracle and replay start from zero-filled
+RAM. The previous 680 public 030 vectors retain their original streams.
+The shared 68030 walk and direct-root M transition also have independent,
+focused controls in `moira_rules_test`; oracle smoke checks direct-root
+MOVE/MOVES stores followed by PTEST of the resulting ATC M bit.
+
 The existing SST harnesses compare registers, MMU/FPU state and RAM. These
-gates require all 752 vectors to execute, with zero MMU skips and no known
+gates require all 1,232 vectors to execute, with zero MMU skips and no known
 divergence list. Missing data, changed bytes, empty data or a harness that
 returns success after soft-skipping all fail the gate. Cycle accuracy is
 not claimed for these 030/040 vectors.
+
+JIT replay forces profit score zero so short 030 vectors can compile. Its
+footer must report executed work. AArch64 and x86-64 backends must report
+compiled/executed blocks and native instructions. Threaded replay remains
+valid on portable targets when it executes blocks or its direct window
+pump; it need not compile. A native-backend lockstep with zero compiled
+blocks fails this proof contract.
 
 ```sh
 cmake --build build --target sst68030 sst68040

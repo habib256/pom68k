@@ -254,6 +254,45 @@ static void test_mmu_fault(void)
 	       fmt, vec, st.pc, sp_log);
 }
 
+static void test_direct_root_writes(void)
+{
+    /* MC68030UM section 9.7.1: direct roots have no memory M bit.
+     * Post-search retries must still reach the constant-offset mapping. */
+    const uint16_t ops[] = {0x1080, 0x3080, 0x2080, 0x0e10, 0x0e50, 0x0e90};
+    for (unsigned index = 0; index < sizeof ops / sizeof ops[0]; index++) {
+        OracleState st;
+        memset(mem, 0, sizeof mem);
+        w16(0x1000, ops[index]);
+        w16(0x1002, index >= 3 ? 0x0800 : 0x4e71);
+        w16(0x1004, 0x4e71);
+        const uint32_t next = index >= 3 ? 0x1004 : 0x1002;
+        w16(next, 0xf011);  /* PTESTR #FC,(A1),#0 */
+        w16(next + 2, (uint16_t)(0x8210 | (index >= 3 ? 1 : 5)));
+        base_state(&st, 0x80001000);
+        st.tc = 0x80c86600;
+        st.crp = ((uint64_t)0x7fff0001 << 32) | 0x20000;
+        st.srp = st.crp;
+        st.tt1 = 0x80008107;
+        st.sfc = st.dfc = 1;
+        st.a[0] = 0x10004;
+        st.a[1] = 0x10000;
+        st.d[0] = 0x12345678;
+        w32(0x30004, 0xabcdef01);
+        oracle_set_state(&st);
+        int32_t cycles = oracle_step();
+        oracle_get_state(&st);
+        const uint32_t want[] = {0x78cdef01, 0x5678ef01, 0x12345678};
+        CHECK(cycles >= 0 && st.pc == (index >= 3 ? 0x80001004u : 0x80001002u) &&
+              r32(0x30004) == want[index % 3],
+              "direct root opcode=%04x PC=%08x RAM=%08x/%08x",
+              ops[index], st.pc, r32(0x30004), want[index % 3]);
+        cycles = oracle_step();
+        oracle_get_state(&st);
+        CHECK(cycles >= 0 && st.mmusr == 0x0200,
+              "direct root opcode=%04x ATC M: MMUSR=%04x", ops[index], st.mmusr);
+    }
+}
+
 int main(void)
 {
 	printf("oracle: %s\n", oracle_name());
@@ -267,6 +306,7 @@ int main(void)
 	test_mmu_translation();
 	test_ptest();
 	test_mmu_fault();
+    test_direct_root_writes();
 
 	if (failures) {
 		printf("SMOKE FAILED: %d failure(s)\n", failures);

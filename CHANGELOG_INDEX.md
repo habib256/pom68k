@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 815 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 820 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,8 +8,8 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 110 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 137 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 111 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 140 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 37 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 32 |
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 25 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 44 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 162 |
+| [Cross-cutting](#cross-cutting) | 163 |
 
 ---
 
@@ -136,6 +136,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-13 (fifth)** — [The Duo and the 68030 PowerBooks get a gate that fails when the native backend is not the one running](CHANGELOG.md#2026-11-13-native-gates-pb-duo)
 - **2026-11-13 (third)** — [The a64 generator kept ADDX's carry in x18, which macOS clears on every interrupt: the Quadra 630 hang, and a random wrong flag on every 68030/68040 machine since 2026-08-31](CHANGELOG.md#2026-11-13-a64-x18)
 - **2026-11-15 (sixth)** — [Table-limit fuzzing finds PTEST ignoring bounds; the full A64 corpus finds stale indexed MOVE addresses](CHANGELOG.md#2026-11-15-ptest-a64-alias)
+- **2026-11-16 (fourth)** — [The public 030 JIT gate had compiled zero blocks](CHANGELOG.md#2026-11-16-public-jit-census)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 
@@ -276,6 +277,9 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-15 (fourth)** — [The 68030 oracle walks two levels with 4 KB pages](CHANGELOG.md#2026-11-15-mmu030-4k)
 - **2026-11-15 (second)** — [Legal MOVEM forms return to the page-end oracle coverage](CHANGELOG.md#2026-11-15-pagend-movem)
 - **2026-11-15 (third)** — [Reserved full-extension EAs get their own oracle family and public vectors](CHANGELOG.md#2026-11-15-earaw)
+- **2026-11-16** — [Bounded 68030 roots join the differential corpus under SRE](CHANGELOG.md#2026-11-16-root-limits)
+- **2026-11-16 (second)** — [The 68030 oracle selects distinct operand mappings by function code](CHANGELOG.md#2026-11-16-fcl)
+- **2026-11-16 (third)** — [One 68030 walk owns PTEST, early pages and indirection; direct-root writes acquire ATC history](CHANGELOG.md#2026-11-16-shared-mmu030-walk)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E
 
@@ -877,4 +881,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-11 (twelfth)** — [RAM writes past the decoder on the Plus and the Mac II: 4-6 % and 3 % more; the day's totals](CHANGELOG.md#2026-11-11-ram-write-path)
 - **2026-11-13 (twelfth)** — [The engine is held to the interpreter's two-instruction interrupt delay, without a ROM](CHANGELOG.md#2026-11-13-jit-unmasked-ipl)
 - **2026-11-14** — [A prefetch fault waits until its word is used: an instruction ending on a page's last word no longer faults on the next page](CHANGELOG.md#2026-11-14-deferred-prefetch-fault)
+- **2026-11-16 (fifth)** — [Threaded proof must count its direct window pump](CHANGELOG.md#2026-11-16-threaded-window-census)
 

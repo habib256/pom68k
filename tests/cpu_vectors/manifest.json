@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "oracle": "WinUAE via Hatari e77819f7; oracle/uae local strict-FPU adapter",
+  "oracle": "WinUAE via Hatari e77819f7; oracle/uae local strict-FPU adapter and direct-root ATC retry correction",
   "models": {
     "030": {
       "file": "030.json.gz",
@@ -132,11 +132,139 @@
           "n": 32,
           "steps": 1,
           "seed": 2026111541
+        },
+        {
+          "family": "rootlimits",
+          "mmu": "identity",
+          "geometry": "4k-2level",
+          "n": 64,
+          "steps": 1,
+          "seed": 2026111600
+        },
+        {
+          "family": "rootlimits",
+          "mmu": "identity",
+          "geometry": "4k-2level-long",
+          "n": 64,
+          "steps": 1,
+          "seed": 2026111600
+        },
+        {
+          "family": "fcl",
+          "mmu": "identity",
+          "geometry": "4k-2level",
+          "n": 64,
+          "steps": 1,
+          "seed": 2026111615
+        },
+        {
+          "family": "fcl",
+          "mmu": "identity",
+          "geometry": "4k-2level-long",
+          "n": 64,
+          "steps": 1,
+          "seed": 2026111615
+        },
+        {
+          "family": "sre",
+          "mmu": "identity",
+          "geometry": "4k-2level",
+          "n": 16,
+          "steps": 1,
+          "seed": 2026111627
+        },
+        {
+          "family": "sre",
+          "mmu": "identity",
+          "geometry": "4k-2level-long",
+          "n": 16,
+          "steps": 1,
+          "seed": 2026111627
+        },
+        {
+          "family": "early",
+          "mmu": "identity",
+          "geometry": "4k-2level",
+          "n": 16,
+          "steps": 1,
+          "seed": 2026111620
+        },
+        {
+          "family": "early",
+          "mmu": "identity",
+          "geometry": "4k-2level-long",
+          "n": 16,
+          "steps": 1,
+          "seed": 2026111620
+        },
+        {
+          "family": "indirect",
+          "mmu": "identity",
+          "geometry": "4k-2level",
+          "n": 16,
+          "steps": 1,
+          "seed": 2026111620
+        },
+        {
+          "family": "indirect",
+          "mmu": "identity",
+          "geometry": "4k-2level-long",
+          "n": 16,
+          "steps": 1,
+          "seed": 2026111620
+        },
+        {
+          "family": "mixed",
+          "mmu": "identity",
+          "geometry": "4k-2level",
+          "n": 16,
+          "steps": 1,
+          "seed": 2026111620
+        },
+        {
+          "family": "mixed",
+          "mmu": "identity",
+          "geometry": "4k-2level-long",
+          "n": 16,
+          "steps": 1,
+          "seed": 2026111621
+        },
+        {
+          "family": "ttprobe",
+          "mmu": "identity",
+          "geometry": "4k-2level",
+          "n": 32,
+          "steps": 1,
+          "seed": 2026111620
+        },
+        {
+          "family": "ttprobe",
+          "mmu": "identity",
+          "geometry": "4k-2level-long",
+          "n": 32,
+          "steps": 1,
+          "seed": 2026111620
+        },
+        {
+          "family": "earlyfcl",
+          "mmu": "identity",
+          "geometry": "4k-2level",
+          "n": 16,
+          "steps": 1,
+          "seed": 2026111620
+        },
+        {
+          "family": "earlyfcl",
+          "mmu": "identity",
+          "geometry": "4k-2level-long",
+          "n": 16,
+          "steps": 1,
+          "seed": 2026111620
         }
       ],
-      "sha256": "d5cde6e0ec900adce81a82ec839f2cd67672b8cf9a7965027a056b88275c465b",
-      "bytes": 285041019,
-      "vectors": 424
+      "sha256": "ac5267da61ccd2948baddf68360c3806aa51c7979e79dc4d3ba83595c54230e0",
+      "bytes": 838395151,
+      "vectors": 904
     },
     "040": {
       "file": "040.json.gz",

@@ -337,14 +337,6 @@ Plusieurs rangs de l'inventaire ne tiennent encore que par un boot.
   n'existent que sur deux hôtes et le disque privé : les publier (asset de
   release, sortie WinUAE sans donnée Apple), ou les remplacer par des
   corpus à recette une fois celle-ci retrouvée.
-- [ ] **Élargir la géométrie MMU du fuzzer 030.** `gen030.py` couvre les
-  pages de 32 Ko à un niveau et celles de 4 Ko
-  à deux niveaux, avec descripteurs courts ou longs et CRP sans limite.
-  Restent : FCL/SRE, terminaison anticipée, descripteurs indirects,
-  tables mêlant descripteurs courts et longs,
-  limites des pointeurs racines dans le fuzzer (les limites de tables
-  sont couvertes, les racines ont un gate ciblé) ; la cellule `tt` ne
-  parcourt jamais l'arbre.
 - [ ] **Donner au corpus FPU du 68040 les exceptions armées et les
   caches.** `sst68040_fpu` (7 500 vecteurs) pose FPCR avec des exceptions
   armées sur un vecteur sur dix seulement, et aucun corpus 68040 n'a

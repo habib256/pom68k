@@ -8,6 +8,7 @@ import argparse
 import gzip
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -53,7 +54,12 @@ def replay(model, entry, runner, emulator="", jit=False):
         # vector agrees on both sides and would read as a stale entry).
         if entry.get("known") and not jit:
             cmd += ["--known", str(FIXTURES / entry["known"])]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        env = os.environ.copy()
+        if jit:
+            # Short public vectors must reach compilation on AArch64/030,
+            # whose product profit-score default deliberately rejects them.
+            env["POM68K_JIT_PROFIT_SCORE"] = "0"
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120, env=env)
     output = result.stdout + result.stderr
     print(output, end="")
     summary = re.search(r"\[sst680" + model[-2:] + r"\] OK: (\d+)/(\d+) across (\d+) file", output)
@@ -67,6 +73,15 @@ def replay(model, entry, runner, emulator="", jit=False):
             or int(summary[1]) + (int(known[1]) if known else 0) != expected
             or not mmu or int(mmu[1]) != 0):
         raise ValueError(f"{model}: replay did not execute every pinned vector")
+    if jit:
+        census = re.search(r"\[sst680" + model[-2:] + r" --jit\] backend=(\S+) "
+                           r"blocks compiled=(\d+) run=(\d+) instrs=(\d+) native=(\d+) "
+                           r"slow=(\d+) window=(\d+) trace=(\d+) interp=(\d+)", output)
+        if (not census or census[1] not in {"threaded", "aarch64", "x86-64"}
+                or int(census[4]) == 0
+                or (census[1] == "threaded" and int(census[3]) + int(census[7]) == 0)
+                or (census[1] != "threaded" and min(int(census[n]) for n in (2, 3, 5)) == 0)):
+            raise ValueError(f"{model}: JIT replay did not execute its selected backend path")
     print(f"cpu_vectors: {model} executed {expected} pinned vectors; no soft skip")
 
 

@@ -20,6 +20,7 @@ from __future__ import annotations
 import random
 
 from oracle_driver import State
+from mmu030_probes import PROBES
 
 MASK = 0xFFFFFF
 
@@ -744,7 +745,8 @@ FAMILIES = {"random": _op_random, "core": _op_core, "mmu": _op_mmu,
             "fault": _op_fault, "fpu": _op_fpu, "fpuraw": _op_fpuraw,
             "fpu2": _op_fpu2, "rmw": _op_rmw, "fpuh": _op_fpuh,
             "pagend": None, "earaw": _op_earaw,
-            "limits": lambda rng: rng.choice(([0x2010], [0x2080]))}
+            "limits": lambda rng: rng.choice(([0x2010], [0x2080])),
+            "rootlimits": None, "fcl": None, **dict.fromkeys(PROBES)}
 
 
 def gen_state(rng: random.Random, family: str = "core",
@@ -780,8 +782,9 @@ def gen_state(rng: random.Random, family: str = "core",
         st.tc, st.crp = tc, rp
         st.srp = rp
     elif mmu == "tt":
-        # MMU enabled but everything matches TT0 (transparent): base $00,
-        # mask $FF (all a31-24 values), E bit 15, both FC ignored via mask.
+        # Legacy recipe: address mask $FF, but FC BASE is 7 (mask zero),
+        # CI set and RWM clear. Ordinary accesses still walk the tree;
+        # FC=7 already bypasses translation. Keep its bytes reproducible.
         kinds = build_identity_table(ram, rng, geometry=geometry)
         st.tc, st.crp, st.srp = tc, rp, rp
         st.tt0 = (0x00 << 24) | (0xFF << 16) | (1 << 15) | (1 << 10) | (7 << 4)
@@ -837,6 +840,89 @@ def gen_state(rng: random.Random, family: str = "core",
                              [i for i in range(CODE_BASE >> shift, n_pages)
                               if i not in kinds and not
                               (root >> shift <= i < table_end)])
+    elif family in PROBES:
+        assert mmu == "identity" and geometry in ("4k-2level", "4k-2level-long"), \
+            f"{family} requires a two-level identity geometry"
+        words = PROBES[family](st, ram, rng, root, stride)
+    elif family == "fcl":
+        assert mmu == "identity" and geometry in ("4k-2level", "4k-2level-long"), \
+            "fcl requires a two-level identity geometry"
+        # Add a function-code table ahead of the existing address tree.
+        # Each FC gets its own address table and one private leaf table:
+        # the same logical operand maps to eight distinguishable values.
+        fc_root, private_roots, private_leaves = 0x20A000, 0x20B000, 0x210000
+        group, index = 12, rng.randrange(64)
+        logical = (group << 18) | (index << shift) | 0x100
+        selected, kind = rng.randrange(8), rng.randrange(3)  # valid / WP / invalid
+        for fc in range(8):
+            address_table = private_roots + fc * 0x400
+            leaf_table = private_leaves + fc * 0x400
+            physical = 0x400000 + fc * 0x10000
+            for offset in range(64 * stride):
+                ram[address_table + offset] = ram[root + offset]
+            if stride == 8:
+                _w32(ram, fc_root + fc * stride, 0x7FFF0003)
+                _w32(ram, fc_root + fc * stride + 4, address_table)
+                _w32(ram, address_table + group * stride, 0x7FFF0003)
+                _w32(ram, address_table + group * stride + 4, leaf_table)
+            else:
+                _w32(ram, fc_root + fc * stride, address_table | 2)
+                _w32(ram, address_table + group * stride, leaf_table | 2)
+            flags = (1, 5, 0)[kind] if fc == selected else 1
+            _w32(ram, leaf_table + index * stride,
+                 flags if stride == 8 else physical | flags)
+            if stride == 8:
+                _w32(ram, leaf_table + index * stride + 4, physical)
+            _w32(ram, physical + 0x100, 0xFC000000 | fc << 16 | rng.getrandbits(16))
+        _w32(ram, logical, 0xB7000000 | rng.getrandbits(24))  # FC=7 bypass control
+        # A root limit is not checked at the FC lookup. Both bounds would
+        # reject supervisor fetches if accidentally applied to the FC index.
+        bound = 0x80070000 if rng.getrandbits(1) else 0
+        st.crp = st.srp = ((bound | (3 if stride == 8 else 2)) << 32) | fc_root
+        st.tc |= 1 << 24
+        st.sr |= 0x2000
+        st.a[7] = st.msp if st.sr & 0x1000 else st.isp
+        st.a[0], st.sfc, st.dfc = logical, selected, selected
+        write = rng.getrandbits(1)
+        if rng.getrandbits(1):
+            words = [0x0E90, write << 11]
+        else:
+            words = [0xF010, 0x8130 | selected | rng.randrange(1, 8) << 10 |
+                     (not write) << 9]
+        st.pc &= ~7
+    elif family == "rootlimits":
+        assert mmu == "identity" and geometry in ("4k-2level", "4k-2level-long"), \
+            "rootlimits requires a two-level identity geometry"
+        # SRE gives supervisor fetches/frames the unlimited SRP while user
+        # MOVES/PTEST accesses exercise a bounded CRP, including lower bounds
+        # that would otherwise make the instruction or its handler unreachable.
+        st.tc |= 1 << 25
+        st.sr |= 0x2000
+        st.a[7] = st.msp if st.sr & 0x1000 else st.isp
+        lower = rng.getrandbits(1)
+        # All three probe groups avoid code/stacks (group zero) and the
+        # physical translation tables (group eight), including the data seed.
+        limit = rng.choice([i for i in range(2, 63) if i not in (7, 8, 9)])
+        delta = rng.choice([-1, 0, 1])
+        group = limit + delta
+        flags = lower << 31 | limit << 16 | (3 if stride == 8 else 2)
+        st.crp = flags << 32 | root
+        page = group * 64 + rng.randrange(64)
+        _w32(ram, leaves + page * stride,
+             DT_PAGE if stride == 8 else (page << shift) | DT_PAGE)
+        if stride == 8:
+            _w32(ram, leaves + page * stride + 4, page << shift)
+        st.a[0] = (page << shift) + 0x100
+        _w32(ram, st.a[0], rng.getrandbits(32))
+        st.sfc = st.dfc = 1  # user data: selects CRP even in supervisor mode
+        write = rng.getrandbits(1)
+        if rng.getrandbits(1):
+            words = [0x0E90, write << 11]  # MOVES.L (A0),D0 / D0,(A0)
+        else:
+            level = rng.randrange(1, 8)
+            # PTEST user data, return last descriptor address in A1.
+            words = [0xF010, 0x8000 | level << 10 | (not write) << 9 | 0x131]
+        st.pc &= ~7
     else:
         words = FAMILIES[family](rng)
 
@@ -891,5 +977,8 @@ def gen_state(rng: random.Random, family: str = "core",
     for _ in range(64):
         ram[(DATA_BASE + rng.randrange(0, 0x100000)) & MASK] = rng.getrandbits(8)
 
-    st.ram = sorted(ram.items())
+    # These new probes use the harness's zero-filled bus as the baseline;
+    # do not serialize thousands of explicit zero table bytes. Legacy
+    # families keep their exact recipes and pinned byte streams.
+    st.ram = sorted((a, v) for a, v in ram.items() if v or family not in PROBES)
     return st

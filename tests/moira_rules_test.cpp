@@ -1089,6 +1089,216 @@ void ptestLongDescriptorLimits()
     }
 }
 
+void ptestEarlyAndIndirect030()
+{
+    // [D] WinUAE mmu030_table_search @ Hatari e77819f7: early page
+    // bounds apply even at the requested level; indirection follows only
+    // below it and its DT selects the target descriptor's size.
+    for (int stride : {4, 8}) for (bool lower : {false, true})
+    for (int delta : {-1, 0, 1}) for (int depth : {1, 2})
+    for (int fc : {1, 5}) {
+        TestCpu c(moira::Model::M68030);
+        stage(c, 0xf010, 0);
+        const uint16_t ext = uint16_t(0x8130 | (depth << 10) | fc);
+        p16(c, kCode + 2, ext); c.setIRC(ext);
+        c.setTC(0x00c86600u);
+        c.setCRP((uint64_t(0x7fff0000u | (stride == 8 ? 3 : 2)) << 32) | 0x4000);
+        const uint32_t entry = 0x4000 + stride;
+        const uint32_t flags = 0x115 | (lower ? 0x80000000u : 0) | (2 << 16);
+        p32(c, entry, stride == 8 ? flags : 0x30015);
+        if (stride == 8) p32(c, entry + 4, 0x30000);
+        c.setA(0, (1 << 18) | (uint32_t(2 + delta) << 12));
+        c.execute();
+        uint16_t want = uint16_t(0x0a01 | (stride == 8 && fc == 1 ? 0x2000 : 0));
+        if (stride == 8 && (lower ? delta < 0 : delta > 0)) want |= 0x4400;
+        CHECK(c.getMMUSR() == want && c.getA(1) == entry &&
+              c.getPC0() == kCode + 4 && g32(c, entry) == (stride == 8 ? flags : 0x30015),
+              "PTEST early stride=%d lower=%d delta=%d depth=%d FC=%d: "
+              "MMUSR=%04X/%04X A1=%08X/%08X", stride, lower, delta, depth, fc,
+              c.getMMUSR(), want, c.getA(1), entry);
+    }
+    for (int stride : {4, 8}) for (int targetStride : {4, 8})
+    for (int kind : {0, 1, 2, 3}) for (int depth : {1, 2, 3, 4})
+    for (int fc : {1, 5}) {
+        TestCpu c(moira::Model::M68030);
+        stage(c, 0xf010, 0);
+        const uint16_t ext = uint16_t(0x8330 | (depth << 10) | fc);
+        p16(c, kCode + 2, ext); c.setIRC(ext);
+        c.setTC(0x00c86600u);
+        const uint32_t tableFlags = 0x7fff0000u | (stride == 8 ? 3 : 2);
+        c.setCRP((uint64_t(tableFlags) << 32) | 0x4000);
+        const uint32_t parent = 0x4000 + stride, leaf = 0x5000 + 2 * stride;
+        const uint32_t target = targetStride == 8 ? 0x6008 : 0x6004;
+        p32(c, parent, stride == 8 ? tableFlags : 0x5002);
+        if (stride == 8) p32(c, parent + 4, 0x5000);
+        const uint32_t pointer = targetStride == 8 ? 3 : 2;
+        p32(c, leaf, stride == 8 ? pointer : target | pointer);
+        if (stride == 8) p32(c, leaf + 4, target);
+        const uint32_t flags = uint32_t(kind) | (targetStride == 8 ? 0x114 : 0x14);
+        p32(c, target, targetStride == 8 ? flags : 0x30000 | flags);
+        if (targetStride == 8) p32(c, target + 4, 0x30000);
+        c.setA(0, (1 << 18) | (2 << 12));
+        c.execute();
+        const uint32_t address = depth == 1 ? parent : depth == 2 ? leaf : target;
+        const uint16_t want = depth < 3 ? uint16_t(depth) : kind != 1 ? 0x0403 :
+            uint16_t(0x0a03 | (targetStride == 8 && fc == 1 ? 0x2000 : 0));
+        CHECK(c.getMMUSR() == want && c.getA(1) == address && c.getPC0() == kCode + 4 &&
+              g32(c, leaf) == (stride == 8 ? pointer : target | pointer) &&
+              g32(c, target) == (targetStride == 8 ? flags : 0x30000 | flags),
+              "PTEST indirect stride=%d target=%d DT=%d depth=%d FC=%d: "
+              "MMUSR=%04X/%04X A1=%08X/%08X", stride, targetStride, kind, depth, fc,
+              c.getMMUSR(), want, c.getA(1), address);
+    }
+}
+
+void ptestDescriptorFaults030()
+{
+    // [D] WinUAE cpummu030.c @ Hatari e77819f7: a descriptor-read
+    // /BERR excludes that descriptor from N and returns the preceding one.
+    // A PTEST stopped above the armed hole must not touch it at all.
+    for (int stride : {4, 8}) for (int targetStride : {4, 8})
+    for (int faultLevel : {1, 2, 3}) for (int depth : {1, 2, 3, 4}) {
+        const int faultSize = faultLevel == 3 ? targetStride : stride;
+        for (int offset = 0; offset < faultSize; offset += 4) {
+            TestCpu c(moira::Model::M68030);
+            stage(c, 0xf010, 0);
+            const uint16_t ext = uint16_t(0x8335 | (depth << 10));
+            p16(c, kCode + 2, ext); c.setIRC(ext);
+            c.setTC(0x00c86600u);
+            const uint32_t flags = 0x7fff0000u | (stride == 8 ? 3 : 2);
+            c.setCRP((uint64_t(flags) << 32) | 0x4000);
+            const uint32_t parent = 0x4000 + stride, leaf = 0x5000 + 2 * stride;
+            const uint32_t target = targetStride == 8 ? 0x6008 : 0x6004;
+            p32(c, parent, stride == 8 ? flags : 0x5002);
+            if (stride == 8) p32(c, parent + 4, 0x5000);
+            const uint32_t pointer = targetStride == 8 ? 3 : 2;
+            p32(c, leaf, stride == 8 ? pointer : target | pointer);
+            if (stride == 8) p32(c, leaf + 4, target);
+            p32(c, target, targetStride == 8 ? 1 : 0x30001);
+            if (targetStride == 8) p32(c, target + 4, 0x30000);
+            const uint32_t addresses[] = {0, parent, leaf, target};
+            c.holeArmed = true; c.holeAt = addresses[faultLevel] + offset;
+            c.setA(0, (1 << 18) | (2 << 12));
+            c.execute();
+            const bool faults = faultLevel <= depth;
+            const int complete = faults ? faultLevel - 1 : depth;
+            const uint16_t want = uint16_t((faults ? 0x8400 : 0) | complete);
+            CHECK(c.getMMUSR() == want && c.getA(1) == addresses[complete] &&
+                  c.getPC0() == kCode + 4 && bool(c.holeTrips) == faults,
+                  "PTEST descriptor fault stride=%d target=%d level=%d word=%d depth=%d: "
+                  "MMUSR=%04X/%04X A1=%08X/%08X trips=%u", stride, targetStride,
+                  faultLevel, offset, depth, c.getMMUSR(), want,
+                  c.getA(1), addresses[complete], c.holeTrips);
+        }
+    }
+}
+
+void directRootFclLimits030()
+{
+    // [B] MC68030UM-1989 §9.7.1 explicitly keeps a DT=1 root's limit
+    // active with FCL: direct roots have no function-code lookup table.
+    for (bool fcl : {false, true}) for (bool lower : {false, true})
+    for (int delta : {-1, 0, 1}) for (int depth : {1, 7})
+    for (int fc : {1, 5}) for (bool read : {false, true}) {
+        TestCpu c(moira::Model::M68030);
+        stage(c, 0xf010, 0);
+        const uint16_t ext = uint16_t(0x8130 | (depth << 10) | (read ? 0x200 : 0) | fc);
+        p16(c, kCode + 2, ext); c.setIRC(ext);
+        c.setTC(0x00c86600u | (fcl ? 0x01000000u : 0));
+        const uint32_t flags = (lower ? 0x80000000u : 0) | (2 << 16) | 1;
+        c.setCRP((uint64_t(flags) << 32) | 0x30000);
+        c.setA(0, (uint32_t(2 + delta) << 18) | 0x100);
+        c.execute();
+        const uint16_t want = (lower ? delta < 0 : delta > 0) ? 0x4400 : 0;
+        CHECK(c.getMMUSR() == want && c.getA(1) == 0 && c.getPC0() == kCode + 4,
+              "direct root PTEST FCL=%d lower=%d delta=%d depth=%d FC=%d R=%d: "
+              "MMUSR=%04X/%04X A1=%08X", fcl, lower, delta, depth, fc, read,
+              c.getMMUSR(), want, c.getA(1));
+    }
+    for (bool fcl : {false, true}) for (bool lower : {false, true})
+    for (int delta : {-1, 0, 1}) for (bool read : {false, true}) {
+        TestCpu c(moira::Model::M68030);
+        stage(c, 0x0e90, 0);
+        p16(c, kCode + 2, read ? 0 : 0x0800);
+        c.setTC(0x80c86600u | (fcl ? 0x01000000u : 0));
+        const uint32_t flags = (lower ? 0x80000000u : 0) | (2 << 16) | 1;
+        c.setCRP((uint64_t(flags) << 32) | 0x30000);
+        c.setTT1(0x80008107);
+        c.setISP(0x80008000); c.setSP(0x80008000); c.setVBR(0x80000000);
+        p32(c, 8, 0x80009000);
+        c.setSFC(1); c.setDFC(1);
+        const uint32_t logical = (uint32_t(2 + delta) << 18) | 0x100;
+        const uint32_t physical = logical + 0x30000;
+        c.setA(0, logical); c.setD(0, 0xdeadbeef); p32(c, physical, 0x12345678);
+        c.setPC(0x80000000u | kCode); c.setPC0(0x80000000u | kCode);
+        c.setIRD(0x0e90); c.setIRC(read ? 0 : 0x0800);
+        c.execute();
+        const bool fault = lower ? delta < 0 : delta > 0;
+        CHECK(c.getPC0() == (fault ? 0x80009000u : 0x80000000u | (kCode + 4)) &&
+              g32(c, physical) == (fault || read ? 0x12345678u : 0xdeadbeefu) &&
+              (fault || !read || c.getD(0) == 0x12345678),
+              "direct root bus FCL=%d lower=%d delta=%d R=%d: PC=%08X RAM=%08X",
+              fcl, lower, delta, read, c.getPC0(), g32(c, physical));
+    }
+}
+
+void directRootWrites030()
+{
+    // [B] MC68030UM-1989 §9.7.1: DT=1 roots directly map with a
+    // constant offset. No memory descriptor exists to acquire an M bit.
+    for (int size : {1, 2, 4}) for (bool moves : {false, true})
+    for (int fc : {1, 5}) {
+        TestCpu c(moira::Model::M68030);
+        const uint16_t store = moves ? uint16_t(0x0e10 | (size == 1 ? 0 : size == 2 ? 0x40 : 0x80))
+                                    : uint16_t(size == 1 ? 0x1080 : size == 2 ? 0x3080 : 0x2080);
+        const uint16_t load = moves ? store : uint16_t(size == 1 ? 0x1010 : size == 2 ? 0x3010 : 0x2010);
+        stage(c, store, 0);
+        if (moves) p16(c, kCode + 2, 0x0800);
+        c.setTC(0x82c86600u);
+        c.setCRP((uint64_t(0x7fff0001u) << 32) | 0x20000);
+        c.setSRP((uint64_t(0x7fff0001u) << 32) | 0x40000);
+        c.setTT1(0x80008107u);
+        c.setISP(0x80008000); c.setSP(0x80008000);
+        c.setVBR(0x80000000);
+        p32(c, 8, 0x80009000);
+        const uint32_t physical = 0x10004 + (moves && fc == 1 ? 0x20000 : 0x40000);
+        p32(c, 0x10004, 0x55443322);
+        c.setA(0, 0x10004); c.setSFC(fc); c.setDFC(fc);
+        for (int pass = 0; pass < 3; pass++) {
+            const bool write = pass != 0;
+            const uint16_t op = write ? store : load;
+            p16(c, kCode, op);
+            if (moves) p16(c, kCode + 2, write ? 0x0800 : 0);
+            c.setA(0, 0x10004);
+            const uint32_t value = 0x12345678 + pass;
+            p32(c, physical, 0xabcdef01);
+            c.setD(0, value);
+            c.setPC(kCode | 0x80000000); c.setPC0(kCode | 0x80000000);
+            c.setIRD(op); c.setIRC(moves ? (write ? 0x0800 : 0) : kNop);
+            c.execute();
+            const uint32_t want = !write ? 0xabcdef01 : size == 1 ? ((value & 255) << 24) | 0x00cdef01 :
+                                  size == 2 ? (value << 16) | 0xef01 : value;
+            CHECK(c.getPC0() == (0x80000000u | (kCode + (moves ? 4 : 2))) &&
+                  c.getSP() == 0x80008000 && g32(c, physical) == want &&
+                  g32(c, 0x10004) == 0x55443322 &&
+                  c.getCRP() == ((uint64_t(0x7fff0001u) << 32) | 0x20000),
+                  "direct root size=%d MOVES=%d FC=%d pass=%d: PC=%08X RAM=%08X/%08X",
+                  size, moves, fc, pass, c.getPC0(), g32(c, physical), want);
+            // Level-zero PTEST examines the ATC, with its raw page-aligned
+            // tag (D5); a read leaves M clear, the following writes set it.
+            const uint16_t probe = uint16_t(0x8210 | (moves ? fc : 5));
+            p16(c, kCode + 8, 0xf010); p16(c, kCode + 10, probe);
+            c.setA(0, 0x10000);
+            c.setPC(0x80000000u | (kCode + 8)); c.setPC0(0x80000000u | (kCode + 8));
+            c.setIRD(0xf010); c.setIRC(probe);
+            c.execute();
+            CHECK(c.getMMUSR() == (write ? 0x0200 : 0),
+                  "direct root ATC M size=%d MOVES=%d FC=%d pass=%d: MMUSR=%04X",
+                  size, moves, fc, pass, c.getMMUSR());
+        }
+    }
+}
+
 void ec030UsesPlain020Path()
 {
     // POM68K_SURFACE.md § 1.2: the current 68EC030 implementation uses
@@ -2505,6 +2715,10 @@ int main(int argc, char** argv)
     bitfieldMemoryAccesses();
     ptestFlagsInvalidAtTheLimit();
     ptestLongDescriptorLimits();
+    ptestEarlyAndIndirect030();
+    ptestDescriptorFaults030();
+    directRootFclLimits030();
+    directRootWrites030();
     fpuIgnoredOn68000And68010();
     tableSearchBusError030();
     movesFixupSlot030();

@@ -156,6 +156,26 @@ is vendored and linked — `-Wl,--gc-sections` trims the .so on ELF,
    No pinned vector depended on either: the 24 files of the seven FPU
    corpora regenerate hash-identically with this patch.
 
+15. `upstream/cpummu030.c`, direct roots and post-search ATC lookups (2026-11-16) —
+   a direct-root write sets the new ATC entry's M bit (§9.4) even though
+   the root pointer itself has no memory-resident M field. Additionally,
+   use a non-invalidating read lookup to obtain a freshly installed entry,
+   including for a write/RMW retry and the debug address helpers. DT=1
+   root descriptors have no M field: the former second write lookup
+   invalidated that just-filled, M-clear entry and passed index -1 to an
+   ATC accessor. A valid root write consequently used memory outside the
+   ATC array and wrote to a host-layout-dependent physical page (here
+   $000100 instead of root offset + operand). Existing WP/bus-error tests
+   in the accessor remain in force. MC68030UM §9.7.1 defines constant-
+   offset root mapping; `smoke.c test_direct_root_writes` checks ordinary
+   MOVE and MOVES byte/word/long stores against it, then PTEST level zero
+   observes their ATC M bit. This is a manual-based oracle correction;
+   no old undefined root-write result is treated as reference evidence.
+   The same root-specific section also requires the DT=1 limit with FCL
+   enabled. Early-root limit checks now retain it: the general FCL root
+   exception applies to table roots, which perform a function-code lookup,
+   whereas a direct root does not. Focused `earlyfcl` probes hold this case.
+
 No other vendored file is modified.
 
 ## Shim strategy

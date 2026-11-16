@@ -1493,6 +1493,13 @@ static uae_u32 mmu030_table_search(uaecptr addr, uae_u32 fc, bool write, int lev
         }
         
     handle_page_descriptor:
+
+        /* POM68K: MC68030UM sections 9.4 and 9.7.1. A direct-root
+         * mapping has no memory M field, but a write still marks its
+         * ATC entry modified. PTEST does not create access history. */
+        if (!descr_num && !level && write) {
+            mmu030.status |= MMUSR_MODIFIED;
+        }
         
         if (descr_num) { /* if not root pointer */
             /* check protection */
@@ -1538,7 +1545,8 @@ static uae_u32 mmu030_table_search(uaecptr addr, uae_u32 fc, bool write, int lev
          * still at root pointer level, only check limit, if FCL
          * is disabled. */
         if (early_termination) {
-            if (descr_num || !(tc_030&TC_ENABLE_FCL)) {
+            /* POM68K: section 9.7.1 explicitly retains the root DT=1
+             * limit even with FCL; this path never consults an FC table. */
                 if (descr_size==8) {
                     table_index = (addr&mmu030.translation.table[t].mask)>>mmu030.translation.table[t].shift;
                     limit = (descr[0]&DESCR_LIMIT_MASK)>>16;
@@ -1557,7 +1565,6 @@ static uae_u32 mmu030_table_search(uaecptr addr, uae_u32 fc, bool write, int lev
                         goto stop_search;
                     }
                 }
-            }
             /* Get all unused bits of the logical address table index field.
              * they are added to the page address */
             /* TODO: They should be added via "unsigned addition". How to? */
@@ -2099,6 +2106,13 @@ static int mmu030_logical_is_in_atc(uaecptr addr, uae_u32 fc, bool write) {
     return -1;
 }
 
+/* POM68K: after a table search, look up the freshly installed entry as
+ * a read even for a write/RMW retry. The address/debug helpers can create
+ * an M-clear entry with a read search and then request write access;
+ * rechecking it as an old write hit invalidates it and indexes atc[-1].
+ * The access helper still checks WP/B. Direct-root writes formerly had
+ * the same undefined retry before their missing ATC M update was fixed. */
+
 /* Memory access functions:
  * If the address matches one of the transparent translation registers
  * use it directly as physical address, else check ATC for the
@@ -2132,7 +2146,7 @@ void mmu030_put_long(uaecptr addr, uae_u32 val, uae_u32 fc)
 				addr = mmu030_put_atc(addr, atc_line_num, fc, MMU030_SSW_SIZE_L);
 			} else {
 				mmu030_table_search(addr,fc,true,0);
-				addr = mmu030_put_atc(addr, mmu030_logical_is_in_atc(addr,fc,true), fc, MMU030_SSW_SIZE_L);
+				addr = mmu030_put_atc(addr, mmu030_logical_is_in_atc(addr, fc, false), fc, MMU030_SSW_SIZE_L);
 			}
 		}
 	}
@@ -2158,7 +2172,7 @@ void mmu030_put_word(uaecptr addr, uae_u16 val, uae_u32 fc)
 				addr = mmu030_put_atc(addr, atc_line_num, fc, MMU030_SSW_SIZE_W);
 			} else {
 				mmu030_table_search(addr, fc, true, 0);
-				addr = mmu030_put_atc(addr,  mmu030_logical_is_in_atc(addr,fc,true), fc, MMU030_SSW_SIZE_W);
+				addr = mmu030_put_atc(addr,  mmu030_logical_is_in_atc(addr, fc, false), fc, MMU030_SSW_SIZE_W);
 			}
 		}
 	}
@@ -2184,7 +2198,7 @@ void mmu030_put_byte(uaecptr addr, uae_u8 val, uae_u32 fc)
 				addr = mmu030_put_atc(addr, atc_line_num, fc, MMU030_SSW_SIZE_B);
 			} else {
 				mmu030_table_search(addr, fc, true, 0);
-				addr = mmu030_put_atc(addr, mmu030_logical_is_in_atc(addr,fc,true), fc, MMU030_SSW_SIZE_B);
+				addr = mmu030_put_atc(addr, mmu030_logical_is_in_atc(addr, fc, false), fc, MMU030_SSW_SIZE_B);
 			}
 		}
 	}
@@ -2350,7 +2364,7 @@ static void mmu030_put_generic_lrmw(uaecptr addr, uae_u32 val, uae_u32 fc, int s
 			addr = mmu030_put_atc_generic(addr, atc_line_num, fc, flags);
 		} else {
 			mmu030_table_search(addr, fc, true, 0);
-			atc_line_num = mmu030_logical_is_in_atc(addr, fc, true);
+			atc_line_num = mmu030_logical_is_in_atc(addr, fc, false);
 			addr = mmu030_put_atc_generic(addr, atc_line_num, fc, flags);
 		}
 	}
@@ -2379,7 +2393,7 @@ void mmu030_put_generic(uaecptr addr, uae_u32 val, uae_u32 fc, int size, int fla
 			addr = mmu030_put_atc_generic(addr, atc_line_num, fc, flags);
 		} else {
 			mmu030_table_search(addr, fc, true, 0);
-			atc_line_num = mmu030_logical_is_in_atc(addr, fc, true);
+			atc_line_num = mmu030_logical_is_in_atc(addr, fc, false);
 			addr = mmu030_put_atc_generic(addr, atc_line_num, fc, flags);
 		}
 	}
@@ -2403,7 +2417,7 @@ static uae_u32 mmu030_get_generic_lrmw(uaecptr addr, uae_u32 fc, int size, int f
 			addr = mmu030_get_atc_generic(addr, atc_line_num, fc, flags, true);
 		} else {
 			mmu030_table_search(addr, fc, true, 0);
-			atc_line_num = mmu030_logical_is_in_atc(addr, fc, true);
+			atc_line_num = mmu030_logical_is_in_atc(addr, fc, false);
 			addr = mmu030_get_atc_generic(addr, atc_line_num, fc, flags, true);
 		}
 	}
@@ -2461,7 +2475,7 @@ uae_u8 uae_mmu030_check_fc(uaecptr addr, bool write, uae_u32 size)
 			addr = mmu030_get_atc_generic(addr, atc_line_num, fc, flags, write);
 		} else {
 			mmu030_table_search(addr, fc, write, 0);
-			atc_line_num = mmu030_logical_is_in_atc(addr, fc, write);
+			atc_line_num = mmu030_logical_is_in_atc(addr, fc, false);
 			addr = mmu030_get_atc_generic(addr, atc_line_num, fc, flags, false);
 		}
 	}
@@ -2664,7 +2678,7 @@ uaecptr debug_mmu030_translate(uaecptr addr, int fc, bool write, struct mmu_debu
 		return addr;
 	}
 	mmu030_table_search(addr, fc, false, 0);
-	return mmu030_get_addr_atc(addr, mmu030_logical_is_in_atc(addr, fc, write), fc, write);
+	return mmu030_get_addr_atc(addr, mmu030_logical_is_in_atc(addr, fc, false), fc, write);
 }
 
 uaecptr mmu030_translate(uaecptr addr, bool super, bool data, bool write)
@@ -2679,7 +2693,7 @@ uaecptr mmu030_translate(uaecptr addr, bool super, bool data, bool write)
         return mmu030_get_addr_atc(addr, atc_line_num, fc, write);
     } else {
         mmu030_table_search(addr, fc, false, 0);
-        return mmu030_get_addr_atc(addr, mmu030_logical_is_in_atc(addr,fc,write), fc, write);
+        return mmu030_get_addr_atc(addr, mmu030_logical_is_in_atc(addr, fc, false), fc, write);
     }
 }
 

@@ -26,7 +26,7 @@ import os
 import random
 import sys
 
-from gen030 import gen_state
+from gen030 import gen_state, FAMILIES
 from oracle_driver import Oracle, State
 import sst030
 
@@ -51,8 +51,7 @@ def main() -> int:
                     help="oracle .so (WinUAE; solo = its word is law)")
     ap.add_argument("--b", help="optional second oracle .so (differential mode)")
     ap.add_argument("--family", default="core",
-                    choices=["core", "mmu", "random", "fault", "fpu",
-                             "fpuraw", "fpu2", "rmw", "fpuh", "pagend", "earaw", "limits"])
+                    choices=sorted(FAMILIES))
     ap.add_argument("--mmu", default="off", choices=["off", "identity", "tt"])
     ap.add_argument("--geometry", default="32k",
                     choices=["32k", "4k-2level", "4k-2level-long", "4k-limits"],
