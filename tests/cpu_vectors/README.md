@@ -15,6 +15,12 @@ uncompressed size and SHA-256 of each canonical JSON stream. The gzip files
 keep this small corpus in the repository. The large optional corpora under
 `tests/data/` retain their separate `tests/sst_corpora.lock` identities.
 
+`d23a-contract.json` is a separate, unmodified vector from the locked July
+030 corpus (`fpu/off seed=11 #292`). It is not part of either stream above.
+`sst_known_contract_test.py` uses its oracle format-$3 frame to prove that
+the tagged D23a rule changes only the expected format/instruction address:
+unrelated register or RAM errors and stale rules must still fail.
+
 The page-end cells include legal MOVEM word/long loads and stores, with
 the register mask ending the valid page or crossing into the invalid page.
 Illegal EA forms are excluded to keep the D39 ruling out of these cells.

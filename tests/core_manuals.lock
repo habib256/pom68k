@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "reviewed": "2026-11-10",
+  "reviewed": "2026-11-16",
   "scope": "Manual citation identity and checked locators, not proof of every implementation claim. PDF page numbers are one-based. Files are fetched by the reviewer, never required by the normal gate.",
   "sources": {
     "MC68030UM-1989": {
@@ -44,7 +44,9 @@
         "§9.7.4": 479,
         "§9.7.5.3": 481,
         "§9.8": 481,
-        "§11.6.14": 589
+        "§11.6.14": 589,
+        "§10.4.20": 542,
+        "Figure 10-45": 543
       }
     },
     "MC68040UM-1993": {

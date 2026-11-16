@@ -13,7 +13,8 @@
 #   retired Musashi oracle agreed (oracle/fuzz/disputes/NOTES.md); the fpu
 #   cells are WinUAE-solo (ruling D22). Seeds are in each vector's name
 #   ("core/identity seed=31 #1"). Permissive oracle setting; replayed with
-#   `sst68030 --known tests/sst68030.known` (four vectors, ruling D23b).
+#   `sst68030 --known tests/sst68030.known` (four legacy D23b vectors and
+#   ten scoped D23a format/IA rules).
 # sst68030_solo — the same generator, WinUAE alone, all fourteen cells
 #   (mmu_tt and random_tt included), generated 2026-11-06 and regenerated
 #   2026-11-07 against the STRICT oracle (six vectors changed, all D23b).
@@ -23,6 +24,8 @@
 #         oracle/fuzz/fuzz030.py --a liboracle_uae.so --family F --mmu M
 #         --strict-fpu --n 400 --seed S --out F_M.json
 #   (eight vectors on which the oracle halts are skipped by the driver).
+#   Replayed with `--known tests/sst68030_solo.known`: three scoped D23a
+#   format/IA rules; the original oracle payloads remain unchanged.
 # sst68030_fpuraw — the raw cpID-1 window ($F200-$F37F, unconstrained
 #   extension words) on the 68030 + 68882, against the STRICT oracle
 #   (oracle_set_fpu_strict: opmodes $40-$7F take a Line-F, FRESTORE refuses
@@ -30,8 +33,8 @@
 #   off, identity, tt, seeds 721 to 723:
 #         oracle/fuzz/fuzz030.py --a liboracle_uae.so --family fpuraw --mmu M
 #         --strict-fpu --n 2000 --seed S --out fpuraw_M.json
-#   Replayed with `sst68030 --known tests/sst68030_fpuraw.known`: 194 of
-#   them are rulings the fork does not follow the oracle on (D23b, D26-D29).
+#   Replayed with `sst68030 --known tests/sst68030_fpuraw.known`: 194 legacy
+#   named differences (D23b, D26-D29), plus 17 scoped D23a format/IA rules.
 # sst68030_fpu2 — TWO instructions per vector ("steps": 2) on the 68030 +
 #   68882, strict oracle: an FPU instruction, then one that decides when a
 #   posted exception is delivered; FPCR enables armed seven times in ten.
@@ -39,8 +42,8 @@
 #   seeds 941 to 943:
 #         oracle/fuzz/fuzz030.py --a liboracle_uae.so --family fpu2 --mmu M
 #         --strict-fpu --steps 2 --n 2000 --seed S --out fpu2_M.json
-#   Replayed with `sst68030 --known tests/sst68030_fpu2.known` (21 vectors,
-#   all ruling D23b).
+#   Replayed with `sst68030 --known tests/sst68030_fpu2.known`: 206 scoped
+#   D23a format/IA rules; the former D23b entries were resolved earlier.
 # sst68030_fpuh — THREE steps per vector on the 68030 + 68882, strict
 #   oracle: an FPU instruction, an FNOP, and `FSAVE -(A7)` planted as the
 #   first word of the handlers of vectors 48 to 55, so that the IDLE frame a
@@ -48,9 +51,10 @@
 #   each mmu in off, identity, tt, seeds 1311 to 1313:
 #         oracle/fuzz/fuzz030.py --a liboracle_uae.so --family fpuh --mmu M
 #         --strict-fpu --steps 3 --n 2000 --seed S --out fpuh_M.json
-#   Replayed with `sst68030 --strict-ram`, no known list: the exceptional
-#   operand of a trapped move-out is the normalized source, rounded with
-#   softfloat's carried precision (POM68K_VENDOR.md row 102).
+#   Replayed with `sst68030 --known tests/sst68030_fpuh.known --strict-ram`:
+#   212 scoped D23a format/IA rules. The exceptional operand of a trapped
+#   move-out is the normalized source, rounded with softfloat's carried
+#   precision (POM68K_VENDOR.md row 102).
 # sst68030_rmw — integer instructions whose LAST access is a write to memory
 #   through an address register aimed at a bad page (ALU to memory, ADDQ,
 #   immediates, NEG/NOT/CLR, bit operations, memory shifts, Scc, TAS, NBCD,

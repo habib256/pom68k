@@ -312,20 +312,15 @@ Plusieurs rangs de l'inventaire ne tiennent encore que par un boot.
   ne tombe.** La politique est alignée depuis le 2026-11-06 : un manuel
   (grade B) l'emporte sur l'oracle (grade D) pour toute décision nouvelle,
   et une décision existante n'est renversée que si rien ne passe au rouge.
-  Deux sont donc gardées comme exceptions connues
+  Restent les exceptions connues
   (`oracle/README.md § Rulings taken against a manual`) : D12 (adresse
-  d'instruction des frames $2) et D23a (frame FPU $3 sur 68030) — plus
-  D30 (trappe de type de donnée immédiate) et deux règles 68000 (sortie
-  anticipée de DIVS, ASR au-delà de la largeur). Chacune est tenue par des vecteurs
-  épinglés : la renverser demande soit une preuve de grade A, soit le
-  mécanisme de divergences assumées — il existe depuis le 2026-11-07 dans
-  `sst68030` et `sst68040` (`--known`, `tests/SstKnown.h` : liste nommée
-  par décision, gate rouge si un vecteur listé se met à passer), ce qui
-  permet de renverser D23a et D12 sans perdre un vecteur. **D23b est
-  appliquée** depuis le 2026-11-07 (rang 53) : le « hack » FRESTORE
-  n'existait que dans le réglage permissif de l'oracle ; les quatre
-  vecteurs épinglés de juillet sont listés dans `tests/sst68030.known`,
-  `sst68030_solo` est régénéré en strict. Reste aussi à passer au crible les
+  d'instruction des frames $2), D30 (trappe de type de donnée immédiate)
+  et deux règles 68000 (sortie anticipée de DIVS, ASR au-delà de la largeur).
+  Chacune est tenue par des vecteurs épinglés : la renverser demande soit
+  une preuve de grade A, soit une divergence déclarée (`--known`,
+  `tests/SstKnown.h`) sans perdre de vecteur. Les règles de champs nommés
+  permettent de rejuger seulement les champs concernés tout en conservant
+  la comparaison du reste de l'état. Reste aussi à passer au crible les
   règles 6888x que l'audit soupçonne sans que les notes disent ce qu'en
   dit le manuel : FPIAR, vecteur d'exception gardé armé, longs internes de
   FSAVE IDLE, bit 9 du SSW, PTEST niveau 0, PMOVE TC invalide.
@@ -417,16 +412,6 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
 
 ### Justesse 68030, 68020 et 6888x
 
-- [ ] **Sortir la frame FPU $3 du 68030 de l'incohérence de l'oracle.**
-  `execFpuException` pousse un format $3 sur le 020/030 (décision D23a) et
-  le RTE ne l'accepte qu'à partir du 68EC040 : un handler qui fait RTE
-  prend une erreur de format. Ce n'est pas un écart du fork — WinUAE fait
-  exactement les deux (`oracle/uae/upstream/gencpu.c`, `i_RTE`, branche
-  `cpu_level >= 4`) : l'oracle empile sur 68030 une frame que son propre
-  RTE refuse. Le $2 du manuel, lui, est accepté par le RTE dès le 68020.
-  Revenir à $2 fait tomber dix vecteurs épinglés de `sst68030` : à faire
-  avec le mécanisme de divergences assumées de › Socle, ou sur *une frame
-  empilée par un vrai 68030*.
 - [ ] **Relever le cycle d'opérande d'un champ de bits de trois octets.**
   Le MC68030UM-1989 § 11.6.14 compte un seul cycle d'opérande sous cinq
   octets et le bus 020/030 a un SIZ de trois octets ; le cœur et l'oracle

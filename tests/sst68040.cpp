@@ -469,11 +469,15 @@ int main(int argc, char** argv) {
         else if (a=="--ring") jitOpt.ring=true;
 #endif
         else if (a=="--known"&&i+1<argc) {
-            if (!known.load(argv[++i])) { std::fprintf(stderr,"cannot open --known '%s'\n",argv[i]); return 2; }
+            if (!known.load(argv[++i])) { std::fprintf(stderr,"cannot load --known '%s'\n",argv[i]); return 2; }
         }
         else { std::fprintf(stderr,"unknown arg '%s'\n",a.c_str()); return 2; }
     }
 
+    if (known.hasFrames030()) {
+        std::fprintf(stderr, "D23a frame rules require the 68030 oracle replay harness\n");
+        return 2;
+    }
     namespace fs = std::filesystem;
     if (!fs::exists(dir)||!fs::is_directory(dir)) { std::fprintf(stderr,"SKIP: [sst68040] no data at '%s' (run oracle/fuzz/fuzz040.py)\n",dir.c_str()); return 0; }
     std::vector<fs::path> files;

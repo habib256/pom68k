@@ -29,6 +29,10 @@ So:
 > manual* says what would settle each. Where the manual is silent the
 > oracle remains the best reading and nothing changes.
 
+> **Annotation, 2026-11-16.** D23b was applied on 2026-11-07; D23a now
+> follows the manual with strictly scoped frame-field rules. See the
+> [later D23a ruling](#d23a-format2-return). D12 remains open.
+
 Oracle in service: **WinUAE** (`oracle/uae`, hatari e77819f7
 `cpummu030.c` + gencpu). Retired: **Musashi** (MAME 0.276 `m68kmmu.h` +
 kstenerud 4.60 core).
@@ -760,6 +764,10 @@ its vendored tree deleted. Rationale:
 
 ### D23. 030 FPU post-instruction frame format, and the $41 FRESTORE
 hack's reach  [ruled: WinUAE — a spec-based overrule REVERTED]
+> **Superseded in part (2026-11-16):** D23a now follows the manual with
+> scoped frame-field rules; see [the later ruling](#d23a-format2-return).
+> The historical account below is retained.
+
 Two 2026-08-17 Moira changes (the 020/030/040-closure merge) contradicted
 the pinned corpus, and the red sat invisible for a day under a STALE
 `sst68030` binary — surfaced 2026-08-18 by `tools/check_binaries_fresh.py`
@@ -1108,3 +1116,26 @@ long-descriptor limits; the bus walk already checked them. Fixed (vendor
 row 109); 48 targeted root/table controls, 12 failing before, all passing
 after. The retained sweep then agrees with strict RAM and A64 JIT lockstep.
 The `limits` family supplies successful boundary controls as well as faults.
+
+<a id="d23a-format2-return"></a>
+### D23a — External-FPU format 2 and a working handler return (2026-11-16)
+
+MC68030UM-1989 §10.4.20, Figure 10-45, checked in the hash-pinned second
+edition (PDF pp. 542–543), defines a format-$2 frame with the next scan PC
+and the F-line instruction address. The previous format $3/EA caused an
+ordinary RTE to take vector 14 on the 020/030; replacing just the frame
+format and extra longword lets the same handler resume the next NOP.
+`fpu_sanity` now holds 16 combinations of CPU model, 68881/68882 and
+register/memory destination, with the frame, RTE and following instruction
+all checked. The integrated 040 retains format $3/EA.
+
+The raw oracle outputs and corpus identities remain unchanged. An audit
+of every new mismatch finds only these two fields: 10 July, 3 strict-solo,
+17 raw-FPU, 206 two-instruction and 212 handler/FSAVE vectors. Tagged
+`@D23a <physical frame base> | <vector name>` rules require an original
+format-$3 FPU frame, adjust those expected fields only, and compare the
+complete final CPU/FPU/register/RAM state. They do not exempt a failing
+vector. A stale reference or any unrelated difference fails, held by
+`sst_known_contract_test` using a public, unmodified July vector.
+All 26 674 vectors in these five corpora execute under strict RAM checking;
+448 scoped D23a rules coexist with the 198 pre-existing named differences.

@@ -80,6 +80,32 @@ struct Vector {
     long steps = 1;             // instructions to run (fuzz030.py --steps)
 };
 
+// D23a: retain the raw oracle fixture, but judge only its two documented
+// frame fields against MC68030UM-1989 Figure 10-45. Every other byte and
+// register still goes through the ordinary whole-vector comparison.
+bool normalizeFrame030(Vector& v, uint32_t frame, std::string& why) {
+    auto byte = [&](uint32_t addr) -> uint8_t {
+        addr &= 0xFFFFFF;
+        for (const auto& c : v.fin.ram) if ((c.addr & 0xFFFFFF) == addr) return c.val;
+        for (const auto& c : v.initial.ram) if ((c.addr & 0xFFFFFF) == addr) return c.val;
+        return 0;
+    };
+    const uint16_t format = uint16_t(byte(frame + 6) << 8 | byte(frame + 7));
+    if (!v.initial.hasFp || format < 0x30C0 || format > 0x30DC || (format & 3)) {
+        why = "D23a rule requires an oracle format-3 FPU frame (stale or invalid rule)";
+        return false;
+    }
+    auto put = [&](uint32_t addr, uint8_t value) {
+        addr &= 0xFFFFFF;
+        for (auto& c : v.fin.ram) if ((c.addr & 0xFFFFFF) == addr) { c.val = value; return; }
+        v.fin.ram.push_back({addr, value});
+    };
+    put(frame + 6, 0x20);
+    for (int i = 0; i < 4; ++i)
+        put(frame + 8 + i, uint8_t(v.initial.pc >> (24 - 8 * i)));
+    return true;
+}
+
 // ── Flat 16 MB test bus (no Mac hardware, no contention) ─────────────────
 class TestCpu : public moira::Moira {
 public:
@@ -416,11 +442,17 @@ int main(int argc, char** argv) {
         else if (a=="--ring") jitOpt.ring=true;
 #endif
         else if (a=="--known"&&i+1<argc) {
-            if (!known.load(argv[++i])) { std::fprintf(stderr,"cannot open --known '%s'\n",argv[i]); return 2; }
+            if (!known.load(argv[++i])) { std::fprintf(stderr,"cannot load --known '%s'\n",argv[i]); return 2; }
         }
         else { std::fprintf(stderr,"unknown arg '%s'\n",a.c_str()); return 2; }
     }
 
+#if SST_JIT
+    if (known.hasFrames030()) {
+        std::fprintf(stderr, "D23a rules judge the oracle, not JIT lockstep: omit --known\n");
+        return 2;
+    }
+#endif
     namespace fs = std::filesystem;
     if (!fs::exists(dir)||!fs::is_directory(dir)) { std::fprintf(stderr,"SKIP: [sst68030] no data at '%s' (run oracle/fuzz/fuzz030.py)\n",dir.c_str()); return 0; }
     std::vector<fs::path> files;
@@ -457,15 +489,20 @@ int main(int argc, char** argv) {
                 continue;
             }
             std::string why; bool ok;
+            const auto manualFrame = known.frame030(v.name);
+            const bool validFrame = !manualFrame || normalizeFrame030(v, *manualFrame, why);
 #if SST_JIT
-            try { ok = sstjit::run(pair, v, jitOpt, setupVector, scrubVector, why); }
+            try { ok = validFrame && sstjit::run(pair, v, jitOpt, setupVector, scrubVector, why); }
 #else
-            try { ok = runVector(cpu,v,checkCycles,why); }
+            try { ok = validFrame && runVector(cpu,v,checkCycles,why); }
 #endif
             catch (const std::exception& e) { ok=false; why=std::string("threw: ")+e.what(); }
             ++total;
             const bool isKnown = known.listed(v.name);
-            if (ok && isKnown) {
+            if (manualFrame) {
+                if (ok) ++knownHere;
+                else if (int(firstFew.size())<examples) firstFew.push_back({v.name,why});
+            } else if (ok && isKnown) {
                 ++stale;
                 if (int(firstFew.size())<examples) firstFew.push_back({v.name,sstknown::List::kStale});
             } else if (ok) ++passed;

@@ -12,11 +12,20 @@
 //   - a listed vector that PASSES fails the run — the ruling was settled, or
 //     something moved: the list must describe the tree, not excuse it;
 //   - a listed name the corpus does not hold fails a whole-corpus run.
+//
+// A D23a line is stricter: `@D23a <hex physical frame base> | <name>`.
+// The 030 harness replaces only the oracle's format/IA bytes with their
+// manual-defined values and then compares the entire final state. A stale
+// oracle frame or any unrelated difference fails instead of being excused.
 #pragma once
 
 #include <cstdio>
+#include <cstdint>
 #include <fstream>
+#include <map>
+#include <optional>
 #include <set>
+#include <sstream>
 #include <string>
 
 namespace sstknown {
@@ -31,12 +40,32 @@ public:
             while (!line.empty() && (line.back() == '\r' || line.back() == ' ' ||
                                      line.back() == '\t'))
                 line.pop_back();
-            if (!line.empty() && line[0] != '#') names_.insert(line);
+            if (line.empty() || line[0] == '#') continue;
+            if (line[0] == '@') {
+                std::istringstream row(line);
+                std::string tag, separator, name;
+                unsigned long frame = 0;
+                if (!(row >> tag >> std::hex >> frame >> separator) ||
+                    tag != "@D23a" || frame > 0xFFFFFF || (frame & 1) || separator != "|")
+                    return false;
+                std::getline(row >> std::ws, name);
+                if (name.empty() || !names_.insert(name).second) return false;
+                frames030_.emplace(name, uint32_t(frame));
+            } else {
+                if (frames030_.count(line)) return false;
+                names_.insert(line);
+            }
         }
         loaded_ = true;
         return true;
     }
     bool active() const { return loaded_; }
+    bool hasFrames030() const { return !frames030_.empty(); }
+    std::optional<uint32_t> frame030(const std::string& name) const {
+        const auto it = frames030_.find(name);
+        if (it == frames030_.end()) return std::nullopt;
+        return it->second;
+    }
 
     // Whether `name` is listed; a listed name is remembered as met.
     bool listed(const std::string& name) {
@@ -61,6 +90,7 @@ public:
 
 private:
     std::set<std::string> names_, seen_;
+    std::map<std::string, uint32_t> frames030_;
     bool loaded_ = false;
 };
 

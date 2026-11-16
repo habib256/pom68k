@@ -1023,16 +1023,14 @@ Moira::fpuCheckArithException(
 template <Core C> void
 Moira::execFpuException(u16 vector, bool pre)
 {
-    // [B] MC68030UM-1989 §8.4: external-coprocessor frame; retained oracle exception below.
-    // [D] WinUAE @ Hatari e77819f7 — retained ruling D23a.
-    // FPU exceptions follow Exception_build_stack_frame_common
-    // (newcpu_common.c:1616, nr 48-55): pre-instruction = format $0;
-    // post-instruction = format $3 with the operand EA, including on 020/030.
-    // The MC68030UM-1989 §8.4 instead specifies the external-coprocessor
-    // post-instruction frame as format $2 with an instruction address. The
-    // pinned corpus retains the oracle exception (oracle/README.md, D23a).
-    // [F] No hardware frame settles this retained divergence. Settled by:
-    // a real 68030 + 6888x post-instruction frame and handler RTE sequence.
+    // [B] MC68030UM-1989 §10.4.20, Figure 10-45: external-coprocessor
+    // post-instruction exceptions use format 2, scan PC at +2 and the
+    // F-line instruction address at +8. This frame is accepted by RTE.
+    // [B] MC68040UM-1993 §8.4: the integrated FPU's post-instruction
+    // frame is format 3, whose extra longword is the operand EA.
+    // [D] WinUAE @ Hatari e77819f7 instead stacks format 3 on the 030
+    // too, although its RTE rejects that format there. D23a records the
+    // declared corpus divergence; the external frame follows the manual.
     u16 status = getSR();
 
     setSupervisorMode(true);
@@ -1045,8 +1043,9 @@ Moira::execFpuException(u16 vector, bool pre)
 
     } else {
 
-        push<C, Long>(fpu.ea);                          // effective address
-        push<C, Word>(u16(0x3000 | vector << 2));       // format $3 | offset
+        const bool external = cpuModel < Model::M68EC040;
+        push<C, Long>(external ? reg.pc0 : fpu.ea);
+        push<C, Word>(u16((external ? 0x2000 : 0x3000) | vector << 2));
         push<C, Long>(reg.pc);                          // next instruction
         push<C, Word>(status);
     }

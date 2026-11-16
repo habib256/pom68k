@@ -212,3 +212,25 @@ fpuraw/tt seed=723 #1456
 fpuraw/tt seed=723 #1614
 fpuraw/tt seed=723 #1921
 fpuraw/tt seed=723 #1922
+
+# D23a (2026-11-16): MC68030UM-1989 Figure 10-45 uses format 2 and
+# the F-line instruction address. The oracle instead emits format 3/EA.
+# These tagged entries normalize only those frame bytes; the entire final
+# state is still compared, and a stale oracle frame fails the gate.
+@D23a 001ef4 | fpuraw/identity seed=722 #1047
+@D23a 0017f4 | fpuraw/identity seed=722 #1182
+@D23a 0017f4 | fpuraw/identity seed=722 #19
+@D23a 0017f4 | fpuraw/identity seed=722 #1907
+@D23a 001ef4 | fpuraw/identity seed=722 #372
+@D23a 0017f4 | fpuraw/identity seed=722 #377
+@D23a 0017f4 | fpuraw/identity seed=722 #533
+@D23a 001ef4 | fpuraw/off seed=721 #108
+@D23a 001ef4 | fpuraw/off seed=721 #157
+@D23a 0017f4 | fpuraw/off seed=721 #411
+@D23a 0017f4 | fpuraw/off seed=721 #730
+@D23a 0017f4 | fpuraw/tt seed=723 #1033
+@D23a 0017f4 | fpuraw/tt seed=723 #154
+@D23a 0017f4 | fpuraw/tt seed=723 #1650
+@D23a 0017f4 | fpuraw/tt seed=723 #166
+@D23a 0017f4 | fpuraw/tt seed=723 #189
+@D23a 0017f4 | fpuraw/tt seed=723 #597

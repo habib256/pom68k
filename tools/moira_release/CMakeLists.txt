@@ -173,6 +173,10 @@ if(Python3_FOUND)
     add_test(NAME cpu_vectors_contract_test
         COMMAND ${Python3_EXECUTABLE} ${T}/cpu_vectors_contract_test.py)
     set_tests_properties(cpu_vectors_contract_test PROPERTIES LABELS unit TIMEOUT 30)
+    add_test(NAME sst_known_contract_test
+        COMMAND ${Python3_EXECUTABLE} ${T}/sst_known_contract_test.py
+            --runner $<TARGET_FILE:sst68030> --emulator "${CMAKE_CROSSCOMPILING_EMULATOR}")
+    set_tests_properties(sst_known_contract_test PROPERTIES LABELS unit TIMEOUT 120)
 endif()
 # The large corpora live outside the release (tests/sst_corpora.lock names
 # each by hash and recipe). Point MOIRA_POM68K_SST_ROOT at a directory
@@ -192,9 +196,10 @@ function(moira_pom68k_corpus name runner)
 endfunction()
 moira_pom68k_corpus(sst68000        sst68000)
 moira_pom68k_corpus(sst68030        sst68030 KNOWN sst68030.known)
-moira_pom68k_corpus(sst68030_solo   sst68030)
+moira_pom68k_corpus(sst68030_solo   sst68030 KNOWN sst68030_solo.known)
 moira_pom68k_corpus(sst68030_fpuraw sst68030 KNOWN sst68030_fpuraw.known)
 moira_pom68k_corpus(sst68030_fpu2   sst68030 KNOWN sst68030_fpu2.known)
+moira_pom68k_corpus(sst68030_fpuh   sst68030 KNOWN sst68030_fpuh.known)
 moira_pom68k_corpus(sst68030_rmw    sst68030 KNOWN sst68030_rmw.known)
 moira_pom68k_corpus(sst68040        sst68040)
 moira_pom68k_corpus(sst68040_8k     sst68040)

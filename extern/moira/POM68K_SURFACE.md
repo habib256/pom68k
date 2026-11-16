@@ -661,8 +661,9 @@ made that this diagnostic is thread-safe.
 
 - `M68881`/`M68882`: full 6888x programmer's model, transcendental set (FPSP
   port), packed decimal, pre-instruction exceptions (format $0) and
-  post-instruction exceptions (format $3 with `fpu.ea`, also on the 020/030 —
-  ruling D23, `execFpuException`), FSAVE NULL (4 bytes) / IDLE ($1F/$18 on
+  post-instruction exceptions (format $2 with the F-line instruction address
+  on the 020/030, MC68030UM-1989 Figure 10-45; D23a, `execFpuException`),
+  FSAVE NULL (4 bytes) / IDLE ($1F/$18 on
   68881, $1F/$38 on 68882) / BUSY ($1F/$B4, $1F/$D4); FRESTORE accepts
   these and opaque hardware BUSY frames; invalid frames → format error
   (`execFRestoreFormatError`). On `M68030`, FSAVE skips the eight

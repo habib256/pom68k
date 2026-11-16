@@ -1,0 +1,9 @@
+# Manual-defined oracle differences for sst68030_solo. See tests/SstKnown.h.
+
+# D23a (2026-11-16): MC68030UM-1989 Figure 10-45 uses format 2 and
+# the F-line instruction address. The oracle instead emits format 3/EA.
+# These tagged entries normalize only those frame bytes; the entire final
+# state is still compared, and a stale oracle frame fails the gate.
+@D23a 0017f4 | fpu/identity seed=711 #370
+@D23a 0017f0 | fpu/off seed=710 #391
+@D23a 0017f4 | fpu/tt seed=712 #394

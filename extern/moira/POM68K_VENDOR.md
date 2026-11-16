@@ -17,7 +17,8 @@ towards upstream had quietly expired while the file still read as if a rebase
 were the plan.
 
 What forced it, measured on this tree rather than remembered (re-measured
-2026-11-16 with row 112 (shared read-only inspection geometry); before that
+2026-11-16 with row 113 (external-FPU format-2 returns); before that
+with row 112 (shared read-only inspection geometry); before that
 with rows 110–111 (shared PTEST walk and direct-root writes); before that
 2026-11-15 with row 109 (PTEST long-descriptor limits); before that
 2026-11-14 with row 100 (the 68040 lock ends with its instruction); before
@@ -53,10 +54,10 @@ pair):
 | distinct `pom*` extension identifiers | **116** (65 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
 | `POM68K`-marked lines | **546** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **17 of 27** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **112** | this file |
+| patch groups in the inventory below | **113** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h`, `MoiraState.h`, `MoiraMmu030Walk.h` | — |
 
-One hundred and twelve patch groups, two of which (the JIT seam, row 22, and the ATC
+One hundred and thirteen patch groups, two of which (the JIT seam, row 22, and the ATC
 performance work, row 16) are not patches over upstream's design but a second
 consumer of it. A re-sync is no longer a merge with conflicts; it is a port.
 
@@ -186,7 +187,7 @@ gate in the last column of each row.
 | 23 | **Save-state seam** `pomFlushAtcs()` | `Moira.h` | a restored snapshot replaces the page tables under live ATCs | `savestate_030_test`, `savestate_040_test` |
 | 24 | **68010-only `readBuffer`/`writeBuffer`** — `pomSetRB<C>`/`pomSetWB<C>` setters; the store compiles away off the C68010 core, argument side effects (the address-error dummy `readM`) preserved | `Moira.h`, `MoiraDataflow_cpp.h`, `MoiraExec_cpp.h` | the buffers are 68010 format-$8 frame state and no Mac is a 68010; maintained on every core they made snapshot bytes depend on JIT arming history | `savestate_040_test` |
 | 25 | **MC68020 CALLM/RTM** — type-$00/$01 module frames, CPU-space access-control protocol, stack switching and argument copy | `MoiraExec_cpp.h`, `Moira.h`, `MoiraTypes.h` | the final two integer stubs in the 020 instruction map | `callm_rtm_test` |
-| 26 | **MC68030 FPU post-instruction frame** — format $3 with operand EA, like the 040 (a one-day format-$2 excursion on MC68030UM reading was REVERTED by ruling D23, 2026-08-18: the oracle pushes $3 on the 030 too, and oracle wins over spec) | `MoiraExecFPU_cpp.h` | `fpu_sanity`, `sst68030` pin it | `fpu_sanity` |
+| 26 | **External-FPU post-instruction frame** — the 020/030 use format $2 with the F-line instruction address (MC68030UM-1989 Figure 10-45). The former retained format-$3 ruling D23a is superseded by row 113; the 040 keeps format $3 and operand EA | `MoiraExecFPU_cpp.h` | primary manual, with a real handler RTE sequence in the bare gate; scoped oracle rules retain the raw reference payloads | `fpu_sanity`, `sst68030` |
 | 27 | **Integrated MC68040 FPU** — sparse native map, forced S/D precision, FPSP traps, revision-$41 FSAVE and BUSY resume | `MoiraExecFPU_cpp.h`, `Moira.h`, `MoiraTypes.h` | full-040 machines no longer masquerade as an attached 68882 | `fpu040_test`, `sst68040_fpu` |
 | 28 | **MC68040 data-bearing caches** — I/D line contents, WT/CB/NC policy, writeback, CPUSH/CINV, snooping and hit/fill/push timing | `MoiraCache040.h`, `MoiraExecMMU_cpp.h`, `Moira.h` | tags alone could not expose stale copyback data or alternate-master coherency | `cache040_test` |
 | 29 | **MC68881/2 mid-instruction interrupts** — protocol checkpoints, format $9, BUSY FSAVE/FRESTORE resume | `MoiraExecFPU_cpp.h`, `MoiraExceptions_cpp.h`, `MoiraExec_cpp.h`, `Moira.h`, `MoiraTypes.h` | long coprocessor commands are interruptible between null/come-again responses | `fpu_sanity` |
@@ -276,6 +277,8 @@ gate in the last column of each row.
 
 
 | 112 | **Inspection shares the CPU's descriptor geometry without live bus accesses** — `MoiraMmu030Walk.h` extracts the common algorithm behind bus searches, PTEST and `src/Mmu030Peek.h`. A compile-time history policy and caller-provided physical descriptor callbacks preserve read-only inspection; WP/S are reported independently of invalid mappings. The old inspection walker ignored early-page/root bounds, applied root bounds to FC lookup, and used the parent size for indirect targets | `MoiraMmu030Walk.h`, `MoiraExecMMU_cpp.h`, `Moira.cpp` | [B] MC68030UM-1989 §§9.5.3,9.5.5.1,9.7.1; the CPU algorithm is unchanged, inspection now follows it | `debug_inspection_test` (`peekGeometry030`, 46 geometry cases with byte-identical descriptor checks; 16 fail with the former inspector); `moira_rules_test` and strict SST replay cover the CPU paths |
+
+| 113 | **External 6888x exceptions return through the ordinary format-2 RTE path** — `execFpuException` selects format $2 and the F-line instruction address below the 040; integrated-040 format $3/EA is unchanged. Scoped D23a oracle rules normalize only the format/IA fields and compare every remaining register and RAM byte | `MoiraExecFPU_cpp.h` | [B] MC68030UM-1989 §10.4.20, Figure 10-45 (checked PDF pp. 542–543). WinUAE's format $3 on a 030 was rejected by its own RTE; the old fork took vector 14 instead of returning | `fpu_sanity` (16 model/FPU/destination combinations, real RTE plus next NOP; 48 checks failed before); five pinned corpora and `sst_known_contract_test` |
 
 Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54, 56, 59-75 and 79-86 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
 when nothing arms them); rows 48 and 55 are performance alone, with no architectural effect. Row 58 is evidence documentation only. The ten files carrying no `POM68K` marker at all —
@@ -709,6 +712,9 @@ corpora (41/41 pinned + 90/90 fresh seed) and every hard gate unchanged:
    `fpuCheckArithException`. Pre-instruction traps stay format $0 with
    PC = the re-executing FP instruction (matches WinUAE).
 
+The post-instruction format in point 3 is historical: row 113 supersedes
+it for external 6888x exceptions with format $2 and the instruction address.
+
 Fresh-seed re-verify (seeds 17/19, same day) closed two more classes,
 both FPU accesses faulting through the MMU:
 
@@ -836,10 +842,10 @@ payloads, FMOVEM, every native `$40-$7F` opcode, FSAVE and BUSY resume.
 The family audit found two older gaps outside the 040. On the 68030,
 post-instruction external-FPU exceptions then stacked format $2 plus the
 instruction address (pre-instruction exceptions remain format $0).
-**Superseded by row 26, ruling D23a:** the 020/030 currently stack format
-$3 to retain the pinned oracle vectors; this known exception to the manual
-and the RTE inconsistency remain open (`TODO.md` § Moteur › Justesse
-68030). On the 68020, the empty CALLM/RTM bodies are replaced by the complete 24-byte
+The temporary format-$3 retention of row 26, ruling D23a, was superseded
+by row 113 on 2026-11-16: external-FPU exceptions again use format $2 with
+the F-line instruction address, and an unmodified RTE returns normally.
+The raw oracle vectors are retained with scoped frame-field rules. On the 68020, the empty CALLM/RTM bodies are replaced by the complete 24-byte
 type-$00/$01 module-frame protocol, including the optional CPU-space
 access-control hooks and stack/argument transfer. `fpu_sanity` and
 `callm_rtm_test` pin those corrections.
@@ -2621,8 +2627,8 @@ are not established by these witnesses. No oracle patch or corpus exception.
   instruction corpus for this model (`POM68K_SURFACE.md` § 1.2).
 - 68030 — functional execution of the **MMU instruction set** ✓ (O4
   slice 1) and of **bus-level address translation + ATC + bus-fault
-  frames** ✓ (O4 slice 3, see above), plus 6888x format-$3
-  post-instruction exception frames (row 26, ruling D23).
+  frames** ✓ (O4 slice 3, see above), plus 6888x format-$2
+  post-instruction exception frames and handler RTE (row 113, ruling D23a).
 - 68881/68882 — **execution ✓** when attached via `setFPUModel()` (O5
   slice 2, see above; softfloat-backed, 68882 = LC II PDS FPU).
 - 68LC040 / 68EC040 / 68040 — **integer execution ✓** (Q2: MOVE16,

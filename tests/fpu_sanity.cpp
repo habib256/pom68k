@@ -230,30 +230,41 @@ int main() {
         { { 0x4000, 0x1234 }, { 0x4002, 0x5678 } });
     CHECK(cpu.getPC0() == 0x3200, "frestore garbage: PC0 = %08X, want 00003200 (vector 14)", cpu.getPC0());
 
-    // 14 ── A 68030 coprocessor post-instruction exception uses the
-    // six-word format-$3 frame with the operand's effective address in its
-    // extra longword — zero here, the destination being a register.
-    // D23 (2026-08-18): this check asserted the MC68030UM's format $2 for
-    // one day, written alongside the Moira change it was gating — and both
-    // overruled the pinned oracle, which pushes $3-with-EA on the 030 too
-    // (fpu_tt #63, frame word $30C4; replay030.py reproduces all 2042
-    // pinned FPU finals bit-for-bit). Oracle wins over spec; overruling it
-    // takes a real 68030's own stack frame, which nobody has produced.
-    run(cpu, { 0xF200, 0x6000 }, 0, true,
-        { { 0x00d0, 0x0000 }, { 0x00d2, 0x3300 } }); // vector 52 -> $3300
-    {
-        const uint32_t inf[3] = { 0x7fff0000, 0, 0 };
+    // 14 — [B] MC68030UM-1989 §10.4.20, Figure 10-45: the six-word
+    // post-instruction frame is format 2. Its PC resumes the next instruction;
+    // its extra longword identifies the F-line instruction, not the operand.
+    // A real RTE must consume this frame, including for a memory destination.
+    for (auto model : {moira::Model::M68EC020, moira::Model::M68020,
+                       moira::Model::M68EC030, moira::Model::M68030})
+    for (auto fpuModel : {moira::FPUModel::M68881, moira::FPUModel::M68882})
+    for (bool memory : {false, true}) {
+        cpu.setModel(model);
+        run(cpu, {uint16_t(memory ? 0xF210 : 0xF200), 0x6000, 0x4E71, 0x4E71},
+            0, true, {{0x00d0, 0x0000}, {0x00d2, 0x3300}, {0x3300, 0x4E73}});
+        cpu.setFPUModel(fpuModel);
+        cpu.setA(0, 0x4000);
+        const uint32_t inf[3] = {0x7fff0000, 0, 0};
         cpu.setFP(0, inf);
-        cpu.setFPCR(0x2000);                           // enable OPERR
-        cpu.execute();                                 // fmove.l fp0,d0
+        cpu.setFPCR(0x2000);                      // integer-conversion OPERR
+        cpu.execute();
         const uint32_t sp = cpu.getSP();
         auto m16 = [&](uint32_t a) { return uint16_t(cpu.mem[a] << 8 | cpu.mem[a + 1]); };
         auto m32 = [&](uint32_t a) { return uint32_t(m16(a)) << 16 | m16(a + 2); };
         CHECK(cpu.getPC0() == 0x3300 && sp == 0x7ff4,
-              "030 FP post exception PC0/SP=%08X/%08X", cpu.getPC0(), sp);
-        CHECK(m16(sp + 6) == 0x30d0 && m32(sp + 8) == 0,
-              "030 FP post frame fmt/ea=%04X/%08X", m16(sp + 6), m32(sp + 8));
+              "FP post exception model=%d FPU=%d mem=%d PC0/SP=%08X/%08X",
+              int(model), int(fpuModel), memory, cpu.getPC0(), sp);
+        CHECK(m16(sp + 6) == 0x20d0 && m32(sp + 2) == 0x1004 && m32(sp + 8) == 0x1000,
+              "FP post frame model=%d FPU=%d mem=%d fmt/PC/IA=%04X/%08X/%08X",
+              int(model), int(fpuModel), memory, m16(sp + 6), m32(sp + 2), m32(sp + 8));
+        cpu.execute();                             // handler's RTE, frame untouched
+        CHECK(cpu.getPC0() == 0x1004 && cpu.getSP() == 0x8000 && cpu.getSR() == 0x2700,
+              "FP post RTE model=%d FPU=%d mem=%d PC0/SP/SR=%08X/%08X/%04X",
+              int(model), int(fpuModel), memory, cpu.getPC0(), cpu.getSP(), cpu.getSR());
+        cpu.execute();                             // execute the following NOP
+        CHECK(cpu.getPC0() == 0x1006,
+              "FP post return executes next instruction: PC0=%08X", cpu.getPC0());
     }
+    cpu.setModel(moira::Model::M68030);
 
     // 15 ── timing smoke: FADD.X FP1,FP0 costs its MC68882UM Table 8-3
     // figure (FPn-to-FPm total = 56), not the old CYCLES_68020 placeholder

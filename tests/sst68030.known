@@ -11,3 +11,18 @@ fpu/identity seed=29 #75
 fpu/off seed=29 #28
 fpu/off seed=31 #83
 fpu/tt seed=41 #166
+
+# D23a (2026-11-16): MC68030UM-1989 Figure 10-45 uses format 2 and
+# the F-line instruction address. The oracle instead emits format 3/EA.
+# These tagged entries normalize only those frame bytes; the entire final
+# state is still compared, and a stale oracle frame fails the gate.
+@D23a 0017f4 | fpu/identity seed=11 #183
+@D23a 0017f4 | fpu/identity seed=17 #2
+@D23a 001ef4 | fpu/identity seed=29 #134
+@D23a 0017f4 | fpu/identity seed=31 #105
+@D23a 001ef4 | fpu/identity seed=31 #135
+@D23a 0017f4 | fpu/off seed=11 #292
+@D23a 0017f4 | fpu/off seed=31 #176
+@D23a 0017f4 | fpu/off seed=31 #2
+@D23a 0017f4 | fpu/off seed=31 #30
+@D23a 0017f4 | fpu/tt seed=41 #63

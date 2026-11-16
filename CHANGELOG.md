@@ -600,6 +600,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-16 (seventh) — A 020/030 FPU handler can return through the frame the CPU stacks](#2026-11-16-fpu-frame2-return)
 - [2026-11-16 (sixth) — The inspector had kept the old 68030 table rules](#2026-11-16-inspection-shared-walk)
 - [2026-11-16 (fifth) — Threaded proof counts the direct window pump](#2026-11-16-threaded-window-census)
 - [2026-11-16 (fourth) — Public 030 JIT requires executed native code](#2026-11-16-public-jit-census)
@@ -1379,6 +1380,46 @@ Newest first.
 
 ---
 
+<a id="2026-11-16-fpu-frame2-return"></a>
+## 2026-11-16 (seventh) — A 020/030 FPU handler can return through the frame the CPU stacks
+
+D23a retained WinUAE's format-$3/EA post-instruction frame on the 020/030,
+although both implementations' RTE reject format $3 below the 040. An
+ordinary handler therefore took vector 14 instead of returning. The
+hash-pinned MC68030UM-1989 second edition, §10.4.20 and Figure 10-45
+(PDF pp. 542–543), specifies format $2 and the F-line instruction address.
+These checked locators join `core_manuals.lock`. `execFpuException` now
+stacks that external-coprocessor frame; integrated-040 format $3/EA and
+pre-instruction format $0 are unchanged. No save-state layout change.
+
+The expanded `fpu_sanity` checks all four 020/030 models, both 68881/68882,
+register/memory destinations, the frame contents, an unmodified handler
+RTE and the next NOP: 16 combinations, 48 failing assertions before the
+fix, all passing after. The bare CPU rules and `fpu040_test` also pass.
+
+No raw oracle output is removed or regenerated. Auditing every new strict-
+RAM mismatch finds only format/IA differences: 10 July, 3 strict-solo,
+17 raw-FPU, 206 two-instruction and 212 handler/FSAVE vectors. Simply
+listing 448 whole-vector exceptions would hide unrelated defects. A tagged
+`@D23a <physical frame base> | <name>` instead requires the oracle's old
+format-$3 FPU frame, adjusts exactly the expected format/IA bytes, and
+compares every remaining CPU/FPU register and RAM byte. A corrected oracle
+or invalid frame makes the rule stale and fails. Legacy named differences
+retain their previous behavior; tagged 030 rules are refused by the 040
+and JIT comparison modes.
+
+All 26 674 vectors of these five corpora pass strict-RAM replay: 448 scoped
+rules plus 198 pre-existing named differences. AArch64 native-required
+JIT lockstep passes all 26 674, with 394 795 native instructions. The 904
+public 030 vectors pass unchanged, requiring no new exception. Eight
+`sst_known_contract_test` cases use an unmodified public July vector to
+hold whole-vector checks, unrelated register/RAM corruption, stale/missing
+rules, malformed directives and legacy-list compatibility. The new gate
+and fixture travel in the standalone release with the scoped lists.
+SST registrations move to `Pom68kSstGates.cmake`, keeping the bare CPU
+gate owner focused while lowering its file-size ceiling.
+The 68030 machine tier in progress still qualifies the earlier binaries.
+
 <a id="2026-11-16-inspection-shared-walk"></a>
 ## 2026-11-16 (sixth) — The inspector had kept the old 68030 table rules
 
@@ -1413,6 +1454,12 @@ focused run has zero slow instructions. Source grades, documentation,
 file-size budgets and the 135-file standalone include closure pass.
 The machine tier in progress still uses the preceding commit's binaries;
 it is not evidence for this extraction.
+
+A separately configured `build-inspection-check` then passes both the full
+inspection gate and bare CPU rules. IIsi and IIci soak runs execute with
+their declared ROM/disk assets, reach the Finder with the PMMU enabled,
+and each advance the logical Mac clock by exactly 180 seconds over the
+180-second guest interval, without halting or losing the Finder.
 
 <a id="2026-11-16-threaded-window-census"></a>
 ## 2026-11-16 (fifth) — Threaded proof must count its direct window pump
