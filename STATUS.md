@@ -64,27 +64,27 @@ Scheduling cost if every gate ran at once: 820 slots of 256 MiB (`slots_src` say
 
 ## Registered on x86_64
 
-585 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
+586 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
 
 | dimension | value | gates |
 |---|---|---|
-| assets | none | 157 |
+| assets | none | 158 |
 | assets | optional | 39 |
 | assets | required | 389 |
-| host | any | 574 |
+| host | any | 575 |
 | host | native | 6 |
 | host | x64 | 5 |
-| scope | component | 170 |
+| scope | component | 171 |
 | scope | engine | 34 |
 | scope | profile | 376 |
 | scope | repository | 5 |
-| tier | daily | 157 |
+| tier | daily | 158 |
 | tier | full | 412 |
 | tier | platform | 16 |
-| slots_src | assumed | 472 |
+| slots_src | assumed | 473 |
 | slots_src | measured | 113 |
 
-Scheduling cost if every gate ran at once: 944 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 945 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## PRODUCT_LLE on aarch64
 
@@ -244,3 +244,4 @@ overwrites it, including a one-gate `ctest -R`.
 | Nov 14 13:40 +04 | x86_64 | default | 37 | 37 | 0 | 0 | Same change: jit_sst*, cpu_vectors*, savestate*, moira_* -j8, 37/37; census 37 executed / 0 soft-skipped |
 | Nov 14 22:29 +04 | x86_64 | default | 246 | 245 | 1 | 0 | Sweeps 2-5 fixes (VENDOR rows 103-108): ctest -L 'm030\|m040' -j16, 246/246 in 5847.73 s |
 | Nov 14 22:24 +04 | x86_64 | default | 51 | 51 | 0 | 0 | Same change: sst*, jit_sst*, cpu_vectors*, savestate*, moira_* -j8, 51/51; census 51 executed / 0 soft-skipped |
+| Nov 16 20:41 +04 | aarch64 | default | 145 | 145 | 0 | 0 | m030: 145 executed, no soft-skip; original 3c70ba38 linked profile binaries (before later inspection/FPU changes) |

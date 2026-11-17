@@ -600,6 +600,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-17 — The new FPU gate also belongs in the x86 registry](#2026-11-17-x64-fpu-registry)
 - [2026-11-16 (ninth) — Standalone corpus replay keeps the repository's RAM checks](#2026-11-16-release-strict-ram)
 - [2026-11-16 (eighth) — Packed zero cannot shift by an unconverted k-factor](#2026-11-16-packed-zero-shift)
 - [2026-11-16 (seventh) — A 020/030 FPU handler can return through the frame the CPU stacks](#2026-11-16-fpu-frame2-return)
@@ -1381,6 +1382,21 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-17-x64-fpu-registry"></a>
+## 2026-11-17 — The new FPU gate also belongs in the x86 registry
+
+The D23a contract gate increased the default x86-64 registry from 585 to
+586. Only the ARM64 section of generated STATUS.md had been refreshed;
+Linux's early docs gate correctly rejected the stale host-owned dimension
+table in all four CI configurations. Regenerate the x86-64 section from
+the actual Rosetta configure, preserving its independent host dimensions.
+Both native ARM64 and Rosetta x86-64 `docs_test` pass the corrected artifact.
+
+The completed original 68030 machine tier is recorded separately: 145 gates
+executed, zero failures, zero soft-skips, 12 192.74 seconds. Its linked
+profile binaries predate the later inspector and FPU changes (3c70ba38);
+this result is not presented as qualification of those later changes.
 
 <a id="2026-11-16-release-strict-ram"></a>
 ## 2026-11-16 (ninth) — Standalone corpus replay keeps the repository's RAM checks

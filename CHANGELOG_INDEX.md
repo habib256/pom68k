@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 824 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 825 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -9,7 +9,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | Subsystem | Entries |
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 111 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 142 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 143 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 37 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 32 |
@@ -282,6 +282,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-16 (seventh)** — [A 020/030 FPU handler can return through the frame the CPU stacks](CHANGELOG.md#2026-11-16-fpu-frame2-return)
 - **2026-11-16 (sixth)** — [The inspector had kept the old 68030 table rules](CHANGELOG.md#2026-11-16-inspection-shared-walk)
 - **2026-11-16 (third)** — [One 68030 walk owns PTEST, early pages and indirection; direct-root writes acquire ATC history](CHANGELOG.md#2026-11-16-shared-mmu030-walk)
+- **2026-11-17** — [The new FPU gate also belongs in the x86 registry](CHANGELOG.md#2026-11-17-x64-fpu-registry)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E
 
