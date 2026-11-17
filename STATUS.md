@@ -245,3 +245,4 @@ overwrites it, including a one-gate `ctest -R`.
 | Nov 14 22:29 +04 | x86_64 | default | 246 | 245 | 1 | 0 | Sweeps 2-5 fixes (VENDOR rows 103-108): ctest -L 'm030\|m040' -j16, 246/246 in 5847.73 s |
 | Nov 14 22:24 +04 | x86_64 | default | 51 | 51 | 0 | 0 | Same change: sst*, jit_sst*, cpu_vectors*, savestate*, moira_* -j8, 51/51; census 51 executed / 0 soft-skipped |
 | Nov 16 20:41 +04 | aarch64 | default | 145 | 145 | 0 | 0 | m030: 145 executed, no soft-skip; original 3c70ba38 linked profile binaries (before later inspection/FPU changes) |
+| Nov 17 08:13 +04 | aarch64 | default | 159 | 159 | 0 | 0 | 45bb774 baseline before D12: complete rebuilt asset-none tier; 159 executed, no soft-skip, 433.12 s; authorized GUI/PTY/loopback access |

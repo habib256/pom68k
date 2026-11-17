@@ -219,6 +219,80 @@ struct ModelRow {
     long cycles;                // -1: not pinned (020+ cycles are advisory)
 };
 
+// [B] MC68030UM-1989 Table 8-7; MC68040UM-1993 §8.4.3.
+// Format $2 separates the resume PC from the instruction causing the trap.
+void group2InstructionAddress()
+{
+    struct Row {
+        const char* name;
+        std::vector<uint16_t> words;
+        unsigned vector, boundsBytes;
+        bool fpu;
+    };
+    const Row rows[] = {
+        {"DIVU.W", {0x80fc, 0}, 5, 0, false},
+        {"DIVS.W", {0x81fc, 0}, 5, 0, false},
+        {"DIVU.L", {0x4c7c, 0x0000, 0, 0}, 5, 0, false},
+        {"DIVS.L", {0x4c7c, 0x0800, 0, 0}, 5, 0, false},
+        {"CHK.W", {0x41bc, 5}, 6, 0, false},
+        {"CHK.L", {0x413c, 0, 5}, 6, 0, false},
+        {"CHK2.B", {0x00d0, 0x0800}, 6, 1, false},
+        {"CHK2.W", {0x02d0, 0x0800}, 6, 2, false},
+        {"CHK2.L", {0x04d0, 0x0800}, 6, 4, false},
+        {"TRAPV", {0x4e76}, 7, 0, false},
+        {"TRAPT", {0x50fc}, 7, 0, false},
+        {"TRAPT.W", {0x50fa, 0x1234}, 7, 0, false},
+        {"TRAPT.L", {0x50fb, 0x1234, 0x5678}, 7, 0, false},
+        {"FTRAPT", {0xf27c, 0x000f}, 7, 0, true},
+        {"FTRAPT.W", {0xf27a, 0x000f, 0x1234}, 7, 0, true},
+        {"FTRAPT.L", {0xf27b, 0x000f, 0x1234, 0x5678}, 7, 0, true},
+    };
+    unsigned cases = 0;
+    for (auto model : {moira::Model::M68EC020, moira::Model::M68020,
+                       moira::Model::M68EC030, moira::Model::M68030,
+                       moira::Model::M68EC040, moira::Model::M68LC040,
+                       moira::Model::M68040}) {
+        for (const auto& row : rows) {
+            const bool external = model < moira::Model::M68EC040;
+            if (row.fpu && !external && model != moira::Model::M68040) continue;
+            for (unsigned fpu = 0; fpu < (row.fpu && external ? 2u : 1u); ++fpu) {
+                TestCpu c(model);
+                stage(c, row.words[0], 2);         // TRAPV taken
+                if (row.fpu) c.setFPUModel(external ?
+                    (fpu ? moira::FPUModel::M68882 : moira::FPUModel::M68881) :
+                    moira::FPUModel::M68040);
+                unsigned offset = 0;
+                for (auto word : row.words) { p16(c, kCode + offset, word); offset += 2; }
+                p16(c, kCode + offset, kNop); p16(c, kCode + offset + 2, kNop);
+                c.setIRC(g16(c, kCode + 2));
+                c.setD(0, 7); c.setA(0, 0x3000);
+                if (row.boundsBytes == 1) { c.mem[0x3000] = 1; c.mem[0x3001] = 5; }
+                if (row.boundsBytes == 2) { p16(c, 0x3000, 1); p16(c, 0x3002, 5); }
+                if (row.boundsBytes == 4) { p32(c, 0x3000, 1); p32(c, 0x3004, 5); }
+                p32(c, row.vector * 4, 0x4000);
+                p16(c, 0x4000, 0x4e73); p16(c, 0x4002, kNop); // real RTE
+                c.execute();
+                const auto sp = c.getSP();
+                CHECK(c.getPC0() == 0x4000 && sp == 0x8000 - 12 &&
+                      g16(c, sp + 6) == (0x2000 | row.vector * 4) &&
+                      g32(c, sp + 2) == kCode + offset && g32(c, sp + 8) == kCode,
+                      "group2 model=%d %s fpu=%u: PC=%08X SP=%08X fmt=%04X resume=%08X IA=%08X",
+                      int(model), row.name, fpu, c.getPC0(), sp, g16(c, sp + 6),
+                      g32(c, sp + 2), g32(c, sp + 8));
+                c.execute();
+                CHECK(c.getPC0() == kCode + offset && c.getSP() == 0x8000,
+                      "group2 model=%d %s: RTE PC=%08X SP=%08X",
+                      int(model), row.name, c.getPC0(), c.getSP());
+                c.execute();
+                CHECK(c.getPC0() == kCode + offset + 2,
+                      "group2 model=%d %s: next NOP PC=%08X", int(model), row.name, c.getPC0());
+                ++cases;
+            }
+        }
+    }
+    std::printf("format-2 instruction address: %u trap/RTE cases\n", cases);
+}
+
 void divsOfIntMin()
 {
     // X N Z V C. Entering with $1F shows what is preserved; entering with
@@ -2723,6 +2797,7 @@ int main(int argc, char** argv)
     divsOfIntMin();
     externalBusError000();
     hostHooks();
+    group2InstructionAddress();
     divlOperandFault();
     chk2FlagsOn040();
     fpuUnimplementedBeforeDatatype040();

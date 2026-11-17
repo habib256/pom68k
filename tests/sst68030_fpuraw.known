@@ -234,3 +234,24 @@ fpuraw/tt seed=723 #1922
 @D23a 0017f4 | fpuraw/tt seed=723 #166
 @D23a 0017f4 | fpuraw/tt seed=723 #189
 @D23a 0017f4 | fpuraw/tt seed=723 #597
+
+# D12: manual-defined group-2 instruction address; all other state stays compared.
+@D12 001ef4 00013f6e | fpuraw/identity seed=722 #1659
+@D12 0017f4 00012d64 | fpuraw/identity seed=722 #1719
+@D12 001ef4 00011e36 | fpuraw/identity seed=722 #1728
+@D12 0017f4 00010ffc | fpuraw/identity seed=722 #1938
+@D12 0017f4 00012330 | fpuraw/identity seed=722 #197
+@D12 0017f4 00013898 | fpuraw/identity seed=722 #499
+@D12 0017f4 00013eac | fpuraw/off seed=721 #1184
+@D12 0017f4 00013998 | fpuraw/off seed=721 #1423
+@D12 0017f4 00011e08 | fpuraw/off seed=721 #1487
+@D12 0017f4 00012072 | fpuraw/off seed=721 #1598
+@D12 0017f4 00010878 | fpuraw/off seed=721 #251
+@D12 0017f4 00013cd8 | fpuraw/off seed=721 #355
+@D12 0017f4 00013e88 | fpuraw/off seed=721 #477
+@D12 0017f4 00010840 | fpuraw/off seed=721 #668
+@D12 0017f4 00013dc4 | fpuraw/off seed=721 #878
+@D12 001ef4 00011e02 | fpuraw/off seed=721 #967
+@D12 001ef4 00010e4c | fpuraw/tt seed=723 #200
+@D12 0017f4 00012bea | fpuraw/tt seed=723 #904
+@D12 0017f4 00010f2e | fpuraw/tt seed=723 #922

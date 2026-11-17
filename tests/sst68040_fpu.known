@@ -63,3 +63,33 @@
 # the fork reads the word after it (irc lookahead) and sets the next page's
 # descriptor U bit; the oracle translates that page only at the next step.
 040 fpuraw/identity seed=962 #1296
+
+# D12: manual-defined group-2 instruction address; all other state stays compared.
+@D12 0017f4 00012a0c | 040 fpu/identity seed=902 #408
+@D12 001ef4 00010fa4 | 040 fpu/identity seed=902 #436
+@D12 0017f4 00011c54 | 040 fpu/identity seed=902 #639
+@D12 0017f4 00011234 | 040 fpu/identity seed=902 #875
+@D12 0017f4 000108ec | 040 fpu/identity seed=902 #905
+@D12 0017f4 00013ede | 040 fpu/off seed=901 #178
+@D12 0017f4 00013426 | 040 fpu/off seed=901 #28
+@D12 0017f4 0001351c | 040 fpu/off seed=901 #344
+@D12 0017f4 000122f6 | 040 fpu/off seed=901 #361
+@D12 0017f4 00013ba8 | 040 fpu/off seed=901 #617
+@D12 0017f4 00013d26 | 040 fpu/off seed=901 #622
+@D12 0017f4 00010462 | 040 fpu/off seed=901 #920
+@D12 0017f4 0001006a | 040 fpu/tt seed=903 #1
+@D12 0017f4 00011aae | 040 fpu/tt seed=903 #282
+@D12 0017f4 000138c0 | 040 fpu/tt seed=903 #659
+@D12 0017f4 00012cb6 | 040 fpu/tt seed=903 #666
+@D12 0017f4 0001214a | 040 fpu/tt seed=903 #699
+@D12 0017f4 000116b6 | 040 fpu/tt seed=903 #749
+@D12 0017f4 000101c4 | 040 fpu/tt seed=903 #993
+@D12 0017f4 00010b70 | 040 fpuraw/identity seed=962 #814
+@D12 0017f4 00013f1a | 040 fpuraw/identity seed=962 #86
+@D12 0017f4 00012ecc | 040 fpuraw/identity seed=962 #996
+@D12 0017f4 000129f8 | 040 fpuraw/off seed=961 #1197
+@D12 001ef4 000109ee | 040 fpuraw/off seed=961 #40
+@D12 0017f4 00011a7a | 040 fpuraw/off seed=961 #96
+@D12 0017f4 0001238a | 040 fpuraw/tt seed=963 #1129
+@D12 0017f4 00012f3c | 040 fpuraw/tt seed=963 #371
+@D12 001ef4 00013c6c | 040 fpuraw/tt seed=963 #827

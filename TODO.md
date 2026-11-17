@@ -308,13 +308,22 @@ en CI ; les grands corpus sont
 épinglés dans `tests/sst_corpora.lock` et restent des assets optionnels.
 Plusieurs rangs de l'inventaire ne tiennent encore que par un boot.
 
+- [ ] **Activer la RAM stricte dans le replay public après avoir tranché
+  son écart d'historique PMMU.** `tools/cpu_vectors.py replay` ne passe
+  pas `--strict-ram`. Avec ce contrôle, le corpus public 030 passe
+  903 / 904 : `$2010A3` vaut `$09` au lieu de `$01` sur le vecteur
+  `rmw/identity seed=2026111532 #15 geometry=4k-2level-long`.
+  Même résultat vérifié sur `45bb774` et sur D12 ; aucune différence
+  nouvelle due aux frames. Ne pas transformer ce cas en exception de
+  vecteur entier pour rendre le contrôle vert.
+
 - [ ] **Rejuger les décisions prises contre un manuel, là où aucun gate
   ne tombe.** La politique est alignée depuis le 2026-11-06 : un manuel
   (grade B) l'emporte sur l'oracle (grade D) pour toute décision nouvelle,
   et une décision existante n'est renversée que si rien ne passe au rouge.
   Restent les exceptions connues
-  (`oracle/README.md § Rulings taken against a manual`) : D12 (adresse
-  d'instruction des frames $2), D30 (trappe de type de donnée immédiate)
+  (`oracle/README.md § Rulings taken against a manual`) : D30 (trappe
+  de type de donnée immédiate)
   et deux règles 68000 (sortie anticipée de DIVS, ASR au-delà de la largeur).
   Chacune est tenue par des vecteurs épinglés : la renverser demande soit
   une preuve de grade A, soit une divergence déclarée (`--known`,
@@ -443,6 +452,14 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   extension complète avant un Line-F de direction.** Laissé « still open »
   dans `POM68K_VENDOR.md § MC68882 FPU execution` ; le correctif du
   2026-08-12 ne couvre que le cas préindexé valide.
+
+- [ ] **Vérifier OPERR pour FMOVE.P de zéro avec k-facteur >17.**
+  La table de statut de FMOVE.P du MC68881UM indique OPERR au-delà de
+  +17, mais le retour anticipé SoftFloat pour zéro évite ce contrôle.
+  La correction du décalage indéfini ne change volontairement pas les
+  flags ; ses 1 024 cas ne figent que l'image mémoire et le PC. Lire
+  aussi la priorité des valeurs spéciales avant de modifier le statut
+  ou de régénérer les références.
 
 ### Justesse 68040
 

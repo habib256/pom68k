@@ -215,3 +215,37 @@
 @D23a 0017f4 | fpu2/tt seed=943 #922
 @D23a 001ef4 | fpu2/tt seed=943 #962
 @D23a 0017f4 | fpu2/tt seed=943 #994
+
+# D12: manual-defined group-2 instruction address; all other state stays compared.
+@D12 0017f4 00011fa4 | fpu2/identity seed=942 #106
+@D12 0017f4 00013954 | fpu2/identity seed=942 #1368
+@D12 0017f4 0001073c | fpu2/identity seed=942 #354
+@D12 0017f4 00011cf2 | fpu2/identity seed=942 #390
+@D12 0017f4 00013eb0 | fpu2/identity seed=942 #398
+@D12 001ef4 00011482 | fpu2/identity seed=942 #414
+@D12 0017f4 00012514 | fpu2/identity seed=942 #562
+@D12 0017f4 000134ea | fpu2/identity seed=942 #593
+@D12 001ef4 0001015a | fpu2/off seed=941 #147
+@D12 0017f4 000105b2 | fpu2/off seed=941 #1516
+@D12 0017f4 00011b00 | fpu2/off seed=941 #1655
+@D12 001ef4 00010340 | fpu2/off seed=941 #169
+@D12 0017f4 000116be | fpu2/off seed=941 #1817
+@D12 0017f4 000117a8 | fpu2/off seed=941 #1853
+@D12 0017f4 00010642 | fpu2/off seed=941 #1961
+@D12 0017f4 00010a2e | fpu2/off seed=941 #203
+@D12 0017f4 0001305e | fpu2/off seed=941 #24
+@D12 0017f4 0001213a | fpu2/off seed=941 #627
+@D12 0017f4 00011146 | fpu2/off seed=941 #670
+@D12 0017f4 00010d38 | fpu2/off seed=941 #811
+@D12 001ef4 00012e1c | fpu2/off seed=941 #88
+@D12 001ef4 00011b9a | fpu2/tt seed=943 #1029
+@D12 0017f4 00011572 | fpu2/tt seed=943 #1059
+@D12 001ef4 000116c8 | fpu2/tt seed=943 #1099
+@D12 0017f4 0001017e | fpu2/tt seed=943 #1423
+@D12 0017f4 000117a4 | fpu2/tt seed=943 #160
+@D12 001ef4 0001053a | fpu2/tt seed=943 #1801
+@D12 001ef4 000127e0 | fpu2/tt seed=943 #231
+@D12 0017f4 00011620 | fpu2/tt seed=943 #580
+@D12 0017f4 00011d28 | fpu2/tt seed=943 #677
+@D12 0017f4 000134b8 | fpu2/tt seed=943 #694
+@D12 0017f4 00010f2a | fpu2/tt seed=943 #714

@@ -16,7 +16,7 @@ first, an unqualified entry normally being that day's first and so its last
 line here. (Before 2026-07-28 a day's several entries are all unqualified:
 ordered, but unlabelled — the qualifier convention starts with the JIT work.)
 A `> **Superseded:**` blockquote under a heading points at the entry that
-overturned it (`grep -n '^> \*\*Superseded' CHANGELOG.md`, 13 of them).
+overturned it (`grep -n '^> \*\*Superseded' CHANGELOG.md`, 15 of them).
 
 **Adding an entry:** **prepend** the section — the nine 2026-08-10/08-12
 entries were *appended* at the bottom instead and sat there below the
@@ -39,6 +39,8 @@ Each line is a **question a reader arrives with**, pointing at the entry that
 answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
+
+- **Why does a format-$2 group-2 frame now hold two different PCs, after the July oracle ruling made them equal?** → [The primary-manual ruling and scoped IA checks](#2026-11-17-group2-instruction-address)
 
 - **"m030 141 / 141 and m040 102 / 102" for the MCU run-ahead and the copy-on-write ATC (2026-11-11 (fifth), (sixth)) — those tiers ran with a mutant `M68hc05` object left by the mutation script, equivalent on these boards but not the commit; rerun on a forced rebuild** → [The verdict table, and the correction](#2026-11-11-mcu-ahead-table)
 
@@ -600,6 +602,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-17 (second) — Format-2 traps retain the instruction that caused them](#2026-11-17-group2-instruction-address)
 - [2026-11-17 — The new FPU gate also belongs in the x86 registry](#2026-11-17-x64-fpu-registry)
 - [2026-11-16 (ninth) — Standalone corpus replay keeps the repository's RAM checks](#2026-11-16-release-strict-ram)
 - [2026-11-16 (eighth) — Packed zero cannot shift by an unconverted k-factor](#2026-11-16-packed-zero-shift)
@@ -1382,6 +1385,55 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-17-group2-instruction-address"></a>
+## 2026-11-17 (second) — Format-2 traps retain the instruction that caused them
+
+D12 had deliberately copied WinUAE's next PC into both format-$2 address
+fields. The hash-checked MC68030UM-1989 Table 8-7 (PDF p. 432) and
+MC68040UM-1993 §8.4.3 (PDF p. 235) independently specify a next resume PC
+and the address of the instruction that caused the trap. `execException`
+now stacks `reg.pc0` for that IA on the 020/030/040; the resume PC, 68000/
+68010 frames, and separate address-error/trace frame producers are unchanged.
+The checked locators join `core_manuals.lock`.
+
+The bare rule gate checks zero-divide word/long signed/unsigned forms,
+CHK word/long, CHK2 byte/word/long, TRAPV, all three integer TRAPcc forms,
+and all three FTRAPcc forms. Seven CPU models, both external FPUs and the
+integrated 040 produce 118 cases. Each checks the two PCs and format/vector,
+then an unmodified handler RTE and the following NOP. Exactly 118 IA
+assertions fail on the old core; the corrected core passes the whole gate.
+
+No oracle payload is rewritten or dropped. Independent audits of every
+new mismatch find only the IA bytes: 137 vectors across five 030 corpora,
+149 across five 040 corpora. `@D12 <physical frame base> <instruction IA>
+| <name>` requires the old group-2 format and IA equal to resume PC before
+replacing exactly those four expected bytes. Every other CPU/FPU/RAM field
+still goes through ordinary strict comparison. The shared helper also
+retains the existing D23a contract; JIT lockstep refuses oracle-field rules.
+Thirty contract tests cover both replay harnesses, unrelated registers/RAM,
+wrong IA, a corrupted resume PC, stale frames, invalid directives and legacy
+named lists. The synthetic D12 fixture contains no Apple data and travels
+with the standalone build.
+
+Strict-RAM replay passes all 67 874 vectors in twelve private corpora,
+with 979 existing or field-scoped oracle rulings and zero MMU skips.
+Native-required lockstep passes all 67 874 on both AArch64 and Rosetta
+x86-64 (983 755 and 983 709 native instructions). Both public corpora
+also pass ordinary interpreter and AArch64 native replay, without a new
+exception or pin change. Their original replay policy is preserved; the
+already-present public-030 unlisted descriptor-history difference under
+an additional strict-RAM check is recorded in TODO, confirmed unchanged
+against 45bb774.
+
+ASan/UBSan replay also passes all 67 874 vectors in the optimized build
+(`detect_leaks=0` on Darwin, UBSan halts on the first error). Both Debug
+and optimized sanitizer builds pass the full bare rule gate and the
+thirty contract tests. A fresh standalone export of 140 source files,
+verified byte-for-byte against the worktree, builds the interpreter with
+and without the JIT seam and passes all 45 unit/JIT/corpus gates in
+239.60 seconds: the preserved LastTest census reports 45 executed,
+zero soft-skips and zero failures.
 
 <a id="2026-11-17-x64-fpu-registry"></a>
 ## 2026-11-17 — The new FPU gate also belongs in the x86 registry
@@ -38690,6 +38742,9 @@ watchdog never arms without Break/Abort IE).
   retired.
 
 ## 2026-07-15 — O4 slice 4: integer-family arbitration (O4 complete)
+
+> **Superseded in part:** the D12 format-$2 instruction-address policy below
+> is replaced by [the 2026-11-17 primary-manual ruling](#2026-11-17-group2-instruction-address).
 
 - The last integer disagreements between the two 68030 oracles were
   swept (3 000 duo states → 88 disputes), categorized by opcode, probed

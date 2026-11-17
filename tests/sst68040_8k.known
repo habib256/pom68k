@@ -8,3 +8,23 @@
 # the fork reads the word after it (irc lookahead) and sets the next page's
 # descriptor U bit; the oracle translates that page only at the next step.
 040 fault/identity/8k seed=607 #264
+
+# D12: manual-defined group-2 instruction address; all other state stays compared.
+@D12 001ef4 00012482 | 040 random/identity/8k seed=605 #208
+@D12 0017f4 00012b28 | 040 random/identity/8k seed=605 #261
+@D12 0017f4 000138c2 | 040 random/identity/8k seed=605 #302
+@D12 0017f4 000111e2 | 040 random/identity/8k seed=605 #303
+@D12 0017f4 000125e6 | 040 random/identity/8k seed=605 #370
+@D12 0017f4 00013b64 | 040 random/identity/8k seed=605 #402
+@D12 001ef4 00012bd8 | 040 random/identity/8k seed=605 #417
+@D12 0017f4 00011326 | 040 random/identity/8k seed=605 #421
+@D12 0017f4 000127a4 | 040 random/identity/8k seed=605 #437
+@D12 0017f4 00010726 | 040 random/identity/8k seed=605 #454
+@D12 0017f4 00013554 | 040 random/identity/8k seed=605 #483
+@D12 001ef4 00011c8a | 040 random/identity/8k seed=605 #54
+@D12 001ef4 00012d54 | 040 random/tt/8k seed=606 #189
+@D12 0017f4 00012b88 | 040 random/tt/8k seed=606 #193
+@D12 0017f4 00012628 | 040 random/tt/8k seed=606 #273
+@D12 0017f4 00013ede | 040 random/tt/8k seed=606 #327
+@D12 0017f4 00012b36 | 040 random/tt/8k seed=606 #330
+@D12 001ef4 0001103a | 040 random/tt/8k seed=606 #374

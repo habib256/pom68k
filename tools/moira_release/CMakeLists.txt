@@ -175,7 +175,7 @@ if(Python3_FOUND)
     set_tests_properties(cpu_vectors_contract_test PROPERTIES LABELS unit TIMEOUT 30)
     add_test(NAME sst_known_contract_test
         COMMAND ${Python3_EXECUTABLE} ${T}/sst_known_contract_test.py
-            --runner $<TARGET_FILE:sst68030> --emulator "${CMAKE_CROSSCOMPILING_EMULATOR}")
+            --runner $<TARGET_FILE:sst68030> --runner040 $<TARGET_FILE:sst68040> --emulator "${CMAKE_CROSSCOMPILING_EMULATOR}")
     set_tests_properties(sst_known_contract_test PROPERTIES LABELS unit TIMEOUT 120)
 endif()
 # The large corpora live outside the release (tests/sst_corpora.lock names

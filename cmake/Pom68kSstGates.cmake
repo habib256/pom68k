@@ -88,5 +88,5 @@ add_test(NAME sst68040_fpuh
 
 add_test(NAME sst_known_contract_test
     COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/sst_known_contract_test.py
-        --runner $<TARGET_FILE:sst68030> --emulator "${CMAKE_CROSSCOMPILING_EMULATOR}")
+        --runner $<TARGET_FILE:sst68030> --runner040 $<TARGET_FILE:sst68040> --emulator "${CMAKE_CROSSCOMPILING_EMULATOR}")
 set_tests_properties(sst_known_contract_test PROPERTIES LABELS cpu-vectors TIMEOUT 120)

@@ -13,8 +13,9 @@
 //     something moved: the list must describe the tree, not excuse it;
 //   - a listed name the corpus does not hold fails a whole-corpus run.
 //
-// A D23a line is stricter: `@D23a <hex physical frame base> | <name>`.
-// The 030 harness replaces only the oracle's format/IA bytes with their
+// A typed line is stricter: `@D23a <hex physical frame base> | <name>` or
+// `@D12 <hex physical frame base> <hex instruction address> | <name>`.
+// The harness replaces only the oracle's declared frame bytes with their
 // manual-defined values and then compares the entire final state. A stale
 // oracle frame or any unrelated difference fails instead of being excused.
 #pragma once
@@ -30,6 +31,12 @@
 
 namespace sstknown {
 
+enum class FrameKind { ExternalFpu, Group2 };
+struct FrameRule {
+    FrameKind kind;
+    uint32_t base, instruction;
+};
+
 class List {
 public:
     // False when the file cannot be opened.
@@ -44,15 +51,20 @@ public:
             if (line[0] == '@') {
                 std::istringstream row(line);
                 std::string tag, separator, name;
-                unsigned long frame = 0;
-                if (!(row >> tag >> std::hex >> frame >> separator) ||
-                    tag != "@D23a" || frame > 0xFFFFFF || (frame & 1) || separator != "|")
+                uint64_t frame = 0, instruction = 0;
+                if (!(row >> tag >> std::hex >> frame) ||
+                    (tag != "@D23a" && tag != "@D12") || frame > 0xFFFFFF || (frame & 1))
+                    return false;
+                if (tag == "@D12" && (!(row >> instruction) ||
+                    instruction > 0xFFFFFFFFu || (instruction & 1))) return false;
+                if (!(row >> separator) || separator != "|")
                     return false;
                 std::getline(row >> std::ws, name);
                 if (name.empty() || !names_.insert(name).second) return false;
-                frames030_.emplace(name, uint32_t(frame));
+                frames_.emplace(name, FrameRule{tag == "@D23a" ? FrameKind::ExternalFpu :
+                    FrameKind::Group2, uint32_t(frame), uint32_t(instruction)});
             } else {
-                if (frames030_.count(line)) return false;
+                if (frames_.count(line)) return false;
                 names_.insert(line);
             }
         }
@@ -60,10 +72,15 @@ public:
         return true;
     }
     bool active() const { return loaded_; }
-    bool hasFrames030() const { return !frames030_.empty(); }
-    std::optional<uint32_t> frame030(const std::string& name) const {
-        const auto it = frames030_.find(name);
-        if (it == frames030_.end()) return std::nullopt;
+    bool hasFrames() const { return !frames_.empty(); }
+    bool hasExternalFrames() const {
+        for (const auto& [name, rule] : frames_)
+            if (rule.kind == FrameKind::ExternalFpu) return true;
+        return false;
+    }
+    std::optional<FrameRule> frameRule(const std::string& name) const {
+        const auto it = frames_.find(name);
+        if (it == frames_.end()) return std::nullopt;
         return it->second;
     }
 
@@ -90,8 +107,44 @@ public:
 
 private:
     std::set<std::string> names_, seen_;
-    std::map<std::string, uint32_t> frames030_;
+    std::map<std::string, FrameRule> frames_;
     bool loaded_ = false;
 };
+
+// Retain raw fixtures. Validate the old oracle contract before replacing
+// exactly the fields ruled against it; every other state comparison stays live.
+template<class Vector>
+bool normalizeFrame(Vector& v, const FrameRule& rule, std::string& why) {
+    const uint32_t frame = rule.base;
+    auto byte = [&](uint32_t addr) -> uint8_t {
+        addr &= 0xFFFFFF;
+        for (const auto& c : v.fin.ram) if ((c.addr & 0xFFFFFF) == addr) return c.val;
+        for (const auto& c : v.initial.ram) if ((c.addr & 0xFFFFFF) == addr) return c.val;
+        return 0;
+    };
+    auto longword = [&](uint32_t addr) {
+        return uint32_t(byte(addr)) << 24 | uint32_t(byte(addr + 1)) << 16 |
+               uint32_t(byte(addr + 2)) << 8 | byte(addr + 3);
+    };
+    const uint16_t format = uint16_t(byte(frame + 6) << 8 | byte(frame + 7));
+    const bool external = rule.kind == FrameKind::ExternalFpu;
+    if (external ? (!v.initial.hasFp || format < 0x30C0 || format > 0x30DC || (format & 3)) :
+        ((format != 0x2014 && format != 0x2018 && format != 0x201C) ||
+         longword(frame + 8) != longword(frame + 2) || rule.instruction == longword(frame + 2))) {
+        why = external ? "D23a rule requires an oracle format-3 FPU frame (stale or invalid rule)" :
+                         "D12 rule requires an oracle group-2 frame with IA=resume PC (stale or invalid rule)";
+        return false;
+    }
+    auto put = [&](uint32_t addr, uint8_t value) {
+        addr &= 0xFFFFFF;
+        for (auto& c : v.fin.ram) if ((c.addr & 0xFFFFFF) == addr) { c.val = value; return; }
+        v.fin.ram.push_back({addr, value});
+    };
+    if (external) put(frame + 6, 0x20);
+    const uint32_t instruction = external ? v.initial.pc : rule.instruction;
+    for (int i = 0; i < 4; ++i)
+        put(frame + 8 + i, uint8_t(instruction >> (24 - 8 * i)));
+    return true;
+}
 
 }  // namespace sstknown

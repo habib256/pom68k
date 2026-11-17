@@ -757,19 +757,18 @@ Moira::execException(M68kException exc, int nr)
         case M68kException::CHK:
         case M68kException::TRAPV:
 
-            // [F] Retired Musashi comparison: local patched revision unavailable.
-            // Settled by: a replay with a pinned replacement oracle.
             // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-            // Write stack frame
             // POM68K: divide-by-zero stacks the DIV instruction's own
             // address; CHK/TRAPV stack the next instruction
             // (SingleStepTests/680x0: the DIV instruction address).
-            // O4 slice 4: on the 020/030 the format-$2 "instruction
-            // address" field also holds the NEXT instruction (WinUAE
-            // Exception_cpu oldpc, probed; Musashi patched to match).
+            // [B] MC68030UM-1989 Table 8-7:
+            // POM68K: format $2 resumes at the next PC but identifies the
+            // instruction that caused the exception in its address field.
+
+            // [B] MC68040UM-1993 §8.4.3 confirms the same two addresses.
+            // Gate: moira_rules_test (group2InstructionAddress).
             C == Core::C68020 ?
-            writeStackFrame0010<C>(status, reg.pc, reg.pc, vector) :
+            writeStackFrame0010<C>(status, reg.pc, reg.pc0, vector) :
             writeStackFrame0000<C>(status,
                 exc == M68kException::DIVIDE_BY_ZERO ? reg.pc0 : reg.pc,
                 vector);

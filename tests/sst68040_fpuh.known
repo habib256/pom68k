@@ -7,3 +7,29 @@
 # instruction with a packed-decimal source) were not a divergence of the
 # fork: the oracle built their state frame from an uninitialised operand,
 # and they pass since oracle patch 13 (oracle/uae/VENDOR.md).
+
+# D12: manual-defined group-2 instruction address; all other state stays compared.
+@D12 0017f4 0001158a | 040 fpuh/identity seed=1302 #171
+@D12 0017f4 000110c0 | 040 fpuh/identity seed=1302 #173
+@D12 0017f4 00010210 | 040 fpuh/identity seed=1302 #1788
+@D12 001ef4 0001241c | 040 fpuh/identity seed=1302 #1976
+@D12 0017f4 00013902 | 040 fpuh/identity seed=1302 #731
+@D12 0017f4 00011d5c | 040 fpuh/identity seed=1302 #820
+@D12 0017f4 00013092 | 040 fpuh/off seed=1301 #1422
+@D12 001ef4 0001170c | 040 fpuh/off seed=1301 #1450
+@D12 0017f4 000120f4 | 040 fpuh/off seed=1301 #1930
+@D12 0017f4 000106f0 | 040 fpuh/off seed=1301 #1962
+@D12 0017f4 00011206 | 040 fpuh/off seed=1301 #358
+@D12 001ef4 00012040 | 040 fpuh/off seed=1301 #441
+@D12 0017f4 00011552 | 040 fpuh/off seed=1301 #474
+@D12 001ef4 00010886 | 040 fpuh/off seed=1301 #914
+@D12 001ef4 000120ee | 040 fpuh/tt seed=1303 #1125
+@D12 001ef4 000137ca | 040 fpuh/tt seed=1303 #1290
+@D12 0017f4 00012e8e | 040 fpuh/tt seed=1303 #1324
+@D12 0017f4 00013160 | 040 fpuh/tt seed=1303 #1479
+@D12 001ef4 00010a2e | 040 fpuh/tt seed=1303 #1603
+@D12 0017f4 00012caa | 040 fpuh/tt seed=1303 #298
+@D12 0017f4 00012a84 | 040 fpuh/tt seed=1303 #688
+@D12 0017f4 00013e82 | 040 fpuh/tt seed=1303 #710
+@D12 0017f4 000134d6 | 040 fpuh/tt seed=1303 #836
+@D12 0017f4 00012350 | 040 fpuh/tt seed=1303 #847

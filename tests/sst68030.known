@@ -26,3 +26,27 @@ fpu/tt seed=41 #166
 @D23a 0017f4 | fpu/off seed=31 #2
 @D23a 0017f4 | fpu/off seed=31 #30
 @D23a 0017f4 | fpu/tt seed=41 #63
+
+# D12: manual-defined group-2 instruction address; all other state stays compared.
+@D12 0017f4 00010a1c | fpu/identity seed=17 #79
+@D12 0017f4 000121c2 | fpu/identity seed=29 #119
+@D12 0017f4 00012e92 | fpu/identity seed=31 #12
+@D12 0017f4 000126d0 | fpu/identity seed=31 #5
+@D12 001ef4 00013196 | fpu/off seed=11 #152
+@D12 001ef4 0001152e | fpu/off seed=11 #164
+@D12 0017f4 00011dc2 | fpu/off seed=11 #184
+@D12 001ef4 000138f2 | fpu/off seed=11 #333
+@D12 0017f4 00012b5c | fpu/off seed=11 #411
+@D12 001ef4 000135e0 | fpu/off seed=11 #469
+@D12 0017f4 000100f0 | fpu/off seed=31 #103
+@D12 001ef4 00011bbe | fpu/tt seed=41 #52
+@D12 0017f4 0001085a | fpu/tt seed=41 #65
+@D12 0017f4 00011f06 | random/identity seed=81 #8
+@D12 0017f4 000131b6 | random/identity seed=91 #17
+@D12 001ef4 000119e0 | random/identity seed=91 #40
+@D12 0017f4 000139c0 | random/identity seed=91 #46
+@D12 0017f4 00011c8c | random/off seed=91 #11
+@D12 0017f4 000108c8 | random/off seed=91 #43
+@D12 0017f4 00011aee | random/off seed=91 #54
+@D12 001ef4 00011464 | random/off seed=91 #60
+@D12 0017f4 00011bcc | random/off seed=91 #96

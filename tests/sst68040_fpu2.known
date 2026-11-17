@@ -4,3 +4,27 @@
 
 # None at present. The three vectors listed here on 2026-11-07 (state-frame
 # internals after a posted exception) pass since POM68K_VENDOR.md row 51.
+
+# D12: manual-defined group-2 instruction address; all other state stays compared.
+@D12 0017f4 00011992 | 040 fpu2/identity seed=932 #1038
+@D12 001ef4 00012854 | 040 fpu2/identity seed=932 #127
+@D12 0017f4 000111de | 040 fpu2/identity seed=932 #1759
+@D12 001ef4 000138ec | 040 fpu2/identity seed=932 #1926
+@D12 0017f4 00012d72 | 040 fpu2/identity seed=932 #476
+@D12 0017f4 00013fcc | 040 fpu2/identity seed=932 #529
+@D12 0017f4 000125fe | 040 fpu2/off seed=931 #1120
+@D12 0017f4 00010734 | 040 fpu2/off seed=931 #1311
+@D12 0017f4 00012d54 | 040 fpu2/off seed=931 #1651
+@D12 0017f4 00010228 | 040 fpu2/off seed=931 #1732
+@D12 0017f4 00010c92 | 040 fpu2/off seed=931 #1743
+@D12 001ef4 00012570 | 040 fpu2/off seed=931 #212
+@D12 0017f4 00010f42 | 040 fpu2/off seed=931 #649
+@D12 0017f4 00010a2e | 040 fpu2/off seed=931 #76
+@D12 0017f4 000103dc | 040 fpu2/off seed=931 #941
+@D12 0017f4 000101dc | 040 fpu2/tt seed=933 #1589
+@D12 0017f4 00013f78 | 040 fpu2/tt seed=933 #1710
+@D12 001ef4 000129e8 | 040 fpu2/tt seed=933 #402
+@D12 0017f4 00010596 | 040 fpu2/tt seed=933 #509
+@D12 0017f4 000139dc | 040 fpu2/tt seed=933 #880
+@D12 0017f4 00010aea | 040 fpu2/tt seed=933 #984
+@D12 0017f4 00010f8e | 040 fpu2/tt seed=933 #990

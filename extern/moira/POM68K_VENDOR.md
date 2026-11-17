@@ -17,6 +17,7 @@ towards upstream had quietly expired while the file still read as if a rebase
 were the plan.
 
 What forced it, measured on this tree rather than remembered (re-measured
+2026-11-17 with row 115 (group-2 instruction address); before that
 2026-11-16 with row 114 (packed-zero host shift guard); before that
 with row 113 (external-FPU format-2 returns); before that
 with row 112 (shared read-only inspection geometry); before that
@@ -53,12 +54,12 @@ pair):
 | | | how to re-measure |
 |---|---|---|
 | distinct `pom*` extension identifiers | **116** (65 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **547** | `grep -rn POM68K Moira/ \| wc -l` |
+| `POM68K`-marked lines | **548** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **17 of 27** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **114** | this file |
+| patch groups in the inventory below | **115** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h`, `MoiraState.h`, `MoiraMmu030Walk.h` | — |
 
-One hundred and fourteen patch groups, two of which (the JIT seam, row 22, and the ATC
+One hundred and fifteen patch groups, two of which (the JIT seam, row 22, and the ATC
 performance work, row 16) are not patches over upstream's design but a second
 consumer of it. A re-sync is no longer a merge with conflicts; it is a port.
 
@@ -282,6 +283,8 @@ gate in the last column of each row.
 | 113 | **External 6888x exceptions return through the ordinary format-2 RTE path** — `execFpuException` selects format $2 and the F-line instruction address below the 040; integrated-040 format $3/EA is unchanged. Scoped D23a oracle rules normalize only the format/IA fields and compare every remaining register and RAM byte | `MoiraExecFPU_cpp.h` | [B] MC68030UM-1989 §10.4.20, Figure 10-45 (checked PDF pp. 542–543). WinUAE's format $3 on a 030 was rejected by its own RTE; the old fork took vector 14 instead of returning | `fpu_sanity` (16 model/FPU/destination combinations, real RTE plus next NOP; 48 checks failed before); five pinned corpora and `sst_known_contract_test` |
 
 | 114 | **Packed signed zero never shifts by the incoming k-factor** — SoftFloat returns zero before replacing the k-factor with the decimal digit count. Stop when the remaining significand is zero, so k-factors above 17 cannot cause a negative host shift while emitting zero digits | `MoiraExecFPU_cpp.h` | local SoftFloat zero-return contract; UBSan reports a negative shift (minimal k=18 gives -4). The identical WinUAE loop is guarded by oracle patch 16; numerical output and flags are preserved | `fpu_sanity` (`packedZeros`, 1 024 static/dynamic signed-seven-bit k-factor transfers, both FPUs and both zero signs); strict FPU corpora under UBSan |
+
+| 115 | **Group-2 format-$2 frames identify the trapping instruction** — divide-by-zero, CHK/CHK2, TRAPcc/TRAPV and FTRAPcc keep the next resume PC but stack `reg.pc0` as IA on 020/030/040, superseding D12's retained oracle policy. Address-error and trace frame producers are untouched | `MoiraExceptions_cpp.h` | [B] MC68030UM-1989 Table 8-7 (checked PDF p. 432); MC68040UM-1993 §8.4.3 (checked PDF p. 235) | `moira_rules_test` (`group2InstructionAddress`, 118 trap/RTE/next-NOP cases; 118 old-core failures); 286 scoped IA rules preserve whole-vector comparison, and `sst_known_contract_test` rejects unrelated state changes and stale rules |
 
 Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54, 56, 59-75 and 79-86 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
 when nothing arms them); rows 48 and 55 are performance alone, with no architectural effect. Row 58 is evidence documentation only. The ten files carrying no `POM68K` marker at all —
@@ -576,10 +579,10 @@ vectors); scratch: 2 672/2 672 across the full 3×3 grid × 3 seeds plus
   0b10 (DIVS.L 32/32) — $80000000/-1 is an overflow: registers stay
   unchanged, `setUndefinedDIVSL` flags (upstream wrote 0 to both);
   `divlsMoira<Word>`'s overflow branch is reachable now (assert gone).
-- `MoiraExceptions_cpp.h execException` — the C68020 format-$2 frame
-  (zero divide / CHK / TRAPcc) stacks the **next** instruction's
-  address in the instruction-address field, same as the PC field
-  (WinUAE-probed, D12; was `reg.pc0`).
+- `MoiraExceptions_cpp.h execException` — the original O4 ruling D12
+  stacked the next PC as both format-$2 addresses (WinUAE-probed).
+  Row 115 supersedes that oracle policy: the resume PC remains next,
+  while the instruction-address field identifies the trapping instruction.
 - `MoiraDataflow_cpp.h computeEAfull` — the reserved full-extension
   I/IS=100 encoding no longer dereferences: memory indirection only
   when `(iis & 0b011) != 0` (WinUAE `get_disp_ea_020`, D17).

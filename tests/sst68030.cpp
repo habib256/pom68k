@@ -80,32 +80,6 @@ struct Vector {
     long steps = 1;             // instructions to run (fuzz030.py --steps)
 };
 
-// D23a: retain the raw oracle fixture, but judge only its two documented
-// frame fields against MC68030UM-1989 Figure 10-45. Every other byte and
-// register still goes through the ordinary whole-vector comparison.
-bool normalizeFrame030(Vector& v, uint32_t frame, std::string& why) {
-    auto byte = [&](uint32_t addr) -> uint8_t {
-        addr &= 0xFFFFFF;
-        for (const auto& c : v.fin.ram) if ((c.addr & 0xFFFFFF) == addr) return c.val;
-        for (const auto& c : v.initial.ram) if ((c.addr & 0xFFFFFF) == addr) return c.val;
-        return 0;
-    };
-    const uint16_t format = uint16_t(byte(frame + 6) << 8 | byte(frame + 7));
-    if (!v.initial.hasFp || format < 0x30C0 || format > 0x30DC || (format & 3)) {
-        why = "D23a rule requires an oracle format-3 FPU frame (stale or invalid rule)";
-        return false;
-    }
-    auto put = [&](uint32_t addr, uint8_t value) {
-        addr &= 0xFFFFFF;
-        for (auto& c : v.fin.ram) if ((c.addr & 0xFFFFFF) == addr) { c.val = value; return; }
-        v.fin.ram.push_back({addr, value});
-    };
-    put(frame + 6, 0x20);
-    for (int i = 0; i < 4; ++i)
-        put(frame + 8 + i, uint8_t(v.initial.pc >> (24 - 8 * i)));
-    return true;
-}
-
 // ── Flat 16 MB test bus (no Mac hardware, no contention) ─────────────────
 class TestCpu : public moira::Moira {
 public:
@@ -448,8 +422,8 @@ int main(int argc, char** argv) {
     }
 
 #if SST_JIT
-    if (known.hasFrames030()) {
-        std::fprintf(stderr, "D23a rules judge the oracle, not JIT lockstep: omit --known\n");
+    if (known.hasFrames()) {
+        std::fprintf(stderr, "Frame rules judge the oracle, not JIT lockstep: omit --known\n");
         return 2;
     }
 #endif
@@ -489,8 +463,8 @@ int main(int argc, char** argv) {
                 continue;
             }
             std::string why; bool ok;
-            const auto manualFrame = known.frame030(v.name);
-            const bool validFrame = !manualFrame || normalizeFrame030(v, *manualFrame, why);
+            const auto manualFrame = known.frameRule(v.name);
+            const bool validFrame = !manualFrame || sstknown::normalizeFrame(v, *manualFrame, why);
 #if SST_JIT
             try { ok = validFrame && sstjit::run(pair, v, jitOpt, setupVector, scrubVector, why); }
 #else

@@ -33,6 +33,9 @@ So:
 > follows the manual with strictly scoped frame-field rules. See the
 > [later D23a ruling](#d23a-format2-return). D12 remains open.
 
+> **Annotation, 2026-11-17.** D12 now follows the primary manuals with
+> field-scoped rules; the earlier rulings below remain historical records.
+
 Oracle in service: **WinUAE** (`oracle/uae`, hatari e77819f7
 `cpummu030.c` + gencpu). Retired: **Musashi** (MAME 0.276 `m68kmmu.h` +
 kstenerud 4.60 core).
@@ -427,6 +430,10 @@ these frames byte-for-byte (odd-target checks in the nine handlers +
 `execAddressError030`).
 
 ### D12. Group-2 format $2 frames stack the NEXT instruction address
+
+> **Superseded, 2026-11-17:** the retained oracle policy below is replaced
+> by [the manual-defined instruction address](#d12-instruction-address).
+
 [ruled: WinUAE vs manual reading — oracle wins]
 Zero divide, CHK/CHK2 and TRAPcc/TRAPV push a format $2 frame whose
 "instruction address" field holds the **next** instruction's address on
@@ -1139,3 +1146,26 @@ vector. A stale reference or any unrelated difference fails, held by
 `sst_known_contract_test` using a public, unmodified July vector.
 All 26 674 vectors in these five corpora execute under strict RAM checking;
 448 scoped D23a rules coexist with the 198 pre-existing named differences.
+
+<a id="d12-instruction-address"></a>
+### D12 — Group-2 format 2 identifies the trapping instruction (2026-11-17)
+
+The hash-checked MC68030UM-1989 Table 8-7 (PDF p. 432) and
+MC68040UM-1993 §8.4.3 (PDF p. 235) separate the next resume PC from the
+address of the instruction that caused CHK/CHK2, zero divide, TRAPcc,
+FTRAPcc or TRAPV. `execException` now uses `reg.pc0` for the latter;
+address-error and trace frame producers are unchanged. The bare gate
+checks 118 trap/RTE/next-NOP cases across all seven 020/030/040 models,
+including both external FPUs and integrated-040 FTRAPcc. All 118 IA
+assertions fail on the old core and pass on the corrected one.
+
+No reference output is rewritten or removed. Independent RAM-difference
+audits find only the four IA bytes: 22 July, 43 solo, 19 raw-FPU, 32
+two-instruction and 21 handler vectors on the 030; 57 original, 18 with
+8 KB pages, 28 FPU, 22 two-instruction and 24 handler vectors on the 040.
+Each `@D12 <hex physical frame base> <hex instruction address> | <name>`
+requires the old format-$2 group-2 frame with IA equal to its resume PC,
+replaces precisely that expected IA, and compares every other CPU/FPU/RAM
+field normally. Corrected or invalid oracle frames fail as stale. Contract
+tests cover both harnesses, unrelated register/RAM changes, incorrect IA,
+resume-PC corruption, malformed addresses and duplicate or missing rules.

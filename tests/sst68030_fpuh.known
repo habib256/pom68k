@@ -216,3 +216,26 @@
 @D23a 0017f4 | fpuh/tt seed=1313 #93
 @D23a 0017f4 | fpuh/tt seed=1313 #965
 @D23a 0017f4 | fpuh/tt seed=1313 #975
+
+# D12: manual-defined group-2 instruction address; all other state stays compared.
+@D12 0017f4 00010e6c | fpuh/identity seed=1312 #1275
+@D12 0017f4 000110e6 | fpuh/identity seed=1312 #1632
+@D12 001ef4 0001395e | fpuh/identity seed=1312 #1704
+@D12 0017f4 000114d0 | fpuh/identity seed=1312 #1915
+@D12 0017f4 00012cd4 | fpuh/identity seed=1312 #845
+@D12 0017f4 000139fe | fpuh/identity seed=1312 #957
+@D12 0017f4 000119d0 | fpuh/off seed=1311 #1002
+@D12 0017f4 0001253c | fpuh/off seed=1311 #1103
+@D12 0017f4 00010362 | fpuh/off seed=1311 #1446
+@D12 0017f4 00011a98 | fpuh/off seed=1311 #172
+@D12 0017f4 000104da | fpuh/off seed=1311 #1734
+@D12 0017f4 00011ac6 | fpuh/off seed=1311 #1740
+@D12 0017f4 00012be2 | fpuh/off seed=1311 #1991
+@D12 0017f4 00012804 | fpuh/off seed=1311 #247
+@D12 0017f4 00012bd8 | fpuh/off seed=1311 #276
+@D12 0017f4 00013a26 | fpuh/off seed=1311 #663
+@D12 0017f4 0001012c | fpuh/off seed=1311 #730
+@D12 0017f4 000116da | fpuh/off seed=1311 #857
+@D12 0017f4 00013fa2 | fpuh/off seed=1311 #930
+@D12 0017f4 00010f32 | fpuh/tt seed=1313 #1561
+@D12 0017f4 000134c0 | fpuh/tt seed=1313 #415

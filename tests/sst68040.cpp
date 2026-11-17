@@ -474,7 +474,13 @@ int main(int argc, char** argv) {
         else { std::fprintf(stderr,"unknown arg '%s'\n",a.c_str()); return 2; }
     }
 
-    if (known.hasFrames030()) {
+#if SST_JIT
+    if (known.hasFrames()) {
+        std::fprintf(stderr, "Frame rules judge the oracle, not JIT lockstep: omit --known\n");
+        return 2;
+    }
+#endif
+    if (known.hasExternalFrames()) {
         std::fprintf(stderr, "D23a frame rules require the 68030 oracle replay harness\n");
         return 2;
     }
@@ -517,15 +523,20 @@ int main(int argc, char** argv) {
                 continue;
             }
             std::string why; bool ok;
+            const auto manualFrame = known.frameRule(v.name);
+            const bool validFrame = !manualFrame || sstknown::normalizeFrame(v, *manualFrame, why);
 #if SST_JIT
-            try { ok = sstjit::run(pair, v, jitOpt, setupVector, scrubVector, why); }
+            try { ok = validFrame && sstjit::run(pair, v, jitOpt, setupVector, scrubVector, why); }
 #else
-            try { ok = runVector(cpu,v,checkCycles,why); }
+            try { ok = validFrame && runVector(cpu,v,checkCycles,why); }
 #endif
             catch (const std::exception& e) { ok=false; why=std::string("threw: ")+e.what(); }
             ++total;
             const bool isKnown = known.listed(v.name);
-            if (ok && isKnown) {
+            if (manualFrame) {
+                if (ok) ++knownHere;
+                else if (int(firstFew.size())<examples) firstFew.push_back({v.name,why});
+            } else if (ok && isKnown) {
                 ++stale;
                 if (int(firstFew.size())<examples) firstFew.push_back({v.name,sstknown::List::kStale});
             } else if (ok) ++passed;

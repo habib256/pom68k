@@ -60,7 +60,6 @@ existing ruling only when doing so turns no gate red (maintainer's decision,
 
 | Ruling | Oracle (kept) | Manual | Held by | Settled by |
 |---|---|---|---|---|
-| **D12** | Zero divide, CHK/CHK2, TRAPcc/TRAPV: the format $2 "instruction address" is the **next** instruction's | MC68030UM reads "the instruction that caused the exception" | `sst68030` | a frame stacked by a real 68020/68030 |
 | **D30** | 68040, unsupported data type on an opclass 000/010 instruction: taken at once, format $3 | M68040UM § 9.7 (unsupported data types): "instructions cause a pre-instruction exception" — format $0, taken by the next FPU instruction, as the arithmetic exceptions of D24 | `sst68040_fpu` (hundreds of format-$3, vector-55 frames), `fpu040_test` | the oracle itself calls it a simplification (`fpp.c`: "simplification: always mid/post-instruction exception"); a real frame, or the D24 machinery extended to vector 55 with two-instruction vectors to hold it. Noted 2026-11-07 while reading § 9.7 for D24 |
 
 ### Rulings where the fork does not follow the oracle
@@ -77,6 +76,7 @@ eager writes. `cache040_test` supplies their host-bus witnesses.
 
 | Ruling | Fork (kept) | Oracle | Why it is kept | Settled by |
 |---|---|---|---|---|
+| **D12 (applied 2026-11-17)** | Group-2 format $2: next resume PC, trapping instruction address | Both addresses contain the next PC | MC68030UM-1989 Table 8-7 and MC68040UM-1993 §8.4.3; 118 model/instruction/FPU trap/RTE cases | 286 scoped `@D12` IA rules across ten pinned corpora retain every other final-state assertion; raw references and hashes unchanged |
 | **D23a (applied 2026-11-16)** | External 6888x post-instruction exception: format $2, F-line instruction address; handler RTE resumes normally | Format $3 with operand EA on 020/030, rejected by its own RTE | MC68030UM-1989 §10.4.20, Figure 10-45; `fpu_sanity` holds register/memory destinations, both FPUs and all four 020/030 models. Tagged `@D23a` rules correct only those expected frame fields, with every other byte/register still compared | primary-manual ruling; 448 scoped rules across five pinned corpora, and `sst_known_contract_test` rejects unrelated changes or stale rules |
 | **D25** | FMOVE.P FPn,Dn takes a plain Line-F | Unsupported-datatype trap, "even if destination EA is Dn or An" | `fpu040_test` asserts the Line-F | the same instruction on a real 68040 |
 | **D26** | FMOVE.P FPn,(An)+{Dn} and -(An){Dn} step An by 12 | An unchanged: the size table holds 0 for the dynamic k-factor format | a packed operand is twelve bytes whatever its k-factor (MC68881/MC68882 UM); the oracle's value is a table slot, not a decision | An after that instruction's datatype trap on a real 68040 |
