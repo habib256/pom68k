@@ -636,8 +636,10 @@ never included at build time). Same softfloat family as the primary
 oracle, so numerical convergence is by construction. GPLv2+ — Moira stays
 MIT and only **links** against it (separate static lib `softfloat68k`).
 
-Semantics are ported from WinUAE `fpp.c`/`fpp_softfloat.c` (6888x
-branches, accurate mode) with file:line citations in the code:
+The FPU code is Moira's own (MIT) and contains no WinUAE code. Its
+behaviour is checked against WinUAE `fpp.c`/`fpp_softfloat.c` (6888x
+branches, accurate mode), the differential oracle, whose behaviour is cited
+`[D]` with file:line wherever it settled a ruling:
 
 - `Moira/MoiraTypes.h` — `FPUModel`, `FpuExtended` (raw floatx80 layout,
   keeps `Moira.h` softfloat-free).

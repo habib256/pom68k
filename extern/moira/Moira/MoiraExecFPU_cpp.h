@@ -127,9 +127,11 @@ Moira::isValidExtFPU(Instr I, Mode M, u16 op, u32 ext) const
 // top of extern/softfloat — the same 80-bit softfloat family the primary
 // oracle (WinUAE) runs, numerical agreement still requires the differential
 // corpus: a shared arithmetic library does not prove instruction semantics.
-// The instruction semantics below are ported
-// from WinUAE fpp.c / fpp_softfloat.c (oracle vendor tree, hatari e77819f7)
-// with file:line citations; the manual is cited where it is the source.
+// The code below is written for Moira (MIT) and contains no WinUAE code.
+// WinUAE fpp.c / fpp_softfloat.c (oracle vendor tree, hatari e77819f7) is
+// the differential oracle: a `[D]` file:line citation records how the
+// oracle behaves where it settled a ruling; the manual is cited where it is
+// the source.
 //
 // Reachability: nothing in this file executes unless an FPU is attached
 // (setFPUModel). With fpuModel == NONE the jump table holds the stock

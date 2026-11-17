@@ -1757,8 +1757,9 @@ public:
     // 6888x / integrated-040 FPU state (MoiraExecFPU_cpp.h)
     //
     // Execution is backed by extern/softfloat (same softfloat family as
-    // the primary oracle, WinUAE); the 6888x semantics are ported from
-    // WinUAE fpp.c / fpp_softfloat.c with file:line citations. Nothing
+    // the primary oracle, WinUAE); the 6888x code is Moira's own (MIT),
+    // checked against WinUAE fpp.c / fpp_softfloat.c, whose behaviour is
+    // cited `[D]` with file:line where it settled a ruling. Nothing
     // here is reachable while fpuModel == NONE (the jump table then holds
     // stock Line-F handlers). See extern/moira/POM68K_VENDOR.md § FPU.
     //
