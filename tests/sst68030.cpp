@@ -1,5 +1,5 @@
 // POM68K — Macintosh 68k emulator
-// VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
+// VERHILLE Arnaud — Copyright (C) 2026 — MIT (see LICENSE-MIT)
 //
 // SST030 replay harness — the error signal of the Phase-2 improve loop
 // (TODO.md § Phase 2, O4). Replays oracle-agreed 68030 vectors produced by

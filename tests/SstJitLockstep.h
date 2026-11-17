@@ -1,5 +1,5 @@
 // POM68K — Macintosh 68k emulator
-// VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
+// VERHILLE Arnaud — Copyright (C) 2026 — MIT (see LICENSE-MIT)
 //
 // The SST oracle corpora replayed through the translator (TODO.md § Moteur
 // › Socle, "Rejouer les corpus à travers le JIT"). Shared by sst68030.cpp

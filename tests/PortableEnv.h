@@ -1,5 +1,5 @@
 // POM68K — setenv/unsetenv for the test executables, on every host.
-// VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
+// VERHILLE Arnaud — Copyright (C) 2026 — MIT (see LICENSE-MIT)
 //
 // The gates set process-environment knobs before building their rig (the
 // tests are the startup boundary; production reads the snapshot). POSIX

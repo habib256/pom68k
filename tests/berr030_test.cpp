@@ -1,5 +1,5 @@
 // POM68K — Macintosh 68k emulator
-// VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
+// VERHILLE Arnaud — Copyright (C) 2026 — MIT (see LICENSE-MIT)
 //
 // O6 slice 1 gate — external /BERR plumbing (extern/moira, see
 // POM68K_VENDOR.md § External /BERR + RTE $A). A 68030 on a flat 16 MB

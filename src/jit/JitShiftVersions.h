@@ -1,5 +1,5 @@
 // POM68K — bounded count-version cache for measured dynamic shifts
-// VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
+// VERHILLE Arnaud — Copyright (C) 2026 — MIT (see LICENSE-MIT)
 
 #pragma once
 

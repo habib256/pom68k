@@ -1,5 +1,5 @@
 // POM68K — portable instruction-boundary CPU state visitor.
-// VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
+// VERHILLE Arnaud — Copyright (C) 2026 — MIT (see LICENSE-MIT)
 //
 // Included by Moira.h after the complete class. The host supplies an archive
 // with operator()(fields...) and static constexpr bool loading. No machine,

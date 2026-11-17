@@ -1,5 +1,5 @@
 // POM68K — Macintosh 68k emulator
-// VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
+// VERHILLE Arnaud — Copyright (C) 2026 — MIT (see LICENSE-MIT)
 //
 // SingleStepTests/680x0 68000 harness — the Moira-config gate (M4.5).
 // Validates our vendored Moira build (PRECISE_TIMING, address errors, no

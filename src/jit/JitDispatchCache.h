@@ -1,5 +1,5 @@
 // POM68K — direct-mapped dispatch cache in front of the JIT block map
-// VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
+// VERHILLE Arnaud — Copyright (C) 2026 — MIT (see LICENSE-MIT)
 
 #pragma once
 

@@ -1,5 +1,5 @@
 // POM68K — Macintosh 68k emulator
-// VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
+// VERHILLE Arnaud — Copyright (C) 2026 — MIT (see LICENSE-MIT)
 //
 // Backend registry. Two separate questions live here, and conflating them
 // is how a JIT ends up slower than the interpreter it was meant to beat:

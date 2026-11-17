@@ -46,6 +46,8 @@ UPSTREAM_PIN = "1efd69467ca13b27b2fb40febd5cb31dbecdea5f"
 
 # What ships. Directories are taken whole (tracked files only).
 EXPORT = [
+    # The license of everything the fork wrote (core additions, JIT, gates).
+    "LICENSE-MIT",
     # The core and its records.
     "extern/moira/Moira",
     "extern/moira/LICENSE",
@@ -120,6 +122,7 @@ TEMPLATE_FILES = [
     (f"{TEMPLATES}/README.md", "README.md"),
     (f"{TEMPLATES}/LICENSES.md", "LICENSES.md"),
 ]
+# The GPL text, for extern/softfloat alone (GPL-2.0-or-later files).
 LICENSE_COPY = ("LICENSE", "LICENSE-GPL-3.0")
 
 INCLUDE_DIRS = ["extern/moira/Moira", "extern/softfloat", "src", "tests"]

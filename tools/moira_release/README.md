@@ -27,9 +27,9 @@ starting commit.
 | `extern/moira/POM68K_SURFACE.md` | the host contract: what the core exposes and what a host owes it | — |
 | `extern/moira/NEOST_VENDOR.md` | the NeoST patches the fork inherited (NeoST is the Atari ST emulator the copy came through) | — |
 | `extern/softfloat/` | 80-bit SoftFloat (QEMU SoftFloat-2a, WinUAE/Previous 68k extensions) behind the FPU | GPLv2+ / SoftFloat-2a |
-| `src/jit/` | the JIT: engine, IR, `threaded` backend, x86-64 and AArch64 generators; `POM68K_JIT.md` is its design | GPLv3 |
-| `src/*.h` | six header-only adapters the JIT gates include (configuration snapshot, save-state archive) | GPLv3 |
-| `tests/`, `tools/` | the gates and the corpus tools | GPLv3 |
+| `src/jit/` | the JIT: engine, IR, `threaded` backend, x86-64 and AArch64 generators; `POM68K_JIT.md` is its design | MIT |
+| `src/*.h` | six header-only adapters the JIT gates include (configuration snapshot, save-state archive) | MIT |
+| `tests/`, `tools/` | the gates and the corpus tools | MIT |
 | `tests/cpu_vectors/` | a small differential corpus generated against WinUAE, owned by the repository and pinned by hash | — |
 | `oracle/README.md` | the rulings: each place the fork follows or overrules the WinUAE oracle, and why | — |
 | `docs/CACHE_040.md` | the 68040 cache model | — |

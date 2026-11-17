@@ -1,5 +1,5 @@
 // POM68K — Macintosh 68k emulator
-// VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
+// VERHILLE Arnaud — Copyright (C) 2026 — MIT (see LICENSE-MIT)
 //
 // Integrated MC68040 FPU gate. Pins the sparse native opcode map, forced
 // precision, FPSP exception/FSAVE state, datatype payloads, FMOVEM ordering

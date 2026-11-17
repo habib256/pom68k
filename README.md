@@ -694,4 +694,6 @@ conventions.
 ## License
 
 POM68K is distributed under GPLv3; see [`LICENSE`](LICENSE). Moira is MIT
-licensed, and Dear ImGui is MIT licensed and fetched rather than vendored.
+licensed, and so are the fork's 68000–68040 additions, the JIT (`src/jit/`)
+and the CPU/JIT gates exported with them ([`LICENSE-MIT`](LICENSE-MIT));
+Dear ImGui is MIT licensed and fetched rather than vendored.

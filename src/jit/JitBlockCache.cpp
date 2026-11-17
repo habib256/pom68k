@@ -1,5 +1,5 @@
 // POM68K — Macintosh 68k emulator
-// VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
+// VERHILLE Arnaud — Copyright (C) 2026 — MIT (see LICENSE-MIT)
 //
 // ── which blocks stay resident, and every duty an erase owes ─────────────
 // The execution engine (JitEngine.cpp) decides what to RUN; this unit owns

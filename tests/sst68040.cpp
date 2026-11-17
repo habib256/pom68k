@@ -1,5 +1,5 @@
 // POM68K — Macintosh 68k emulator
-// VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
+// VERHILLE Arnaud — Copyright (C) 2026 — MIT (see LICENSE-MIT)
 //
 // SST040 replay harness — the error signal of the Phase-3 improve loop
 // (TODO.md § Phase 3, Q2). Replays WinUAE-solo 68040 vectors produced by

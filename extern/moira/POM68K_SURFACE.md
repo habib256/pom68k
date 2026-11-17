@@ -1099,10 +1099,13 @@ built with `-Wno-unused-parameter -Wno-unused-variable` and included as
 
 Licences: Moira MIT (`extern/moira/Moira/LICENSE`, Dirk W. Hoffmann; notice
 must be kept). softfloat: SoftFloat-2a + BSD (QEMU parts) + GPLv2-or-later
-(`extern/softfloat/VENDOR.md`), linked as a separate library. POM68K code
-(`src/`, including `src/jit/` and `src/MoiraSnapshot.h`, and the moved
-`MoiraState.h` visitor) is GPLv3. A binary
-linking softfloat is subject to GPL obligations.
+(`extern/softfloat/VENDOR.md`), linked as a separate library. The fork's
+own code — its changes inside `extern/moira/Moira/` (the `MoiraState.h`
+visitor included), the JIT (`src/jit/`), the host adapters and the
+CPU/JIT gates exported by `tools/moira_release.py` — is MIT
+(`LICENSE-MIT`, VERHILLE Arnaud). The rest of POM68K's `src/` (machines,
+`src/MoiraSnapshot.h`) is GPLv3. A binary linking softfloat is subject to
+its GPL obligations.
 
 Mac-free gates (bare `moira` + softfloat, flat RAM, no ROM):
 

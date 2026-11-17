@@ -1,5 +1,5 @@
 // POM68K — Macintosh 68k emulator
-// VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
+// VERHILLE Arnaud — Copyright (C) 2026 — MIT (see LICENSE-MIT)
 //
 // Stable, host-neutral JIT metrics emitted by the asset-free CI proof and by
 // the fixed-cycle Macintosh benches. The JSON schema is deliberately flat:

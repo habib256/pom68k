@@ -1,5 +1,5 @@
 // POM68K — Macintosh 68k emulator
-// VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
+// VERHILLE Arnaud — Copyright (C) 2026 — MIT (see LICENSE-MIT)
 //
 // Short, deterministic, asset-free lockstep for the native 68040 JIT.
 // Unlike the machine boot lockstep this gate needs no ROM, disk, GUI or

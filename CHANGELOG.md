@@ -602,6 +602,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-17 (fourth) — Everything the fork wrote ships under MIT](#2026-11-17-mit-release)
 - [2026-11-17 (third) — A Moira release cut for Dirk Hoffmann, every gate executed](#2026-11-17-release-for-dirk)
 - [2026-11-17 (second) — Format-2 traps retain the instruction that caused them](#2026-11-17-group2-instruction-address)
 - [2026-11-17 — The new FPU gate also belongs in the x86 registry](#2026-11-17-x64-fpu-registry)
@@ -1386,6 +1387,29 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-17-mit-release"></a>
+## 2026-11-17 (fourth) — Everything the fork wrote ships under MIT
+
+Decision of the author, for the release offered to Dirk Hoffmann: every file
+`tools/moira_release.py` exports that the fork wrote — its additions inside
+`extern/moira/Moira/`, the JIT (`src/jit/`), the six host adapters, the
+CPU/JIT gates and corpus tools — is MIT, under the new root `LICENSE-MIT`
+(47 headers moved from GPLv3). The rest of POM68K stays GPLv3 (`LICENSE`).
+
+`extern/moira/Moira/MoiraState.h`, included by `Moira.h`, had carried a GPLv3
+header inside the MIT core; it is MIT now like the rest of the core.
+
+The 6888x FPU had been described in three places as "ported from WinUAE
+fpp.c". It is not: it is the fork's own code, and WinUAE is the differential
+oracle whose behaviour the `[D] fpp.c:line` citations record (corrected in
+`88841f1`). The release `LICENSES.md` now says the fork contains no code
+from another emulator and cites the emulators it uses as evidence.
+
+The one third-party library is `extern/softfloat` (SoftFloat-2a, QEMU BSD
+parts, GPL-2.0-or-later extensions from Previous and WinUAE). It keeps its
+authors' licenses and is cited as such; a host wanting an MIT-only binary
+replaces it behind `softfloat.h`.
 
 <a id="2026-11-17-release-for-dirk"></a>
 ## 2026-11-17 (third) — A Moira release cut for Dirk Hoffmann, every gate executed

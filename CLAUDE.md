@@ -198,7 +198,10 @@ Before considering a change complete:
 - Documentation and product UI are written in English; conversation may be in
   French.
 - The whole tree is C++20.
-- POM68K is GPLv3. Moira and Dear ImGui retain their own licenses.
+- POM68K is GPLv3. Moira and Dear ImGui retain their own licenses. Everything
+  `tools/moira_release.py` exports that the fork wrote (core additions, JIT,
+  adapters, CPU/JIT gates) is MIT (`LICENSE-MIT`); a new file there takes the
+  MIT header. Only `extern/softfloat` is third-party GPL code.
 - Preserve existing user changes in a dirty worktree and avoid destructive
   Git operations.
 - Comments explain non-obvious contracts and cite a primary source or a

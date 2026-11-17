@@ -1,5 +1,5 @@
 // POM68K — Macintosh 68k emulator
-// VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
+// VERHILLE Arnaud — Copyright (C) 2026 — MIT (see LICENSE-MIT)
 //
 // O5 gate `fpu_sanity` — hand-computed 68882 smoke cases against Moira
 // (Model::M68030 + FPUModel::M68882 on a flat 16 MB bus). This is NOT the

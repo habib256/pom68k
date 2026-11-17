@@ -1,5 +1,5 @@
 // POM68K — Macintosh 68k emulator
-// VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
+// VERHILLE Arnaud — Copyright (C) 2026 — MIT (see LICENSE-MIT)
 //
 // M1-M3 gate (docs/CACHE_040.md) — complete 68040 architectural cache
 // state, data, copyback, snooping and transaction timing. Three halves:

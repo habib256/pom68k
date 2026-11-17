@@ -1,4 +1,4 @@
-// POM68K — GPLv3 (see LICENSE)
+// POM68K — VERHILLE Arnaud — MIT (see LICENSE-MIT)
 #pragma once
 namespace jit { struct ResolvedConfig; }
 bool runJitAtc040Cases(const jit::ResolvedConfig& config);

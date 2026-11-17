@@ -1,5 +1,5 @@
 // POM68K — JIT census bookkeeping outside the execution-engine hot unit
-// VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
+// VERHILLE Arnaud — Copyright (C) 2026 — MIT (see LICENSE-MIT)
 
 #include "JitEngine.h"
 

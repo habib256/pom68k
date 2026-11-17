@@ -1,5 +1,5 @@
 // POM68K — Macintosh 68k emulator
-// VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
+// VERHILLE Arnaud — Copyright (C) 2026 — MIT (see LICENSE-MIT)
 //
 // AArch64 store-guard gate. MOVE.L D0,d16(A7) is first trained
 // against ordinary RAM, where a zero codeMask must permit a direct store.
