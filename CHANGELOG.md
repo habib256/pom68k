@@ -602,6 +602,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-17 (third) — A Moira release cut for Dirk Hoffmann, every gate executed](#2026-11-17-release-for-dirk)
 - [2026-11-17 (second) — Format-2 traps retain the instruction that caused them](#2026-11-17-group2-instruction-address)
 - [2026-11-17 — The new FPU gate also belongs in the x86 registry](#2026-11-17-x64-fpu-registry)
 - [2026-11-16 (ninth) — Standalone corpus replay keeps the repository's RAM checks](#2026-11-16-release-strict-ram)
@@ -1385,6 +1386,31 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-17-release-for-dirk"></a>
+## 2026-11-17 (third) — A Moira release cut for Dirk Hoffmann, every gate executed
+
+`moira-pom68k-20261117-91218fca.tar.gz` (143 files, sha256
+`8c82f862d2e91ac16fbf23471c20efaed41393978e6b48baeb7428c6f34fa37d`) is cut
+from `91218fc` with `patches/moira-vs-upstream.patch` against upstream
+`1efd694` (+13 549 / −511 lines). `tools/moira_release.py --verify
+--sst-root tests/data` rebuilt the extracted tree alone (GCC 15.2, Release,
+x86-64) and ran `unit|jit|corpus`: 44 / 44, no `SKIP` in `LastTest.log`, the
+thirteen external corpora first matched against `tests/sst_corpora.lock`. Two
+cuts of the same commit gave the same sha256. CI and the nightly were green
+on the parent `4505cbf`.
+
+The only change the cut needed was in its README: "rows 1–86" had drifted
+from the 115 rows of `POM68K_VENDOR.md`; it now names the inventory without
+copying its count. Upstream after the pin was reread: nothing past `f90fc50`
+that the README's table does not already list.
+
+What the archive does not claim stays in its *Limits* section and in
+`TODO.md § Moteur`: the named open rulings need captures from real silicon,
+the 68020 has no differential corpus of its own (it is held by
+`berr020_test`, `callm_rtm_test` and the Macintosh II boot gates of the parent
+repository), and this cut was verified on x86-64 only — the corpora have
+an AArch64 replay since 2026-11-15, not run on this archive.
 
 <a id="2026-11-17-group2-instruction-address"></a>
 ## 2026-11-17 (second) — Format-2 traps retain the instruction that caused them
