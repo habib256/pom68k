@@ -68,7 +68,7 @@ and use the same scoped or named oracle rules as the parent repository.
 ## What the fork adds
 
 Grouped from the inventory (`POM68K_VENDOR.md` § *Inventory of local
-patches*, rows 1–86), which is the authority:
+patches*, one numbered row per patch group), which is the authority:
 
 - **68000/68010.** Converged on SingleStepTests/680x0 (1 000 058 vectors,
   bus-cycle order and timing included): address-error machinery, DIV/CHK/ASR
