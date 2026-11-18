@@ -4,14 +4,15 @@
 // Interpreter against translator on the boards that have no lockstep of
 // their own: the 68040 Quadra 630 (F108), Quadra 700 (Spike) and Centris
 // 650 (DjMEMC), and the 68030 Mac IIci (RBV), LC III (Sonora), Mac IIvx
-// (VASP) and PowerBook 170/180 (Jaws/Niagra, PMU firmware LLE). jit_lockstep_test does this for the Quadra 605 with that
+// (VASP), PowerBook 170/180 (Jaws/Niagra, PMU firmware LLE) and PowerBook
+// Duo 230 (MSC, PG&E firmware LLE). jit_lockstep_test does this for the Quadra 605 with that
 // board's hidden-state hooks; these boards expose none, so the comparison
 // here is architectural only — every register, the clock, the supervisor
 // stacks and the system globals (first 2 KB of RAM) at every checkpoint,
 // and the whole of RAM every `POM68K_JIT_LOCKSTEP_FULL_EVERY` checkpoints
 // and at the end.
 //
-//   jit_lockstep_board_test q630|q700|centris650|iici|lc3|iivx|pb170|pb180 [steps]
+//   jit_lockstep_board_test q630|q700|centris650|iici|lc3|iivx|pb170|pb180|duo230 [steps]
 //
 // POM68K_JIT_LOCKSTEP_BUDGET (default 50 cycles) is the checkpoint spacing,
 // as in jit_lockstep_test. The boot disk is attached in memory
@@ -19,6 +20,9 @@
 // (exit 0) without the board's ROM or a boot disk.
 
 #include "AssetFingerprint.h"
+#include "BoardIdentity.h"
+#include "MscCpu.h"
+#include "MscMemory.h"
 #include "CentrisCpu.h"
 #include "CentrisMemory.h"
 #include "JitTestConfig.h"
@@ -314,6 +318,25 @@ int main(int argc, char** argv) {
             rom, disk755, steps,
             [&](Pb030Memory& m) { m.setMonitorSense(7); return m.pmu().loadFirmware(firmware); });
     }
-    std::fprintf(stderr, "usage: %s q630|q700|centris650|iici|lc3|iivx|pb170|pb180 [steps]\n", argv[0]);
+    // PowerBook Duo 230 (MSC), PG&E power manager firmware LLE.
+    if (board == "duo230") {
+        const std::string rom = testasset::findAny({
+            "roms/1MB ROMs/1992-10 - ECFA989B - Powerbook 210 & 230 & 250.ROM" });
+        const std::string pge = testasset::findAny({ "roms/pge/pge_boot.bin" });
+        const std::string disk755 = testasset::findAny({ "hdv/System 7.5.5 HD.dsk" });
+        if (rom.empty() || pge.empty() || disk755.empty()) {
+            std::printf("SKIP: [jit_lockstep_board] duo230 needs its ROM, roms/pge/pge_boot.bin and hdv/System 7.5.5 HD.dsk\n");
+            return 0;
+        }
+        testasset::report({ rom, pge, disk755 });
+        const pom68k::MscBoardIdentity id = pom68k::mscBoardIdentity(pom68k::SnapMachine::Duo230);
+        return run<MscMemory, MscCpu>("PowerBook Duo 230",
+            [&] { return std::make_unique<MscMemory>(core, 8u << 20, id.cpuHz, id.boxId, id.cscPanel); },
+            [&](MscMemory& m, const jit::ResolvedConfig& j) {
+                return std::make_unique<MscCpu>(m, j, core.cpu, m.hasCsc()); },
+            rom, disk755, steps,
+            [](MscMemory& m) { return m.pgeActive(); });
+    }
+    std::fprintf(stderr, "usage: %s q630|q700|centris650|iici|lc3|iivx|pb170|pb180|duo230 [steps]\n", argv[0]);
     return 2;
 }

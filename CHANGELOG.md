@@ -604,7 +604,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
-- [2026-11-19 (second) — Eight more boards get a JIT lockstep: Q630, Q700, Centris 650, IIci, LC III, IIvx, PowerBook 170 and 180](#2026-11-19-board-locksteps)
+- [2026-11-19 (second) — Nine more boards get a JIT lockstep: Q630, Q700, Centris 650, IIci, LC III, IIvx, PowerBook 170, 180 and Duo 230](#2026-11-19-board-locksteps)
 - [2026-11-19 — Long boot locksteps, a hundred times the gates: identical](#2026-11-19-long-locksteps)
 - [2026-11-18 (sixth) — Armed FP exceptions through the translator: no divergence in 16 000 seeds](#2026-11-18-fpexc-sweep)
 - [2026-11-18 (fifth) — A halted 68040 keeps the queue the interpreter would leave after a native JSR fault](#2026-11-18-jsr040-queue)
@@ -1399,7 +1399,7 @@ Newest first.
 ---
 
 <a id="2026-11-19-board-locksteps"></a>
-## 2026-11-19 (second) — Eight more boards get a JIT lockstep: Q630, Q700, Centris 650, IIci, LC III, IIvx, PowerBook 170 and 180
+## 2026-11-19 (second) — Nine more boards get a JIT lockstep: Q630, Q700, Centris 650, IIci, LC III, IIvx, PowerBook 170, 180 and Duo 230
 
 Until now only the Quadra 605 (`jit_lockstep_test`), the LC II
 (`jit_lockstep_030_test`) and the Plus had an instruction-level comparison
@@ -1431,14 +1431,18 @@ full RAM identical, on a64 and on x86-64. Gates
 PowerBook 170 (Jaws) and 180 (Niagra), PMU firmware loaded through a
 prepare hook, on `hdv/System 7.5.5 HD.dsk`: self-check identical, 2 000 000
 checkpoints identical on a64 and x86-64; gates
-`jit_lockstep_board_{pb170,pb180}_test`. The Duo (MSC) needs the PG&E
-firmware path too and is left out.
+`jit_lockstep_board_{pb170,pb180}_test`. Then the PowerBook Duo 230
+(MSC, PG&E firmware LLE, `pgeActive()` checked in the prepare hook):
+self-check identical, 2 000 000 checkpoints identical on a64 and x86-64 —
+the PG&E holds the CPU for long stretches, so these checkpoints cover
+1.6 G cycles but only 67 blocks; gate `jit_lockstep_board_duo230_test`.
 
 Deep runs, a64, 30 000 000 checkpoints of 256 cycles (about 30.8 G
 cycles, deep into Mac OS 8.1 with 80 000+ blocks compiled per board):
 Quadra 630, Quadra 700 and Centris 650 identical, full RAM identical;
 Mac IIci, LC III and Mac IIvx (about 30.9 G cycles, 11 000+ blocks
-compiled each) identical too.
+compiled each) identical too, and PowerBook 170 and 180 (13 800 and 14 600
+blocks) identical.
 
 The two harness knobs (`POM68K_JIT_LOCKSTEP_SELF`, `_FULL_EVERY`) shipped
 in `d2d5e33c` unclassified in `config_knobs.tsv`: `config_test` failed in
