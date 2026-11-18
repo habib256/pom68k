@@ -320,7 +320,9 @@ inline constexpr char     kMagic[8]  = {'P','O','M','6','8','K','S','S'};
 // while stopped must wake on the same 4-cycle boundary.
 // v32: softfloat's intermediate-result precision and rounding mode, which a
 // trapped single-precision FMOVE out rounds its 6888x frame operand with.
-inline constexpr u32      kVersion   = 32;
+// v33: the 68040 access-error frame latches that outlive an instruction —
+// the MOVE16 line buffer (PD0-PD3) and WB2A.
+inline constexpr u32      kVersion   = 33;
 
 struct Header {
     u32 version     = kVersion;

@@ -437,6 +437,20 @@ Moira::mmuExecuteStart()
     mmuRmw = false;
     mmuOpcodeV = 0xFFFFFFFF;
 
+    // [B] MC68030UM-1989 § 8.1.3 — an instruction fetch from an odd
+    // address takes the address error.
+    // [D] WinUAE @ Hatari e77819f7 — a JSR to an odd target retires and the
+    // next opcode fetch raises it (execJsr). Every other flow instruction
+    // checks its own target (oddFlowTarget); JSR alone defers to this
+    // fetch, and until 2026-11-18 no fetch raised it: with translation off
+    // the core read the odd stream as unaligned words and ran it
+    // (tests/jit_program_fuzz.cpp, 68040 seed 21450; same hole here).
+    // Stacked PC and fault address are the odd pc, as for the DBcc target.
+    if (oddFlowTarget(reg.pc)) [[unlikely]] {
+        try { execAddressError030<C>(reg.pc, reg.pc); } catch (...) { halt(); }
+        return false;
+    }
+
 #if MOIRA_ENABLE_JIT
     // POM68K JIT code window, 030 flavour (B.2 slice 4) — the shape
     // mmu040InstrStart already uses below. Placed AFTER the POLL_IPL and the
@@ -2049,6 +2063,14 @@ Moira::mmu040InstrStart()
     mmu040CcrSave = u8(getCCR());
     ircPoison = false;
     ircLongAt = ircNoLong;
+
+    // POM68K: the deferred odd-target fetch fault — see mmuExecuteStart.
+    // execJsr leaves a 68040 JSR to an odd target retired at that target;
+    // this is the fetch that takes vector 3, stacked PC = the odd pc.
+    if (oddFlowTarget(reg.pc)) [[unlikely]] {
+        try { execAddressError040<C>(reg.pc, reg.pc); } catch (...) { halt(); }
+        return false;
+    }
 
 #if MOIRA_ENABLE_JIT
     // POM68K JIT code window (Moira.h § PomJitWindow). Placed AFTER the

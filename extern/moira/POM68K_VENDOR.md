@@ -54,9 +54,9 @@ pair):
 | | | how to re-measure |
 |---|---|---|
 | distinct `pom*` extension identifiers | **116** (65 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **550** | `grep -rn POM68K Moira/ \| wc -l` |
+| `POM68K`-marked lines | **551** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **17 of 27** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **116** | this file |
+| patch groups in the inventory below | **118** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h`, `MoiraState.h`, `MoiraMmu030Walk.h` | — |
 
 One hundred and sixteen patch groups, two of which (the JIT seam, row 22, and the ATC
@@ -286,6 +286,8 @@ gate in the last column of each row.
 
 | 115 | **Group-2 format-$2 frames identify the trapping instruction** — divide-by-zero, CHK/CHK2, TRAPcc/TRAPV and FTRAPcc keep the next resume PC but stack `reg.pc0` as IA on 020/030/040, superseding D12's retained oracle policy. Address-error and trace frame producers are untouched | `MoiraExceptions_cpp.h` | [B] MC68030UM-1989 Table 8-7 (checked PDF p. 432); MC68040UM-1993 §8.4.3 (checked PDF p. 235) | `moira_rules_test` (`group2InstructionAddress`, 118 trap/RTE/next-NOP cases; 118 old-core failures); 286 scoped IA rules preserve whole-vector comparison, and `sst_known_contract_test` rejects unrelated state changes and stale rules |
 | 116 | **Odd instruction-flow targets honour `MOIRA_EMULATE_ADDRESS_ERROR`** — the 20 68030/68040 odd-target checks (BRA/Bcc/BSR, DBcc, JMP, RTD/RTE/RTR/RTS, FBcc/FDBcc) go through `oddFlowTarget()`, gated like `misaligned()`, and `mmuCheckOddPc`, which nothing called, is removed; `MOIRA_PRECISE_TIMING`, `MOIRA_EMULATE_ADDRESS_ERROR` and `MOIRA_MIMIC_MUSASHI` become `#ifndef` so a build can choose upstream's settings | `MoiraDataflow.h`, `MoiraExec_cpp.h`, `MoiraExecFPU_cpp.h`, `MoiraExceptions_cpp.h`, `MoiraConfig.h` | the checks had been added outside `misaligned()` and fired with the setting off, so the core under upstream's configuration (the one upstream's Runner uses) took vector 3 where upstream does not. With the setting on, as POM68K builds it, nothing changes | `moira_upstream_config_test` (upstream settings; fails on the core before this row for 68030, 68LC040, 68040), `moira_pom68k_config_test` |
+| 117 | **A JSR to an odd target faults at the next opcode fetch** — `mmuExecuteStart` (68030) and `mmu040InstrStart` (68040) take vector 3 when the pc they are about to fetch is odd, stacked PC and fault address the odd pc, gated by `oddFlowTarget()` | `MoiraExecMMU_cpp.h` | `execJsr` retires at an odd target and defers the fault to the next fetch ([B] MC68030UM-1989 § 8.1.3, [D] WinUAE @ Hatari e77819f7), the only flow instruction that does; no fetch raised it with translation off, so the core read and executed the odd stream as unaligned words | `jit_program_fuzz_040_test` (seed 21450, interpreter against translator); the CPU conformance set (`sst*`, `moira_*`, `cpu_vectors*`, `berr*`) unchanged |
+| 118 | **The 68040 frame latches that outlive an instruction travel in a save state** — `pomVisitState` carries `mmu040Move16[4]` (PD0-PD3) and `mmu040Wb2Address` (WB2A); host format v33 | `MoiraState.h` | both are rewritten only by a MOVE16 (its line read, its write fault) yet stacked by every later format-$7 frame, so a restored machine stacked zeros where the saved one stacked the old line | `moira_state_test` (frameLatches040), `jit_program_fuzz_040_ext_test` (`--savestate`) |
 
 Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54, 56, 59-75 and 79-86 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
 when nothing arms them); rows 48 and 55 are performance alone, with no architectural effect. Row 58 is evidence documentation only. The ten files carrying no `POM68K` marker at all —
@@ -1770,7 +1772,7 @@ accounting at all.
     tracer, split three ways: `baseCycles` (handler, data bus included),
     `icacheCycles` (the `PomIcache` overlay's contribution, excluded from
     the base) and `postExceptionCycles` (exception/trace work after the
-    handler stopped). Read by `JitEngine.cpp:924-947` when it decides what a
+    handler stopped). Read by `JitEngine.cpp:970-993` when it decides what a
     compiled block owes `pomJitSync`. The struct has since grown the traced
     instruction's `fetchWords` (the `PomIcache` fetch delta) and, for the
     68040, where its IPL polls sat relative to its data accesses

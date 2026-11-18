@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 829 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 830 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 25 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 44 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 167 |
+| [Cross-cutting](#cross-cutting) | 168 |
 
 ---
 
@@ -891,4 +891,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-16 (ninth)** — [Standalone corpus replay keeps the repository's RAM checks](CHANGELOG.md#2026-11-16-release-strict-ram)
 - **2026-11-17 (fourth)** — [Everything the fork wrote ships under MIT](CHANGELOG.md#2026-11-17-mit-release)
 - **2026-11-17 (second)** — [Format-2 traps retain the instruction that caused them](CHANGELOG.md#2026-11-17-group2-instruction-address)
+- **2026-11-18 (second)** — [A random-program fuzzer finds six interpreter/translator/save-state defects](CHANGELOG.md#2026-11-18-program-fuzz)
 

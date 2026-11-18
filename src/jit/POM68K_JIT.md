@@ -162,7 +162,7 @@ what it does and does not drive today:
 The per-opcode question is **not** a block boundary: `Backend::canEmit()` is
 an encoding-only answer — consulted by the opcode census
 (`POM68K_JIT_HISTO`), by `jit_backend_test`, and by `A64Backend::compile()`
-as the dispatch test in front of `emitRegInstr` (`JitBackendA64.cpp:4851-4853`;
+as the dispatch test in front of `emitRegInstr` (`JitBackendA64.cpp:4875-4877`;
 the x64 emitters carry their own switch and never call it). The coverage
 floor is a separate thing and is not built on it: `compile()` counts what
 the emitter actually produced and refuses a block below
@@ -1285,7 +1285,7 @@ six across the two — exist because each covers something the others cannot:
 | `jit_lockstep_x64_test` | the code generator at 256 cycles per comparison — long blocks, and a loop closing on itself entirely inside generated code |
 | `jit_lockstep_x64_fine_test` | the code generator at one cycle per comparison |
 | `jit_lockstep_noaccess_test` | x64 + the conservative data path (`POM68K_JIT_ACCESS_THUNK=0`) |
-| `jit_lockstep_a64_coarse_test` | the arm64 generator at 50 cycles per comparison, 5 M comparisons — **AArch64 hosts only** (`cmake/Pom68kJitGates.cmake:312-317`), which is also why it is the one smoke gate an x86-64 developer never sees |
+| `jit_lockstep_a64_coarse_test` | the arm64 generator at 50 cycles per comparison, 5 M comparisons — **AArch64 hosts only** (`cmake/Pom68kJitGates.cmake:371-376`), which is also why it is the one smoke gate an x86-64 developer never sees |
 
 **The oracle corpora, through the translator.** Every pinned SST corpus
 also replays through the engine: `sst68030_jit`/`sst68040_jit`
@@ -1574,9 +1574,9 @@ forms still replay. § 8 lists the admitted transactions and their refusals.
 > **The 68k seam below the backends is no longer 040-only, and the scope
 > box is now the only thing holding the line.** `pomJitProbeData` grew an
 > 030 branch (data-space fc, write-protect and owed-M-bit refusals,
-> `MoiraExecMMU_cpp.h:2661-2736`) and `pomJitReadData`/`pomJitWriteData`
+> `MoiraExecMMU_cpp.h:2413-2488`) and `pomJitReadData`/`pomJitWriteData`
 > reach `mmuRead`/`mmuWrite` on an 030 instead of `mmu040Read`/`Write`
-> (`MoiraExecMMU_cpp.h:2506-2528`, `MoiraExecMMU_cpp.h:2933-2955`). `jit_lockstep_030_test` gives the family the
+> (`MoiraExecMMU_cpp.h:2506-2528`, `MoiraExecMMU_cpp.h:2528-2550`). `jit_lockstep_030_test` gives the family the
 > differential coverage it lacked. The emitters' side of the 030 contract
 > is lockstep-proved since 2026-08-18 — generated 030 code is reachable by
 > an explicit `POM68K_JIT_BACKEND=x64|a64`, no unsafe override — and since

@@ -60,15 +60,21 @@ jit::MemoryHooks hooks(Cpu* cpu)
 {
     jit::MemoryHooks h;
     h.self = cpu;
+    // The bus mirrors its RAM (read8/write8 mask the address); the direct
+    // views must not, or a store through a mirror reaches translated code
+    // behind a DTLB entry whose code mask describes the mirror page — the
+    // engine only learns of aliases through MemoryHooks::aliasCodeMask
+    // (tests/jit_program_fuzz.cpp found it, CHANGELOG 2026-11-18 (second)).
+    // Above the RAM every access goes through the map and the guard.
     h.codeSpan = [](void* s, uint32_t p, uint32_t& len) -> const uint8_t* {
         auto& c = *static_cast<Cpu*>(s);
-        p &= uint32_t(c.mem.size() - 1);
+        if (p >= c.mem.size()) { len = 0; return nullptr; }
         len = uint32_t(c.mem.size()) - p;
         return c.mem.data() + p;
     };
     h.dataSpan = [](void* s, uint32_t p, uint32_t& len, int) -> uint8_t* {
         auto& c = *static_cast<Cpu*>(s);
-        p &= uint32_t(c.mem.size() - 1);
+        if (p >= c.mem.size()) { len = 0; return nullptr; }
         len = uint32_t(c.mem.size()) - p;
         return c.mem.data() + p;
     };

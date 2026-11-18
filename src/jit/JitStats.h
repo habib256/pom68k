@@ -80,6 +80,8 @@ enum class Flush : int {
                       // could not localise (`CodeGuard::mustFlush`)
     Deferred,         // a flush requested while the backend was mid-replay
     CodeCapacity,     // generated-code bump allocator filled; recycle cache
+    Cache040Mode,     // CACR changed while the architectural 040 caches are
+                      // modelled: blocks compiled before it may not run after
     Count
 };
 
@@ -90,6 +92,7 @@ inline const char* flushName(Flush f) {
         case Flush::Guard:     return "write into code";
         case Flush::Deferred:  return "deferred";
         case Flush::CodeCapacity: return "code cache full";
+        case Flush::Cache040Mode: return "040 cache mode";
         default:               return "?";
     }
 }

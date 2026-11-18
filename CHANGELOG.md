@@ -602,6 +602,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-18 (second) — A random-program fuzzer finds six interpreter/translator/save-state defects](#2026-11-18-program-fuzz)
 - [2026-11-18 — The fork builds and behaves under upstream Moira's settings](#2026-11-18-upstream-config)
 - [2026-11-17 (fourth) — Everything the fork wrote ships under MIT](#2026-11-17-mit-release)
 - [2026-11-17 (third) — A Moira release cut for Dirk Hoffmann, every gate executed](#2026-11-17-release-for-dirk)
@@ -1388,6 +1389,135 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-18-program-fuzz"></a>
+## 2026-11-18 (second) — A random-program fuzzer finds six interpreter/translator/save-state defects
+
+The SST replays judge the translator one oracle vector at a time. A new
+asset-free harness, `tests/jit_program_fuzz.cpp`, judges what no vector
+reaches: a random program of ~48 instructions (ALU, shifts, bit and
+bit-field operations, MOVEM, MUL/DIV, BCD, Bcc/DBcc/Scc, CCR moves, LINK,
+3 % raw words) looped for a random number of laps in a flat 16 MB bus,
+every vector pointing at the loop head. The interpreter and the engine run
+to the same random slice targets; registers, clock, queue and the whole bus
+must agree after each. `--shrink` (NOP out instructions while a divergence
+remains), `--bisect` (smallest diverging single-slice target), `--trace`,
+`--watch-jit` and a SIGSEGV/SIGTERM handler that prints lr, the host code
+before it and the dispatch ring made each finding a two-instruction case.
+`--smc` points A0–A3 into the program so stores rewrite translated code.
+
+Defects, all fixed:
+
+1. **A trace that rewrites its own footprint was cached** (engine, both
+   backends; 68040 seed 1072). `record()` keeps the opcodes it peeked but
+   copies `ir.code` from memory after the trace; a store during the trace
+   into the block's bytes is invisible to the write guard (the block is not
+   marked yet). The block mixed old opcodes with new operands. The tracer
+   now snapshots the words before each traced instruction and refuses the
+   block when its footprint `[pc, at + 4)` changed (a word the window no
+   longer covers is skipped: that block gets no `ir.code` and is never
+   compiled anyway).
+2. **TST #imm.B/.W set N to $FF on a64** (seed 3476; SR read $27F8).
+   The shared decoder sign-extends byte/word immediates; the unpacked
+   `emitNz` shifted instead of isolating the sign bit. It now uses UBFX, as
+   the packed path already did.
+3. **A link-table slot read as empty matched a real key** (engine, both
+   backends; seed 19257: host SIGSEGV on a64). `kNoLink` = $FFFFFFFF is
+   the tag of a supervisor block at $FFFFFFFE; the emitted compare matched
+   and jumped to the null entry. Every 32-bit value is some `pc|super`, so
+   the empty tag is now per slot, `noLink(idx)`: bits 1..18 the complement
+   of the index, which no key that maps to that slot can carry. The emitted
+   compare is unchanged.
+4. **JSR to an odd target ran the odd stream** (interpreter, 68030 and
+   68040; seed 21450). Every other flow instruction checks its target;
+   `execJsr` retires at the odd pc and leaves the fault to the next opcode
+   fetch ([B] MC68030UM-1989 § 8.1.3, [D] WinUAE @ Hatari e77819f7), but no
+   fetch raised it with translation off: the core read unaligned words and
+   executed them, and the translator read them differently. The loop heads
+   (`mmuExecuteStart`, `mmu040InstrStart`) now take vector 3 there, stacked
+   PC and fault address the odd pc, gated by `oddFlowTarget()`. The CPU
+   conformance set (`sst*`, `moira_*`, `cpu_vectors*`, `berr*`, `callm`,
+   FPU, `cache040`) stays 50 / 50.
+5. **An a64 exact-thunk store ran on past a tripped guard** (68030 `--smc`
+   seed 1324, `POM68K_JIT_PROFIT_SCORE=0`). After `pom68kJitWrite` the
+   block continued, and linked blocks after it, on bytes the store had just
+   rewritten; x64 already tests `kFGuard` there. a64 now zeroes x20 (the
+   callee-saved clock target) so the next instruction entry exits at a clean
+   boundary. Removing the test makes seed 1324 diverge again.
+
+6. **A save state dropped two 68040 frame latches** (`--savestate`,
+   68040 seed 362 with `--mmu --ext --fpu --smc --irq-timed`). The MOVE16
+   line buffer (PD0-PD3, rewritten only by the next MOVE16) and WB2A
+   (rewritten only by a MOVE16 write fault) outlive their instruction and
+   are stacked by every later format-$7 frame; `pomVisitState` did not carry
+   them, so the first access error after a load stacked zeros where the
+   unsaved machine stacked the old line. Save-state format v33;
+   `moira_state_test` frameLatches040.
+
+Later modes, each a gate or a sweep: `--fpu` (68040 integrated FPU, 68882
+on the 68030; FP registers, FPCR/FPSR/FPIAR compared), `--ext` (BSR/JSR
+to a real RTS/RTD subroutine, TRAPcc/TRAPV/TRAP, CMP2/CHK2, CAS,
+PACK/UNPK, MOVEP, NBCD, MOVE16, LINK.L, MOVEC CACR cache enables),
+`--irq` and `--irq-timed` (IPL raised and dropped at guest-clock
+deadlines through `sync()` and `Engine::setPeriphDeadline`, i.e. inside
+generated blocks, as the board wrappers do), `--savestate` (the translated
+side continues on a fresh core and engine reloaded through
+`pomVisitState`), `--dcache` (the opt-in architectural 68040 caches; every
+cache line, dirty mask and replacement counter compared) and `--mmu`
+(identity translation through real tables: 68030 two-level 4 KB pages or a
+1 MB early-termination descriptor, 68040 three-level 4 KB pages; PFLUSHA
+under `--ext`). `--model 0|20` drive the threaded block path for the
+68000 and 68020.
+
+With `--dcache` the translator is clean only under the board wrappers'
+contract: every 68040 wrapper drops the whole JIT on a CACR write
+(`Cpu040::didChangeCACR`), and without that drop (`FUZZ_CACR_FLUSH=0`) a
+block compiled before `MOVEC D0,CACR` enabled the D-cache pushes a JSR
+return address outside the copyback line the next RTS reads (seeds 6822,
+4863, 8743; 106 and 959 with `--mmu`). The harness honours the contract
+by default; the engine no longer needs it: with the cache model armed,
+`executeUntil` compares CACR with the value its blocks were compiled under
+and drops them on a change (`Flush::Cache040Mode`; MOVEC always ends its
+block, so the change is seen before any block runs again). Gate
+`jit_program_fuzz_040_dcache_cacr_test` runs with `FUZZ_CACR_FLUSH=0`.
+One seed still needs the wrappers' drop on EVERY CACR write, same value
+included (959 with `--mmu`: the D-cache replacement counter differs); it is
+a `TODO.md` line (› Justesse 68040).
+
+One harness finding is not an engine defect and is recorded so the next
+harness does not repeat it: a bus that MIRRORS memory must declare the
+alias through `MemoryHooks::aliasCodeMask` or refuse direct views beyond
+the mirror. The first harness mirrored 16 MB in `dataSpan`, and a store at
+$FF040044 reached code at $040044 through a DTLB entry whose code mask
+describes page $FF040 (seed 82). `tests/SstJitLockstep.h` mirrored the same
+way; its views now stop at the RAM too.
+
+Sweeps after the fixes, a64: 60 000 seeds 68040 and 30 000 68030 (profit
+score on: 0.7 % native); 5 000 68030 with profit score off; 13 000
+`--smc` per model; 10 000 `--fpu` per model; 16 000 `--irq-timed` per
+model (6.9 M interrupts, identical counts on both sides); 15 000
+`--ext --fpu --irq-timed` per model; 17 000 `--dcache` — all clean. Gates:
+`jit_program_fuzz_{040,030}_test`, `_{040,030}_smc_test`,
+`_{040,030}_ext_test` (`--ext --fpu --irq-timed --savestate`) and
+`_040_dcache_test`, 250–400 seeds each plus the regression seeds, 3–6 s.
+
+Verification. a64: `asset-none|jit` 214 / 214 once `STATUS.md`, the size
+ceilings and two citations were refreshed (`ltoudp_test`, UDP multicast
+between two local sockets, failed three runs in a row around 17:50 and
+passes on this tree and on HEAD since: host network state), CPU conformance set
+50 / 50, save-state gates 11 / 11. `m030|m040` on the final tree: 244 / 244
+without the two RARP etalons, 244 executed and 0 soft-skipped; the two
+RARP etalons then run one after the other, 2 / 2 (172 s, 185 s); then
+`asset-none|jit` outside `m030|m040`, 187 / 187. An earlier
+run with them was 244 / 246: `q605_dayna_rarp_etalon` and
+`q605_dayna_rarp_network_etalon`, started side by side, were red; this
+tree's binary passes the first alone in 191 s, as HEAD does in 176 s (a
+`TODO.md` line names the shared resource to find). x86-64 under Rosetta: the seven
+fuzz gates and `moira_state_test` pass; 8 000 seeds per model and 2 000
+per model with `--ext --fpu --smc --irq-timed --savestate --mmu` are
+clean. The one x64 pass before the fixes (2 000 seeds) failed on seeds 82
+(the mirrored-view harness) and 55 (68030, not triaged); both pass on the
+fixed harness and engine.
 
 <a id="2026-11-18-upstream-config"></a>
 ## 2026-11-18 — The fork builds and behaves under upstream Moira's settings

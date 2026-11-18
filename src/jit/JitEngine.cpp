@@ -129,11 +129,14 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily,
         config_.dataWindow = true;
     windowKill_ = killCountdown_ = config_.windowKill;
     armBackoff_steps_ = config_.armBackoff;
-    // The virgin table must read as EMPTY (kNoLink), not as value-zero:
+    // The virgin table must read as EMPTY (noLink), not as value-zero:
     // tag 0 is a legal user-mode pc-0 key. The old whole-table clearLinks
     // established this on the first flush; the lazy clear never sweeps the
     // full table, so establish it once here.
-    for (LinkSlot& sl : linkTable_) { sl.tag = kNoLink; sl.entry = nullptr; }
+    for (uint32_t idx = 0; idx < kLinkSlots; idx++) {
+        linkTable_[idx].tag = noLink(idx);
+        linkTable_[idx].entry = nullptr;
+    }
     dispatchRingOn_ = config_.dispatchRing;
     if (dispatchRingOn_) dispatchEv_.resize(kDispatchRing);
     ctx_.cpu = &cpu_;
@@ -884,6 +887,19 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
     uint32_t retired = 0;
     EndReason why = EndReason::LengthLimit;
 
+    // The instruction words as they stood BEFORE each traced instruction
+    // ran. The IR keeps the opcode the tracer peeked, but `ir.code` (the
+    // extension words and the prefetch tail) is copied from memory only
+    // after the whole trace — and a store made DURING the trace into the
+    // block's own footprint is invisible to the write guard, because the
+    // block is not marked until it is recorded. Such a block mixes old
+    // opcodes with new operands and is replayed against bytes the
+    // interpreter no longer runs. Found by tests/jit_program_fuzz.cpp
+    // (68040, seed 1072: SUBQ.L into the MOVEA.L #imm three instructions
+    // back, PC diverged on the next lap). The block is not cached; the
+    // next visit traces again.
+    traceWords_.clear();
+
     running_ = true;
     for (int i = 0; i < maxInstrs_; i++) {
 
@@ -932,6 +948,10 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
         // The interpreter's own cycle count for this instruction, recorded
         // rather than modelled: a backend has to agree with it before it may
         // emit the instruction (JitIr.h, Instr::cycles).
+        for (uint32_t w = at; w < at + 22; w += 2) {
+            if (!cpu_.pomJitCovers(w)) break;
+            traceWords_.push_back({ w, cpu_.pomJitPeek(w) });
+        }
         const int64_t clk0 = cpu_.getClock();
         cpu_.pomJitBeginTiming();
         const bool didRetire = cpu_.pomJitExecOne();
@@ -1072,6 +1092,22 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
     // A flush requested from inside the trace was deferred; the block we
     // just recorded belongs to the world that flush is throwing away.
     if (pendingFlush_) { flushAll(Flush::Deferred); return nullptr; }
+
+    // The trace rewrote its own footprint (see traceWords_ above): the
+    // bytes `ir.code` copies below, [pc, at + 4). A store beside the block
+    // changes nothing it was translated from. A word the window no longer
+    // covers is skipped, not refused: the copy below then leaves `code`
+    // empty, no generator compiles the block, and refusing it would only
+    // retrace it on every visit.
+    for (const auto& [w, word] : traceWords_) {
+        if (w < pc || w >= at + 4 || !cpu_.pomJitCovers(w)) continue;
+        if (cpu_.pomJitPeek(w) != word) {
+            stats_.bump(Exit::NotCompilable);
+            if (versionedEntry)
+                shiftVersions_.prune(cacheKey, blocks_.contains(baseKey));
+            return nullptr;
+        }
+    }
 
     ir.endReason = why;
 
@@ -1366,6 +1402,25 @@ void Engine::executeUntil(int64_t clockTarget) {
             clearLinks();
             blocksGen_ = cpu_.pomJitMmuGen;
             stats_.bump(Flush::MmuGen);
+        }
+
+        // With the architectural 040 caches modelled, a block compiled
+        // under one CACR must not run under another: one compiled before
+        // MOVEC enabled the D-cache pushed a JSR return address beside the
+        // copyback line the next RTS read (tests/jit_program_fuzz.cpp
+        // --dcache --ext FUZZ_CACR_FLUSH=0, seeds 4863, 6822, 8743). Every
+        // 040 board wrapper already drops the JIT on a CACR write
+        // (Cpu040::didChangeCACR); this makes the engine correct without
+        // that courtesy. MOVEC ends its block, so the change is always seen
+        // here before any block runs again. Cache model off: one predicted
+        // branch.
+        if (cpu_.pomCache040Active()) [[unlikely]] {
+            const uint32_t cacr = cpu_.getCACR();
+            if (cacr != cacr040Seen_) {
+                cacr040Seen_ = cacr;
+                flushAll(Flush::Cache040Mode);
+                continue;
+            }
         }
 
         Block* bp = dispatchCache_.lookup(key(pc, super), blocksGen_);

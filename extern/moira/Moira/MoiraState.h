@@ -87,6 +87,16 @@ template<class Ar> void Moira::pomVisitState(Ar& ar)
     ar(mmu040MovemArmed, movemEa);
     if constexpr (Ar::loading) mmu040MovemEa = movemEa;
 
+    // 68040 access-error frame latches that outlive their instruction:
+    // the MOVE16 line buffer (PD0-PD3, rewritten only by the next MOVE16)
+    // and WB2A (rewritten only by a MOVE16 write fault). Every later
+    // format-$7 frame stacks them. Format v33: a v32 load left them zero,
+    // and the first access error after it stacked a frame the unsaved
+    // machine would not have (tests/jit_program_fuzz.cpp --savestate, 68040
+    // seed 362; moira_state_test frameLatches040).
+    for (auto& w : mmu040Move16) ar(w);
+    ar(mmu040Wb2Address);
+
     if constexpr (Ar::loading) {
         cp = 0;                  // not carried; the next instruction
                                  // would zero it anyway (see above)

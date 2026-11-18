@@ -35,6 +35,7 @@
 #include <memory>
 #include <vector>
 #include <unordered_map>
+#include <utility>
 
 namespace moira { class Moira; }
 
@@ -279,7 +280,7 @@ private:
     // even, so the privilege bit rides in bit 0 for free and a user-mode
     // and a supervisor block at one address cannot be confused.
     struct LinkSlot {
-        uint32_t tag;                  // pc | super, or kNoLink
+        uint32_t tag;                  // pc | super, or noLink(slot)
         uint32_t pad;
         void*    entry;
     };
@@ -289,8 +290,18 @@ private:
     // for one slot. 256k slots cost 4 MiB per CPU, sharply reduce those
     // collisions and keep the O(1), non-dangling invalidation model.
     static constexpr uint32_t kLinkSlots = 262144;
-    static constexpr uint32_t kNoLink = 0xFFFFFFFF;
     static uint32_t linkIndex(uint32_t pc) { return (pc >> 1) & (kLinkSlots - 1); }
+    // The EMPTY tag of slot `idx`. Every 32-bit value is some pc|super
+    // (pc even, any of 2^31 values; bit 0 the privilege), so no single
+    // constant can mean "empty": the old 0xFFFFFFFF was exactly the key of
+    // a supervisor block at $FFFFFFFE, and generated code that matched it
+    // jumped to the slot's null entry — a host SIGSEGV on a64 from a guest
+    // that merely branched there (tests/jit_program_fuzz.cpp, 68040 seed
+    // 19257). A key can only land in the slot its bits 1..18 select, so an
+    // empty tag whose bits 1..18 are the complement of the index matches
+    // no key that can ever be looked up in that slot. The emitters'
+    // compare-and-jump stays one compare.
+    static uint32_t noLink(uint32_t idx) { return (~idx & (kLinkSlots - 1)) << 1; }
 
     struct LinkCell {
         void* entry = nullptr;          // generated code loads this at +0
@@ -311,7 +322,7 @@ private:
         // flushes per 2000-frame LC II boot made that 3.3 % of the run in
         // __memset_avx2 (callgrind, 2026-08-19) for slots that were ~99.9 %
         // already empty.
-        if (s.tag == kNoLink) published_.push_back(linkIndex(pc));
+        if (s.tag == noLink(linkIndex(pc))) published_.push_back(linkIndex(pc));
         s.tag = pc | uint32_t(super);
         s.entry = entry;
         if (auto it = linkCells_.find(key(pc, super)); it != linkCells_.end()) {
@@ -329,13 +340,13 @@ private:
     // some other block took the slot and this one was already unreachable.
     void retractLink(uint32_t pc, bool super) {
         LinkSlot& s = linkTable_[linkIndex(pc)];
-        if (s.tag == (pc | uint32_t(super))) { s.tag = kNoLink; s.entry = nullptr; }
+        if (s.tag == (pc | uint32_t(super))) { s.tag = noLink(linkIndex(pc)); s.entry = nullptr; }
         if (auto it = linkCells_.find(key(pc, super)); it != linkCells_.end())
             it->second->entry = nullptr;
     }
     void clearLinks() {
         for (uint32_t idx : published_) {
-            linkTable_[idx].tag = kNoLink;
+            linkTable_[idx].tag = noLink(idx);
             linkTable_[idx].entry = nullptr;
         }
         published_.clear();
@@ -482,6 +493,12 @@ private:
     // there would pull the BlockIr out from under the replay loop.
     bool running_ = false;
     bool pendingFlush_ = false;
+    // record(): instruction words peeked before each traced instruction
+    // ran, checked against memory before the block is kept (JitEngine.cpp).
+    std::vector<std::pair<uint32_t, uint16_t>> traceWords_;
+    // executeUntil(): the CACR the cached blocks were compiled under while
+    // the architectural 040 caches are modelled (Flush::Cache040Mode).
+    uint32_t cacr040Seen_ = 0xFFFFFFFF;
     // Moira::pomJitMmuGen the cached blocks were recorded under. A recorded
     // block is a script of LOGICAL addresses and does not survive a change
     // of translation.

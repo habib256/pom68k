@@ -529,6 +529,15 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   une lecture servie par le cache et une écriture qui invalide. Le chemin
   commun NC invalide aujourd'hui le hit de lecture et pousse les anciennes
   données avant la réécriture. Les tests de faute MOVE16 couvrent les misses.
+- [ ] **Aligner le compteur de remplacement du D-cache 040 entre JIT et
+  interprète sous MMU quand CACR alterne.** `tests/jit_program_fuzz.cpp
+  --model 40 --mmu --dcache --ext --smc --savestate --slices 12 --first 959
+  --seeds 1` avec `FUZZ_CACR_FLUSH=0` : `rot` du D-cache diffère (0 contre
+  1) après dix instructions (MOVEC CACR $8000 puis $80000000 à chaque
+  tour, LINK/UNLK, ORI.W en mémoire, CMPA.L indexé). Le vidage du JIT que
+  font les cartes 040 à chaque écriture de CACR, même de même valeur, le
+  masque ; `Flush::Cache040Mode` (au changement de valeur seulement) ne le
+  masque pas. Le mode cache reste optionnel (`POM68K_040_DCACHE`).
 - [ ] **Décider l'hybride 68LC040 + 68882 logiciel.** Défaut produit des
   LC 475/575/580 et Centris 610/650, combinaison qui n'existe pas en
   matériel ; un vrai `NONE` boote déjà le Quadra 605
@@ -806,6 +815,15 @@ complet publié par la CI sur un runner à assets ; version 0.3.
   Le reste est couvert par `gui_windows_test`, `gui_relaunch_smoke_test`,
   `q605_afp_rename_etalon` et `q605_dayna_driver_etalon` (`CHANGELOG`
   2026-09-16/17).
+- [ ] **Isoler les étalons DaynaPort concurrents.** Dans `-L "m030|m040"
+  -j5` du 2026-11-18, `q605_dayna_rarp_etalon` et
+  `q605_dayna_rarp_network_etalon`, lancés côte à côte, sont rouges
+  (« RARP automatic mode=0, requests=0 ») ; le même binaire passe seul
+  avec ses assets (191 s), et HEAD aussi (176 s). Chaque mode a déjà son
+  clone de disque et son dossier de partage : la ressource partagée reste
+  à nommer (sockets hôtes ? `run/` ?) avant de poser un `RESOURCE_LOCK`
+  sur les quatre registrations, comme `afp_live_share`. Même classe que
+  la ligne de `STATUS.md` du 2026-09-16 (rouge sous `-j8`, vert seul).
 - [ ] **Étendre l'oracle invité différentiel aux profils restants.**
   Seize machines ont leur gate `<profil>_prober_oracle_etalon` (Mac II,
   LC, LC II, LC III, LC 475/580, Quadra 605/610/650/630/700/800/900/950,

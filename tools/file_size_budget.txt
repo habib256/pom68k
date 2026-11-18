@@ -18,7 +18,7 @@ cmake/Pom68kDevTools.cmake               161
 cmake/Pom68kFloppyGates.cmake            19
 cmake/Pom68kGatePolicy.cmake             416
 cmake/Pom68kInterpGates.cmake             53
-cmake/Pom68kJitGates.cmake               649
+cmake/Pom68kJitGates.cmake               708
 cmake/Pom68kLlapGates.cmake              13
 cmake/Pom68kMachineGates.cmake           1082
 cmake/Pom68kMoofGates.cmake              33
@@ -43,10 +43,10 @@ src/GuiRunnerV8.h                        256
 src/GuiShell.cpp                         95
 src/GuiShellCommon.h                     135
 src/GuiTobyStatus.h                      41
-src/jit/backends/JitBackendA64.cpp       5212
+src/jit/backends/JitBackendA64.cpp       5236
 src/jit/backends/JitBackendX64.cpp       5656
 src/jit/JitConfig.h                      573
-src/jit/JitEngine.cpp                    1632
+src/jit/JitEngine.cpp                    1687
 src/jit/JitIr.h                          2229
 src/main.cpp                             41
 src/PlatformCompact.cpp                  162

@@ -199,6 +199,20 @@ void hostState() {
           "host: inactive saved latch clears an armed destination");
 }
 
+// The MOVE16 line buffer and WB2A survive their instruction and are stacked
+// by every later 68040 access-error frame (PD0-PD3, WB2A): a snapshot must
+// carry them (format v33; tests/jit_program_fuzz.cpp --savestate seed 362).
+void frameLatches040() {
+    Cpu src(moira::Model::M68LC040), dst(moira::Model::M68LC040);
+    src.start(); dst.start();
+    for (int i = 0; i < 4; i++) src.mmu040Move16[i] = 0x11111111u * moira::u32(i + 1);
+    src.mmu040Wb2Address = 0x00abcdef;
+    restore(src, dst);
+    bool same = dst.mmu040Wb2Address == 0x00abcdef;
+    for (int i = 0; i < 4; i++) same &= dst.mmu040Move16[i] == src.mmu040Move16[i];
+    check(same, "frame040: MOVE16 buffer and WB2A round-trip");
+}
+
 void cache040State(moira::Model model, unsigned disabled) {
     Cpu direct(model);
     direct.program(0x1000, {0x7001, 0x7002, 0x4E71, 0x4E71});
@@ -286,6 +300,7 @@ void invalidCacheLinesAreNotState() {
 int main() {
     pending68882(); clearedDf030(); pipe030(); frame040(false); frame040(true);
     hostState();
+    frameLatches040();
     movem040();
     for (auto model : {moira::Model::M68LC040, moira::Model::M68040})
         for (unsigned disabled = 0; disabled < 3; ++disabled)

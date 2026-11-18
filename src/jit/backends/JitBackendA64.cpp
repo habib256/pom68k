@@ -993,8 +993,12 @@ void emitNz(Asm& a, const Layout& L, unsigned result, int bits) {
         setPackedCcrBits(a, 12, 0x0C);
         return;
     }
-    // The result is already masked to its guest width.
-    a.lsrW(12, result, unsigned(bits - 1));
+    // Isolate the sign bit, as the packed form above does. A plain LSR
+    // trusted the caller to have masked the result to its guest width, and
+    // TST #imm.B/.W hands over the shared decoder's sign-extended
+    // immediate: N became $FF and SR read back $27F8 for TST.W #$A48E
+    // (tests/jit_program_fuzz.cpp, 68040 seed 3476).
+    a.ubfxW(12, result, unsigned(bits - 1), 1);
     a.strB(12, 0, L.srN);
     a.cmpWZero(result);
     a.csetW(12, Asm::EQ);
@@ -2006,6 +2010,26 @@ void memStoreGuest(Asm& a, const Layout& L, bool super, int bits, unsigned rs,
     a.b(slow);
     a.bind(ok);
     markRuntimeReason(a, RuntimeOther); // handled MMIO was not the fallback
+    // The memory map performed this store (the 68030 exact thunk), so it
+    // may have landed on bytes of translated code: a store into a slice
+    // holding code takes this path (guardCodeSlices). Nothing compiled
+    // after it — in this block, or in one reached through a published
+    // link — may run on those bytes. The instruction itself completes (its
+    // store has landed and is not replayed), then the next instruction
+    // entry's budget test exits at a clean boundary: x20 is the
+    // callee-saved clock target, restored by the epilogue, and the engine
+    // services the guard on return. x64 exits from the same place
+    // (JitBackendX64.cpp, the kFGuard test after pom68kJitWrite). Found by
+    // tests/jit_program_fuzz.cpp --smc (68030, POM68K_JIT_PROFIT_SCORE=0,
+    // seed 1324: D1 diverged when this test was removed).
+    {
+        const int clean = a.label();
+        a.ldrX(14, 1, 32);              // guardHit
+        a.ldrB(9, 14, 0);
+        a.cbzW(9, clean);
+        a.movX(20, 0);
+        a.bind(clean);
+    }
     a.ldrW(rs, 1, 72);
     a.bind(done);
 }

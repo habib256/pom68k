@@ -69,6 +69,65 @@ function(pom68k_perf_budget target workload cpu_family metric macro)
         "${macro}=${value}")
 endfunction()
 
+# Random multi-instruction programs, interpreter against translator
+# (tests/jit_program_fuzz.cpp): blocks, links, loop laps, random slice
+# boundaries, exceptions inside generated code and self-modifying stores,
+# none of which a one-instruction SST vector reaches. The gates run a fixed
+# seed range plus the seeds that found the 2026-11-18 defects (trace that
+# rewrites its own footprint, TST #imm sign bit on a64, the link-table
+# empty tag, JSR to an odd target, the a64 exact-thunk store past a tripped
+# guard). The 68030 arms disable the a64 profit
+# score: under it a64 compiles almost none of this code (0.8 % native), and
+# the gate would judge the interpreter against itself.
+add_executable(jit_program_fuzz tests/jit_program_fuzz.cpp)
+target_link_libraries(jit_program_fuzz PRIVATE pom68k_core)
+add_test(NAME jit_program_fuzz_040_test
+         COMMAND jit_program_fuzz --model 40 --seeds 400
+                 --extra 1072,3476,19257,21450)
+add_test(NAME jit_program_fuzz_030_test
+         COMMAND jit_program_fuzz --model 30 --seeds 400)
+# --smc points four address registers into the program: stores rewrite
+# translated code constantly. Seed 1324 (68030) is the a64 exact-thunk
+# store that ran on past a tripped write guard.
+add_test(NAME jit_program_fuzz_040_smc_test
+         COMMAND jit_program_fuzz --model 40 --smc --seeds 300)
+add_test(NAME jit_program_fuzz_030_smc_test
+         COMMAND jit_program_fuzz --model 30 --smc --seeds 300 --extra 1324)
+# --ext --fpu --irq-timed: calls/returns, traps, CAS/CMP2/MOVEP/MOVE16,
+# CACR cache enables, the FPU (68040 integrated, 68882 on the 68030) and
+# interrupt lines raised at guest-clock deadlines inside generated blocks
+# through Engine::setPeriphDeadline, as the board wrappers do; --savestate
+# continues the translated side on a fresh core and engine reloaded through
+# Moira::pomVisitState at random slice boundaries.
+add_test(NAME jit_program_fuzz_040_ext_test
+         COMMAND jit_program_fuzz --model 40 --ext --fpu --irq-timed --savestate
+                 --slices 20 --seeds 250)
+add_test(NAME jit_program_fuzz_030_ext_test
+         COMMAND jit_program_fuzz --model 30 --ext --fpu --irq-timed --savestate
+                 --slices 20 --seeds 250)
+# --dcache: the opt-in architectural 68040 caches (POM68K_040_DCACHE), both
+# on from the first instruction; the comparison adds every cache line.
+add_test(NAME jit_program_fuzz_040_dcache_test
+         COMMAND jit_program_fuzz --model 40 --dcache --ext --smc --savestate
+                 --slices 12 --seeds 250)
+# The same without the board wrappers' JIT drop on CACR writes: the engine
+# must notice a CACR change itself (Flush::Cache040Mode).
+add_test(NAME jit_program_fuzz_040_dcache_cacr_test
+         COMMAND jit_program_fuzz --model 40 --dcache --ext --fpu --smc
+                 --irq-timed --savestate --slices 20 --seeds 200
+                 --extra 4863,6822,8743)
+set_tests_properties(jit_program_fuzz_040_dcache_cacr_test PROPERTIES
+                     ENVIRONMENT "FUZZ_CACR_FLUSH=0")
+set_tests_properties(jit_program_fuzz_040_test jit_program_fuzz_030_test
+                     jit_program_fuzz_040_smc_test jit_program_fuzz_030_smc_test
+                     jit_program_fuzz_040_ext_test jit_program_fuzz_030_ext_test
+                     jit_program_fuzz_040_dcache_test
+                     jit_program_fuzz_040_dcache_cacr_test
+                     PROPERTIES LABELS "jit;unit" TIMEOUT 300)
+set_tests_properties(jit_program_fuzz_030_test jit_program_fuzz_030_smc_test
+                     jit_program_fuzz_030_ext_test
+                     PROPERTIES ENVIRONMENT "POM68K_JIT_PROFIT_SCORE=0")
+
 # Daily native lockstep with no Apple assets: a deterministic flat-RAM
 # 68040 program compares complete architectural boundaries and RAM, then
 # injects both restart and last-write bus faults. `jit-fast` makes native
