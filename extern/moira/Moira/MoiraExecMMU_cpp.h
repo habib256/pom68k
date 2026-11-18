@@ -2634,6 +2634,15 @@ Moira::pomJitJsr040(u32 instructionPc, u32 returnAddress, u32 target,
     reg.pc0 = instructionPc;
     reg.pc = returnAddress;
     queue.ird = opcode;
+    // POM68K: and the lookahead word mmu040InstrStart leaves in irc. The
+    // queue is refetched at every 68040 instruction start, so it shows only
+    // where no instruction follows: a push fault with no stack left for the
+    // frame halts the core, and the halted queue held the previous
+    // instruction's terminal word (tests/jit_program_fuzz.cpp --sys --mmu
+    // --ext --fpu --smc, 68040 seed 3499). Read side-effect free from the
+    // code window the block runs in: a translated read would add an ATC
+    // access the interpreter's own fetch already accounted for.
+    if (pomJitCovers(instructionPc + 2)) queue.irc = pomJitPeek(instructionPc + 2);
 
     try {
         // [D] WinUAE cpuemu_31.c op_4e90 @ Hatari e77819f7 — execJsr's

@@ -54,9 +54,9 @@ pair):
 | | | how to re-measure |
 |---|---|---|
 | distinct `pom*` extension identifiers | **116** (65 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **552** | `grep -rn POM68K Moira/ \| wc -l` |
+| `POM68K`-marked lines | **553** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **17 of 27** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **119** | this file |
+| patch groups in the inventory below | **120** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h`, `MoiraState.h`, `MoiraMmu030Walk.h` | — |
 
 One hundred and sixteen patch groups, two of which (the JIT seam, row 22, and the ATC
@@ -289,6 +289,7 @@ gate in the last column of each row.
 | 117 | **A JSR to an odd target faults at the next opcode fetch** — `mmuExecuteStart` (68030) and `mmu040InstrStart` (68040) take vector 3 when the pc they are about to fetch is odd, stacked PC and fault address the odd pc, gated by `oddFlowTarget()` | `MoiraExecMMU_cpp.h` | `execJsr` retires at an odd target and defers the fault to the next fetch ([B] MC68030UM-1989 § 8.1.3, [D] WinUAE @ Hatari e77819f7), the only flow instruction that does; no fetch raised it with translation off, so the core read and executed the odd stream as unaligned words | `jit_program_fuzz_040_test` (seed 21450, interpreter against translator); the CPU conformance set (`sst*`, `moira_*`, `cpu_vectors*`, `berr*`) unchanged |
 | 118 | **The 68040 frame latches that outlive an instruction travel in a save state** — `pomVisitState` carries `mmu040Move16[4]` (PD0-PD3) and `mmu040Wb2Address` (WB2A); host format v33 | `MoiraState.h` | both are rewritten only by a MOVE16 (its line read, its write fault) yet stacked by every later format-$7 frame, so a restored machine stacked zeros where the saved one stacked the old line | `moira_state_test` (frameLatches040), `jit_program_fuzz_040_ext_test` (`--savestate`) |
 | 119 | **A CACR write retires the published native 040 cache-line entries** — `setCACR` calls `pomJitCache040Bump()` when the cache model is armed and the value changes | `Moira.cpp` | entries are published only while DE=1 (`pomJitCache040Publish`), but one published before a MOVEC cleared DE stayed live, so generated code read the copyback line where the interpreter, D-cache disabled, read memory | `jit_program_fuzz_040_mmu_dcache_test` (seed 959, `FUZZ_CACR_FLUSH=0`) |
+| 120 | **The JIT's 68040 JSR helper leaves the interpreter's instruction-start queue** — `pomJitJsr040` sets `queue.irc` to the word after the opcode, read side-effect free from the code window, as `mmu040InstrStart` leaves it | `MoiraExecMMU_cpp.h` | the 68040 refetches its queue at every instruction start, so the word shows only where none follows: a push fault with no stack for the frame halts the core, and the halted queue held the previous instruction's terminal word | `jit_program_fuzz_040_sys_mmu_test` (seed 3499) |
 
 Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54, 56, 59-75 and 79-86 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
 when nothing arms them); rows 48 and 55 are performance alone, with no architectural effect. Row 58 is evidence documentation only. The ten files carrying no `POM68K` marker at all —

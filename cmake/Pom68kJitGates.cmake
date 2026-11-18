@@ -133,9 +133,15 @@ add_test(NAME jit_program_fuzz_040_sys_test
 add_test(NAME jit_program_fuzz_030_sys_test
          COMMAND jit_program_fuzz --model 30 --sys --mmu --ext --fpu --smc
                  --irq-timed --savestate --slices 20 --seeds 250)
+# Seed 3499: a JSR push fault with no stack left for the frame halts the
+# core; the halted queue must be the one the interpreter would leave.
+add_test(NAME jit_program_fuzz_040_sys_mmu_test
+         COMMAND jit_program_fuzz --model 40 --sys --mmu --ext --fpu --smc
+                 --irq-timed --savestate --slices 20 --seeds 150 --extra 3499)
 set_tests_properties(jit_program_fuzz_030_sys_test PROPERTIES
                      ENVIRONMENT "POM68K_JIT_PROFIT_SCORE=0")
 set_tests_properties(jit_program_fuzz_040_sys_test jit_program_fuzz_030_sys_test
+                     jit_program_fuzz_040_sys_mmu_test
                      PROPERTIES LABELS "jit;unit" TIMEOUT 300)
 set_tests_properties(jit_program_fuzz_040_test jit_program_fuzz_030_test
                      jit_program_fuzz_040_smc_test jit_program_fuzz_030_smc_test

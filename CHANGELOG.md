@@ -604,6 +604,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-18 (fifth) — A halted 68040 keeps the queue the interpreter would leave after a native JSR fault](#2026-11-18-jsr040-queue)
 - [2026-11-18 (fourth) — The trace check must refuse, not skip, a word the window stopped covering](#2026-11-18-trace-privilege)
 - [2026-11-18 (third) — A CACR write that clears DE retires the native 040 cache-line entries](#2026-11-18-cacr-publications)
 - [2026-11-18 (second) — A random-program fuzzer finds six interpreter/translator/save-state defects](#2026-11-18-program-fuzz)
@@ -1394,6 +1395,29 @@ Newest first.
 
 ---
 
+<a id="2026-11-18-jsr040-queue"></a>
+## 2026-11-18 (fifth) — A halted 68040 keeps the queue the interpreter would leave after a native JSR fault
+
+The seed under triage in the (fourth) entry, 68040 3499 (`--sys --mmu --ext
+--fpu --smc`), reduced to three instructions: `SUBI.B` rewrites the high
+word of the prologue's stack address, A7 lands outside the mapped 16 MB, and
+the next `JSR (4,PC)` faults on its push with no stack left for the frame —
+a double fault, both cores halted at the JSR. Their queues differed: IRC
+$0004 (the displacement, what `mmu040InstrStart` leaves) in the
+interpreter, $4EBA in the translator. `Moira::pomJitJsr040`, the helper
+both native backends call, set `queue.ird` but never `queue.irc`; it now
+reads the word after the opcode from the code window (side-effect free: a
+translated read would add an ATC access the interpreter's fetch already
+accounted for). POM68K_VENDOR.md row 120. The 68040 refetches its queue at
+every instruction start, so only a halt exposes it.
+
+Gate `jit_program_fuzz_040_sys_mmu_test` (seed 3499). Sweeps of 5 000
+seeds each — `--sys --mmu --ext --fpu --smc --irq-timed --savestate`,
+`--sys --ext --fpu --smc --dcache`, `--ext --smc --mmu` — clean.
+a64: `asset-none|jit` 191 / 191, CPU conformance and save-state 60 / 60,
+`m040` 100 / 100 (100 executed, 0 soft-skipped) and the two RARP etalons
+2 / 2 in series; x86-64 under Rosetta: the `--sys` gates and the 959 gate.
+
 <a id="2026-11-18-trace-privilege"></a>
 ## 2026-11-18 (fourth) — The trace check must refuse, not skip, a word the window stopped covering
 
@@ -1420,7 +1444,7 @@ derived cache, flushed on load — walked the broken table and faulted
 Gates `jit_program_fuzz_040_sys_test` (seed 2788) and
 `jit_program_fuzz_030_sys_test`. Sweeps: 4 000 seeds per model of
 `--sys --ext --fpu --smc` and of `--sys --mmu --ext --fpu --smc
---irq-timed --savestate`, clean but one 68040 seed (3499) under triage.
+--irq-timed --savestate`, clean but one 68040 seed (3499): see the (fifth) entry.
 
 <a id="2026-11-18-cacr-publications"></a>
 ## 2026-11-18 (third) — A CACR write that clears DE retires the native 040 cache-line entries
