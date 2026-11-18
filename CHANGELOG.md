@@ -1440,7 +1440,9 @@ Same night, the remaining two angles. x86-64 under ASan/UBSan
 (`build-x64-asan`, Rosetta), the x64 emitter's own code: 300-400 seeds per
 model of the plain, `--fpexc --ext --sys --smc`, `--mmu --ext --fpu
 --irq-timed --savestate` and `--dcache --ext --smc --savestate` modes, no
-report. And the threaded backend, the Windows x64 default, on every board
+report; the board lockstep there (Quadra 630, IIci, PowerBook 180, Duo 230,
+SE/30, IIfx; 1 000 000 jittered checkpoints each): identical, no report.
+And the threaded backend, the Windows x64 default, on every board
 (3 000 000 jittered checkpoints): in its default window mode (no block,
 130-520 M window instructions) and with blocks forced, identical, full RAM
 identical. The board lockstep now accepts a translated side that ran in the
