@@ -1,16 +1,17 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// Interpreter against translator on the 68040 boards that have no lockstep
-// of their own: Quadra 630 (F108), Quadra 700 (Spike) and Centris 650
-// (DjMEMC). jit_lockstep_test does this for the Quadra 605 with that
+// Interpreter against translator on the boards that have no lockstep of
+// their own: the 68040 Quadra 630 (F108), Quadra 700 (Spike) and Centris
+// 650 (DjMEMC), and the 68030 Mac IIci (RBV), LC III (Sonora) and Mac IIvx
+// (VASP). jit_lockstep_test does this for the Quadra 605 with that
 // board's hidden-state hooks; these boards expose none, so the comparison
 // here is architectural only — every register, the clock, the supervisor
 // stacks and the system globals (first 2 KB of RAM) at every checkpoint,
 // and the whole of RAM every `POM68K_JIT_LOCKSTEP_FULL_EVERY` checkpoints
 // and at the end.
 //
-//   jit_lockstep_board_test q630|q700|centris650 [steps]
+//   jit_lockstep_board_test q630|q700|centris650|iici|lc3|iivx [steps]
 //
 // POM68K_JIT_LOCKSTEP_BUDGET (default 50 cycles) is the checkpoint spacing,
 // as in jit_lockstep_test. The boot disk is attached in memory
@@ -25,6 +26,12 @@
 #include "Q630Memory.h"
 #include "Q700Cpu.h"
 #include "Q700Memory.h"
+#include "RbvCpu.h"
+#include "RbvMemory.h"
+#include "SonoraCpu.h"
+#include "SonoraMemory.h"
+#include "VaspCpu.h"
+#include "VaspMemory.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -92,7 +99,7 @@ std::string describe(const State& r, const State& j) {
 // One board: two identical machines, an interpreter and a JIT.
 template <class Mem, class Cpu>
 int run(const char* name, std::function<std::unique_ptr<Mem>()> makeMem,
-        const pom68k::CoreCpuConfig& cpuConfig,
+        std::function<std::unique_ptr<Cpu>(Mem&, const jit::ResolvedConfig&)> makeCpu,
         const std::string& romPath, const std::string& diskPath, long steps) {
     const std::vector<uint8_t> rom = readFile(romPath);
     static const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
@@ -103,8 +110,8 @@ int run(const char* name, std::function<std::unique_ptr<Mem>()> makeMem,
         std::printf("FAIL: [jit_lockstep_board] %s: could not load ROM/disk\n", name);
         return 1;
     }
-    auto cpuRef = std::make_unique<Cpu>(*memRef, jitConfig, cpuConfig);
-    auto cpuJit = std::make_unique<Cpu>(*memJit, jitConfig, cpuConfig);
+    auto cpuRef = makeCpu(*memRef, jitConfig);
+    auto cpuJit = makeCpu(*memJit, jitConfig);
     memRef->setCpu(cpuRef.get());
     memJit->setCpu(cpuJit.get());
     // POM68K_JIT_LOCKSTEP_SELF=1: interpreter against interpreter, the
@@ -201,7 +208,8 @@ int main(int argc, char** argv) {
         testasset::report({ rom, disk });
         return run<Q630Memory, Q630Cpu>("Quadra 630",
             [&] { return std::make_unique<Q630Memory>(core, 32u << 20); },
-            core.cpu, rom, disk, steps);
+            [&](Q630Memory& m, const jit::ResolvedConfig& j) { return std::make_unique<Q630Cpu>(m, j, core.cpu); },
+            rom, disk, steps);
     }
     if (board == "q700") {
         const std::string rom = testasset::findAny({
@@ -214,7 +222,8 @@ int main(int argc, char** argv) {
         return run<Q700Memory, Q700Cpu>("Quadra 700",
             [&] { return std::make_unique<Q700Memory>(core, 32u << 20, Q700Memory::kCpuHz,
                                                       Q700Memory::Model::Spike); },
-            core.cpu, rom, disk, steps);
+            [&](Q700Memory& m, const jit::ResolvedConfig& j) { return std::make_unique<Q700Cpu>(m, j, core.cpu); },
+            rom, disk, steps);
     }
     if (board == "centris650") {
         const std::string rom = testasset::findAny({
@@ -228,8 +237,51 @@ int main(int argc, char** argv) {
         return run<CentrisMemory, CentrisCpu>("Centris 650",
             [&] { return std::make_unique<CentrisMemory>(core, 36u << 20, CentrisMemory::kCpuHz650,
                                                          CentrisMemory::kIdCentris650); },
-            core.cpu, rom, disk, steps);
+            [&](CentrisMemory& m, const jit::ResolvedConfig& j) { return std::make_unique<CentrisCpu>(m, j, core.cpu); },
+            rom, disk, steps);
     }
-    std::fprintf(stderr, "usage: %s q630|q700|centris650 [steps]\n", argv[0]);
+    // The 68030 boards (the LC II has jit_lockstep_030_test): System 7.5.
+    const std::string disk75 = testasset::findAny({ "hdv/System 7.5 HD.dsk", "hdv/boot.vhd" });
+    auto need = [&](const char* b, const std::string& rom) {
+        if (!rom.empty() && !disk75.empty()) return true;
+        std::printf("SKIP: [jit_lockstep_board] %s needs its ROM + hdv/System 7.5 HD.dsk\n", b);
+        return false;
+    };
+    if (board == "iici") {
+        const std::string rom = testasset::findAny({
+            "roms/512KB ROMs/1989-09 - 368CADFE - Mac IIci.ROM", "roms/maciici.rom" });
+        if (!need("iici", rom)) return 0;
+        testasset::report({ rom, disk75 });
+        return run<RbvMemory, RbvCpu>("Mac IIci",
+            [&] { return std::make_unique<RbvMemory>(core, 0x800000, RbvMemory::kCpuHzCi, true); },
+            [&](RbvMemory& m, const jit::ResolvedConfig& j) {
+                return std::make_unique<RbvCpu>(m, j, core.cpu, true); },
+            rom, disk75, steps);
+    }
+    if (board == "lc3") {
+        const std::string rom = testasset::findAny({
+            "roms/1MB ROMs/1993-02 - ECBBC41C - Mac LC III.ROM", "roms/maclc3.rom" });
+        if (!need("lc3", rom)) return 0;
+        testasset::report({ rom, disk75 });
+        return run<SonoraMemory, SonoraCpu>("LC III",
+            [&] { return std::make_unique<SonoraMemory>(core, 0x800000); },
+            [&](SonoraMemory& m, const jit::ResolvedConfig& j) {
+                return std::make_unique<SonoraCpu>(m, j, core.cpu, true); },
+            rom, disk75, steps);
+    }
+    if (board == "iivx") {
+        const std::string rom = testasset::findAny({
+            "roms/1MB ROMs/1992-10 - 4957EB49 - Mac IIvx & IIvi or Performa 600.ROM",
+            "roms/maciivx.rom" });
+        if (!need("iivx", rom)) return 0;
+        testasset::report({ rom, disk75 });
+        return run<VaspMemory, VaspCpu>("Mac IIvx",
+            [&] { return std::make_unique<VaspMemory>(core, 0x800000, VaspMemory::kCpuHzVx,
+                                                      VaspMemory::kIdIIvx); },
+            [&](VaspMemory& m, const jit::ResolvedConfig& j) {
+                return std::make_unique<VaspCpu>(m, j, core.cpu, true); },
+            rom, disk75, steps);
+    }
+    std::fprintf(stderr, "usage: %s q630|q700|centris650|iici|lc3|iivx [steps]\n", argv[0]);
     return 2;
 }
