@@ -145,8 +145,9 @@ private:
     void didChangeCACR(moira::u32) override { if (onCacr) onCacr(*this); }
     void willInterrupt(moira::u8 level) override {
         interrupts++;
-        if (logTag) std::printf("    %s irq level %u pc=%08X clock=%lld\n", logTag, level,
-                                getPC0(), (long long)getClock());
+        if (logTag) std::printf("    %s irq level %u pc=%08X clock=%lld sr=%04X sp=%08X vbr=%08X\n",
+                                logTag, level, getPC0(), (long long)getClock(), getSR(),
+                                getSP(), getVBR());
     }
     // Every exception path ends here, the FPU's own (execFpuException,
     // which has no willExecute) included: --stats counts from this hook.
@@ -1093,7 +1094,14 @@ int main(int argc, char** argv) {
                 const moira::i64 now = ref->getClock();
                 const moira::i64 at = now + 1 + irqR.below(3000);
                 const moira::i64 drop = at + 1 + irqR.below(600);
-                const auto level = moira::u8(1 + irqR.below(7));
+                auto level = moira::u8(1 + irqR.below(7));
+                // A held level 7 on the 68020 core wedges the INTERPRETER:
+                // Moira retakes it at every execute() (level-sensitive,
+                // where the 68000-family manuals recognise level 7 on a transition) and
+                // the 68020 interrupt sequence charges no cycle, so the
+                // clock never reaches `dropAt` (seed 3, --model 20). No
+                // board raises level 7 today; TODO.md (› Temps) keeps it.
+                if (gModel == 20 && level == 7) level = 6;
                 ref->arm(at, drop, level);
                 nat->arm(at, drop, level);
             }

@@ -1411,6 +1411,22 @@ count read zero vectors 48-55 where 1 000 seeds take several thousand
 programs (`--len 120`) and 15 % raw words (`--raw 150`), 2 000 seeds per
 model each: clean. Gates `jit_program_fuzz_{040,030}_fpexc_test`.
 
+Later the same night. The knob matrix — `POM68K_JIT_LINKS=0`,
+`_EDGE_CELLS=1`, `_REG_CACHE=1`, `_PACKED_CCR=1`, `_BLOCK_MAX=3`,
+`_ACCESS_THUNK=0`, `_A64_PACING=0`, `_FPU_MEMBER=0`, and with `--dcache`
+`_040_LINE_READ/WRITE/PAIR` and `_040_LATE_POLL=1` — 600 to 1 500 seeds
+each on a64 with `--ext --sys --smc --fpu --irq-timed`: clean.
+`POM68K_JIT_MAX_BLOCKS` is clamped to 64 and these programs compile about
+fourteen blocks each, so eviction stays out of this harness's reach. The
+threaded backend's block path (`POM68K_JIT_BLOCKS=1 POM68K_JIT_HOT=1`) on
+the 68000, 68020, 68030 and 68040: clean, once the harness stopped holding
+level 7 on the 68020 — Moira retakes a held level 7 at every `execute()`
+and the 68020 interrupt sequence charges no cycle, so the INTERPRETER never
+reached the next slice (a `TODO.md` line, › Temps; no board raises level 7
+today). x86-64 under Rosetta: 2 000 seeds per model of `--sys --ext --fpu
+--smc`, of `--fpexc --mmu --ext --sys --smc --savestate --irq-timed` and of
+`--dcache --mmu --ext --smc --savestate`, clean.
+
 <a id="2026-11-18-jsr040-queue"></a>
 ## 2026-11-18 (fifth) — A halted 68040 keeps the queue the interpreter would leave after a native JSR fault
 

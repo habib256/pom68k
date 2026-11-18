@@ -576,6 +576,17 @@ par `cacheBoost` ; le reste est correction locale.
   boost ; `setPomCache040Timing` n'a aucun appelant hors tests. Le boot
   n'atteint pas le Finder dans le budget calibré de cinq milliards de
   cycles *invités* — ce n'est donc pas qu'une question de vitesse hôte.
+- [ ] **Facturer la séquence d'interruption du cœur 68020 et rendre le
+  niveau 7 sensible au front.** `execInterrupt<Core::C68020>` n'appelle
+  aucun `SYNC` (vide sur ce cœur) : une interruption coûte 0 cycle sur
+  020/030/040. Et Moira reprend un niveau 7 maintenu à chaque `execute()`
+  (`reg.ipl == 7` arme `CHECK_IRQ` malgré le masque 7), là où les
+  manuels de la famille 68000 le décrivent comme reconnu sur une
+  transition (section exacte à citer). Ensemble, un niveau 7 tenu
+  fige le 68020 : interruption sur interruption à horloge constante
+  (`tests/jit_program_fuzz.cpp --model 20 --irq-timed`, graine 3, avant le
+  repli du harnais vers le niveau 6). Aucune carte n'émet le niveau 7
+  aujourd'hui ; le bouton d'interruption d'un Mac le ferait.
 - [ ] **Requalifier `irqDelay` = 2.** Profondeur empirique, réglée sur
   SimCity 2000 avec le boost et appliquée à tout modèle ≥ 68020, 68040
   compris ; le symptôme d'origine a reçu ensuite une autre cause racine
