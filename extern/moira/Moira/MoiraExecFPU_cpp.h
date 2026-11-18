@@ -2007,7 +2007,7 @@ Moira::execFBcc(u16 opcode)
         // POM68K O4 slice 4 pattern: 68030 odd instruction-flow target —
         // vector 3 with a format $B frame (see execBcc)
         if constexpr (C == Core::C68020) {
-            if (cpuModel == Model::M68030 && (newpc & 1)) {
+            if (cpuModel == Model::M68030 && oddFlowTarget(newpc)) {
                 mmuLogReset();
                 if constexpr (S == Word) mmuLogExtWord(u16(disp));
                 if constexpr (S == Long) mmuLogExtWord(disp);
@@ -2080,7 +2080,7 @@ Moira::execFDbcc(u16 opcode)
             // POM68K O4 slice 4 pattern (see execDbcc): odd target after
             // the counter update, stacked PC = the odd target
             if constexpr (C == Core::C68020) {
-                if (cpuModel == Model::M68030 && (newpc & 1)) {
+                if (cpuModel == Model::M68030 && oddFlowTarget(newpc)) {
                     mmuLogReset();
                     mmuLogExtWord(u16(ircWord()));
                     execAddressError030<C>(newpc, newpc);

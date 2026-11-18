@@ -409,20 +409,6 @@ Moira::execAddressError030(u32 target, u32 stackedPc)
     didExecute(M68kException::ADDRESS_ERROR, 3);
 }
 
-template <Core C> bool
-Moira::mmuCheckOddPc(u32 target, u32 stackedPc)
-{
-    if constexpr (C == Core::C68020) {
-
-        if (cpuModel == Model::M68030 && (target & 1)) {
-
-            execAddressError030<C>(target, stackedPc);
-            return true;
-        }
-    }
-    return false;
-}
-
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // POM68K Q2 — 68040 address error on an odd instruction-flow target
 // (WinUAE Exception_mmu nr == 3, reached from the exception3_* hooks in

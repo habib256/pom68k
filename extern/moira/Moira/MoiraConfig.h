@@ -26,7 +26,11 @@
  *
  * Enable to improve accuracy, disable it to enhance performance.
  */
+// POM68K: the three settings that upstream ships differently can be set by
+// the build; moira_upstream_config_test compiles the core with upstream's.
+#ifndef MOIRA_PRECISE_TIMING
 #define MOIRA_PRECISE_TIMING true // POM68K: cycle-exact Mac Plus (see POM68K_VENDOR.md)
+#endif
 
 /* Set to true to implement the CPU interface as virtual functions.
  *
@@ -48,7 +52,9 @@
  *
  * Enable to improve accuracy, disable to gain speed.
  */
+#ifndef MOIRA_EMULATE_ADDRESS_ERROR
 #define MOIRA_EMULATE_ADDRESS_ERROR true // POM68K: Mac software relies on address errors
+#endif
 
 /* Set to true to emulate function code pins FC0 - FC2.
  *
@@ -88,7 +94,9 @@
  *
  * Set to false for improved accuracy.
  */
+#ifndef MOIRA_MIMIC_MUSASHI
 #define MOIRA_MIMIC_MUSASHI false // POM68K: accuracy over Musashi compatibility
+#endif
 
 /* The following macro appears at the beginning of each instruction handler.
  * Moira will call 'willExecute(...)' for all listed instructions.

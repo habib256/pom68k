@@ -71,6 +71,7 @@ EXPORT = [
     "tests/fpu040_test.cpp",
     "tests/fpu_context_test.cpp",
     "tests/callm_rtm_test.cpp",
+    "tests/moira_upstream_config_test.cpp",
     "tests/berr020_test.cpp",
     "tests/berr030_test.cpp",
     "tests/moira_rules_test.cpp",

@@ -183,8 +183,8 @@ Rules:
 
 `AddressError` is thrown by the core itself (`misaligned<C,S>`, 68000/68010
 only; `MOIRA_EMULATE_ADDRESS_ERROR`). On the 030/040, odd instruction-flow
-targets go through `mmuCheckOddPc`/`execAddressError030` (format $B) and
-`execAddressError040` (format $2).
+targets are tested by `oddFlowTarget()` under the same setting, then raise
+`execAddressError030` (format $B) or `execAddressError040` (format $2).
 
 ### 2.3 Clock
 

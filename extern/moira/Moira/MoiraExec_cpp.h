@@ -1007,7 +1007,7 @@ Moira::execBra(u16 opcode)
     // (exception3_read_prefetch*); see execAddressError030.
     // Stacked PC = the branch instruction; the log holds the displacement.
     if constexpr (C == Core::C68020) {
-        if (cpuModel == Model::M68030 && (newpc & 1)) {
+        if (cpuModel == Model::M68030 && oddFlowTarget(newpc)) {
             mmuLogReset();
             if constexpr (S == Word) mmuLogExtWord(u16(disp));
             if constexpr (S == Long) mmuLogExtWord(disp);
@@ -1019,7 +1019,7 @@ Moira::execBra(u16 opcode)
         // POM68K Q2: 68040 — vector 3, format $2, stacked PC = the branch
         // instruction (WinUAE op_60xx_31: exception3_read_prefetch with
         // the pc untouched)
-        if (cpuModel >= Model::M68EC040 && (newpc & 1)) {
+        if (cpuModel >= Model::M68EC040 && oddFlowTarget(newpc)) {
             execAddressError040<C>(newpc, reg.pc0);
             FINALIZE
             return;
@@ -1058,7 +1058,7 @@ Moira::execBcc(u16 opcode)
                 d40 = d40 << 16 | (u16)read<C, AddrSpace::PROG, Word>(reg.pc + 2);
             }
             u32 t40 = U32_ADD(oldpc, SEXT<S>(d40));
-            if (t40 & 1) {
+            if (oddFlowTarget(t40)) {
                 execAddressError040<C>(t40, reg.pc0);
                 FINALIZE
                 return;
@@ -1084,7 +1084,7 @@ Moira::execBcc(u16 opcode)
     // mmu030 handlers raise vector 3 with a format $B frame
     // (exception3_read_prefetch*); see execAddressError030.
         if constexpr (C == Core::C68020) {
-            if (cpuModel == Model::M68030 && (newpc & 1)) {
+            if (cpuModel == Model::M68030 && oddFlowTarget(newpc)) {
                 mmuLogReset();
                 if constexpr (S == Word) mmuLogExtWord(u16(disp));
                 if constexpr (S == Long) mmuLogExtWord(disp);
@@ -1659,7 +1659,7 @@ Moira::execBsr(u16 opcode)
         // WinUAE BSR: A7 is decremented but the return address is never
         // written; stacked PC = the BSR instruction.
         if constexpr (C == Core::C68020) {
-            if (cpuModel == Model::M68030 && (newpc & 1)) {
+            if (cpuModel == Model::M68030 && oddFlowTarget(newpc)) {
                 reg.sp -= 4;
                 mmuLogReset();
                 if constexpr (S == Word) mmuLogExtWord(u16(disp));
@@ -1672,7 +1672,7 @@ Moira::execBsr(u16 opcode)
             // POM68K Q2: 68040 BSR checks BEFORE pushing (WinUAE
             // op_6100_31: exception3_read_prefetch precedes
             // m68k_do_bsr) — A7 is untouched, stacked PC = the BSR.
-            if (cpuModel >= Model::M68EC040 && (newpc & 1)) {
+            if (cpuModel >= Model::M68EC040 && oddFlowTarget(newpc)) {
                 execAddressError040<C>(newpc, reg.pc0);
                 FINALIZE
                 return;
@@ -2659,7 +2659,7 @@ Moira::execDbcc(u16 opcode)
     if constexpr (C == Core::C68020) {
         if (cpuModel >= Model::M68EC040) {
             u32 t40 = U32_ADD(reg.pc, (i16)ircWord());
-            if (t40 & 1) {
+            if (oddFlowTarget(t40)) {
                 execAddressError040<C>(t40, reg.pc0);
                 FINALIZE
                 return;
@@ -2696,7 +2696,7 @@ Moira::execDbcc(u16 opcode)
             // fault fires EVEN when the loop counter expired (the odd check
             // precedes the counter test); stacked PC = the odd target.
             if constexpr (C == Core::C68020) {
-                if (cpuModel == Model::M68030 && (newpc & 1)) {
+                if (cpuModel == Model::M68030 && oddFlowTarget(newpc)) {
                     mmuLogReset();
                     mmuLogExtWord(u16(ircWord()));
                     execAddressError030<C>(newpc, newpc);
@@ -3005,7 +3005,7 @@ Moira::execJmp(u16 opcode)
     // bookkeeping. Settled by: the frame a real 68030 stacks for
     // JMP (d8,An,Xn) to an odd target.
     if constexpr (C == Core::C68020) {
-        if (cpuModel == Model::M68030 && (ea & 1)) {
+        if (cpuModel == Model::M68030 && oddFlowTarget(ea)) {
             execAddressError030<C>(ea, (M == Mode::IX || M == Mode::IXPC)
                                            ? reg.pc + 2 : reg.pc0 + 2);
             FINALIZE
@@ -3018,7 +3018,7 @@ Moira::execJmp(u16 opcode)
         // the indexed modes advance the pc per consumed extension word
         // first (x_get_disp_ea_020 uses next_iword), so the stacked PC
         // is the running pc + 2.
-        if (cpuModel >= Model::M68EC040 && (ea & 1)) {
+        if (cpuModel >= Model::M68EC040 && oddFlowTarget(ea)) {
             u32 stackedPc = (M == Mode::IX || M == Mode::IXPC)
                 ? reg.pc + 2 : reg.pc0 + 2;
             execAddressError040<C>(ea, stackedPc);
@@ -6269,7 +6269,7 @@ Moira::execRtd(u16 opcode)
     // WinUAE logs the displacement word BEFORE the popped long; A7 keeps
     // both adjustments; stacked PC = the RTD instruction.
     if constexpr (C == Core::C68020) {
-        if (cpuModel == Model::M68030 && (newpc & 1)) {
+        if (cpuModel == Model::M68030 && oddFlowTarget(newpc)) {
             mmuLogReset();
             mmuLogExtWord(u16(ircWord()));
             mmuLogExtWord(newpc);
@@ -6280,7 +6280,7 @@ Moira::execRtd(u16 opcode)
         // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
         // POM68K Q2: 68040 RTD restores A7 completely before faulting
         // (WinUAE op_4e74_31: a7 -= 4 + offs); stacked PC = the RTD.
-        if (cpuModel >= Model::M68EC040 && (newpc & 1)) {
+        if (cpuModel >= Model::M68EC040 && oddFlowTarget(newpc)) {
             reg.sp -= 4 + i16(ircWord());
             execAddressError040<C>(newpc, reg.pc0);
             FINALIZE
@@ -6752,7 +6752,7 @@ Moira::execRte(u16 opcode)
     // are SR, PC, FORMAT (three log entries — Moira peeks the format
     // first, so the log is rebuilt); stacked PC = the RTE instruction.
     if constexpr (C == Core::C68020) {
-        if (cpuModel == Model::M68030 && (newpc & 1)) {
+        if (cpuModel == Model::M68030 && oddFlowTarget(newpc)) {
             mmuLogReset();
             mmuLogExtWord(newsr);
             mmuLogExtWord(newpc);
@@ -6767,7 +6767,7 @@ Moira::execRte(u16 opcode)
         // SR field carries the NEW SR (the Exception_normal RTR/RTE
         // stacked-SR patch does not exist on the Exception_mmu path the
         // oracle runs). Stacked PC = the RTE instruction.
-        if (cpuModel >= Model::M68EC040 && (newpc & 1)) {
+        if (cpuModel >= Model::M68EC040 && oddFlowTarget(newpc)) {
             execAddressError040<C>(newpc, reg.pc0);
             FINALIZE
             return;
@@ -6882,7 +6882,7 @@ Moira::execRtr(u16 opcode)
     // CCR already updated, A7 stays popped, both pops are in the access
     // log; stacked PC = instruction address + 2 (WinUAE oldpc + 2).
     if constexpr (C == Core::C68020) {
-        if (cpuModel == Model::M68030 && (newpc & 1)) {
+        if (cpuModel == Model::M68030 && oddFlowTarget(newpc)) {
             execAddressError030<C>(newpc, reg.pc0 + 2);
             FINALIZE
             return;
@@ -6892,7 +6892,7 @@ Moira::execRtr(u16 opcode)
         // with the popped CCR applied; stacked PC = the RTR. The frame
         // carries the CCR-updated SR (Exception_mmu path — the
         // Exception_normal secondarysr patch is not reached).
-        if (cpuModel >= Model::M68EC040 && (newpc & 1)) {
+        if (cpuModel >= Model::M68EC040 && oddFlowTarget(newpc)) {
             reg.sp -= 6;
             execAddressError040<C>(newpc, reg.pc0);
             FINALIZE
@@ -6938,7 +6938,7 @@ Moira::execRts(u16 opcode)
     // A7 stays popped; the popped long is in the access log (funnel);
     // stacked PC = the RTS instruction.
     if constexpr (C == Core::C68020) {
-        if (cpuModel == Model::M68030 && (newpc & 1)) {
+        if (cpuModel == Model::M68030 && oddFlowTarget(newpc)) {
             execAddressError030<C>(newpc, reg.pc0);
             FINALIZE
             return;
@@ -6947,7 +6947,7 @@ Moira::execRts(u16 opcode)
         // POM68K Q2: 68040 RTS re-pushes — A7 is restored to its
         // pre-RTS value (WinUAE op_4e75_31: a7 -= 4 after the pop);
         // stacked PC = the RTS instruction.
-        if (cpuModel >= Model::M68EC040 && (newpc & 1)) {
+        if (cpuModel >= Model::M68EC040 && oddFlowTarget(newpc)) {
             reg.sp -= 4;
             execAddressError040<C>(newpc, reg.pc0);
             FINALIZE

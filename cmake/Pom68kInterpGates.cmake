@@ -30,3 +30,24 @@ add_test(NAME moira_interp_test COMMAND ${CMAKE_COMMAND}
     "-DEMULATOR=${CMAKE_CROSSCOMPILING_EMULATOR}"
     -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/moira_interp_compare.cmake)
 set_tests_properties(moira_interp_test PROPERTIES LABELS interp-only TIMEOUT 60)
+# The same sources under upstream Moira's three differing settings, the ones
+# its own Runner (against Musashi) uses; the cell runs under both configurations.
+add_library(moira_upstream_config STATIC ${MOIRA_DIR}/Moira.cpp ${MOIRA_DIR}/MoiraDebugger.cpp)
+target_compile_definitions(moira_upstream_config PUBLIC MOIRA_ENABLE_JIT=0
+    MOIRA_PRECISE_TIMING=false MOIRA_EMULATE_ADDRESS_ERROR=false MOIRA_MIMIC_MUSASHI=true)
+target_include_directories(moira_upstream_config SYSTEM PUBLIC ${MOIRA_DIR})
+target_link_libraries(moira_upstream_config PUBLIC softfloat68k)
+if(NOT MSVC)
+    target_compile_options(moira_upstream_config PRIVATE -Wno-unused-parameter -Wno-unused-variable)
+endif()
+if(EMSCRIPTEN)
+    target_compile_options(moira_upstream_config PUBLIC -fwasm-exceptions)
+    target_link_options(moira_upstream_config PUBLIC -fwasm-exceptions)
+endif()
+foreach(cfg IN ITEMS upstream pom68k)
+    add_executable(moira_${cfg}_config_test tests/moira_upstream_config_test.cpp)
+    add_test(NAME moira_${cfg}_config_test COMMAND moira_${cfg}_config_test)
+endforeach()
+target_link_libraries(moira_upstream_config_test PRIVATE moira_upstream_config)
+target_link_libraries(moira_pom68k_config_test PRIVATE moira)
+set_tests_properties(moira_upstream_config_test PROPERTIES LABELS interp-only)

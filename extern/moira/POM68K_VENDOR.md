@@ -54,12 +54,12 @@ pair):
 | | | how to re-measure |
 |---|---|---|
 | distinct `pom*` extension identifiers | **116** (65 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **548** | `grep -rn POM68K Moira/ \| wc -l` |
+| `POM68K`-marked lines | **550** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **17 of 27** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **115** | this file |
+| patch groups in the inventory below | **116** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h`, `MoiraState.h`, `MoiraMmu030Walk.h` | — |
 
-One hundred and fifteen patch groups, two of which (the JIT seam, row 22, and the ATC
+One hundred and sixteen patch groups, two of which (the JIT seam, row 22, and the ATC
 performance work, row 16) are not patches over upstream's design but a second
 consumer of it. A re-sync is no longer a merge with conflicts; it is a port.
 
@@ -285,6 +285,7 @@ gate in the last column of each row.
 | 114 | **Packed signed zero never shifts by the incoming k-factor** — SoftFloat returns zero before replacing the k-factor with the decimal digit count. Stop when the remaining significand is zero, so k-factors above 17 cannot cause a negative host shift while emitting zero digits | `MoiraExecFPU_cpp.h` | local SoftFloat zero-return contract; UBSan reports a negative shift (minimal k=18 gives -4). The identical WinUAE loop is guarded by oracle patch 16; numerical output and flags are preserved | `fpu_sanity` (`packedZeros`, 1 024 static/dynamic signed-seven-bit k-factor transfers, both FPUs and both zero signs); strict FPU corpora under UBSan |
 
 | 115 | **Group-2 format-$2 frames identify the trapping instruction** — divide-by-zero, CHK/CHK2, TRAPcc/TRAPV and FTRAPcc keep the next resume PC but stack `reg.pc0` as IA on 020/030/040, superseding D12's retained oracle policy. Address-error and trace frame producers are untouched | `MoiraExceptions_cpp.h` | [B] MC68030UM-1989 Table 8-7 (checked PDF p. 432); MC68040UM-1993 §8.4.3 (checked PDF p. 235) | `moira_rules_test` (`group2InstructionAddress`, 118 trap/RTE/next-NOP cases; 118 old-core failures); 286 scoped IA rules preserve whole-vector comparison, and `sst_known_contract_test` rejects unrelated state changes and stale rules |
+| 116 | **Odd instruction-flow targets honour `MOIRA_EMULATE_ADDRESS_ERROR`** — the 20 68030/68040 odd-target checks (BRA/Bcc/BSR, DBcc, JMP, RTD/RTE/RTR/RTS, FBcc/FDBcc) go through `oddFlowTarget()`, gated like `misaligned()`, and `mmuCheckOddPc`, which nothing called, is removed; `MOIRA_PRECISE_TIMING`, `MOIRA_EMULATE_ADDRESS_ERROR` and `MOIRA_MIMIC_MUSASHI` become `#ifndef` so a build can choose upstream's settings | `MoiraDataflow.h`, `MoiraExec_cpp.h`, `MoiraExecFPU_cpp.h`, `MoiraExceptions_cpp.h`, `MoiraConfig.h` | the checks had been added outside `misaligned()` and fired with the setting off, so the core under upstream's configuration (the one upstream's Runner uses) took vector 3 where upstream does not. With the setting on, as POM68K builds it, nothing changes | `moira_upstream_config_test` (upstream settings; fails on the core before this row for 68030, 68LC040, 68040), `moira_pom68k_config_test` |
 
 Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54, 56, 59-75 and 79-86 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
 when nothing arms them); rows 48 and 55 are performance alone, with no architectural effect. Row 58 is evidence documentation only. The ten files carrying no `POM68K` marker at all —
@@ -592,7 +593,8 @@ vectors); scratch: 2 672/2 672 across the full 3×3 grid × 3 seeds plus
   `privileged_copro_instruction`, D6-remainder).
 - **D11 — odd-PC address errors** (WinUAE-solo ruled vectors now enter
   the corpora, so Moira must replay the frames):
-  - `MoiraExceptions_cpp.h execAddressError030` + `mmuCheckOddPc`:
+  - `MoiraExceptions_cpp.h execAddressError030` (+ `mmuCheckOddPc`, never
+    called, removed by row 116):
     vector 3, format $B frame (SSW $0066, fault address = target,
     restart state zeroed, vector fetched before the frame), stacked PC
     per WinUAE's per-instruction conventions;

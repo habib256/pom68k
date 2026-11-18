@@ -119,6 +119,13 @@ template <Core C, Size S, Flags F = 0> u32 pop();
 // Checks whether the provided address should trigger an address error
 template <Core C, Size S = Word> bool misaligned(u32 addr);
 
+// POM68K: an odd instruction-flow target on the 68030/68040 (vector 3,
+// format $B / $2). Gated like misaligned(): MOIRA_EMULATE_ADDRESS_ERROR
+// false removes every such check, as upstream does for the 68000/68010.
+static constexpr bool oddFlowTarget(u32 addr) {
+    return MOIRA_EMULATE_ADDRESS_ERROR && (addr & 1);
+}
+
 // Creates an address error stack frame
 template <Flags F = 0> StackFrame makeFrame(u32 addr, u32 pc, u16 sr, u16 ird);
 template <Flags F = 0> StackFrame makeFrame(u32 addr, u32 pc);

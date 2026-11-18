@@ -144,6 +144,18 @@ foreach(proof IN ITEMS berr020_test berr030_test fpu_sanity fpu040_test
     set_tests_properties(moira_interp_${proof} PROPERTIES LABELS "unit;interp-only")
 endforeach()
 target_link_libraries(moira_interp_fpu_context_test PRIVATE ${MOIRA_POM68K_THREADS})
+# The same sources under upstream Moira's three differing settings, the ones
+# its own Runner (against Musashi) uses; the cell runs under both configurations.
+moira_pom68k_core(moira_upstream_config 0)
+target_compile_definitions(moira_upstream_config PUBLIC
+    MOIRA_PRECISE_TIMING=false MOIRA_EMULATE_ADDRESS_ERROR=false MOIRA_MIMIC_MUSASHI=true)
+foreach(cfg IN ITEMS upstream pom68k)
+    add_executable(moira_${cfg}_config_test ${T}/moira_upstream_config_test.cpp)
+    add_test(NAME moira_${cfg}_config_test COMMAND moira_${cfg}_config_test)
+    set_tests_properties(moira_${cfg}_config_test PROPERTIES LABELS unit)
+endforeach()
+target_link_libraries(moira_upstream_config_test PRIVATE moira_upstream_config)
+target_link_libraries(moira_pom68k_config_test PRIVATE moira)
 add_executable(moira_interp_full ${T}/moira_interp_test.cpp)
 target_link_libraries(moira_interp_full PRIVATE moira)
 add_executable(moira_interp_bare ${T}/moira_interp_test.cpp)

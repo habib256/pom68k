@@ -602,6 +602,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-18 — The fork builds and behaves under upstream Moira's settings](#2026-11-18-upstream-config)
 - [2026-11-17 (fourth) — Everything the fork wrote ships under MIT](#2026-11-17-mit-release)
 - [2026-11-17 (third) — A Moira release cut for Dirk Hoffmann, every gate executed](#2026-11-17-release-for-dirk)
 - [2026-11-17 (second) — Format-2 traps retain the instruction that caused them](#2026-11-17-group2-instruction-address)
@@ -1387,6 +1388,30 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-18-upstream-config"></a>
+## 2026-11-18 — The fork builds and behaves under upstream Moira's settings
+
+Upstream Moira ships three settings POM68K sets differently:
+`MOIRA_PRECISE_TIMING` false, `MOIRA_EMULATE_ADDRESS_ERROR` false,
+`MOIRA_MIMIC_MUSASHI` true — the configuration its own Runner (against
+Musashi) uses. `MoiraConfig.h` now leaves the three overridable (`#ifndef`),
+and a second static library, `moira_upstream_config`, compiles the same
+sources with upstream's values.
+
+Doing so exposed one divergence. The 20 odd instruction-flow-target checks
+added for the 68030 and 68040 (BRA/Bcc/BSR, DBcc, JMP, RTD/RTE/RTR/RTS,
+FBcc/FDBcc) sat outside `misaligned()` and fired with address-error
+emulation off, so the fork took vector 3 where upstream does not. They now go
+through `oddFlowTarget()`, gated on the same setting; `mmuCheckOddPc`, which
+nothing called, is removed. With the setting on, as POM68K builds it, the
+code is unchanged (vendor row 116).
+
+Gates: `moira_upstream_config_test` (a taken BRA to an odd target takes no
+vector 3 on any model) and `moira_pom68k_config_test` (the same cell, POM68K
+settings, vector 3 on 68000/68030/68LC040/68040); both also ship in the Moira release
+tree. STATUS.md is regenerated for x86_64 and patched with the same +2 deltas
+for aarch64.
 
 <a id="2026-11-17-mit-release"></a>
 ## 2026-11-17 (fourth) — Everything the fork wrote ships under MIT

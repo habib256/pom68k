@@ -2403,9 +2403,7 @@ private:
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K O4 slice 4 — 68030 odd-address instruction-fetch fault
     // (WinUAE Exception_mmu030 vector 3: format $B frame, SSW $0066).
-    // mmuCheckOddPc raises it and returns true when `target` is odd.
     template <Core C> void execAddressError030(u32 target, u32 stackedPc);
-    template <Core C> bool mmuCheckOddPc(u32 target, u32 stackedPc);
 
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K Q2: 68040 odd instruction-flow target — vector 3, format $2
