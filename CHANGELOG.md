@@ -1428,6 +1428,14 @@ and the threaded block path on the 68000 and 68020 — no report. The
 `jit_program_fuzz_030_ext_test` gate runs MOVEC CACR on the 68030 and is in
 the nightly's instrumented builds.
 
+After the fixes, still under the sanitizers: `ctest -L "jit|cpu-vectors"
+-LE "m030|m040"` in `build-cpu-sanitize`, 66 / 66 (66 executed, 0
+soft-skipped), and every board of `jit_lockstep_board_test` with jittered
+checkpoints, 500 000 then 8 000 000 each (up to 11.8 G cycles): identical,
+no sanitizer report. Without them, the a64 soak of the same night — every
+board at 20 000 000 jittered checkpoints (6 to 26 G cycles) and 30 000
+fuzz seeds per model with every mode combined — identical.
+
 <a id="2026-11-19-board-locksteps"></a>
 ## 2026-11-19 (second) — Eleven more boards get a JIT lockstep, every family whose 68030/68040 runs translated by default
 
