@@ -1449,6 +1449,19 @@ has an instruction-level lockstep: the Quadra 605 (MemcJr), the LC II (V8)
 and now F108, Spike, DjMEMC, RBV, Sonora, VASP, Jaws, Niagra, MSC, Glue in
 68030 mode and OSS. The 68000 and 68020 boards run interpreted by default.
 
+`POM68K_JIT_LOCKSTEP_JITTER=N` spaces the checkpoints 1..N cycles apart
+(fixed-seed xorshift), so the translator stops at arbitrary points of real
+ROM and System code instead of on a grid. With N = 600, all twelve boards
+(2 to 3 million checkpoints, 0.6 to 4.4 G cycles each): identical, full
+RAM identical. With `POM68K_040_DCACHE=1`, Quadra 630, Quadra 700 and
+Centris 650, 5 000 000 checkpoints each: identical. Gates
+`jit_lockstep_board_{q630,iici}_jitter_test`. Deep a64 runs, 30 000 000
+checkpoints of 256 cycles, of the remaining boards: Duo 230 (33.5 G
+cycles), SE/30 and IIfx (7.8 G each) identical, full RAM identical. The
+IIfx compiled 389 560 blocks for 9.1 M block runs — its wrapper drops the
+JIT on every CACR write, the cost `TODO.md` (› JIT justesse, store
+inventory of the IIfx) already names.
+
 Deep runs, a64, 30 000 000 checkpoints of 256 cycles (about 30.8 G
 cycles, deep into Mac OS 8.1 with 80 000+ blocks compiled per board):
 Quadra 630, Quadra 700 and Centris 650 identical, full RAM identical;

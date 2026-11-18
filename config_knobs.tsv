@@ -86,6 +86,7 @@ POM68K_FLOPPY_IMG	test	owner:tests/lcii_beyond_etalon.cpp
 POM68K_IDE	product	gate:ata_disk_test
 POM68K_IDE_NOCLICK	test	owner:tests/q630_ide_etalon.cpp
 POM68K_JIT_LOCKSTEP_FULL_EVERY	test	owner:tests/jit_lockstep_board_test.cpp
+POM68K_JIT_LOCKSTEP_JITTER	test	owner:tests/jit_lockstep_board_test.cpp
 POM68K_JIT_LOCKSTEP_SELF	test	owner:tests/jit_lockstep_board_test.cpp
 POM68K_LCII_BOOT_PPM	test	owner:tests/lcii_boot_etalon.cpp
 POM68K_LCII_CLRFPU	test	owner:tests/lcii_boot_etalon.cpp

@@ -150,10 +150,16 @@ int run(const char* name, std::function<std::unique_ptr<Mem>()> makeMem,
     long budget = 50;
     if (const char* b = std::getenv("POM68K_JIT_LOCKSTEP_BUDGET")) budget = std::atol(b);
     if (budget < 1) budget = 1;
+    // POM68K_JIT_LOCKSTEP_JITTER=N: each checkpoint lands 1..N cycles after
+    // the previous one (fixed-seed xorshift), so the translator's exits fall
+    // at arbitrary points of real ROM and System code, not on a grid.
+    long jitter = 0;
+    if (const char* j = std::getenv("POM68K_JIT_LOCKSTEP_JITTER")) jitter = std::atol(j);
+    uint64_t rng = 0x9E3779B97F4A7C15ull;
     long fullEvery = 200000;
     if (const char* f = std::getenv("POM68K_JIT_LOCKSTEP_FULL_EVERY")) fullEvery = std::atol(f);
-    std::printf("[jit_lockstep_board] %s backend=%s steps=%ld budget=%ld full-RAM every %ld\n",
-                name, cpuJit->jit().backendName(), steps, budget, fullEvery);
+    std::printf("[jit_lockstep_board] %s backend=%s steps=%ld budget=%ld jitter=%ld full-RAM every %ld\n",
+                name, cpuJit->jit().backendName(), steps, budget, jitter, fullEvery);
 
     const uint32_t ramBytes = memRef->ramBytes();
     auto fullRamDiff = [&]() -> uint32_t {
@@ -164,8 +170,13 @@ int run(const char* name, std::function<std::unique_ptr<Mem>()> makeMem,
     uint32_t lastPc[8] = {};
     for (long i = 0; i < steps; i++) {
         lastPc[i & 7] = cpuJit->getPC();
-        cpuRef->runCycles(budget);
-        cpuJit->runCycles(budget);
+        long b = budget;
+        if (jitter > 0) {
+            rng ^= rng << 13; rng ^= rng >> 7; rng ^= rng << 17;
+            b = 1 + long(rng % uint64_t(jitter));
+        }
+        cpuRef->runCycles(b);
+        cpuJit->runCycles(b);
         const State r = capture(*cpuRef), j = capture(*cpuJit);
         std::string why = describe(r, j);
         uint32_t bad = 0xFFFFFFFF;
