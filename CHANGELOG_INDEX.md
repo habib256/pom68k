@@ -138,7 +138,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-15 (sixth)** — [Table-limit fuzzing finds PTEST ignoring bounds; the full A64 corpus finds stale indexed MOVE addresses](CHANGELOG.md#2026-11-15-ptest-a64-alias)
 - **2026-11-16 (fourth)** — [The public 030 JIT gate had compiled zero blocks](CHANGELOG.md#2026-11-16-public-jit-census)
 - **2026-11-19** — [Long boot locksteps, a hundred times the gates: identical](CHANGELOG.md#2026-11-19-long-locksteps)
-- **2026-11-19 (second)** — [Quadra 630, Quadra 700, Centris 650, IIci, LC III and IIvx get a JIT lockstep](CHANGELOG.md#2026-11-19-board-locksteps)
+- **2026-11-19 (second)** — [Eight more boards get a JIT lockstep: Q630, Q700, Centris 650, IIci, LC III, IIvx, PowerBook 170 and 180](CHANGELOG.md#2026-11-19-board-locksteps)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 

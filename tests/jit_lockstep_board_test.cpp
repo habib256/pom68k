@@ -3,15 +3,15 @@
 //
 // Interpreter against translator on the boards that have no lockstep of
 // their own: the 68040 Quadra 630 (F108), Quadra 700 (Spike) and Centris
-// 650 (DjMEMC), and the 68030 Mac IIci (RBV), LC III (Sonora) and Mac IIvx
-// (VASP). jit_lockstep_test does this for the Quadra 605 with that
+// 650 (DjMEMC), and the 68030 Mac IIci (RBV), LC III (Sonora), Mac IIvx
+// (VASP) and PowerBook 170/180 (Jaws/Niagra, PMU firmware LLE). jit_lockstep_test does this for the Quadra 605 with that
 // board's hidden-state hooks; these boards expose none, so the comparison
 // here is architectural only — every register, the clock, the supervisor
 // stacks and the system globals (first 2 KB of RAM) at every checkpoint,
 // and the whole of RAM every `POM68K_JIT_LOCKSTEP_FULL_EVERY` checkpoints
 // and at the end.
 //
-//   jit_lockstep_board_test q630|q700|centris650|iici|lc3|iivx [steps]
+//   jit_lockstep_board_test q630|q700|centris650|iici|lc3|iivx|pb170|pb180 [steps]
 //
 // POM68K_JIT_LOCKSTEP_BUDGET (default 50 cycles) is the checkpoint spacing,
 // as in jit_lockstep_test. The boot disk is attached in memory
@@ -26,6 +26,9 @@
 #include "Q630Memory.h"
 #include "Q700Cpu.h"
 #include "Q700Memory.h"
+#include "Pb030Cpu.h"
+#include "Pb030Memory.h"
+#include "Pb030Profile.h"
 #include "RbvCpu.h"
 #include "RbvMemory.h"
 #include "SonoraCpu.h"
@@ -100,12 +103,14 @@ std::string describe(const State& r, const State& j) {
 template <class Mem, class Cpu>
 int run(const char* name, std::function<std::unique_ptr<Mem>()> makeMem,
         std::function<std::unique_ptr<Cpu>(Mem&, const jit::ResolvedConfig&)> makeCpu,
-        const std::string& romPath, const std::string& diskPath, long steps) {
+        const std::string& romPath, const std::string& diskPath, long steps,
+        std::function<bool(Mem&)> prepare = {}) {
     const std::vector<uint8_t> rom = readFile(romPath);
     static const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
     auto memRef = makeMem();
     auto memJit = makeMem();
     if (!memRef->loadRom(rom) || !memJit->loadRom(rom) ||
+        (prepare && (!prepare(*memRef) || !prepare(*memJit))) ||
         !memRef->attachScsi(diskPath) || !memJit->attachScsi(diskPath)) {
         std::printf("FAIL: [jit_lockstep_board] %s: could not load ROM/disk\n", name);
         return 1;
@@ -282,6 +287,33 @@ int main(int argc, char** argv) {
                 return std::make_unique<VaspCpu>(m, j, core.cpu, true); },
             rom, disk75, steps);
     }
-    std::fprintf(stderr, "usage: %s q630|q700|centris650|iici|lc3|iivx [steps]\n", argv[0]);
+    // PowerBook 030: Jaws (170) and Niagra (180), PMU firmware LLE.
+    if (board == "pb170" || board == "pb180") {
+        const bool niagra = board == "pb180";
+        const auto profile = pom68k::pb030Profile(niagra ? pom68k::SnapMachine::Pb180
+                                                         : pom68k::SnapMachine::Pb170);
+        const std::string rom = testasset::findAny({ niagra
+            ? "roms/1MB ROMs/1992-10 - E33B2724 - Powerbook 160 & 165 & 165c & 180 & 180c.ROM"
+            : "roms/1MB ROMs/1991-10 - 420DBFF3 - Quadra 700&900 & PB140&170.ROM" });
+        const std::string fw = testasset::findAny({ niagra
+            ? "roms/archive/macroms/pmu/Powerbook-160-165-180__Powerbook 160 PMU.bin"
+            : "roms/archive/macroms/pmu/Powerbook-140-145-170__PMU.bin" });
+        const std::string disk755 = testasset::findAny({ "hdv/System 7.5.5 HD.dsk" });
+        if (rom.empty() || fw.empty() || disk755.empty()) {
+            std::printf("SKIP: [jit_lockstep_board] %s needs its ROM, PMU firmware and hdv/System 7.5.5 HD.dsk\n",
+                        board.c_str());
+            return 0;
+        }
+        testasset::report({ rom, fw, disk755 });
+        const std::vector<uint8_t> firmware = readFile(fw);
+        return run<Pb030Memory, Pb030Cpu>(niagra ? "PowerBook 180" : "PowerBook 170",
+            [&] { return std::make_unique<Pb030Memory>(core, 8u << 20, profile.cpuHz, niagra,
+                                                       profile.colorHeight); },
+            [&](Pb030Memory& m, const jit::ResolvedConfig& j) {
+                return std::make_unique<Pb030Cpu>(m, j, core.cpu, profile.fpu); },
+            rom, disk755, steps,
+            [&](Pb030Memory& m) { m.setMonitorSense(7); return m.pmu().loadFirmware(firmware); });
+    }
+    std::fprintf(stderr, "usage: %s q630|q700|centris650|iici|lc3|iivx|pb170|pb180 [steps]\n", argv[0]);
     return 2;
 }
