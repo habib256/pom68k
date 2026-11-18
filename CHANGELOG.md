@@ -1436,7 +1436,14 @@ firmware path too and is left out.
 
 Deep runs, a64, 30 000 000 checkpoints of 256 cycles (about 30.8 G
 cycles, deep into Mac OS 8.1 with 80 000+ blocks compiled per board):
-Quadra 630, Quadra 700 and Centris 650 identical, full RAM identical.
+Quadra 630, Quadra 700 and Centris 650 identical, full RAM identical;
+Mac IIci, LC III and Mac IIvx (about 30.9 G cycles, 11 000+ blocks
+compiled each) identical too.
+
+The two harness knobs (`POM68K_JIT_LOCKSTEP_SELF`, `_FULL_EVERY`) shipped
+in `d2d5e33c` unclassified in `config_knobs.tsv`: `config_test` failed in
+CI on that commit and on `668a9588`, because the pre-push run here covered
+`docs_test` but not the whole asset-free tier. Classified as test knobs.
 
 <a id="2026-11-19-long-locksteps"></a>
 ## 2026-11-19 — Long boot locksteps, a hundred times the gates: identical
