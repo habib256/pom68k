@@ -604,6 +604,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-19 — Long boot locksteps, a hundred times the gates: identical](#2026-11-19-long-locksteps)
 - [2026-11-18 (sixth) — Armed FP exceptions through the translator: no divergence in 16 000 seeds](#2026-11-18-fpexc-sweep)
 - [2026-11-18 (fifth) — A halted 68040 keeps the queue the interpreter would leave after a native JSR fault](#2026-11-18-jsr040-queue)
 - [2026-11-18 (fourth) — The trace check must refuse, not skip, a word the window stopped covering](#2026-11-18-trace-privilege)
@@ -1395,6 +1396,24 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-19-long-locksteps"></a>
+## 2026-11-19 — Long boot locksteps, a hundred times the gates: identical
+
+The random-program fuzzer having gone quiet, the same night ran the
+real-ROM locksteps (interpreter and translator side by side, every
+architectural register and the clock compared at each boundary) far past
+their gates, with the gates' own settings, on the tree of `1a8e39e8`:
+
+| lockstep | backend | settings | length | gate | result |
+|---|---|---|---|---|---|
+| Quadra 605 (`jit_lockstep_test`) | a64 | `HOT=1`, budget 50 | 500 000 000 steps | 5 000 000 | identical |
+| Quadra 605 | x64 (Rosetta) | budget 256, `POM68K_040_DCACHE=1` | 10 000 000 steps | 1 000 000 | identical |
+| LC II (`jit_lockstep_030_test`) | a64 | blocks, `HOT=1`, budget 260 480 | 600 000 steps | 6 000 | identical |
+| Plus (`jit_lockstep_68000_test`) | threaded, blocks | budget 256 | 100 000 000 steps, 208 557 frames | 2 500 000 | identical, clock included |
+
+No register file, no clock and no block boundary disagreed. Measurement
+only; nothing changed in the tree.
 
 <a id="2026-11-18-fpexc-sweep"></a>
 ## 2026-11-18 (sixth) — Armed FP exceptions through the translator: no divergence in 16 000 seeds
