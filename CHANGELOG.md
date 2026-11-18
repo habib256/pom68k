@@ -604,7 +604,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
-- [2026-11-19 (second) — Ten more boards get a JIT lockstep: Q630, Q700, Centris 650, IIci, LC III, IIvx, PowerBook 170, 180, Duo 230 and SE/30](#2026-11-19-board-locksteps)
+- [2026-11-19 (second) — Eleven more boards get a JIT lockstep, every family whose 68030/68040 runs translated by default](#2026-11-19-board-locksteps)
 - [2026-11-19 — Long boot locksteps, a hundred times the gates: identical](#2026-11-19-long-locksteps)
 - [2026-11-18 (sixth) — Armed FP exceptions through the translator: no divergence in 16 000 seeds](#2026-11-18-fpexc-sweep)
 - [2026-11-18 (fifth) — A halted 68040 keeps the queue the interpreter would leave after a native JSR fault](#2026-11-18-jsr040-queue)
@@ -1399,7 +1399,7 @@ Newest first.
 ---
 
 <a id="2026-11-19-board-locksteps"></a>
-## 2026-11-19 (second) — Ten more boards get a JIT lockstep: Q630, Q700, Centris 650, IIci, LC III, IIvx, PowerBook 170, 180, Duo 230 and SE/30
+## 2026-11-19 (second) — Eleven more boards get a JIT lockstep, every family whose 68030/68040 runs translated by default
 
 Until now only the Quadra 605 (`jit_lockstep_test`), the LC II
 (`jit_lockstep_030_test`) and the Plus had an instruction-level comparison
@@ -1440,7 +1440,14 @@ Last the SE/30 (Glue, `Cpu020` in 68030 mode, its video ROM installed by
 the prepare hook, `hdv/HD20SC.vhd`; the Glue boards hold no CPU reset, so
 the release loop is skipped by a `requires` test): self-check identical,
 2 000 000 checkpoints identical on a64 and x86-64; gate
-`jit_lockstep_board_se30_test`.
+`jit_lockstep_board_se30_test`. And the Mac IIfx (OSS and its two IOPs,
+the Toby declaration ROM through the prepare hook, System 7.5): the same,
+gate `jit_lockstep_board_iifx_test`.
+
+With these, every platform whose 68030 or 68040 runs translated by default
+has an instruction-level lockstep: the Quadra 605 (MemcJr), the LC II (V8)
+and now F108, Spike, DjMEMC, RBV, Sonora, VASP, Jaws, Niagra, MSC, Glue in
+68030 mode and OSS. The 68000 and 68020 boards run interpreted by default.
 
 Deep runs, a64, 30 000 000 checkpoints of 256 cycles (about 30.8 G
 cycles, deep into Mac OS 8.1 with 80 000+ blocks compiled per board):

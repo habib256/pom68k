@@ -5,14 +5,15 @@
 // their own: the 68040 Quadra 630 (F108), Quadra 700 (Spike) and Centris
 // 650 (DjMEMC), and the 68030 Mac IIci (RBV), LC III (Sonora), Mac IIvx
 // (VASP), PowerBook 170/180 (Jaws/Niagra, PMU firmware LLE) and PowerBook
-// Duo 230 (MSC, PG&E firmware LLE), and the SE/30 (Glue, 68030). jit_lockstep_test does this for the Quadra 605 with that
+// Duo 230 (MSC, PG&E firmware LLE), the SE/30 (Glue, 68030) and the Mac
+// IIfx (OSS and its IOPs). jit_lockstep_test does this for the Quadra 605 with that
 // board's hidden-state hooks; these boards expose none, so the comparison
 // here is architectural only — every register, the clock, the supervisor
 // stacks and the system globals (first 2 KB of RAM) at every checkpoint,
 // and the whole of RAM every `POM68K_JIT_LOCKSTEP_FULL_EVERY` checkpoints
 // and at the end.
 //
-//   jit_lockstep_board_test q630|q700|centris650|iici|lc3|iivx|pb170|pb180|duo230|se30 [steps]
+//   jit_lockstep_board_test q630|q700|centris650|iici|lc3|iivx|pb170|pb180|duo230|se30|iifx [steps]
 //
 // POM68K_JIT_LOCKSTEP_BUDGET (default 50 cycles) is the checkpoint spacing,
 // as in jit_lockstep_test. The boot disk is attached in memory
@@ -21,6 +22,8 @@
 
 #include "AssetFingerprint.h"
 #include "Cpu020.h"
+#include "IIfxCpu.h"
+#include "IIfxMemory.h"
 #include "MacIIMemory.h"
 #include "BoardIdentity.h"
 #include "MscCpu.h"
@@ -342,6 +345,25 @@ int main(int argc, char** argv) {
             rom, hd, steps,
             [&](MacIIMemory& m) { return m.installSe30Video(vrom); });
     }
+    // Mac IIfx (OSS, the two IOPs; the Toby video card's declaration ROM).
+    if (board == "iifx") {
+        const std::string rom = testasset::findAny({
+            "roms/512KB ROMs/1990-03 - 4147DD77 - Mac IIfx.ROM" });
+        const std::string toby = testasset::findAny({ "roms/342-0008-a.bin",
+            "roms/archive/macroms/Misc/Video cards/Apple Macintosh II Video Card/342-0008-a.bin",
+            "roms/archive/macroms/68k/256k/Macintosh II/342-0008-a.bin" });
+        if (rom.empty() || toby.empty() || disk75.empty()) {
+            std::printf("SKIP: [jit_lockstep_board] iifx needs the 4147DD77 ROM, the Toby ROM and hdv/System 7.5 HD.dsk\n");
+            return 0;
+        }
+        testasset::report({ rom, toby, disk75 });
+        return run<IIfxMemory, IIfxCpu>("Mac IIfx",
+            [&] { return std::make_unique<IIfxMemory>(core); },
+            [&](IIfxMemory& m, const jit::ResolvedConfig& j) {
+                return std::make_unique<IIfxCpu>(m, j, true); },
+            rom, disk75, steps,
+            [&](IIfxMemory& m) { return m.installTobyVideo(toby); });
+    }
     // PowerBook Duo 230 (MSC), PG&E power manager firmware LLE.
     if (board == "duo230") {
         const std::string rom = testasset::findAny({
@@ -361,6 +383,6 @@ int main(int argc, char** argv) {
             rom, disk755, steps,
             [](MscMemory& m) { return m.pgeActive(); });
     }
-    std::fprintf(stderr, "usage: %s q630|q700|centris650|iici|lc3|iivx|pb170|pb180|duo230|se30 [steps]\n", argv[0]);
+    std::fprintf(stderr, "usage: %s q630|q700|centris650|iici|lc3|iivx|pb170|pb180|duo230|se30|iifx [steps]\n", argv[0]);
     return 2;
 }

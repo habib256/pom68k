@@ -354,8 +354,8 @@ foreach(board IN ITEMS q630 q700 centris650)
                          LABELS "jit;m040" TIMEOUT 1800)
 endforeach()
 # …and the 68030 boards other than the LC II: RBV, Sonora, VASP, Jaws,
-# Niagra, MSC (Duo 230) and Glue (SE/30).
-foreach(board IN ITEMS iici lc3 iivx pb170 pb180 duo230 se30)
+# Niagra, MSC (Duo 230), Glue (SE/30) and OSS (IIfx).
+foreach(board IN ITEMS iici lc3 iivx pb170 pb180 duo230 se30 iifx)
     add_test(NAME jit_lockstep_board_${board}_test
              COMMAND jit_lockstep_board_test ${board} 2000000
              WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
