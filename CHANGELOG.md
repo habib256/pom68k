@@ -1436,6 +1436,19 @@ no sanitizer report. Without them, the a64 soak of the same night — every
 board at 20 000 000 jittered checkpoints (6 to 26 G cycles) and 30 000
 fuzz seeds per model with every mode combined — identical.
 
+Same night, the remaining two angles. x86-64 under ASan/UBSan
+(`build-x64-asan`, Rosetta), the x64 emitter's own code: 300-400 seeds per
+model of the plain, `--fpexc --ext --sys --smc`, `--mmu --ext --fpu
+--irq-timed --savestate` and `--dcache --ext --smc --savestate` modes, no
+report. And the threaded backend, the Windows x64 default, on every board
+(3 000 000 jittered checkpoints): in its default window mode (no block,
+130-520 M window instructions) and with blocks forced, identical, full RAM
+identical. The board lockstep now accepts a translated side that ran in the
+window only (its "never ran a block" check had failed the window mode for
+lack of blocks, after identical comparisons). Gates
+`jit_lockstep_board_q630_threaded_test` and
+`jit_lockstep_board_iici_threaded_blocks_test`.
+
 <a id="2026-11-19-board-locksteps"></a>
 ## 2026-11-19 (second) — Eleven more boards get a JIT lockstep, every family whose 68030/68040 runs translated by default
 

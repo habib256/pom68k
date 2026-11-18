@@ -207,14 +207,18 @@ int run(const char* name, std::function<std::unique_ptr<Mem>()> makeMem,
         return 1;
     }
     const auto st = cpuJit->jit().stats().snapshot();
-    if (st.blocksRun == 0 && !self) {
-        std::printf("FAIL: [jit_lockstep_board] %s: the JIT never ran a block\n", name);
+    // The translated side must actually have run translated: blocks, or —
+    // the threaded backend's default (POM68K_JIT_BLOCKS unset) — the fetch
+    // window, which interprets from host code pointers.
+    if (st.blocksRun == 0 && st.windowInstrs == 0 && !self) {
+        std::printf("FAIL: [jit_lockstep_board] %s: the engine never ran (no block, no window)\n", name);
         return 1;
     }
     std::printf("[jit_lockstep_board] OK — %s: %ld steps identical (clock included), "
-                "%lld cycles, full RAM identical; blocks compiled=%llu run=%llu\n",
+                "%lld cycles, full RAM identical; blocks compiled=%llu run=%llu window instrs=%llu\n",
                 name, steps, (long long)cpuRef->getClock(),
-                (unsigned long long)st.blocksCompiled, (unsigned long long)st.blocksRun);
+                (unsigned long long)st.blocksCompiled, (unsigned long long)st.blocksRun,
+                (unsigned long long)st.windowInstrs);
     return 0;
 }
 

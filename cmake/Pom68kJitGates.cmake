@@ -363,6 +363,20 @@ foreach(board IN ITEMS q630 iici)
                          ENVIRONMENT "POM68K_JIT_LOCKSTEP_JITTER=600"
                          LABELS "jit" TIMEOUT 1800)
 endforeach()
+# The threaded backend — the Windows x64 default — on real boards: its
+# default window mode on a 68040 board, its block path on a 68030 board.
+add_test(NAME jit_lockstep_board_q630_threaded_test
+         COMMAND jit_lockstep_board_test q630 1500000
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME jit_lockstep_board_iici_threaded_blocks_test
+         COMMAND jit_lockstep_board_test iici 1500000
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(jit_lockstep_board_q630_threaded_test PROPERTIES
+                     ENVIRONMENT "POM68K_JIT_BACKEND=threaded;POM68K_JIT_LOCKSTEP_JITTER=600"
+                     LABELS "jit" TIMEOUT 1800)
+set_tests_properties(jit_lockstep_board_iici_threaded_blocks_test PROPERTIES
+                     ENVIRONMENT "POM68K_JIT_BACKEND=threaded;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=1;POM68K_JIT_LOCKSTEP_JITTER=600"
+                     LABELS "jit" TIMEOUT 1800)
 # …and the 68030 boards other than the LC II: RBV, Sonora, VASP, Jaws,
 # Niagra, MSC (Duo 230), Glue (SE/30) and OSS (IIfx).
 foreach(board IN ITEMS iici lc3 iivx pb170 pb180 duo230 se30 iifx)
