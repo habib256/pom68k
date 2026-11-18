@@ -604,7 +604,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
-- [2026-11-19 (second) — Nine more boards get a JIT lockstep: Q630, Q700, Centris 650, IIci, LC III, IIvx, PowerBook 170, 180 and Duo 230](#2026-11-19-board-locksteps)
+- [2026-11-19 (second) — Ten more boards get a JIT lockstep: Q630, Q700, Centris 650, IIci, LC III, IIvx, PowerBook 170, 180, Duo 230 and SE/30](#2026-11-19-board-locksteps)
 - [2026-11-19 — Long boot locksteps, a hundred times the gates: identical](#2026-11-19-long-locksteps)
 - [2026-11-18 (sixth) — Armed FP exceptions through the translator: no divergence in 16 000 seeds](#2026-11-18-fpexc-sweep)
 - [2026-11-18 (fifth) — A halted 68040 keeps the queue the interpreter would leave after a native JSR fault](#2026-11-18-jsr040-queue)
@@ -1399,7 +1399,7 @@ Newest first.
 ---
 
 <a id="2026-11-19-board-locksteps"></a>
-## 2026-11-19 (second) — Nine more boards get a JIT lockstep: Q630, Q700, Centris 650, IIci, LC III, IIvx, PowerBook 170, 180 and Duo 230
+## 2026-11-19 (second) — Ten more boards get a JIT lockstep: Q630, Q700, Centris 650, IIci, LC III, IIvx, PowerBook 170, 180, Duo 230 and SE/30
 
 Until now only the Quadra 605 (`jit_lockstep_test`), the LC II
 (`jit_lockstep_030_test`) and the Plus had an instruction-level comparison
@@ -1436,6 +1436,11 @@ checkpoints identical on a64 and x86-64; gates
 self-check identical, 2 000 000 checkpoints identical on a64 and x86-64 —
 the PG&E holds the CPU for long stretches, so these checkpoints cover
 1.6 G cycles but only 67 blocks; gate `jit_lockstep_board_duo230_test`.
+Last the SE/30 (Glue, `Cpu020` in 68030 mode, its video ROM installed by
+the prepare hook, `hdv/HD20SC.vhd`; the Glue boards hold no CPU reset, so
+the release loop is skipped by a `requires` test): self-check identical,
+2 000 000 checkpoints identical on a64 and x86-64; gate
+`jit_lockstep_board_se30_test`.
 
 Deep runs, a64, 30 000 000 checkpoints of 256 cycles (about 30.8 G
 cycles, deep into Mac OS 8.1 with 80 000+ blocks compiled per board):

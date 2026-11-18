@@ -5,14 +5,14 @@
 // their own: the 68040 Quadra 630 (F108), Quadra 700 (Spike) and Centris
 // 650 (DjMEMC), and the 68030 Mac IIci (RBV), LC III (Sonora), Mac IIvx
 // (VASP), PowerBook 170/180 (Jaws/Niagra, PMU firmware LLE) and PowerBook
-// Duo 230 (MSC, PG&E firmware LLE). jit_lockstep_test does this for the Quadra 605 with that
+// Duo 230 (MSC, PG&E firmware LLE), and the SE/30 (Glue, 68030). jit_lockstep_test does this for the Quadra 605 with that
 // board's hidden-state hooks; these boards expose none, so the comparison
 // here is architectural only — every register, the clock, the supervisor
 // stacks and the system globals (first 2 KB of RAM) at every checkpoint,
 // and the whole of RAM every `POM68K_JIT_LOCKSTEP_FULL_EVERY` checkpoints
 // and at the end.
 //
-//   jit_lockstep_board_test q630|q700|centris650|iici|lc3|iivx|pb170|pb180|duo230 [steps]
+//   jit_lockstep_board_test q630|q700|centris650|iici|lc3|iivx|pb170|pb180|duo230|se30 [steps]
 //
 // POM68K_JIT_LOCKSTEP_BUDGET (default 50 cycles) is the checkpoint spacing,
 // as in jit_lockstep_test. The boot disk is attached in memory
@@ -20,6 +20,8 @@
 // (exit 0) without the board's ROM or a boot disk.
 
 #include "AssetFingerprint.h"
+#include "Cpu020.h"
+#include "MacIIMemory.h"
 #include "BoardIdentity.h"
 #include "MscCpu.h"
 #include "MscMemory.h"
@@ -131,11 +133,15 @@ int run(const char* name, std::function<std::unique_ptr<Mem>()> makeMem,
     cpuJit->setEngine(self ? 0 : 1);
     cpuRef->hardReset();
     cpuJit->hardReset();
-    for (long g = 0; memRef->cpuHeld() && g < 400000; g++) memRef->tick(1000);
-    for (long g = 0; memJit->cpuHeld() && g < 400000; g++) memJit->tick(1000);
-    if (memRef->cpuHeld() || memJit->cpuHeld()) {
-        std::printf("FAIL: [jit_lockstep_board] %s: the CPU was never released\n", name);
-        return 1;
+    // Boards whose MCU holds the CPU in reset (Egret, Cuda, PMU, PG&E) are
+    // released before the comparison; the Glue boards have no such hold.
+    if constexpr (requires(Mem& m) { m.cpuHeld(); }) {
+        for (long g = 0; memRef->cpuHeld() && g < 400000; g++) memRef->tick(1000);
+        for (long g = 0; memJit->cpuHeld() && g < 400000; g++) memJit->tick(1000);
+        if (memRef->cpuHeld() || memJit->cpuHeld()) {
+            std::printf("FAIL: [jit_lockstep_board] %s: the CPU was never released\n", name);
+            return 1;
+        }
     }
 
     long budget = 50;
@@ -318,6 +324,24 @@ int main(int argc, char** argv) {
             rom, disk755, steps,
             [&](Pb030Memory& m) { m.setMonitorSense(7); return m.pmu().loadFirmware(firmware); });
     }
+    // SE/30 (Glue, Cpu020 in 68030 mode, its video ROM).
+    if (board == "se30") {
+        const std::string rom = testasset::findAny({
+            "roms/256KB ROMs/1988-09 - 97221136 - Mac II FDHD & IIx & IIcx.ROM" });
+        const std::string vrom = testasset::findAny({ "roms/se30/se30vrom.uk6" });
+        const std::string hd = testasset::findAny({ "hdv/HD20SC.vhd" });
+        if (rom.empty() || vrom.empty() || hd.empty()) {
+            std::printf("SKIP: [jit_lockstep_board] se30 needs the 97221136 ROM, se30vrom.uk6 and hdv/HD20SC.vhd\n");
+            return 0;
+        }
+        testasset::report({ rom, vrom, hd });
+        return run<MacIIMemory, Cpu020>("SE/30",
+            [&] { return std::make_unique<MacIIMemory>(core, 0x800000, MacIIMemory::Model::SE30); },
+            [&](MacIIMemory& m, const jit::ResolvedConfig& j) {
+                return std::make_unique<Cpu020>(m, j, core.cpu, true, true); },
+            rom, hd, steps,
+            [&](MacIIMemory& m) { return m.installSe30Video(vrom); });
+    }
     // PowerBook Duo 230 (MSC), PG&E power manager firmware LLE.
     if (board == "duo230") {
         const std::string rom = testasset::findAny({
@@ -337,6 +361,6 @@ int main(int argc, char** argv) {
             rom, disk755, steps,
             [](MscMemory& m) { return m.pgeActive(); });
     }
-    std::fprintf(stderr, "usage: %s q630|q700|centris650|iici|lc3|iivx|pb170|pb180|duo230 [steps]\n", argv[0]);
+    std::fprintf(stderr, "usage: %s q630|q700|centris650|iici|lc3|iivx|pb170|pb180|duo230|se30 [steps]\n", argv[0]);
     return 2;
 }
