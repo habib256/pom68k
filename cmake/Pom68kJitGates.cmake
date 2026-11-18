@@ -340,6 +340,19 @@ set_tests_properties(jit_lockstep_68000_blocks_test PROPERTIES
                      ENVIRONMENT "POM68K_JIT_BACKEND=threaded;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=1;POM68K_JIT_LOCKSTEP_BUDGET=256;POM68K_JIT_LOCKSTEP_FINE_AT=2400000"
                      TIMEOUT 1800)
 
+# The 68040 boards with no lockstep of their own (Quadra 630, Quadra 700,
+# Centris 650): architectural state + system globals at every checkpoint,
+# the whole of RAM periodically (tests/jit_lockstep_board_test.cpp).
+add_executable(jit_lockstep_board_test tests/jit_lockstep_board_test.cpp)
+target_link_libraries(jit_lockstep_board_test PRIVATE pom68k_core)
+foreach(board IN ITEMS q630 q700 centris650)
+    add_test(NAME jit_lockstep_board_${board}_test
+             COMMAND jit_lockstep_board_test ${board} 2000000
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(jit_lockstep_board_${board}_test PROPERTIES
+                         LABELS "jit;m040" TIMEOUT 1800)
+endforeach()
+
 # ── the 68030 lockstep (docs/JIT_BRINGUP.md § C.1) ───────────────────
 # Every gate above runs two Quadra 605s, so until this one the 68030
 # side of the engine had no instruction-level differential coverage at

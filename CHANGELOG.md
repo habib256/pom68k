@@ -604,6 +604,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-19 (second) — Quadra 630, Quadra 700 and Centris 650 get a JIT lockstep](#2026-11-19-board-locksteps)
 - [2026-11-19 — Long boot locksteps, a hundred times the gates: identical](#2026-11-19-long-locksteps)
 - [2026-11-18 (sixth) — Armed FP exceptions through the translator: no divergence in 16 000 seeds](#2026-11-18-fpexc-sweep)
 - [2026-11-18 (fifth) — A halted 68040 keeps the queue the interpreter would leave after a native JSR fault](#2026-11-18-jsr040-queue)
@@ -1396,6 +1397,31 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-19-board-locksteps"></a>
+## 2026-11-19 (second) — Quadra 630, Quadra 700 and Centris 650 get a JIT lockstep
+
+Until now only the Quadra 605 (`jit_lockstep_test`), the LC II
+(`jit_lockstep_030_test`) and the Plus had an instruction-level comparison
+of the interpreter and the translator; the other 68040 boards — F108, Spike
+and DjMEMC, each its own memory map, wrapper and peripheral deadline — were
+held by boot etalons only. `tests/jit_lockstep_board_test.cpp` runs two
+machines of one board from the same ROM and `hdv/MacOS-8.1-boot.vhd`
+(attached in memory, `writeBack = false`), one interpreted and one
+translated, and compares at every checkpoint every register, the clock,
+VBR/CACR/TC, the halt state and the system globals (first 2 KB of RAM), and
+the whole of RAM every `POM68K_JIT_LOCKSTEP_FULL_EVERY` checkpoints and at
+the end. These boards expose no hidden-state hooks like the Quadra 605's,
+so the comparison is architectural only.
+
+`POM68K_JIT_LOCKSTEP_SELF=1` runs interpreter against interpreter first:
+200 000 checkpoints identical on each board, so the two instances are
+deterministic in one process. Then, a64: 2 000 000 checkpoints of 50 cycles
+on each board identical, full RAM identical (about 11 s each); x86-64
+under Rosetta, the same three runs with the x64 backend: identical.
+
+Gates `jit_lockstep_board_{q630,q700,centris650}_test` (`jit;m040`,
+assets required).
 
 <a id="2026-11-19-long-locksteps"></a>
 ## 2026-11-19 — Long boot locksteps, a hundred times the gates: identical
