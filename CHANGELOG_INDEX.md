@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 833 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 834 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 25 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 44 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 170 |
+| [Cross-cutting](#cross-cutting) | 171 |
 
 ---
 
@@ -894,5 +894,6 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-17 (second)** — [Format-2 traps retain the instruction that caused them](CHANGELOG.md#2026-11-17-group2-instruction-address)
 - **2026-11-18 (fourth)** — [The trace check must refuse, not skip, a word the window stopped covering](CHANGELOG.md#2026-11-18-trace-privilege)
 - **2026-11-18 (second)** — [A random-program fuzzer finds six interpreter/translator/save-state defects](CHANGELOG.md#2026-11-18-program-fuzz)
+- **2026-11-18 (sixth)** — [Armed FP exceptions through the translator: no divergence in 16 000 seeds](CHANGELOG.md#2026-11-18-fpexc-sweep)
 - **2026-11-18 (third)** — [A CACR write that clears DE retires the native 040 cache-line entries](CHANGELOG.md#2026-11-18-cacr-publications)
 

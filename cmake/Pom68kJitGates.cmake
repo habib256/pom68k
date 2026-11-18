@@ -143,6 +143,19 @@ set_tests_properties(jit_program_fuzz_030_sys_test PROPERTIES
 set_tests_properties(jit_program_fuzz_040_sys_test jit_program_fuzz_030_sys_test
                      jit_program_fuzz_040_sys_mmu_test
                      PROPERTIES LABELS "jit;unit" TIMEOUT 300)
+# --fpexc: FPCR also arms the FP exception enables, so posted 6888x
+# exceptions and 68040 FP frames (vectors 48-55) occur inside blocks, across
+# interrupts and save states.
+add_test(NAME jit_program_fuzz_040_fpexc_test
+         COMMAND jit_program_fuzz --model 40 --fpexc --savestate --irq-timed
+                 --slices 20 --seeds 200)
+add_test(NAME jit_program_fuzz_030_fpexc_test
+         COMMAND jit_program_fuzz --model 30 --fpexc --savestate --irq-timed
+                 --slices 20 --seeds 200)
+set_tests_properties(jit_program_fuzz_030_fpexc_test PROPERTIES
+                     ENVIRONMENT "POM68K_JIT_PROFIT_SCORE=0")
+set_tests_properties(jit_program_fuzz_040_fpexc_test jit_program_fuzz_030_fpexc_test
+                     PROPERTIES LABELS "jit;unit" TIMEOUT 300)
 set_tests_properties(jit_program_fuzz_040_test jit_program_fuzz_030_test
                      jit_program_fuzz_040_smc_test jit_program_fuzz_030_smc_test
                      jit_program_fuzz_040_ext_test jit_program_fuzz_030_ext_test

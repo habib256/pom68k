@@ -29,7 +29,7 @@
 //   jit_program_fuzz [--model 0|20|30|40] [--seeds N] [--first S] [--extra S,S..]
 //                    [--len N] [--raw PERMILLE] [--slices N] [--budget CYCLES]
 //                    [-v] [--trace] [--shrink] [--bisect] [--watch-jit]
-//                    [--patch ADDR=WORD] [--progress] [--smc] [--irq] [--irq-timed] [--fpu] [--ext] [--sys] [--savestate] [--dcache] [--mmu]
+//                    [--patch ADDR=WORD] [--progress] [--smc] [--irq] [--irq-timed] [--fpu] [--ext] [--sys] [--fpexc] [--savestate] [--dcache] [--mmu]
 //
 // A failure prints the seed; `--first S --seeds 1 -v` replays it alone.
 // `--shrink` turns body instructions into NOPs while a divergence remains,
@@ -130,7 +130,8 @@ public:
         if (clock >= deadline) serviceEvents();
     }
 
-    uint64_t vectors[256] = {};       // --stats: exceptions taken, by vector
+    uint64_t vectors[256] = {};       // willExecute, by vector
+    uint64_t jumps[256] = {};         // --stats: exceptions taken (didJumpToVector)
     uint64_t fpuInstrs = 0;           // --stats: F-line opcodes executed
 
 private:
@@ -147,6 +148,9 @@ private:
         if (logTag) std::printf("    %s irq level %u pc=%08X clock=%lld\n", logTag, level,
                                 getPC0(), (long long)getClock());
     }
+    // Every exception path ends here, the FPU's own (execFpuException,
+    // which has no willExecute) included: --stats counts from this hook.
+    void didJumpToVector(int nr, moira::u32) override { jumps[nr & 0xFF]++; }
     void willExecute(moira::M68kException, moira::u16 vector) override {
         vectors[vector & 0xFF]++;
         if (logTag) std::printf("    %s exception vector %u pc=%08X clock=%lld sr=%04X fa=%08X ssw=%04X tc040=%04X urp=%08X\n",
@@ -221,6 +225,7 @@ constexpr uint32_t kCode    = 0x00040000;
 constexpr uint32_t kBodyWord = 29;         // first body word: after the prologue
 bool gFpu = false;   // --fpu: 68040 with its FPU, 68030 with a 68882
 bool gExt = false;   // --ext: the wider template set (Gen::ext); changes every program
+bool gFpExc = false;    // --fpexc: FPCR also arms FP exceptions (with --fpu)
 bool gSys = false;      // --sys: SR/USP/RTE/STOP system transitions (Gen::sys)
 bool gDcache = false;   // --dcache: the architectural 68040 caches (POM68K_040_DCACHE), both on
 bool gMmu = false;      // --mmu: identity translation through real tables (68030/68040)
@@ -531,7 +536,13 @@ public:
             break;
         }
         case 6: {                    // FMOVE.L #mode,FPCR: rounding/precision only
-            emit(0xF23C, {0x9000, 0, uint16_t(r_.below(16) << 4)});
+            // --fpexc arms exception enables too (bits 15-8: BSUN SNAN
+            // OPERR OVFL UNFL DZ INEX2 INEX1): posted 6888x exceptions,
+            // 68040 pre-instruction/format-$3 frames, and their vectors
+            // 48-54 inside generated blocks.
+            uint16_t v = uint16_t(r_.below(16) << 4);
+            if (gFpExc) v |= uint16_t(r_.w() & 0xFF00);
+            emit(0xF23C, {0x9000, 0, v});
             break;
         }
         default:                     // FBcc.W short hop / FScc Dn
@@ -973,6 +984,7 @@ int main(int argc, char** argv) {
         else if (a == "--fpu") gFpu = true;
         else if (a == "--ext") gExt = true;
         else if (a == "--sys") gSys = true;
+        else if (a == "--fpexc") gFpu = gFpExc = true;
         else if (a == "--savestate") gSave = true;
         else if (a == "--dcache") gDcache = true;
         else if (a == "--mmu") gMmu = true;
@@ -1308,7 +1320,7 @@ int main(int argc, char** argv) {
     if (stats) {
         std::printf("[jit_program_fuzz] exceptions by vector (interpreter):");
         for (int v = 0; v < 256; v++)
-            if (ref->vectors[v]) std::printf(" %d:%llu", v, (unsigned long long)ref->vectors[v]);
+            if (ref->jumps[v]) std::printf(" %d:%llu", v, (unsigned long long)ref->jumps[v]);
         std::printf("\n");
     }
     if (stats && gMmu) {

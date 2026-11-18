@@ -604,6 +604,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-18 (sixth) — Armed FP exceptions through the translator: no divergence in 16 000 seeds](#2026-11-18-fpexc-sweep)
 - [2026-11-18 (fifth) — A halted 68040 keeps the queue the interpreter would leave after a native JSR fault](#2026-11-18-jsr040-queue)
 - [2026-11-18 (fourth) — The trace check must refuse, not skip, a word the window stopped covering](#2026-11-18-trace-privilege)
 - [2026-11-18 (third) — A CACR write that clears DE retires the native 040 cache-line entries](#2026-11-18-cacr-publications)
@@ -1394,6 +1395,21 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-18-fpexc-sweep"></a>
+## 2026-11-18 (sixth) — Armed FP exceptions through the translator: no divergence in 16 000 seeds
+
+`jit_program_fuzz --fpexc` lets `FMOVE.L #imm,FPCR` arm the exception
+enables (BSUN … INEX1) as well as rounding and precision, so posted 6888x
+exceptions and 68040 FP frames happen inside generated blocks, across timed
+interrupts and save states. `--stats` now counts every exception from
+`didJumpToVector`: `execFpuException` has no `willExecute`, and the first
+count read zero vectors 48-55 where 1 000 seeds take several thousand
+(68040: 48-55 all present, 55 unimplemented-data-type 2 722; 68030 + 68882:
+48-54). 4 000 seeds per model of `--fpexc --savestate --irq-timed` and of
+`--fpexc --mmu --ext --sys --smc --savestate`: clean. Same session, longer
+programs (`--len 120`) and 15 % raw words (`--raw 150`), 2 000 seeds per
+model each: clean. Gates `jit_program_fuzz_{040,030}_fpexc_test`.
 
 <a id="2026-11-18-jsr040-queue"></a>
 ## 2026-11-18 (fifth) — A halted 68040 keeps the queue the interpreter would leave after a native JSR fault
