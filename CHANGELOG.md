@@ -40,6 +40,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **The 2026-11-18 (second) trace check skipped a footprint word the window no longer covered; why was that wrong?** → [Refuse, not skip](#2026-11-18-trace-privilege)
+
 - **Why does a format-$2 group-2 frame now hold two different PCs, after the July oracle ruling made them equal?** → [The primary-manual ruling and scoped IA checks](#2026-11-17-group2-instruction-address)
 
 - **"m030 141 / 141 and m040 102 / 102" for the MCU run-ahead and the copy-on-write ATC (2026-11-11 (fifth), (sixth)) — those tiers ran with a mutant `M68hc05` object left by the mutation script, equivalent on these boards but not the commit; rerun on a forced rebuild** → [The verdict table, and the correction](#2026-11-11-mcu-ahead-table)
@@ -602,6 +604,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-18 (fourth) — The trace check must refuse, not skip, a word the window stopped covering](#2026-11-18-trace-privilege)
 - [2026-11-18 (third) — A CACR write that clears DE retires the native 040 cache-line entries](#2026-11-18-cacr-publications)
 - [2026-11-18 (second) — A random-program fuzzer finds six interpreter/translator/save-state defects](#2026-11-18-program-fuzz)
 - [2026-11-18 — The fork builds and behaves under upstream Moira's settings](#2026-11-18-upstream-config)
@@ -1391,6 +1394,34 @@ Newest first.
 
 ---
 
+<a id="2026-11-18-trace-privilege"></a>
+## 2026-11-18 (fourth) — The trace check must refuse, not skip, a word the window stopped covering
+
+> **Corrects** the (second) entry's item 1, whose last refinement — skip a
+> footprint word the window no longer covers, on the grounds that such a
+> block gets no `ir.code` — shipped in `6b1e2627` and was wrong.
+
+`pomJitCovers()` also checks the privilege the window was armed under; the
+`ir.code` copy in `record()` checks only the window's raw bounds. A
+user-mode trace (new `--sys` mode: SR writes into user mode, T1, the M bit,
+USP moves, RTE through a built frame, STOP) whose `SLT -(A2)` rewrote the
+`MOVEA.W` at the head of its own block and which then ended in a supervisor
+F-line exception passed the skip: the block was compiled from the new bytes
+under the old opcode and ran 6 cycles where the interpreter ran 2 (68040
+seed 2788). The check refuses again, as the first version did.
+
+Harness, same session: under `--mmu` the pages holding the tables are now
+write-protected. A random store that cleared a page descriptor's resident
+bit without PFLUSH left the interpreter running on its ATC entry, as a
+68040 would, while the core restored from a save state — whose ATC is a
+derived cache, flushed on load — walked the broken table and faulted
+(seed 511). That guest is broken on silicon too; the harness keeps it out.
+
+Gates `jit_program_fuzz_040_sys_test` (seed 2788) and
+`jit_program_fuzz_030_sys_test`. Sweeps: 4 000 seeds per model of
+`--sys --ext --fpu --smc` and of `--sys --mmu --ext --fpu --smc
+--irq-timed --savestate`, clean but one 68040 seed (3499) under triage.
+
 <a id="2026-11-18-cacr-publications"></a>
 ## 2026-11-18 (third) — A CACR write that clears DE retires the native 040 cache-line entries
 
@@ -1436,9 +1467,8 @@ Defects, all fixed:
    into the block's bytes is invisible to the write guard (the block is not
    marked yet). The block mixed old opcodes with new operands. The tracer
    now snapshots the words before each traced instruction and refuses the
-   block when its footprint `[pc, at + 4)` changed (a word the window no
-   longer covers is skipped: that block gets no `ir.code` and is never
-   compiled anyway).
+   block when its footprint `[pc, at + 4)` changed (see the (fourth)
+   entry for a word the window no longer covers).
 2. **TST #imm.B/.W set N to $FF on a64** (seed 3476; SR read $27F8).
    The shared decoder sign-extends byte/word immediates; the unpacked
    `emitNz` shifted instead of isolating the sign bit. It now uses UBFX, as

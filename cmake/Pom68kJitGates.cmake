@@ -124,6 +124,19 @@ add_test(NAME jit_program_fuzz_040_mmu_dcache_test
 set_tests_properties(jit_program_fuzz_040_dcache_cacr_test
                      jit_program_fuzz_040_mmu_dcache_test PROPERTIES
                      ENVIRONMENT "FUZZ_CACR_FLUSH=0")
+# --sys: SR writes into user mode, T1 tracing and the master bit, USP
+# moves, RTE through a built frame, STOP. Seed 2788 is a user-mode trace
+# that rewrote its own opcode and ended in a supervisor exception.
+add_test(NAME jit_program_fuzz_040_sys_test
+         COMMAND jit_program_fuzz --model 40 --sys --ext --fpu --smc
+                 --seeds 300 --extra 2788)
+add_test(NAME jit_program_fuzz_030_sys_test
+         COMMAND jit_program_fuzz --model 30 --sys --mmu --ext --fpu --smc
+                 --irq-timed --savestate --slices 20 --seeds 250)
+set_tests_properties(jit_program_fuzz_030_sys_test PROPERTIES
+                     ENVIRONMENT "POM68K_JIT_PROFIT_SCORE=0")
+set_tests_properties(jit_program_fuzz_040_sys_test jit_program_fuzz_030_sys_test
+                     PROPERTIES LABELS "jit;unit" TIMEOUT 300)
 set_tests_properties(jit_program_fuzz_040_test jit_program_fuzz_030_test
                      jit_program_fuzz_040_smc_test jit_program_fuzz_030_smc_test
                      jit_program_fuzz_040_ext_test jit_program_fuzz_030_ext_test

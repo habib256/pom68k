@@ -1096,12 +1096,15 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
     // The trace rewrote its own footprint (see traceWords_ above): the
     // bytes `ir.code` copies below, [pc, at + 4). A store beside the block
     // changes nothing it was translated from. A word the window no longer
-    // covers is skipped, not refused: the copy below then leaves `code`
-    // empty, no generator compiles the block, and refusing it would only
-    // retrace it on every visit.
+    // covers is refused too, not skipped: pomJitCovers() also checks the
+    // privilege the window was armed under, while the copy below checks
+    // only the window's raw bounds. A user-mode trace that rewrote its own
+    // opcode and ended in a supervisor exception passed a "skip" here and
+    // was compiled from the new bytes under the old opcode
+    // (tests/jit_program_fuzz.cpp --sys --ext --fpu --smc, 68040 seed 2788).
     for (const auto& [w, word] : traceWords_) {
-        if (w < pc || w >= at + 4 || !cpu_.pomJitCovers(w)) continue;
-        if (cpu_.pomJitPeek(w) != word) {
+        if (w < pc || w >= at + 4) continue;
+        if (!cpu_.pomJitCovers(w) || cpu_.pomJitPeek(w) != word) {
             stats_.bump(Exit::NotCompilable);
             if (versionedEntry)
                 shiftVersions_.prune(cacheKey, blocks_.contains(baseKey));

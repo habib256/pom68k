@@ -29,7 +29,7 @@
 //   jit_program_fuzz [--model 0|20|30|40] [--seeds N] [--first S] [--extra S,S..]
 //                    [--len N] [--raw PERMILLE] [--slices N] [--budget CYCLES]
 //                    [-v] [--trace] [--shrink] [--bisect] [--watch-jit]
-//                    [--patch ADDR=WORD] [--progress] [--smc] [--irq] [--irq-timed] [--fpu] [--ext] [--savestate] [--dcache] [--mmu]
+//                    [--patch ADDR=WORD] [--progress] [--smc] [--irq] [--irq-timed] [--fpu] [--ext] [--sys] [--savestate] [--dcache] [--mmu]
 //
 // A failure prints the seed; `--first S --seeds 1 -v` replays it alone.
 // `--shrink` turns body instructions into NOPs while a divergence remains,
@@ -149,8 +149,9 @@ private:
     }
     void willExecute(moira::M68kException, moira::u16 vector) override {
         vectors[vector & 0xFF]++;
-        if (logTag) std::printf("    %s exception vector %u pc=%08X clock=%lld sr=%04X\n", logTag,
-                                vector, getPC0(), (long long)getClock(), getSR());
+        if (logTag) std::printf("    %s exception vector %u pc=%08X clock=%lld sr=%04X fa=%08X ssw=%04X tc040=%04X urp=%08X\n",
+                                logTag, vector, getPC0(), (long long)getClock(), getSR(),
+                                mmu040FaultAddr, mmu040Ssw, getTC040(), getURP040());
     }
     moira::u8 read8(moira::u32 a) const override { return mem[a & 0xFFFFFF]; }
     moira::u16 read16(moira::u32 a) const override {
@@ -220,6 +221,7 @@ constexpr uint32_t kCode    = 0x00040000;
 constexpr uint32_t kBodyWord = 29;         // first body word: after the prologue
 bool gFpu = false;   // --fpu: 68040 with its FPU, 68030 with a 68882
 bool gExt = false;   // --ext: the wider template set (Gen::ext); changes every program
+bool gSys = false;      // --sys: SR/USP/RTE/STOP system transitions (Gen::sys)
 bool gDcache = false;   // --dcache: the architectural 68040 caches (POM68K_040_DCACHE), both on
 bool gMmu = false;      // --mmu: identity translation through real tables (68030/68040)
 int gModel = 40;
@@ -288,6 +290,7 @@ public:
         }
         if (gFpu && r_.chance(200)) { fpu(); return; }
         if (gExt && r_.chance(250)) { ext(); return; }
+        if (gSys && r_.chance(120)) { sys(); return; }
         std::vector<uint16_t> e1, e2;
         const uint16_t dn = uint16_t(r_.below(8));
         const uint16_t sz = uint16_t(r_.below(3));
@@ -544,6 +547,43 @@ public:
     // PACK/UNPK, MOVEP, NBCD, MOVE16 (68040) and cache enables through
     // MOVEC CACR — each a block terminator, a multi-access instruction or a
     // state the translator must flush on.
+    // --sys: the state changes the engine must hand back to the
+    // interpreter — SR writes that drop to user mode, arm T1 tracing or
+    // flip the master bit; USP moves; an RTE through a hand-built format-0
+    // frame; STOP. Every exception still lands on `JMP head`, which runs in
+    // supervisor mode with A7 reset.
+    void sys() {
+        static const uint16_t srs[] = {0x2000, 0x2700, 0x2300, 0x0000, 0x0700,
+                                       0x8000, 0xA000, 0x3000, 0x2010, 0x001F};
+        const uint16_t sr = srs[r_.below(sizeof srs / sizeof srs[0])];
+        switch (r_.below(6)) {
+        case 0: emit(0x46FC, {sr}); break;                                   // MOVE #,SR
+        case 1: {                                                            // ANDI/ORI/EORI #,SR
+            static const uint16_t op[3] = {0x027C, 0x007C, 0x0A7C};
+            emit(op[r_.below(3)], {uint16_t(r_.w() & 0xA71F)});
+            break;
+        }
+        case 2: {                                                            // MOVE An,USP / USP,An
+            const uint16_t an = uint16_t(r_.below(7));
+            emit(uint16_t((r_.chance(500) ? 0x4E60 : 0x4E68) | an));
+            break;
+        }
+        case 3:                                                              // format-0 frame, RTE
+            emit(0x3F3C, {0x0000});                                          // MOVE.W #0,-(A7)
+            emit(0x487A, {0x0008});                                          // PEA (8,PC): after RTE
+            emit(0x3F3C, {sr});                                              // MOVE.W #sr,-(A7)
+            emit(0x4E73);                                                    // RTE
+            break;
+        case 4:                                                              // STOP (rare)
+            if (r_.chance(200)) emit(0x4E72, {uint16_t(0x2000 | r_.below(8) << 8)});
+            else emit(0x4E71);
+            break;
+        default:                                                             // MOVE SR,Dn / CCR
+            emit(uint16_t(0x40C0 | r_.below(8)));
+            break;
+        }
+    }
+
     void ext() {
         std::vector<uint16_t> e;
         const uint16_t dn = uint16_t(r_.below(8));
@@ -764,6 +804,17 @@ void load(FuzzCpu& cpu, moira::Model model, const Program& p, uint32_t ramSeed) 
         // Above 16 MB nothing is mapped: those accesses now take a page
         // fault (vector 2) where the plain bus mirrored them.
         constexpr uint32_t kTables = 0x00800000;
+        // The pages holding the tables are write-protected (W). A random
+        // store that cleared a descriptor's resident bit without PFLUSH
+        // left the interpreter running on its ATC entry, as silicon would,
+        // while a core restored from a save state — whose ATC is a derived
+        // cache, flushed on load (MoiraState.h) — walked the broken table
+        // and faulted (--sys --mmu --smc --savestate, 68040 seed 511). Such
+        // a guest is broken on hardware too; the harness keeps it out.
+        // The MMU's own U/M write-backs are not subject to W.
+        const auto tablePage = [](uint32_t page) {
+            return page >= kTables && page < kTables + 0x11000;
+        };
         if (model == moira::Model::M68030) {
             // TC: E, PS 4 KB, IS 8, TIA 4, TIB 8 (8+4+8+12 = 32). Level A:
             // sixteen short table descriptors; level B: 256 short page
@@ -773,7 +824,10 @@ void load(FuzzCpu& cpu, moira::Model model, const Program& p, uint32_t ramSeed) 
             for (uint32_t i = 0; i < 16; i++) {
                 const uint32_t tb = kTables + 0x1000 + 0x400 * i;
                 put32(kTables + 4 * i, tb | 2);
-                for (uint32_t j = 0; j < 256; j++) put32(tb + 4 * j, (i << 20 | j << 12) | 1);
+                for (uint32_t j = 0; j < 256; j++) {
+                    const uint32_t page = i << 20 | j << 12;
+                    put32(tb + 4 * j, page | (tablePage(page) ? 4 : 0) | 1);   // WP over the tables
+                }
             }
             if (ramSeed & 1) put32(kTables, 1);
             cpu.setCRP(0x7FFF000200000000ull | kTables);
@@ -789,8 +843,10 @@ void load(FuzzCpu& cpu, moira::Model model, const Program& p, uint32_t ramSeed) 
             put32(root, ptr | 2);
             for (uint32_t j = 0; j < 64; j++) {
                 put32(ptr + 4 * j, (pages + 0x100 * j) | 2);
-                for (uint32_t k = 0; k < 64; k++)
-                    put32(pages + 0x100 * j + 4 * k, ((j << 18) | (k << 12)) | cm | 1);
+                for (uint32_t k = 0; k < 64; k++) {
+                    const uint32_t page = (j << 18) | (k << 12);
+                    put32(pages + 0x100 * j + 4 * k, page | cm | (tablePage(page) ? 4 : 0) | 1);
+                }
             }
             cpu.setITT0(0); cpu.setITT1(0); cpu.setDTT0(0); cpu.setDTT1(0);
             cpu.setURP040(root);
@@ -916,6 +972,7 @@ int main(int argc, char** argv) {
         else if (a == "--irq-timed") gIrq = gIrqTimed = true;
         else if (a == "--fpu") gFpu = true;
         else if (a == "--ext") gExt = true;
+        else if (a == "--sys") gSys = true;
         else if (a == "--savestate") gSave = true;
         else if (a == "--dcache") gDcache = true;
         else if (a == "--mmu") gMmu = true;
@@ -1069,6 +1126,14 @@ int main(int argc, char** argv) {
                 gEngine = engine.get();
                 gNat = nat.get();
                 saves++;
+                if (std::getenv("FUZZ_LOG_DESC")) {
+                    const auto rd32 = [&](uint32_t a) {
+                        const auto& mm = nat->mem;
+                        return uint32_t(mm[a]) << 24 | uint32_t(mm[a + 1]) << 16 | uint32_t(mm[a + 2]) << 8 | mm[a + 3];
+                    };
+                    std::printf("    desc root=%08X ptr[1]=%08X page[1][0]=%08X\n", rd32(0x800000),
+                                rd32(0x800204), rd32(0x801100));
+                }
                 if (std::getenv("FUZZ_LOG_SLICES"))
                     std::printf("    [slice %u] save-state round trip at +%lld pc=%08X\n", k,
                                 (long long)(nat->getClock() - c0), nat->getPC0());
