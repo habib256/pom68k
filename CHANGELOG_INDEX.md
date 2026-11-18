@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 836 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 837 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -8,7 +8,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 
 | Subsystem | Entries |
 |---|---:|
-| [JIT — the second execution engine](#jit--the-second-execution-engine) | 113 |
+| [JIT — the second execution engine](#jit--the-second-execution-engine) | 114 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 146 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 37 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
@@ -139,6 +139,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-16 (fourth)** — [The public 030 JIT gate had compiled zero blocks](CHANGELOG.md#2026-11-16-public-jit-census)
 - **2026-11-19** — [Long boot locksteps, a hundred times the gates: identical](CHANGELOG.md#2026-11-19-long-locksteps)
 - **2026-11-19 (second)** — [Eleven more boards get a JIT lockstep, every family whose 68030/68040 runs translated by default](CHANGELOG.md#2026-11-19-board-locksteps)
+- **2026-11-19 (third)** — [Under ASan: a use-after-free when a window run flushed the JIT; under UBSan: bit-field width overflow](CHANGELOG.md#2026-11-19-sanitizers)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 

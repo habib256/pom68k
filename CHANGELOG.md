@@ -604,6 +604,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-19 (third) — Under ASan: a use-after-free when a window run flushed the JIT; under UBSan: bit-field width overflow](#2026-11-19-sanitizers)
 - [2026-11-19 (second) — Eleven more boards get a JIT lockstep, every family whose 68030/68040 runs translated by default](#2026-11-19-board-locksteps)
 - [2026-11-19 — Long boot locksteps, a hundred times the gates: identical](#2026-11-19-long-locksteps)
 - [2026-11-18 (sixth) — Armed FP exceptions through the translator: no divergence in 16 000 seeds](#2026-11-18-fpexc-sweep)
@@ -1397,6 +1398,35 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-19-sanitizers"></a>
+## 2026-11-19 (third) — Under ASan: a use-after-free when a window run flushed the JIT; under UBSan: bit-field width overflow
+
+`jit_program_fuzz` and `jit_lockstep_board_test` built in
+`build-cpu-sanitize` (`POM68K_SANITIZE=address,undefined`):
+
+- **Heap use-after-free in `Engine::executeUntil`** (68030, `--ext`, any
+  run reaching a `MOVEC` to CACR inside an uncompiled block). For a block
+  without native code the dispatch calls `runWindow`, which interprets; a
+  `MOVEC` to CACR there reaches the wrapper's `didChangeCACR`, whose
+  `flushAll()` — not deferred, since nothing is running — frees the block
+  the dispatch still holds by reference, and the next line read
+  `b.rejected` from freed memory. The wrappers do this in the product too
+  (`Cpu040`, `CentrisCpu`, `Q630Cpu`, `Q700Cpu` on every CACR write;
+  `Cpu030`, RBV, VASP, MSC on CI/CEI; the IIfx), and the window path is the
+  normal one for a block that is not compiled yet. The miss reason is now
+  computed before the window runs; nothing reads `b` after it.
+- **Signed overflow in the bit-field width** (`execBitFieldDn`,
+  `execBitFieldEa`): a width register holding $80000000 made `width - 1`
+  overflow `int`. Now unsigned, the same value for every input
+  (POM68K_VENDOR.md row 121).
+
+After both, under the sanitizers: 300-1 500 seeds per model of the plain,
+`--fpexc --ext --sys --smc`, `--mmu --ext --fpu --irq-timed --savestate`,
+`--dcache --ext --sys --smc --savestate` and `--raw 200 --len 100` modes,
+and the threaded block path on the 68000 and 68020 — no report. The
+`jit_program_fuzz_030_ext_test` gate runs MOVEC CACR on the 68030 and is in
+the nightly's instrumented builds.
 
 <a id="2026-11-19-board-locksteps"></a>
 ## 2026-11-19 (second) — Eleven more boards get a JIT lockstep, every family whose 68030/68040 runs translated by default

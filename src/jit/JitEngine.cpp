@@ -1597,10 +1597,17 @@ void Engine::executeUntil(int64_t clockTarget) {
             if (!b.code) {
                 const uint64_t before = stats_.windowInstrs.load(
                     std::memory_order_relaxed);
-                runWindow(clockTarget);
+                // Read everything needed from `b` BEFORE the window runs:
+                // runWindow interprets, a MOVEC to CACR in it reaches the
+                // wrapper's didChangeCACR, and its flushAll() — not deferred,
+                // nothing is running — frees the block `b` refers to. Reading
+                // b.rejected afterwards was a heap use-after-free (ASan,
+                // tests/jit_program_fuzz.cpp --model 30 --ext under
+                // build-cpu-sanitize). Do not touch `b` after this call.
                 const Miss miss = b.rejected ? Miss::Rejected
                     : hotReady && !profitReady ? Miss::NotProfitable
                                                : Miss::NotHot;
+                runWindow(clockTarget);
                 stats_.miss(miss,
                             stats_.windowInstrs.load(
                                 std::memory_order_relaxed) - before);

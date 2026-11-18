@@ -1269,7 +1269,9 @@ Moira::execBitFieldDn(u16 opcode)
 
     // Crop offset and map width to 32, 1 ... 31
     int offset = rawOffset & 0b11111;
-    int width = ((rawWidth - 1) & 0b11111) + 1;
+    // POM68K: unsigned, as the register is. rawWidth - 1 overflowed int for
+    // Dw = $80000000 (UBSan, jit_program_fuzz under build-cpu-sanitize).
+    int width = int(((u32(rawWidth) - 1) & 0b11111) + 1);
 
     // Create the bit mask
     u32 mask = std::rotr(u32(0xFFFFFFFF00000000 >> width), offset);
@@ -1369,7 +1371,10 @@ Moira::execBitFieldEa(u16 opcode)
     if (dwBit) width = reg.d[width & 0b111];
 
     // Map width to 32, 1 ... 31
-    width = ((width - 1) & 0b11111) + 1;
+    // POM68K: in unsigned arithmetic — width - 1 overflowed int for a
+    // width register of $80000000 (UBSan, jit_program_fuzz --dcache under
+    // build-cpu-sanitize). Same value for every input.
+    width = int(((u32(width) - 1) & 0b11111) + 1);
 
     u32 oldOffset = offset;
     u32 result, insert;
