@@ -975,7 +975,19 @@ Moira::setSR(u16 val)
 void
 Moira::setCACR(u32 val)
 {
+    const u32 old = reg.cacr;
     reg.cacr = val & cacrMask();
+#if MOIRA_ENABLE_JIT
+    // POM68K: native 040 cache-line entries are published only while the
+    // D-cache is enabled (pomJitCache040Publish). One published under DE=1
+    // stayed live after a MOVEC cleared DE, and generated code kept reading
+    // the copyback line where the interpreter, cache disabled, reads memory
+    // (tests/jit_program_fuzz.cpp --mmu --dcache --ext FUZZ_CACR_FLUSH=0,
+    // seed 959: UNLK popped a different A1). Retire them on any change.
+    if (pomCache040On && reg.cacr != old) pomJitCache040Bump();
+#else
+    (void)old;
+#endif
     didChangeCACR(val);
 }
 

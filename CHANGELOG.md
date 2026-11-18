@@ -602,6 +602,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-18 (third) — A CACR write that clears DE retires the native 040 cache-line entries](#2026-11-18-cacr-publications)
 - [2026-11-18 (second) — A random-program fuzzer finds six interpreter/translator/save-state defects](#2026-11-18-program-fuzz)
 - [2026-11-18 — The fork builds and behaves under upstream Moira's settings](#2026-11-18-upstream-config)
 - [2026-11-17 (fourth) — Everything the fork wrote ships under MIT](#2026-11-17-mit-release)
@@ -1390,6 +1391,27 @@ Newest first.
 
 ---
 
+<a id="2026-11-18-cacr-publications"></a>
+## 2026-11-18 (third) — A CACR write that clears DE retires the native 040 cache-line entries
+
+The one `--dcache` seed left by the (second) entry, 959 with `--mmu`,
+reduced to seven instructions: a lap enables the D-cache
+(`MOVEC #$80000000`), the next clears DE (`MOVEC #$8000`), and `UNLK A1`
+then pops a different A1 on each side. `pomJitCache040Publish` publishes
+native cache-line entries only while DE=1, but nothing retired them when a
+MOVEC cleared it: generated code kept reading the copyback line where the
+interpreter, cache disabled, read memory. The engine's own CACR check
+(`Flush::Cache040Mode`) could not see it, because CACR toggled twice
+between two dispatches inside `runWindow` and was back to the value it had
+recorded. `Moira::setCACR` now calls `pomJitCache040Bump()` whenever the
+cache model is armed and the value changes (POM68K_VENDOR.md row 119). The
+board wrappers' JIT drop on every CACR write had hidden it.
+
+Gate `jit_program_fuzz_040_mmu_dcache_test` (`FUZZ_CACR_FLUSH=0`, 200 seeds
+plus 959). Sweeps without the wrappers' drop, 3 000 seeds each:
+`--mmu --dcache --ext --smc --savestate`, `--mmu --dcache --ext --fpu
+--irq-timed`, `--dcache --ext --fpu --smc --irq-timed --savestate` — clean.
+
 <a id="2026-11-18-program-fuzz"></a>
 ## 2026-11-18 (second) — A random-program fuzzer finds six interpreter/translator/save-state defects
 
@@ -1480,9 +1502,8 @@ by default; the engine no longer needs it: with the cache model armed,
 and drops them on a change (`Flush::Cache040Mode`; MOVEC always ends its
 block, so the change is seen before any block runs again). Gate
 `jit_program_fuzz_040_dcache_cacr_test` runs with `FUZZ_CACR_FLUSH=0`.
-One seed still needs the wrappers' drop on EVERY CACR write, same value
-included (959 with `--mmu`: the D-cache replacement counter differs); it is
-a `TODO.md` line (› Justesse 68040).
+One seed still needed the wrappers' drop on every CACR write (959 with
+`--mmu`); see the (third) entry.
 
 One harness finding is not an engine defect and is recorded so the next
 harness does not repeat it: a bus that MIRRORS memory must declare the

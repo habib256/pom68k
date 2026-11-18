@@ -529,15 +529,6 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   une lecture servie par le cache et une écriture qui invalide. Le chemin
   commun NC invalide aujourd'hui le hit de lecture et pousse les anciennes
   données avant la réécriture. Les tests de faute MOVE16 couvrent les misses.
-- [ ] **Aligner le compteur de remplacement du D-cache 040 entre JIT et
-  interprète sous MMU quand CACR alterne.** `tests/jit_program_fuzz.cpp
-  --model 40 --mmu --dcache --ext --smc --savestate --slices 12 --first 959
-  --seeds 1` avec `FUZZ_CACR_FLUSH=0` : `rot` du D-cache diffère (0 contre
-  1) après dix instructions (MOVEC CACR $8000 puis $80000000 à chaque
-  tour, LINK/UNLK, ORI.W en mémoire, CMPA.L indexé). Le vidage du JIT que
-  font les cartes 040 à chaque écriture de CACR, même de même valeur, le
-  masque ; `Flush::Cache040Mode` (au changement de valeur seulement) ne le
-  masque pas. Le mode cache reste optionnel (`POM68K_040_DCACHE`).
 - [ ] **Décider l'hybride 68LC040 + 68882 logiciel.** Défaut produit des
   LC 475/575/580 et Centris 610/650, combinaison qui n'existe pas en
   matériel ; un vrai `NONE` boote déjà le Quadra 605

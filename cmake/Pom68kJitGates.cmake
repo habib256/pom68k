@@ -116,13 +116,20 @@ add_test(NAME jit_program_fuzz_040_dcache_cacr_test
          COMMAND jit_program_fuzz --model 40 --dcache --ext --fpu --smc
                  --irq-timed --savestate --slices 20 --seeds 200
                  --extra 4863,6822,8743)
-set_tests_properties(jit_program_fuzz_040_dcache_cacr_test PROPERTIES
+# …and under translation, where a MOVEC clearing DE left native cache-line
+# entries published (Moira::setCACR bumps them since 2026-11-18).
+add_test(NAME jit_program_fuzz_040_mmu_dcache_test
+         COMMAND jit_program_fuzz --model 40 --mmu --dcache --ext --smc
+                 --savestate --slices 12 --seeds 200 --extra 959)
+set_tests_properties(jit_program_fuzz_040_dcache_cacr_test
+                     jit_program_fuzz_040_mmu_dcache_test PROPERTIES
                      ENVIRONMENT "FUZZ_CACR_FLUSH=0")
 set_tests_properties(jit_program_fuzz_040_test jit_program_fuzz_030_test
                      jit_program_fuzz_040_smc_test jit_program_fuzz_030_smc_test
                      jit_program_fuzz_040_ext_test jit_program_fuzz_030_ext_test
                      jit_program_fuzz_040_dcache_test
                      jit_program_fuzz_040_dcache_cacr_test
+                     jit_program_fuzz_040_mmu_dcache_test
                      PROPERTIES LABELS "jit;unit" TIMEOUT 300)
 set_tests_properties(jit_program_fuzz_030_test jit_program_fuzz_030_smc_test
                      jit_program_fuzz_030_ext_test
