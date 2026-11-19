@@ -7,13 +7,21 @@ strict-FPU adapter and direct-root ATC correction), not an independent silicon r
 
 | Model | Vectors | Cells |
 |---|---:|---|
-| 68030 + 68882 | 904 | integer core, translated MMU and faults, FPU arithmetic, two-instruction FPU continuation, instructions against a page whose successor is invalid |
-| full 68040 | 328 | the same, plus 8 KB pages, three-instruction FPU-handler/FSAVE sequences and faults under random transparent-translation windows |
+| 68030 + 68882 | 984 | integer core, translated MMU and faults, FPU arithmetic, two-instruction FPU continuation, instructions against a page whose successor is invalid |
+| full 68040 | 408 | the same, plus 8 KB pages, three-instruction FPU-handler/FSAVE sequences and faults under random transparent-translation windows |
 
 `manifest.json` records every generator option and seed, plus the count,
 uncompressed size and SHA-256 of each canonical JSON stream. The gzip files
 keep this small corpus in the repository. The large optional corpora under
 `tests/data/` retain their separate `tests/sst_corpora.lock` identities.
+
+Each model ends with 80 traced vectors (`trace=t1` in the recipe and in the
+vector name): integer core with the MMU off and on, and faults under
+translation. They start one NOP early and run two steps. WinUAE treats a
+loaded T1 as just written and does not trace the first step; the NOP takes
+that step, so the generated instruction is the traced one and its trace
+exception belongs to the vector. `sst68030`/`sst68040` reproduce both rules
+in `runVector`.
 
 `d23a-contract.json` is a separate, unmodified vector from the locked July
 030 corpus (`fpu/off seed=11 #292`). It is not part of either stream above.

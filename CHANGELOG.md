@@ -40,6 +40,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"On the 68040 a staged trace does not preempt: the next instruction runs first" (Q2, July) — fitted to one-step vectors, where WinUAE never traces the first step after a load** → [Trace against the oracle](#2026-11-19-trace-against-the-oracle)
+
 - **The 2026-11-19 (fourth) save-state v34 carried the 68030 restart latches verbatim; why did Linux CI go red?** → [Engine-dependent latches](#2026-11-19-latches-engine-dependent)
 
 - **The 2026-11-18 (second) trace check skipped a footprint word the window no longer covered; why was that wrong?** → [Refuse, not skip](#2026-11-18-trace-privilege)
@@ -606,6 +608,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-19 (nineteenth) — Trace had never met the oracle: the 68020/68030 frame was format $0, the 68040 ran one instruction too many](#2026-11-19-trace-against-the-oracle)
 - [2026-11-19 (eighteenth) — No interrupt or trace between a 68030 RTE $B and the instruction it continues](#2026-11-19-rte-b-no-boundary)
 - [2026-11-19 (third) — Under ASan: a use-after-free when a window run flushed the JIT; under UBSan: bit-field width overflow](#2026-11-19-sanitizers)
 - [2026-11-19 (second) — Eleven more boards get a JIT lockstep, every family whose 68030/68040 runs translated by default](#2026-11-19-board-locksteps)
@@ -1401,6 +1404,89 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-19-trace-against-the-oracle"></a>
+## 2026-11-19 (nineteenth) — Trace had never met the oracle: the 68020/68030 frame was format $0, the 68040 ran one instruction too many
+
+No corpus generator ever set a trace bit (`gen030.py`/`gen040.py` build SR
+from S, M, the mask and the CCR), and the program fuzzer only compares the
+interpreter with the translator. Trace was therefore judged by nothing but
+itself. Two defects, both in the interpreter, both on every board:
+
+1. **68020 and 68030: the trace exception stacked the four-word format $0
+   frame.** It is the six-word format $2, whose instruction address is that
+   of the traced instruction ([B] MC68020UM-1992 Table 6-5, MC68030UM-1989
+   Table 8-7; WinUAE agrees). `execException(TRACE)` now writes format $2 on
+   the whole C68020 core, and `execute()` latches the traced instruction's
+   address when it stages `TRACE_EXC` (the `tracePc040` field, already in
+   the save state for every model).
+2. **68040: the exception came one instruction late.** A staged trace was
+   converted to `trace040Pending` and the *next* instruction ran before
+   vector 9, so a debugger's single step advanced two instructions and
+   every other instruction went untraced. [B] MC68040UM-1993 §8.2.6: "Trace
+   exception processing starts at the end of normal processing for the
+   traced instruction and before the start of the next instruction". The
+   staged trace is now taken at the next instruction start on every model.
+   On the 68040 an exception drops it (WinUAE `exception_check_trace`), and
+   so does an RTE into a format-$7 frame (the rule of 2026-11-14, extended
+   to the staged trace).
+
+**Why the 68040 model was wrong.** It was fitted in July to one-step oracle
+vectors. WinUAE treats a loaded T1 as *just written* (`oracle_set_state` →
+`MakeFromSR` arms `SPCFLAG_TRACE` only; `do_trace` promotes it to
+`SPCFLAG_DOTRACE` after the first instruction), so the first step after a
+load is never traced. "The next instruction runs first" described that load
+artifact, not the processor. The vectors used here start one NOP early and
+run two steps: the NOP absorbs the untraced step and the generated
+instruction is traced in WinUAE's steady state.
+
+**Harness.** `sst68030`/`sst68040` `runVector` reproduce the oracle's unit
+under trace: a first step that takes no exception is not traced when the
+loaded SR has a T bit, and a step is the instruction *and* the trace
+exception that follows it (`execute()` takes that exception as a call of
+its own). `fuzz030.py`/`fuzz040.py` gain `--trace t1|t0`.
+
+**Measurements (AArch64, interpreter against WinUAE @ Hatari e77819f7).**
+
+| Vectors, T1 set | Before | After |
+|---|---:|---:|
+| 68030 core/off, seed 11 | 258 / 3 000 | 3 000 / 3 000 |
+| 68040 core/off, seed 11 | 342 / 2 000 | 2 000 / 2 000 |
+
+After the fix, 2 000 vectors per 68030 cell (seed 12): core/identity,
+core/tt, fault/off 2 000 / 2 000; fault/identity 1 999 / 1 999; mmu/identity
+1 976 / 1 976 (halts skipped). In random/off, random/identity and fpu/off the
+failing vectors (48, 44, 32) are exactly those that fail with no trace bit —
+the format-$2 instruction-address and coprocessor post-instruction rulings
+already taken against the oracle. 68040, 1 500 vectors per cell (seed 21):
+core, fault off/identity, mmu, rmw, pagend, fline 0 failures; random and fpu
+again fail only where the untraced twin fails. A first reading of that
+comparison listed 31 "trace-only" 68040 failures: `comm` on numerically
+sorted files. A set difference gives none.
+
+**Gates.** `tests/cpu_vectors` grows 80 traced vectors per model (030:
+904 → 984, 040: 328 → 408; the old cells regenerate to their old pins).
+`moira_rules_test` `traceFollowsTheTracedInstruction` covers the 68000 to
+the 68040, the 68020 included, which no oracle reaches. Mutation: with the
+68020/68030 frame put back, `cpu_vectors030_test` passes 916 / 984 and the
+rule fails. The program fuzzer gains `--tracebit` (T1 rises at slice
+boundaries; vector 9 counts and RTEs) and four gates,
+`jit_program_fuzz_{030,040}_trace_test` and
+`jit_program_fuzz_{020,000}_trace_blocks_test`. Mutation, `tracePc040`
+dropped on a save-state load: caught by the 68030 gate (1 seed) and the
+68040 gate (20); not by the 68020 gate in its 200 seeds. A second mutation,
+`pomJitIdle()` ignoring `TRACING`, is caught by no gate and should not be:
+generated code and `executeFastOne` check the flags again. Soak before the
+frame fix, interpreter against translator: 25 000 fresh `--tracebit` seeds
+over MMU, protection, TT, page sizes, `--vmrte` and the D-cache, 0
+failures.
+
+`cmake/Pom68kJitGates.cmake` sat at its ceiling; the program-fuzzer gates
+moved to `cmake/Pom68kJitFuzzGates.cmake` (269 lines), included at the same
+position, and the old file's ceiling drops from 940 to 698.
+
+**Still open** (`TODO.md`): T0, trace on change of flow, is stored and has
+no effect on any model.
 
 <a id="2026-11-19-rte-b-no-boundary"></a>
 ## 2026-11-19 (eighteenth) — No interrupt or trace between a 68030 RTE $B and the instruction it continues

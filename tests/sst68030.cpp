@@ -102,7 +102,14 @@ public:
     jit::CodeGuard* guard = nullptr;
 #endif
 
+    // Traced vectors (runVector): exceptions taken, and the trace exception
+    // execute() has staged for its next call.
+    unsigned long exceptions = 0;
+    bool traceStaged() const { return flags & moira::State::TRACE_EXC; }
+    void dropStagedTrace() { flags &= ~moira::State::TRACE_EXC; }
+
 private:
+    void willExecute(moira::M68kException, moira::u16) override { exceptions++; }
     moira::u8  read8(moira::u32 a) const override { return mem[a & 0xFFFFFF]; }
     moira::u16 read16(moira::u32 a) const override {
         return moira::u16((mem[a & 0xFFFFFF] << 8) | mem[(a + 1) & 0xFFFFFF]);
@@ -288,7 +295,22 @@ void setupVector(TestCpu& cpu, const Vector& v) {
     setupVector(cpu, v);
     const moira::i64 c0 = cpu.getClock();
     // One instruction (+ its exception, if any) per step: the oracle's unit.
-    for (long step = 0; step < (v.steps > 0 ? v.steps : 1); ++step) cpu.execute();
+    // Under trace (T1 or T0 in the loaded SR) the oracle's unit differs
+    // from execute()'s in two ways, both reproduced here:
+    //  - [D] WinUAE @ Hatari e77819f7 treats a loaded Tx as just written
+    //    (glue.c oracle_set_state -> MakeFromSR arms SPCFLAG_TRACE only):
+    //    the first step is not traced unless it takes an exception. The
+    //    trace corpora start on a NOP, so this never judges a real case.
+    //  - a step is the instruction AND the trace exception that follows
+    //    it (do_specialties), where execute() takes that exception as a
+    //    call of its own.
+    const bool traced = (v.initial.sr & 0xC000) != 0;
+    for (long step = 0; step < (v.steps > 0 ? v.steps : 1); ++step) {
+        const unsigned long exc0 = cpu.exceptions;
+        cpu.execute();
+        if (traced && step == 0 && cpu.exceptions == exc0) cpu.dropStagedTrace();
+        else if (cpu.traceStaged()) cpu.execute();
+    }
     const long cyc = long(cpu.getClock() - c0);
 
     bool ok = true; char buf[256];

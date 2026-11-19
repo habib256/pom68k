@@ -2777,6 +2777,52 @@ void rteRerunTakesNoTrace040()
           "no trace before the rerun", c.getPC0(), c.getSP(), sp + 8 + 60, c.getSR());
 }
 
+void traceFollowsTheTracedInstruction()
+{
+    // An instruction that begins with T1 set takes vector 9 when it
+    // completes, before the next one starts, and from the 68020 up the
+    // frame is the six-word format $2 whose instruction address is the
+    // traced instruction's.
+    // [B] MC68020UM-1992 §6.1.7 and Table 6-5; MC68030UM-1989 §8.1.7 and
+    //     Table 8-7; MC68040UM-1993 §8.2.6.
+    // [D] WinUAE @ Hatari e77819f7 — "trace=t1" cells of tests/cpu_vectors.
+    // Until 2026-11-19 the 68020 and 68030 stacked a format $0 frame, and
+    // the 68040 ran one more instruction before the exception. The 68000
+    // and 68010 keep their four-word frames.
+    struct Row { moira::Model model; const char* name; bool sixWord; };
+    static const Row rows[] = {
+        { moira::Model::M68000, "68000", false }, { moira::Model::M68010, "68010", false },
+        { moira::Model::M68020, "68020", true },  { moira::Model::M68030, "68030", true },
+        { moira::Model::M68040, "68040", true },
+    };
+    for (const Row& r : rows) {
+        TestCpu c(r.model);
+        p32(c, 9 * 4, kHandler);
+        p16(c, kHandler, kNop);
+        stage(c, 0x7255, 0);                        // MOVEQ #$55,D1
+        p16(c, kCode + 2, 0x7466);                  // MOVEQ #$66,D2
+        c.setIRC(0x7466);
+        c.setD(1, 0); c.setD(2, 0);
+        c.setSR(0xa700);
+        constexpr uint32_t sp0 = 0x8000;
+        bool contained = executeContained(c);       // the traced MOVEQ
+        contained = contained && executeContained(c);   // its trace exception
+        const uint32_t sp = c.getSP();
+        const uint32_t size = r.sixWord ? 12 : (r.model == moira::Model::M68000 ? 6 : 8);
+        const bool frame = r.model == moira::Model::M68000
+            ? true
+            : g16(c, sp + 6) == (r.sixWord ? 0x2024 : 0x0024);
+        CHECK(contained && c.getPC0() == kHandler && c.getD(1) == 0x55 && c.getD(2) == 0 &&
+              sp == sp0 - size && g16(c, sp) == 0xa700 && g32(c, sp + 2) == kCode + 2 &&
+              frame && (!r.sixWord || g32(c, sp + 8) == kCode) && c.getSR() == 0x2700,
+              "%s trace: PC0=%08X (want %08X) D1=%X D2=%X (want 55, 0: one instruction) "
+              "SP=%08X (want %08X) stacked PC=%08X (want %08X) format/vector=%04X "
+              "address=%08X (want %08X on a six-word frame)",
+              r.name, c.getPC0(), kHandler, c.getD(1), c.getD(2), sp, sp0 - size,
+              g32(c, sp + 2), kCode + 2, g16(c, sp + 6), g32(c, sp + 8), kCode);
+    }
+}
+
 void packUnpkFaultRestoresAn()
 {
     // [D] WinUAE gencpu.c i_PACK/i_UNPK @ Hatari e77819f7 (cpuemu_31/32
@@ -2935,6 +2981,7 @@ int main(int argc, char** argv)
     bitfieldStoreRestarts040();
     srWriteRefillIsAFetch();
     rteRerunTakesNoTrace040();
+    traceFollowsTheTracedInstruction();
     packUnpkFaultRestoresAn();
 
     if (failures) {
@@ -2948,6 +2995,6 @@ int main(int argc, char** argv)
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68030 MOVE to (xxx).L last write, 68EC030 plain-020 path with a 68030 "
-                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, the 68040 lock ending with TAS/CAS/CAS2, a memory-indirect pointer read outside the lock, BKPT without a data access, 68040 bit-field and JSR store faults restart, the SR-write refill as a fetch, no trace before a format-$7 rerun, PACK/UNPK -(An) faults on the 68030/68040, level 7 on a transition from the 68020 up, the billed 020-core interrupt sequence\n");
+                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, the 68040 lock ending with TAS/CAS/CAS2, a memory-indirect pointer read outside the lock, BKPT without a data access, 68040 bit-field and JSR store faults restart, the SR-write refill as a fetch, no trace before a format-$7 rerun, PACK/UNPK -(An) faults on the 68030/68040, level 7 on a transition from the 68020 up, the billed 020-core interrupt sequence, the trace exception after the traced instruction\n");
     return 0;
 }

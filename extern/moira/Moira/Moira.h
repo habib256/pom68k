@@ -150,7 +150,9 @@ protected:
     // instruction (armed by an SR write whose OLD Tx bits were set, even
     // if the write cleared them, or by a staged TRACE_EXC on the 040);
     // tracePc040 is WinUAE's regs.trace_pc — the format-$2 frame's
-    // address field (0 unless the staged path latched it).
+    // address field (0 unless the staged path latched it). The 68020 and
+    // 68030 use the same field: execute() latches the traced
+    // instruction's address when it stages TRACE_EXC.
     bool trace040Pending {false};
     u32 tracePc040 {0};
 

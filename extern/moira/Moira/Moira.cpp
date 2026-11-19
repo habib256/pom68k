@@ -592,30 +592,38 @@ Moira::execute()
             // (crash « terminate » observé sur Beyond the Ice Palace, bureau TOS).
             if ((flags & TRACE_EXC) && !rteContinues) {
 
-                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-                // POM68K Q2: on the 68040 a staged trace does not
-                // preempt the instruction — WinUAE runs the next
-                // instruction first and takes vector 9 afterwards
-                // (SPCFLAG_DOTRACE is processed post-instruction).
-                // Latch trace_pc (= this instruction's address, i.e.
-                // the pc after the TRACED one) and fall through.
-                if (cpuModel >= Model::M68EC040) {
-                    flags &= ~TRACE_EXC;
-                    trace040Pending = true;
-                    tracePc040 = reg.pc0;
-                } else {
-                    try {
-                        execException(M68kException::TRACE);
-                    } catch (const std::exception &exc) {
-                        processException(exc);
-                    }
-                    goto done;
+                // The previous instruction began with T1 set: its trace
+                // exception is taken now, before this instruction starts.
+                // [B] MC68030UM-1989 §8.1.7 — "The state of these bits when
+                //     an instruction begins execution determines whether
+                //     the instruction generates a trace exception after the
+                //     instruction completes".
+                // [B] MC68040UM-1993 §8.2.6 — the same sentence; "Trace
+                //     exception processing starts at the end of normal
+                //     processing for the traced instruction and before the
+                //     start of the next instruction".
+                // [D] WinUAE @ Hatari e77819f7 — do_specialties takes
+                //     SPCFLAG_DOTRACE after the traced instruction.
+                // POM68K: until 2026-11-19 the 68040 ran one more
+                // instruction first. That model was fitted to one-step
+                // oracle vectors, where WinUAE treats a loaded T1 as just
+                // written and does not trace the first step.
+                // Gate: cpu_vectors040_test (trace=t1 cells).
+                try {
+                    execException(M68kException::TRACE);
+                } catch (const std::exception &exc) {
+                    processException(exc);
                 }
+                goto done;
             }
 
             // Check if the T flag is set inside the status register
             if ((flags & TRACING) && !(flags & STOPPED)) {
                 flags |= TRACE_EXC;
+                // The instruction about to run is the traced one: its
+                // address goes into the format-$2 trace frame of the 68020
+                // and up (execException, TRACE).
+                tracePc040 = reg.pc;
             }
         }
 

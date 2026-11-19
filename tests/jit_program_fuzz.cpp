@@ -243,6 +243,7 @@ constexpr uint32_t kHandler = 0x00001000;  // JMP head.L
 constexpr uint32_t kCounter = 0x00001100;  // lap counter (long), then IRQ count
 constexpr uint32_t kIrqHandler = 0x00001200;
 constexpr uint32_t kBerrHandler = 0x00001280;  // --vmrte: repair, then RTE
+constexpr uint32_t kTraceHandler = 0x00001300; // --tracebit: count, then RTE
 constexpr uint32_t kStack   = 0x00030000;
 constexpr uint32_t kData    = 0x00010000;  // A0..A6 start in [kData, kData+64K)
 constexpr uint32_t kCode    = 0x00040000;
@@ -259,6 +260,7 @@ bool gMmuProt = false;  // --mmuprot: with --mmu, random data pages write-protec
 bool gMmuTt = false;    // --mmutt: with --mmu, random transparent-translation registers
 bool gMmuPage = false;  // --mmupage: with --mmu, a seeded page size (030 256 B-32 KB, 040 4/8 KB)
 bool gVmRte = false;    // --vmrte: with --mmuprot, the bus-error handler repairs and RTEs
+bool gTraceBit = false; // --tracebit: SR.T1 set at slice boundaries; vector 9 counts and RTEs
 int gModel = 40;
 
 class Gen {
@@ -873,6 +875,15 @@ void load(FuzzCpu& cpu, moira::Model model, const Program& p, uint32_t ramSeed) 
         put16(h, 0x4E73);                                             // RTE
         put32(2 * 4, kBerrHandler);
     }
+    // --tracebit: the trace handler counts and returns, so the stacked T1
+    // keeps the program traced until an exception throws it back to head
+    // (every other vector is JMP head, entered with T clear) or a
+    // MOVE-to-SR template clears it.
+    if (gTraceBit) {
+        put16(kTraceHandler, 0x52B9); put32(kTraceHandler + 2, kCounter + 16);  // ADDQ.L #1,abs.L
+        put16(kTraceHandler + 6, 0x4E73);                                      // RTE
+        put32(9 * 4, kTraceHandler);
+    }
     Rng r{uint64_t(ramSeed) * 0x9E3779B97F4A7C15ull + 7};
     for (uint32_t a = kData; a < kData + 0x20000; a += 8) {
         const uint64_t x = r.next();
@@ -1196,6 +1207,7 @@ int main(int argc, char** argv) {
         else if (a == "--mmutt") gMmu = gMmuTt = true;
         else if (a == "--mmupage") gMmu = gMmuPage = true;
         else if (a == "--vmrte") gMmu = gMmuProt = gVmRte = true;
+        else if (a == "--tracebit") gTraceBit = true;
         else if (a == "--devport") gDevPort = true;
         else if (a == "--stats") stats = true;
         else if (a == "--extra" && i + 1 < argc) {
@@ -1306,6 +1318,7 @@ int main(int argc, char** argv) {
         // then dropped, so the autovector handler (count, RTE) runs a few
         // times and the program goes on.
         Rng irqR{s * 0x5851F42D4C957F2Dull + 3};
+        Rng traceR{s * 0xDA942042E4DD58B5ull + 5};
         bool asserted = false;
         for (uint32_t k = 0; k < slices && ok; k++) {
             target += asserted ? 20 + (long long)irqR.below(400)
@@ -1382,6 +1395,13 @@ int main(int argc, char** argv) {
                             (long long)(target - c0), ref->getPC0(), ref->getA(0), ref->getA(3),
                             ref->assertAt == INT64_MAX ? -1LL : (long long)(ref->assertAt - c0),
                             ref->dropAt == INT64_MAX ? -1LL : (long long)(ref->dropAt - c0));
+            // --tracebit: T1 rises at a slice boundary, identically on both
+            // cores, wherever the program happens to be (a block's middle
+            // on the translated side).
+            if (ok && gTraceBit && traceR.chance(350)) {
+                ref->setSR(moira::u16(ref->getSR() | 0x8000));
+                nat->setSR(moira::u16(nat->getSR() | 0x8000));
+            }
             if (ok && gIrq && !gIrqTimed) {
                 uint8_t level = 0;
                 if (!asserted && irqR.chance(500)) level = uint8_t(1 + irqR.below(7));

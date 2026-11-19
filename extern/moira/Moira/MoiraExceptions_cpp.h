@@ -678,8 +678,10 @@ Moira::execException(M68kException exc, int nr)
     // POM68K Q2: on the 68040 any exception cancels a pending trace
     // (WinUAE exception_check_trace: SPCFLAG_DOTRACE is unset, and the
     // <68040 internal-exception retention branch does not apply)
-    if (cpuModel >= Model::M68EC040 && exc != M68kException::TRACE)
+    if (cpuModel >= Model::M68EC040 && exc != M68kException::TRACE) {
         trace040Pending = false;
+        flags &= ~State::TRACE_EXC;
+    }
 
     switch (exc) {
 
@@ -792,7 +794,16 @@ Moira::execException(M68kException exc, int nr)
             // POM68K Q2: the 68040 stacks a format $2 frame whose address
             // field is WinUAE's regs.trace_pc (Exception_build_stack_
             // frame_common nr == 9; 0 unless the staged path latched it)
-            if (C == Core::C68020 && cpuModel >= Model::M68EC040) {
+            // [B] MC68020UM-1992 Table 6-5 — Trace is listed under the
+            //     six-word format $2 frame.
+            // [B] MC68030UM-1989 Table 8-7 — the same; the instruction
+            //     address is that of the instruction that caused the trace.
+            // [D] WinUAE @ Hatari e77819f7 — same frame on the 68020/68030,
+            //     address field regs.trace_pc.
+            // POM68K: until 2026-11-19 the 68020 and 68030 stacked the
+            // four-word format $0 frame here.
+            // Gate: sst68030 trace cells (tests/cpu_vectors).
+            if (C == Core::C68020) {
                 writeStackFrame0010<C>(status, reg.pc, tracePc040, vector);
             } else {
                 writeStackFrame0000<C>(status, reg.pc, vector);

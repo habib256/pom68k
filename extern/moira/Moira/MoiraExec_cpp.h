@@ -6715,7 +6715,13 @@ Moira::execRte(u16 opcode)
     // Settled by: a trace of a real 68040 returning through a throwaway
     // frame with T0 set into an access-error frame.
     // Gate: moira_rules_test (rteRerunTakesNoTrace040).
-    if (rerun040) trace040Pending = false;
+    // The RTE's own staged trace (it began with T1 set) is dropped the same
+    // way: "trace=t1" vectors #1075 and #1284 of a 2 000-vector core/off
+    // sweep, seed 11 (2026-11-19).
+    if (rerun040) {
+        trace040Pending = false;
+        flags &= ~State::TRACE_EXC;
+    }
 
     if (rteFpuMid) fpuCompleteBusy(true);
 

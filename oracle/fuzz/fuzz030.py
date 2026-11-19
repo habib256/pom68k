@@ -64,6 +64,11 @@ def main() -> int:
                     help="oracle steps per vector (an instruction, or the "
                          "exception it takes, is one step); the fpu2 family "
                          "is meant for 2")
+    ap.add_argument("--trace", default="none", choices=["none", "t1", "t0"],
+                    help="set SR.T1 or SR.T0 and start one NOP early: the oracle "
+                         "treats a loaded Tx as just written and does not trace "
+                         "the first step, so a lead-in instruction takes that step "
+                         "and the generated one is the traced one (use --steps 2)")
     ap.add_argument("--n", type=int, default=100)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--out", required=True)
@@ -82,7 +87,17 @@ def main() -> int:
     vectors, n_dispute, n_halt = [], 0, 0
     for i in range(args.n):
         st = gen_state(rng, family=args.family, mmu=args.mmu, geometry=args.geometry)
+        if args.trace != "none":
+            st.sr |= 0x8000 if args.trace == "t1" else 0x4000
+            # The lead-in is NOP under T1 and EXG D0,D0 under T0: NOP is
+            # itself traced on change of flow on the 68040 (MC68040UM
+            # §8.2.6 lists it; it synchronizes the pipeline).
+            lead = (0x4E, 0x71) if args.trace == "t1" else (0xC1, 0x40)
+            st.pc -= 2
+            st.ram = list(st.ram) + [(st.pc, lead[0]), (st.pc + 1, lead[1])]
         name = f"{args.family}/{args.mmu} seed={args.seed} #{i}"
+        if args.trace != "none":
+            name += f" trace={args.trace}"
 
         if args.geometry != "32k":
             name += f" geometry={args.geometry}"

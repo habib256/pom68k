@@ -97,7 +97,7 @@ add_test(NAME jit_sst68030_fpuraw COMMAND sst68030_jit "${POM68K_SST030_FPURAW_D
 add_test(NAME jit_sst68030_fpu2 COMMAND sst68030_jit "${POM68K_SST030_FPU2_DIR}")
 add_test(NAME jit_sst68030_fpuh COMMAND sst68030_jit "${POM68K_SST030_FPUH_DIR}")
 add_test(NAME jit_sst68030_rmw COMMAND sst68030_jit "${POM68K_SST030_RMW_DIR}")
-# The 336 public vectors (tests/cpu_vectors/) through the translator: the
+# The public vectors (tests/cpu_vectors/) through the translator: the
 # same replay with no optional data, so CI exercises it on every host.
 foreach(model IN ITEMS 030 040)
     add_test(NAME cpu_vectors${model}_jit_test

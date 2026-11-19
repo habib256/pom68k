@@ -260,11 +260,35 @@
           "n": 16,
           "steps": 1,
           "seed": 2026111620
+        },
+        {
+          "family": "core",
+          "mmu": "off",
+          "n": 48,
+          "steps": 2,
+          "seed": 2026111900,
+          "trace": "t1"
+        },
+        {
+          "family": "core",
+          "mmu": "identity",
+          "n": 16,
+          "steps": 2,
+          "seed": 2026111901,
+          "trace": "t1"
+        },
+        {
+          "family": "fault",
+          "mmu": "identity",
+          "n": 16,
+          "steps": 2,
+          "seed": 2026111902,
+          "trace": "t1"
         }
       ],
-      "sha256": "ac5267da61ccd2948baddf68360c3806aa51c7979e79dc4d3ba83595c54230e0",
-      "bytes": 838395151,
-      "vectors": 904
+      "sha256": "f58be31bbae2b84255f6409c836816568e53810f38f5b5608a8ce8970825c066",
+      "bytes": 850552351,
+      "vectors": 984
     },
     "040": {
       "file": "040.json.gz",
@@ -354,11 +378,35 @@
           "n": 64,
           "steps": 1,
           "seed": 2026111511
+        },
+        {
+          "family": "core",
+          "mmu": "off",
+          "n": 48,
+          "steps": 2,
+          "seed": 2026111910,
+          "trace": "t1"
+        },
+        {
+          "family": "core",
+          "mmu": "identity",
+          "n": 16,
+          "steps": 2,
+          "seed": 2026111911,
+          "trace": "t1"
+        },
+        {
+          "family": "fault",
+          "mmu": "identity",
+          "n": 16,
+          "steps": 2,
+          "seed": 2026111912,
+          "trace": "t1"
         }
       ],
-      "sha256": "2aa8b77d792083f06ed4dff22aa4a8be87a92684887b810523cf6796b3f276e9",
-      "bytes": 60916891,
-      "vectors": 328
+      "sha256": "3be07078735bb7c1cbd118a9b11f2f76553431740675ea3d9fd9371ec01dfc19",
+      "bytes": 74628211,
+      "vectors": 408
     }
   }
 }
