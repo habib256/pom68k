@@ -87,7 +87,12 @@ elif compgen -G "$build/**/*.gcda" > /dev/null 2>&1 || find "$build" -name '*.gc
         echo "FAIL: gcovr not installed (pip install gcovr)" >&2
         exit 2
     fi
+    # gcovr's suspicious-hit heuristic (GCC bug 68080 guard) fires on real
+    # hot loops: the asset-free tier drives the JIT link-slot sweep in
+    # JitEngine.cpp past its threshold (Nightly run 44513818881). A
+    # coverage table only needs covered/not-covered, so warn, don't abort.
     gcovr --root . --filter 'src/' --print-summary --txt -o "$report" \
+          --gcov-ignore-parse-errors=suspicious_hits.warn_once_per_file \
           --csv "$build/coverage.csv" || exit 2
 else
     echo "FAIL: no coverage data produced — was the tree built with POM68K_COVERAGE=ON?" >&2
