@@ -6641,8 +6641,21 @@ Moira::execRte(u16 opcode)
                     // completes a data cycle; bit 9 is reserved on the 020.
                     // POM68K: its data FC qualifies the one-shot retry,
                     // without the oracle-private marker used by the 030.
+                    // POM68K (2026-11-19): the 68030 no longer keys on SSW
+                    // bit 9, the oracle's private "data fault" marker that
+                    // no 68030 writes (a frame a handler builds or edits
+                    // would lack it).
+                    // [B] MC68030UM-1989 §8.2.1 — "If the DF bit is set when
+                    //     the processor reads the stack frame, it reruns the
+                    //     faulted data access; otherwise, it assumes that the
+                    //     data input buffer value on the stack is valid for a
+                    //     read or that the data has been correctly written to
+                    //     memory for a write (or that no data fault
+                    //     occurred)". FC/FB/RC/RB (bits 15-12) mark the
+                    //     instruction-stream case; with none set and DF clear
+                    //     the frame names a data cycle software completed.
                     if constexpr (C == Core::C68020) {
-                        if (((cpuModel == Model::M68030 && (ssw & 0x0200)) ||
+                        if (((cpuModel == Model::M68030 && !(ssw & 0xF000)) ||
                              (mmuPlain020() && (ssw & 1) && newpc == replayPc020)) &&
                             !(ssw & 0x0100) && !(ssw & 0x0080)) {
                             mmuRteSubstArmed = true;
@@ -6653,19 +6666,29 @@ Moira::execRte(u16 opcode)
                         }
                     }
 
-                    // Version#, internal information; high byte is WB2 fixup.
-                    rte030Fixup[0] = u8(pop<C, Word>() >> 8);
+                    // Version#, internal information; high byte is WB2 fixup,
+                    // bits 7-4 the count of completed accesses (idx_done).
+                    const u16 version = pop<C, Word>();
+                    rte030Fixup[0] = u8(version >> 8);
 
-                    // Internal registers
-                    (void)pop<C, Long>();
-                    (void)pop<C, Long>();
-                    (void)pop<C, Long>();
-                    (void)pop<C, Long>();
-                    (void)pop<C, Long>();
-                    (void)pop<C, Long>();
-                    (void)pop<C, Long>();
-                    (void)pop<C, Long>();
-                    (void)pop<C, Long>();
+                    // Internal registers: the access log, stacked deepest
+                    // first (writeStackFrameLongBusFault), so the pops
+                    // return entries 8 down to 0.
+                    u32 log[9];
+                    for (int k = 8; k >= 0; k--) log[k] = pop<C, Long>();
+
+                    // POM68K: continue the instruction from this log on the
+                    // 68030 (Moira.h, mmuReplayArmed).
+                    if constexpr (C == Core::C68020) {
+                        if (cpuModel == Model::M68030) {
+                            const int done = (version >> 4) & 0xF;
+                            mmuReplayDone = u8(done < 9 ? done : 9);
+                            for (int k = 0; k < 9; k++) mmuReplayAd[k] = log[k];
+                            mmuReplayPc = newpc;
+                            mmuReplayArmed = mmuReplayDone > 0;
+                            if (mmuReplayArmed) flags |= State::RTE_REPLAY;
+                        }
+                    }
                     break;
 
                 } else {

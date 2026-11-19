@@ -80,6 +80,9 @@ template<class Ar> void Moira::pomVisitState(Ar& ar)
     ar(mmuPipeAddr, mmuPipe, mmuPipeCnt);
     ar(mmuRteSubstArmed, mmuRteSubstWrite, mmuRteSubstAddr,
        mmuRteSubstData, mmuRteSubstPc);
+    // The RTE $B continuation latch, live between the RTE and the next
+    // instruction start (its RTE_REPLAY flag rides in `flags`). Format v37.
+    ar(mmuReplayArmed, mmuReplayDone, mmuReplayPc, mmuReplayAd);
     ar(fpu.busy, fpu.busyUntil, fpu.busyOpcode, fpu.busyExt, fpu.busyIa);
     for (auto& f : fpu.busyFp) ar(f.high, f.low);
     ar(fpu.busyFpsr);

@@ -1402,6 +1402,50 @@ Newest first.
 ---
 
 <a id="2026-11-19-sanitizers"></a>
+## 2026-11-19 (sixteenth) — 68030 RTE $B continues the instruction instead of re-issuing its completed accesses
+
+The TODO's "réexécuter l'instruction" item. After a bus fault, Moira
+restarted the faulted instruction from its first word, and every access it
+had already completed went back on the bus. A completed device read was
+therefore performed twice. The locked manual says what the 68030 does.
+[B] MC68030UM-1989 §8.2.1: on RTE from a long frame the processor
+restores its internal state and resumes. "If the DF bit is set when the
+processor reads the stack frame, it reruns the faulted data access;
+otherwise, it assumes that the data input buffer value on the stack is
+valid for a read or that the data has been correctly written to memory for
+a write". The oracle models it with the frame's access log ([D] WinUAE
+m68k_do_rte_mmu030 restores mmu030_idx_done and mmu030_ad; ACCESS_CHECK
+serves idx < idx_done from the log).
+
+The fork already stacked that log (`writeStackFrameLongBusFault`) and now
+reads it back:
+- RTE takes idx_done from the version word, the nine logged longs from the
+  frame, and arms `mmuReplay*` for the stacked PC.
+- A new `State::RTE_REPLAY` flag routes that one instruction through
+  `execute()`, because generated code keeps no log.
+- `mmuExecuteStart` activates the replay only if the next instruction starts
+  at the stacked PC, and drops it otherwise.
+- The rerun's logged data accesses below idx_done are served from the log
+  (reads) or not re-issued (writes). Extension-word fetches stay as before:
+  program space has no side effects, and they keep the indices aligned.
+
+Two remainders stay open in TODO: an interrupt taken between the RTE and
+the continued instruction drops the replay ([F]), and a locked RMW with DF
+cleared stays excluded. The DF-cleared substitution no longer keys on SSW
+bit 9, a WinUAE-private marker no 68030 writes; it keys on DF clear with
+no FC/FB/RC/RB bit, which is the manual's own reading.
+
+New `berr030_test` case: CMPM.L (A0)+,(A1)+ reads (A0), faults on (A1)
+and continues after RTE. The (A0) read is no longer re-issued (it was read
+twice before), the compare uses the logged operand, and each postincrement
+is applied once. `moira_state_test` round-trips the latch. Save-state
+format v37. Moira patch group 131.
+
+Tiers: `asset-none|jit|cpu-vectors` 210 / 210 and the whole asset set
+(`etalon|m030|m040|asset-optional|asset-required`) 455 / 455. Every 68030
+boot, VM and save-state etalon is unchanged. x64 `berr030_test`,
+`moira_state_test` and `moira_rules_test` pass.
+
 ## 2026-11-19 (fifteenth) — The 020-core interrupt sequence is billed; `fcl` saved canonically
 
 Closes the TODO item "Facturer la séquence d'interruption du cœur 68020".

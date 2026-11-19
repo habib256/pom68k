@@ -19,6 +19,8 @@ public:
     using moira::Moira::mmuFixupVal; using moira::Moira::mmuLogging;
     using moira::Moira::mmuCcrSave; using moira::Moira::mmuLastWritePc;
     using moira::Moira::flags;
+    using moira::Moira::mmuReplayArmed; using moira::Moira::mmuReplayDone;
+    using moira::Moira::mmuReplayPc; using moira::Moira::mmuReplayAd;
     std::vector<moira::u8> mem = std::vector<moira::u8>(1 << 20);
     mutable int holeReads = 0;
     bool wordHole040 = false;
@@ -247,6 +249,17 @@ void frameLatches030() {
                 dst.mmuFixupVal[0] == 0x9000 && dst.mmuLogging && dst.mmuLastWritePc == 0x40070;
     for (int i = 0; i < 10; i++) same &= dst.mmuAd[i] == src.mmuAd[i];
     check(same, "frame030: per-instruction restart latches round-trip");
+
+    // The RTE $B continuation latch lives between the RTE and the next
+    // instruction start (format v36).
+    src.mmuReplayArmed = true; src.mmuReplayDone = 3; src.mmuReplayPc = 0x41234;
+    for (int i = 0; i < 10; i++) src.mmuReplayAd[i] = 0x10203040u + moira::u32(i);
+    src.flags |= moira::State::RTE_REPLAY;
+    restore(src, dst);
+    bool replay = dst.mmuReplayArmed && dst.mmuReplayDone == 3 &&
+                  dst.mmuReplayPc == 0x41234 && (dst.flags & moira::State::RTE_REPLAY);
+    for (int i = 0; i < 9; i++) replay &= dst.mmuReplayAd[i] == src.mmuReplayAd[i];
+    check(replay, "frame030: RTE $B continuation latch round-trips");
 }
 
 void cache040State(moira::Model model, unsigned disabled) {

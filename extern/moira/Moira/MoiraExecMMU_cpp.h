@@ -448,6 +448,14 @@ Moira::mmuExecuteStart()
     ircLongAt = ircNoLong;
     mmuRmw = false;
     mmuOpcodeV = 0xFFFFFFFF;
+    // RTE $B continuation (Moira.h, mmuReplayArmed): this instruction start
+    // either is the one the frame continues, or the replay is dropped.
+    mmuReplayActive = false;
+    if (flags & State::RTE_REPLAY) {
+        flags &= ~State::RTE_REPLAY;
+        mmuReplayActive = mmuReplayArmed && reg.pc == mmuReplayPc;
+        mmuReplayArmed = false;
+    }
 
     // [B] MC68030UM-1989 § 8.1.3 — an instruction fetch from an odd
     // address takes the address error.
@@ -909,6 +917,15 @@ Moira::mmuRead(u32 addr)
     const bool log = mmuLogging;
     if (log) pomMmuBumpIdx();
 
+    // RTE $B continuation: an access the faulted instruction had completed
+    // is served from the frame's log, with no bus cycle (Moira.h).
+    if (log && mmuReplayActive && mmuIdx - 1 < int(mmuReplayDone)) {
+        const u32 v = CLIP<S>(mmuReplayAd[mmuIdx - 1]);
+        if (mmuIdxDone < 10) mmuAd[mmuIdxDone] = v;
+        pomMmuBumpIdxDone();
+        return v;
+    }
+
     // POM68K O6.9: the RTE of a DF-cleared fault frame marked this very
     // access as software-completed — deliver the frame's data input
     // buffer without a bus cycle (Moira.h mmuRteSubst*)
@@ -1085,6 +1102,14 @@ Moira::mmuWrite(u32 addr, u32 val)
         // and gencpu's ADD/SUB `uae_u32 newv = (uN)dst ± (uN)src`, the
         // unmasked 32-bit sum or difference.
         mmuDataBuffer = (F & MMU_RAWBUF) ? val : u32(SEXT<S>(val));
+    }
+
+    // RTE $B continuation: a write the faulted instruction had completed is
+    // not re-issued (Moira.h, mmuReplayArmed).
+    if (log && mmuReplayActive && mmuIdx - 1 < int(mmuReplayDone)) {
+        if (mmuIdxDone < 10) mmuAd[mmuIdxDone] = mmuDataBuffer;
+        pomMmuBumpIdxDone();
+        return;
     }
 
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.

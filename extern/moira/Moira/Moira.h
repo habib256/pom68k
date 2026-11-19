@@ -2192,6 +2192,28 @@ protected:
     // (WinUAE m68k_do_rte_mmu030 "DF not set: mark access as done").
     // This is Mac OS's slot-probe recovery protocol (bclr #0 on the
     // stacked SSW high byte, then RTE).
+    // POM68K: 68030 instruction continuation after RTE $B. The frame's
+    // access log (mmuAd[0 .. idxDone-1], the version word's idx_done) holds
+    // the operand accesses the faulted instruction had COMPLETED. The rerun
+    // of that instruction serves its first `mmuReplayDone` logged accesses
+    // from `mmuReplayAd` — reads return the logged value, writes are not
+    // re-issued — instead of repeating them on the bus.
+    // [B] MC68030UM-1989 §8.2.1 — on RTE from a long bus-fault frame the
+    //     processor restores its internal state and continues the
+    //     instruction; completed bus cycles are not repeated.
+    // [D] WinUAE @ Hatari e77819f7 — m68k_do_rte_mmu030 restores
+    //     mmu030_idx_done and mmu030_ad; ACCESS_CHECK_GET/PUT serve
+    //     idx < idx_done from the log.
+    // [F] Only the very next instruction start consumes it: an interrupt
+    //     taken first runs its handler's first instruction, which drops the
+    //     replay, and the faulted instruction later restarts as before.
+    //     Settled by: a bus trace of a real 68030 taking an interrupt
+    //     between an RTE $B and the instruction it continues.
+    bool mmuReplayArmed {};
+    bool mmuReplayActive {};
+    u8 mmuReplayDone {};
+    u32 mmuReplayPc {};
+    u32 mmuReplayAd[10] {};
     bool mmuRteSubstArmed {};
     bool mmuRteSubstWrite {};
     u32 mmuRteSubstAddr {};

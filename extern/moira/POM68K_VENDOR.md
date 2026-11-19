@@ -54,9 +54,9 @@ pair):
 | | | how to re-measure |
 |---|---|---|
 | distinct `pom*` extension identifiers | **116** (65 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **562** | `grep -rn POM68K Moira/ \| wc -l` |
+| `POM68K`-marked lines | **566** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **17 of 27** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **130** | this file |
+| patch groups in the inventory below | **131** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h`, `MoiraState.h`, `MoiraMmu030Walk.h` | — |
 
 One hundred and sixteen patch groups, two of which (the JIT seam, row 22, and the ATC
@@ -300,6 +300,7 @@ gate in the last column of each row.
 | 128 | **FMOVE.P of a zero with a k-factor above +17 sets OPERR** — `fpuFromPackedV` raises invalid for a zero source when k > 17, which SoftFloat's early zero return skipped | `MoiraExecFPU_cpp.h` | [B] MC68881UM-1989 §6.1.3 Table 6-2; the oracle shares SoftFloat and leaves it clear (ruling D40, 13 vectors in the `sst68030_fpu*` `.known` lists) | `fpu_sanity` packedZeros (1 024 transfers, mutation-checked) |
 | 129 | **The 020-core interrupt sequence is billed** — `execInterrupt<C68020>` syncs 26 cycles (I-stack) or 41 (M-stack throwaway frame) after stacking, where it charged none | `MoiraExceptions_cpp.h` | [B] MC68020UM-1992 §8.2.17, the "cache case" column this core's TRAP #n (20) already uses; one table for 020/030/040 ([F] for the 030/040) | `moira_rules_test` interruptSequenceBilled |
 | 130 | **`fcl` is saved canonically** — the visitor writes and restores FC::USER_PROG for the last-access function code, never consumed at an instruction boundary and not maintained by generated code (format v36) | `MoiraState.h` | carried verbatim it made a snapshot engine-dependent once interrupts were billed (one byte, 1 200 frames after a Quadra 605 restore) | `q605_savestate_etalon` |
+| 131 | **68030 RTE $B continues the instruction from the frame's access log** — RTE reads idx_done and the logged accesses, arms `mmuReplay*` and the new `State::RTE_REPLAY` flag; the next instruction start, if at the stacked PC, serves its first idx_done logged accesses from the log (reads) or skips them (writes); the flag keeps that instruction out of generated code. The DF-cleared substitution no longer keys on SSW bit 9 but on DF clear with no FC/FB/RC/RB bit. Save-state v37 | `MoiraExec_cpp.h`, `MoiraExecMMU_cpp.h`, `Moira.h`, `MoiraTypes.h`, `MoiraState.h` | [B] MC68030UM-1989 §8.2.1; [D] WinUAE m68k_do_rte_mmu030; completed accesses (a device read) were re-issued by the restart | `berr030_test` (CMPM continuation), `moira_state_test` |
 
 Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54, 56, 59-75 and 79-86 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
 when nothing arms them); rows 48 and 55 are performance alone, with no architectural effect. Row 58 is evidence documentation only. The ten files carrying no `POM68K` marker at all —

@@ -243,6 +243,48 @@ int main() {
               "RTE restart: execution continues after retried instruction");
     }
 
+    // A format-$B continuation does not re-issue the accesses the faulted
+    // instruction had completed. CMPM.L (A0)+,(A1)+ reads (A0) — done —
+    // then faults on (A1); after RTE the first operand comes from the
+    // frame's access log, not from the bus (MC68030UM-1989 §8.2.1: the
+    // processor continues the instruction from its stacked internal state;
+    // WinUAE m68k_do_rte_mmu030 replays idx < idx_done from mmu030_ad).
+    // Until 2026-11-19 the restart read (A0) twice — a device read doubled.
+    {
+        Img m;
+        m.cpu.readFaultsRemaining = 1;
+        m.at(0); m.w32(0x8000); m.w32(0x1180);
+        m.at(8); m.w32(0x3180);
+        const uint32_t src = 0x5000;
+        m.cpu.mem[src] = 0x11; m.cpu.mem[src + 1] = 0x22;
+        m.cpu.mem[src + 2] = 0x33; m.cpu.mem[src + 3] = 0x44;
+        m.cpu.mem[HOLE_LO] = 0x11; m.cpu.mem[HOLE_LO + 1] = 0x22;
+        m.cpu.mem[HOLE_LO + 2] = 0x33; m.cpu.mem[HOLE_LO + 3] = 0x44;
+
+        m.at(0x1180);
+        m.w16(0xB388);                                  // CMPM.L (A0)+,(A1)+
+        m.w16(0x57C2);                                  // SEQ D2
+        m.w16(0x4E72); m.w16(0x2700);
+
+        m.at(0x3180);
+        m.w16(0x4E73);                                  // RTE → continue CMPM
+
+        m.cpu.reset();
+        m.cpu.setA(0, src);
+        m.cpu.setA(1, HOLE_LO);
+        m.cpu.traceReads = true;
+        for (int steps = 64; steps--;) m.cpu.execute();
+        int srcReads = 0;
+        for (moira::u32 a : m.cpu.readLog) if (a == src) srcReads++;
+        check(m.cpu.vector2Count == 1, "RTE continuation: one $B fault taken");
+        check(srcReads == 1,
+              "RTE continuation: the completed (A0) read is not re-issued");
+        check((m.cpu.getD(2) & 0xFF) == 0xFF,
+              "RTE continuation: CMPM compares the logged operand (equal)");
+        check(m.cpu.getA(0) == src + 4 && m.cpu.getA(1) == HOLE_LO + 4,
+              "RTE continuation: each postincrement applied once");
+    }
+
     // ── 3. instruction fetch fault: $B frame, FB|RB SSW ─────────────────
     {
         Img m;
