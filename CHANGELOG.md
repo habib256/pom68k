@@ -1431,6 +1431,11 @@ After the fixes: 4 000 seeds per model of `--mmuprot --sys --ext --smc
 --savestate --fpexc`, clean. Gates `jit_program_fuzz_030_mmuprot_test` and
 `jit_program_fuzz_040_mmuprot_test`; Moira patch groups 122-124.
 
+Soak after the push, both models, three combinations (`--mmuprot` with
+`--sys --ext --smc --fpu --irq-timed --savestate`, with `--dcache --ext
+--smc --irq-timed --savestate`, and with `--fpexc --sys --irq`): 15 000
+seeds each on a64, 5 000 each on x64 under Rosetta, clean.
+
 ## 2026-11-19 (third) — Under ASan: a use-after-free when a window run flushed the JIT; under UBSan: bit-field width overflow
 
 `jit_program_fuzz` and `jit_lockstep_board_test` built in
