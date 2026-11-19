@@ -1402,6 +1402,32 @@ Newest first.
 ---
 
 <a id="2026-11-19-sanitizers"></a>
+## 2026-11-19 (seventh) — Page sizes in the program fuzzer; a split CAS.L's locked-read fault on the 68040
+
+`jit_program_fuzz --mmupage` (implies `--mmu`) picks a seeded page size: on
+the 68030 256 bytes, 1, 4, 8 or 32 KB (TC PS with TIB = 20 − PS), on the
+68040 4 or 8 KB (TC P). The engine's DTLB maps 4 KB slices. It fills a larger
+page as independent slices and refuses a smaller one, and the code window
+bounds itself by the page: three shapes the 4 KB default never showed.
+`FUZZ_LOG_SLICES=1` prints the TC. The ten first seeds cover every 68030
+size. With every MMU mode combined: 10 000 seeds per model on a64, 3 000 on
+x64 (Rosetta) and on threaded with blocks. The 68030 was clean.
+
+One 68040 failure, seed 807209, did not need `--mmupage`. It is an
+`--mmuprot` case the earlier soaks had missed: a `CAS.L` whose long
+straddles `$3FFFE-$40001` faults on its locked read, which is translated
+as a write. The access is split, so `mmu040Fault` stacks
+`mmu040FullVal` as WB3D (`write && mmu040AccSplit`), and only the write
+path ever set it. The frame therefore carried the last *interpreted*
+store's value, and native stores leave none there. The unsplit case
+already stacked 0, since reads pass `val = 0`. `mmu040Read` now zeroes
+`mmu040FullVal` too. [F] for silicon. `cpu-vectors` (the 68040 oracle
+corpora) are unchanged.
+
+Gates `jit_program_fuzz_040_mmuprot_cas_test` (807209, mutation-checked
+under its own options) and `jit_program_fuzz_{030,040}_mmupage_test`;
+Moira patch group 126.
+
 ## 2026-11-19 (sixth) — The 68030 restart latches are guest state only while STOPped
 <a id="2026-11-19-latches-engine-dependent"></a>
 

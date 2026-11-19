@@ -158,6 +158,25 @@ add_test(NAME jit_program_fuzz_030_mmuprot_plain_test
 add_test(NAME jit_program_fuzz_040_mmuprot_test
          COMMAND jit_program_fuzz --model 40 --mmuprot --sys --ext --fpu --smc
                  --irq-timed --savestate --slices 20 --seeds 200)
+# 68040 seed 807209 (--mmuprot without --irq-timed/--savestate): a split
+# CAS.L faulting on its locked read stacked a stale WB3D.
+add_test(NAME jit_program_fuzz_040_mmuprot_cas_test
+         COMMAND jit_program_fuzz --model 40 --mmuprot --sys --ext --smc --fpu
+                 --seeds 100 --extra 807209)
+# --mmupage: a seeded page size (68030 256 B to 32 KB, 68040 4 or 8 KB),
+# so DTLB slices, refusals and code-window bounds meet pages other than
+# 4 KB.
+add_test(NAME jit_program_fuzz_030_mmupage_test
+         COMMAND jit_program_fuzz --model 30 --mmupage --mmuprot --mmutt --sys --ext
+                 --smc --fpu --irq-timed --savestate --slices 20 --seeds 150)
+add_test(NAME jit_program_fuzz_040_mmupage_test
+         COMMAND jit_program_fuzz --model 40 --mmupage --mmuprot --mmutt --sys --ext
+                 --smc --fpu --irq-timed --savestate --slices 20 --seeds 150)
+set_tests_properties(jit_program_fuzz_030_mmupage_test PROPERTIES
+                     ENVIRONMENT "POM68K_JIT_PROFIT_SCORE=0")
+set_tests_properties(jit_program_fuzz_040_mmuprot_cas_test jit_program_fuzz_030_mmupage_test
+                     jit_program_fuzz_040_mmupage_test
+                     PROPERTIES LABELS "jit;unit" TIMEOUT 300)
 # --mmutt: seeded transparent-translation registers over the whole bus
 # (68030 TTx direction-specific, 68040 DTTx/ITTx with S, W and CM). 68030
 # seeds 10, 508, 516 (TT0/TT1 writes only, user or supervisor data): a

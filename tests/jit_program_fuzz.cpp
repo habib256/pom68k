@@ -29,7 +29,7 @@
 //   jit_program_fuzz [--model 0|20|30|40] [--seeds N] [--first S] [--extra S,S..]
 //                    [--len N] [--raw PERMILLE] [--slices N] [--budget CYCLES]
 //                    [-v] [--trace] [--shrink] [--bisect] [--watch-jit]
-//                    [--patch ADDR=WORD] [--progress] [--smc] [--irq] [--irq-timed] [--fpu] [--ext] [--sys] [--fpexc] [--savestate] [--dcache] [--mmu] [--mmuprot] [--mmutt]
+//                    [--patch ADDR=WORD] [--progress] [--smc] [--irq] [--irq-timed] [--fpu] [--ext] [--sys] [--fpexc] [--savestate] [--dcache] [--mmu] [--mmuprot] [--mmutt] [--mmupage]
 //
 // A failure prints the seed; `--first S --seeds 1 -v` replays it alone.
 // `--shrink` turns body instructions into NOPs while a divergence remains,
@@ -232,6 +232,7 @@ bool gDcache = false;   // --dcache: the architectural 68040 caches (POM68K_040_
 bool gMmu = false;      // --mmu: identity translation through real tables (68030/68040)
 bool gMmuProt = false;  // --mmuprot: with --mmu, random data pages write-protected / supervisor-only
 bool gMmuTt = false;    // --mmutt: with --mmu, random transparent-translation registers
+bool gMmuPage = false;  // --mmupage: with --mmu, a seeded page size (030 256 B-32 KB, 040 4/8 KB)
 int gModel = 40;
 
 class Gen {
@@ -826,8 +827,22 @@ void load(FuzzCpu& cpu, moira::Model model, const Program& p, uint32_t ramSeed) 
         // and faulted (--sys --mmu --smc --savestate, 68040 seed 511). Such
         // a guest is broken on hardware too; the harness keeps it out.
         // The MMU's own U/M write-backs are not subject to W.
-        const auto tablePage = [](uint32_t page) {
-            return page >= kTables && page < kTables + 0x11000;
+        // --mmupage: a seeded page size. The engine's DTLB maps 4 KB
+        // slices: a larger page fills as independent slices, a smaller one
+        // is refused (JitEngine::fillDtlb), and the code window bounds
+        // itself by the page — three shapes the 4 KB default never shows.
+        // The 68030's TC takes any size from 256 bytes to 32 KB; the
+        // System on an LC II does not pick 4 KB. [B] MC68030UM-1989 §9.7.1
+        // (TC: PS 23-20, IS 19-16, TIA-TID); MC68040UM §3.1.2 (TC: P, 8 KB).
+        Rng pg{uint64_t(ramSeed) * 0x8EBC6AF09C88C6E3ull + 17};
+        static constexpr uint32_t kPs030[] = {8, 10, 12, 13, 15};
+        const uint32_t ps030 = gMmuPage ? kPs030[pg.below(5)] : 12;
+        const bool page8k040 = gMmuPage && pg.below(2) != 0;
+        const uint32_t tib = 20 - ps030;                 // IS 8 + TIA 4 + TIB + PS = 32
+        const uint32_t tableBytes030 = std::max(4u << tib, 0x400u);
+        const uint32_t tablesEnd = kTables + 0x1000 + 16 * std::max(tableBytes030, 0x1000u);
+        const auto tablePage = [&](uint32_t page) {
+            return page >= kTables && page < std::max(tablesEnd, kTables + 0x11000);
         };
         // --mmuprot: a seeded quarter of the data and stack pages
         // ($10000-$3FFFF) become write-protected, and on the 68040 another
@@ -850,10 +865,10 @@ void load(FuzzCpu& cpu, moira::Model model, const Program& p, uint32_t ramSeed) 
             // early-termination descriptor for the first megabyte instead,
             // so both walk shapes are judged.
             for (uint32_t i = 0; i < 16; i++) {
-                const uint32_t tb = kTables + 0x1000 + 0x400 * i;
+                const uint32_t tb = kTables + 0x1000 + tableBytes030 * i;
                 put32(kTables + 4 * i, tb | 2);
-                for (uint32_t j = 0; j < 256; j++) {
-                    const uint32_t page = i << 20 | j << 12;
+                for (uint32_t j = 0; j < (1u << tib); j++) {
+                    const uint32_t page = i << 20 | j << ps030;
                     put32(tb + 4 * j, page | (tablePage(page) ? 4 : 0) | protBits(page, false) | 1);
                 }
             }
@@ -895,17 +910,21 @@ void load(FuzzCpu& cpu, moira::Model model, const Program& p, uint32_t ramSeed) 
                 cpu.setTT0(0);
                 cpu.setTT1(0);
             }
-            cpu.setTC(0x80000000u | 0xCu << 20 | 8u << 16 | 4u << 12 | 8u << 8);
+            cpu.setTC(0x80000000u | ps030 << 20 | 8u << 16 | 4u << 12 | tib << 8);
+            if (gMmuPage && std::getenv("FUZZ_LOG_SLICES"))
+                std::printf("    [mmupage] TC=%08X (%u-byte pages)\n", cpu.getTC(), 1u << ps030);
         } else {
             // 68040, 4 KB pages: root (512 B) -> one pointer table (512 B)
             // -> 64 page tables (256 B each) of 64 resident pages.
             const uint32_t root = kTables, ptr = kTables + 0x200, pages = kTables + 0x1000;
             const uint32_t cm = gDcache ? 0x20 : 0;   // copyback when the caches are modelled
             put32(root, ptr | 2);
+            // 8 KB pages: 32 descriptors per page table instead of 64.
+            const uint32_t pshift = page8k040 ? 13 : 12;
             for (uint32_t j = 0; j < 64; j++) {
                 put32(ptr + 4 * j, (pages + 0x100 * j) | 2);
-                for (uint32_t k = 0; k < 64; k++) {
-                    const uint32_t page = (j << 18) | (k << 12);
+                for (uint32_t k = 0; k < (1u << (18 - pshift)); k++) {
+                    const uint32_t page = (j << 18) | (k << pshift);
                     put32(pages + 0x100 * j + 4 * k,
                           page | cm | (tablePage(page) ? 4 : 0) | protBits(page, true) | 1);
                 }
@@ -936,7 +955,7 @@ void load(FuzzCpu& cpu, moira::Model model, const Program& p, uint32_t ramSeed) 
             }
             cpu.setURP040(root);
             cpu.setSRP040(root);
-            cpu.setTC040(0x8000);
+            cpu.setTC040(page8k040 ? 0xC000 : 0x8000);
         }
     }
     cpu.setPC(kCode);
@@ -1064,6 +1083,7 @@ int main(int argc, char** argv) {
         else if (a == "--mmu") gMmu = true;
         else if (a == "--mmuprot") gMmu = gMmuProt = true;
         else if (a == "--mmutt") gMmu = gMmuTt = true;
+        else if (a == "--mmupage") gMmu = gMmuPage = true;
         else if (a == "--stats") stats = true;
         else if (a == "--extra" && i + 1 < argc) {
             // Comma-separated seeds run after the range: the regressions.

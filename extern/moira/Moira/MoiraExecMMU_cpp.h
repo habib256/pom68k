@@ -3528,6 +3528,17 @@ Moira::mmu040Read(u32 addr, bool data)
     mmu040AccSplit = false;
     mmu040AccAddr = addr;                               // extBusError040
     mmu040AccVal = 0;
+    // POM68K: a read carries no value, and every fault it raises passes
+    // val = 0 — except a split one, whose WB3D mmu040Fault takes from
+    // mmu040FullVal (`write && mmu040AccSplit`, `write` being true for the
+    // locked read of CAS, translated as a write). Only the write path set
+    // it, so a split CAS.L faulting on its locked read stacked the last
+    // INTERPRETED store's value, which native stores do not leave there
+    // (tests/jit_program_fuzz.cpp --mmuprot, 68040 seed 807209). The read
+    // now leaves the same 0 as the unsplit case. [F] for silicon: WB3D on
+    // a locked-read fault. Settled by: a split CAS.L faulting on a real
+    // 68040.
+    mmu040FullVal = 0;
     mmu040AccSz = S == Byte ? 0 : S == Word ? 1 : 2;
     mmu040AccWrite = false;
     mmu040AccData = data;
