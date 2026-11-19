@@ -286,6 +286,7 @@ static int runIIfx(std::vector<uint8_t> rom, const std::string& romName,
     IIfxMemory& mem = services.own<IIfxMemory>(services.config().core(), 0x800000);
     IIfxCpu& cpu = services.own<IIfxCpu>(
         mem, services.config().jit().resolved, services.config().cpu().fpu);
+    cpu.setCacrFlushPolicy(services.config().core().cpu);
     MacAudioHost& audioHost = services.own<MacAudioHost>(
         services.config().devices().audio);
     if (!mem.loadRom(rom)) {

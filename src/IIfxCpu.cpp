@@ -26,10 +26,17 @@ void IIfxCpu::hardReset() {
     setISP(0x2000);
 }
 
-// A cache-control write is the guest announcing freshly written code — the
-// SMC hint every other wrapper honours.
-void IIfxCpu::didChangeCACR(moira::u32 /*value*/) {
-    jit_.flushAll();
+// The CACR SMC hint, retired behind this board's own audited store
+// inventory (IIfxMemory::kJitStoreInventoryComplete, pinned by
+// store_inventory_test): every RAM store already crosses CodeGuard::note().
+// Until 2026-11-19 every CACR write — not only the CI/CEI strobes — dropped
+// all generated code: 25 201 flushes in the first 611 M boot cycles, and an
+// x86-64 host recompiled 857 695 blocks where a64 rode the fetch window.
+// The IIfx has no i-cache model to invalidate (IIfxCpu.h).
+void IIfxCpu::didChangeCACR(moira::u32 value) {
+    const bool flush = cacrFlushPolicy_ < 0
+        ? !IIfxMemory::kJitStoreInventoryComplete : cacrFlushPolicy_ != 0;
+    if ((value & 0x0C) && flush) jit_.flushAll();
 }
 
 void IIfxCpu::runCycles(moira::i64 n) {

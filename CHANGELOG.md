@@ -1402,6 +1402,38 @@ Newest first.
 ---
 
 <a id="2026-11-19-sanitizers"></a>
+## 2026-11-19 (thirteenth) — The IIfx earns its store inventory: the CACR flush retired on the last 68030 board
+
+The IIfx was the only 68030 board still dropping all generated code on a
+CACR write, and on *every* CACR write, not only the CI/CEI strobes. Its
+TODO asked for the SCSI DMA and the IOPs to be audited first. The audit:
+- The only store into guest RAM is `IIfxMemory::write8Decoded`, which
+  calls `CodeGuard::note()` first; `write16` decomposes into it.
+- The SCSI DMA block is register-only in this model: control, count and
+  address latch, and no transfer reaches RAM. The 5380's data moves
+  through guest MOVEs on the handshake port.
+- The two IOPs (`ApplePic`) run their DMA channels between a device and
+  the IOP's own 32 KB RAM (`dmaTick` → `ApplePic::write8`).
+- The ASC, VIA, OSS and the Toby NuBus card master nothing into main RAM.
+
+`IIfxMemory::kJitStoreInventoryComplete` declares it, and
+`store_inventory_test` walks the source like every other board's row.
+`IIfxCpu::didChangeCACR` follows the RBV pattern: the CI/CEI flush only
+under `POM68K_JIT_030_CACR_FLUSH=1`, which `PlatformToby` now passes to the
+wrapper.
+
+Measured with the board lockstep at 2 000 000 jittered checkpoints, 611 M
+boot cycles, identical on both hosts before and after. Flushes fell from
+25 202 to 3, with about 50 000 precise CodeGuard invalidations doing the
+work. On x86-64, compiled blocks fell from 857 695 to 35 254 and block runs
+rose from 2.8 M to 4.46 M. On a64, block runs rose from 1.26 M to 3.66 M,
+and fetch-window instructions fell from 32.6 M to 8.2 M. All fourteen IIfx
+gates pass (boot, POST, input, persist, soak, DaynaPort, agent, the
+interp/jit/wasm boot etalons, the board lockstep, `savestate_030_test`,
+`cpu_wrapper_smoke`).
+
+The TODO item is closed. Its GLUE/Pb030 remainder stays as its own item.
+
 ## 2026-11-19 (twelfth) — `--lc040`: FPU code on the 68LC040 in the program fuzzer
 
 The Quadra 605 and LC 475 run a 68LC040. The fuzzer ran one only without

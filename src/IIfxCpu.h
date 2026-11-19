@@ -25,6 +25,12 @@ public:
     // Its map is also the easiest the engine has met: 32-bit clean, no HMMU
     // and no GLUE remap, so the probe's address IS the bus address.
     void setEngine(int e) { jit_.setEnabled(e != 0); pomJitDisarm(); }
+    // POM68K_JIT_030_CACR_FLUSH, as on the other 030 wrappers: unset = the
+    // board's own answer (retired: IIfxMemory::kJitStoreInventoryComplete),
+    // 1 = force the CI/CEI flush back on, 0 = force it off.
+    void setCacrFlushPolicy(const pom68k::CoreCpuConfig& c) {
+        if (c.cacr030Flush) cacrFlushPolicy_ = *c.cacr030Flush ? 1 : 0;
+    }
 
     void runCycles(moira::i64 n);
     void updateIpl();
@@ -47,4 +53,5 @@ private:
     void catchUp();
 
     static constexpr int kPeriphBatch = 64;
+    int cacrFlushPolicy_ = -1;
 };

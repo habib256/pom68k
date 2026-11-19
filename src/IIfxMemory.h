@@ -107,6 +107,20 @@ public:
     const uint8_t* codeSpan(uint32_t phys, uint32_t& len) const;
     uint8_t* dataSpan(uint32_t phys, uint32_t& len, bool write);
     void setJitGuard(jit::CodeGuard* g) { jitGuard_ = g; }
+    // Every path that can deposit code in guest RAM on the IIfx passes
+    // CodeGuard::note() (audited 2026-11-19): the only `ram_` store site is
+    // write8Decoded, which notes before storing, and write16 decomposes
+    // into it. The SCSI DMA block is register-only here — scsiDmaCtl_,
+    // Count_ and Addr_ latch, no transfer reaches RAM; the 5380's data
+    // moves through guest MOVEs on the handshake port. The two IOPs
+    // (ApplePic) run their DMA channels between a device and the IOP's own
+    // 32 KB RAM (ApplePic::dmaTick → ApplePic::write8), never main RAM; the
+    // ASC plays from its FIFO, VIA/OSS hold no RAM, and the Toby NuBus card
+    // keeps its own VRAM and masters nothing. `store_inventory_test` pins
+    // these source properties; a bus master that writes RAM (a real SCSI
+    // DMA engine, a NuBus DMA card) must flip this back and restore the
+    // CACR flush (IIfxCpu::didChangeCACR).
+    static constexpr bool kJitStoreInventoryComplete = true;
     // The overlay drop, which is a read side effect and therefore the one
     // map move no write guard could ever see.
     void jitMapChanged();
@@ -284,6 +298,7 @@ private:
     [[noreturn]] void busError() const;
 
     std::vector<uint8_t> ram_, rom_;
+
     Via6522 via1_;
     Rtc rtc_;
     NuBus nubus_;

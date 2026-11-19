@@ -631,21 +631,13 @@ d'instruction.
 
 ### JIT justesse et parité des hôtes
 
-- [ ] **Donner un inventaire de stores au IIfx.** MSC, Jaws, Niagra et
-  Pangola ont leur gate à `POM68K_JIT_REQUIRE_NATIVE` depuis le
-  2026-11-13 (`CHANGELOG` (fifth)).
-  `kJitStoreInventoryComplete` ne manque plus que sur le IIfx, qui vide
-  le JIT à chaque écriture de CACR (DMA SCSI et IOP à auditer avant toute
-  déclaration ; compter d'abord les vidages par trame au Finder). Point de
-  départ mesuré le 2026-11-19 : 25 201 vidages en 611 M cycles de boot
-  (`jit_lockstep_board_test iifx 2000000`, qui imprime désormais les
-  causes) ; x64 y recompile 857 695 blocs contre 9 924 sur a64. GLUE et
-  Pb030 l'ont depuis le 2026-11-12 (`CHANGELOG` (eighth), (ninth)) :
-  SE/30 sous System 7 quatre fois plus vite, PowerBook 030 −29 à −40 %.
-  Restes : `se30_boot_etalon` perd 5 % (blocs périmés gardés à travers
-  826 changements de carte mémoire, sorties `WindowLost` × 3) ; aucun
-  banc GLUE ni PowerBook à empreinte — les chiffres viennent de gates
-  entiers.
+- [ ] **GLUE et Pb030 après le retrait du vidage CACR : les restes.**
+  Tous les plateaux 68030 ont maintenant leur `kJitStoreInventoryComplete`
+  (le IIfx depuis le 2026-11-19, `CHANGELOG` (thirteenth)). Restes :
+  `se30_boot_etalon` perd 5 % (blocs périmés gardés à travers 826
+  changements de carte mémoire, sorties `WindowLost` × 3) ; aucun banc
+  GLUE, PowerBook ni IIfx à empreinte — les chiffres viennent de gates
+  entiers et du lockstep de carte.
 - [ ] **LC III / IIvx : l'ATC de 22 entrées tourne sous pages de 8 Ko.**
   Après le réessai immédiat des refus transitoires (`CHANGELOG`
   2026-11-12 (tenth), LC III et IIvx −17 à −18 %), le boot LC III refuse

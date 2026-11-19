@@ -26,7 +26,7 @@
 // claiming pair below was audited individually (V8: 2026-08-19 §
 // C.4quinquies; VASP: 2026-09-03 (ninth); RBV: 2026-09-03 (tenth); MSC: 2026-09-03 (eleventh);
 // Sonora: 2026-09-04; GLUE: 2026-11-12 (eighth);
-// Pb030: 2026-11-12 (ninth)).
+// Pb030: 2026-11-12 (ninth); IIfx: 2026-11-19).
 
 #include "AssetFingerprint.h"
 
@@ -124,6 +124,7 @@ int main() {
         {"GLUE", "src/MacIIMemory.h", "src/MacIIMemory.h", "src/Cpu020.cpp"},
         {"Pb030", "src/Pb030Memory.h", "src/Pb030Memory.cpp",
          "src/Pb030Cpu.cpp"},
+        {"IIfx", "src/IIfxMemory.h", "src/IIfxMemory.cpp", "src/IIfxCpu.cpp"},
     };
     for (const Board& b : proven) {
         const std::string header = slurp(testasset::find(b.header));
