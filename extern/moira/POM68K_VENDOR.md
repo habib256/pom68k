@@ -54,9 +54,9 @@ pair):
 | | | how to re-measure |
 |---|---|---|
 | distinct `pom*` extension identifiers | **116** (65 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **556** | `grep -rn POM68K Moira/ \| wc -l` |
+| `POM68K`-marked lines | **557** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **17 of 27** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **124** | this file |
+| patch groups in the inventory below | **125** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h`, `MoiraState.h`, `MoiraMmu030Walk.h` | — |
 
 One hundred and sixteen patch groups, two of which (the JIT seam, row 22, and the ATC
@@ -294,6 +294,7 @@ gate in the last column of each row.
 | 122 | **The 68030 data buffer is reset at every instruction start** — `mmuExecuteStart` zeroes `mmuDataBuffer` with the other restart bookkeeping | `MoiraExecMMU_cpp.h` | a fault taken before the faulting instruction moved it (TAS's write-probed locked read) stacked, as the $B data output buffer, whatever the last data access had left — a value generated code does not keep | `jit_program_fuzz_030_mmuprot_test` (seed 278) |
 | 123 | **The JIT's 68030 data and program thunks carry no stale (An)± fixup** — `pomJitReadData`, `pomJitWriteData` and `pomJitReadProg` clear `mmuFixupReg` before the access | `MoiraExecMMU_cpp.h` | the fault builder applied the last interpreted instruction's fixup to An when a native access faulted | `jit_program_fuzz_030_mmuprot_test` (seed 1072) |
 | 124 | **The 68030 restart latches are save-state** — `pomVisitState` carries `mmuState`, `mmuAd`, `mmuFmovemStore`, `mmuIdx`/`mmuIdxDone`, `mmuDataBuffer`, `mmuDispStore`, `mmuOpcodeV`, the fixups, `mmuLogging`, `mmuRmw`, `mmuCcrSave`, `mmuLastWritePc` (format v34) | `MoiraState.h` | they stay live until the next instruction start; an interrupt frame faulting after a reload stacked prefetch-phase values | `moira_state_test` frameLatches030; `jit_program_fuzz_030_mmuprot_test` (seed 192) |
+| 125 | **A 68030 data write probe is refused where a TT treats the two directions differently** — `pomJitProbeData` returns false when `mmuMatchTTAccess` answers differently for the write and the read | `MoiraExecMMU_cpp.h` | both backends read a true RMW through its write translation; a write-only TT made that read transparent, skipping the table walk and its U bit | `jit_program_fuzz_030_mmutt_test` (seed 128) |
 
 Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54, 56, 59-75 and 79-86 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
 when nothing arms them); rows 48 and 55 are performance alone, with no architectural effect. Row 58 is evidence documentation only. The ten files carrying no `POM68K` marker at all —

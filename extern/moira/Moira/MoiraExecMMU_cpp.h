@@ -2326,7 +2326,22 @@ Moira::pomJitProbeData(u32 logical, bool super, bool write,
         // there is no separate write-protect answer to decode here.
         // POM68K patch 31: identity answers, identity bound (see the code
         // probe above and Moira.h pomIdentityProbeBound).
-        if (mmuMatchTTAccess(logical, fc, write)) {
+        //
+        // POM68K: a write probe also answers for the read of a true RMW —
+        // both backends prove ONE writable translation and read through it
+        // (JitBackendA64 register-to-memory ALU, JitBackendX64 "true-RMW
+        // protocol"). On the 68030 that holds only when the read would be
+        // translated the same way, and a direction-specific TT (RWM = 0)
+        // breaks it: a write-only TT made SUBQ.L #4,(d,An,Dn)'s read
+        // transparent too, so the table walk that sets the page
+        // descriptor's U bit never happened (tests/jit_program_fuzz.cpp
+        // --mmutt, 68030 seed 128). Such a page is refused for writes; the
+        // interpreter then performs each direction on its own.
+        // [B] MC68030UM-1989 §9.7.3 — R/W and RWM select the direction.
+        const bool tt = mmuMatchTTAccess(logical, fc, write);
+        if (write && tt != mmuMatchTTAccess(logical, fc, false) &&
+            (reg.tc & 0x80000000)) return false;
+        if (tt) {
             pomIdentityProbeBound(logical, pageBase, pageLen);
             phys = logical; return true;
         }

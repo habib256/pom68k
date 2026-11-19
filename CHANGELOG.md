@@ -1400,6 +1400,48 @@ Newest first.
 ---
 
 <a id="2026-11-19-sanitizers"></a>
+## 2026-11-19 (fifth) — Transparent translation in the program fuzzer: a native RMW read through a write-only 68030 TT
+
+`jit_program_fuzz --mmutt` (implies `--mmu`) arms a seeded TT register over
+the whole 16 MB: on the 68030 TT0 or TT1, enabled for writes only or both
+directions, for user data, supervisor data or every function code, sometimes
+cache-inhibited (reads only, too, from the second revision of the
+generator the same night); on the 68040 a DTTx and an ITTx, user-only, supervisor-only
+or both, a data one sometimes write-protected or serialized. Matching
+accesses bypass the tables and `--mmuprot`'s page protection.
+
+The 68040 ran clean. The 68030 failed at once (seeds 128, 160, 170 with
+`--mmutt` alone): TT0 = `$8450`, supervisor data writes transparent, reads
+translated. A native `SUBQ.L #4,(d,An,Dn)` left the page descriptor's U bit
+clear where the interpreter's read had walked the table and set it. Both
+backends prove one writable translation for a true read-modify-write and read
+through it (the a64 register-to-memory ALU, the x64 "true-RMW protocol").
+That holds on the 68030 only when the TT matches both directions the same
+way, and R/W with RWM = 0 breaks it [B] MC68030UM-1989 §9.7.3.
+`pomJitProbeData` now refuses a 68030 write probe where `mmuMatchTTAccess`
+answers differently for the write and the read; the interpreter performs
+each direction on its own. Apple's TTs on 68030 Macs match both directions,
+so no measured path changes.
+
+Mutation-checked: without the refusal, `jit_program_fuzz_030_mmutt_test`
+fails on its seeds 10, 508 and 516, every one a write-only TT. A read-only
+TT produces no visible divergence under the harness's identity tables (the
+read through the write's ATC entry lands on the same bytes), but the refusal
+covers it. The check also showed that a seed reproduces only under the option set
+it was found with, because the options change the generated program. The
+`--mmuprot` gates registered earlier the same night carried two seeds found
+without the combined options, so one of them (1072) guarded nothing there.
+They are now split: `jit_program_fuzz_030_mmuprot_test` (combined; 112, 274,
+192) and `jit_program_fuzz_030_mmuprot_plain_test` (278, 1072). Each was
+mutation-checked against its fix.
+
+Soak after the fix, `--mmutt --mmuprot --sys --ext --smc --fpu --irq-timed
+--savestate` and `--mmutt` alone: 10 000 seeds per model on a64, 3 000 on
+x64 (Rosetta) and on threaded with blocks, clean; after the generator
+gained read-only TTs, 3 000 seeds per model of `--mmutt` and of `--mmutt
+--mmuprot --sys --ext --smc` on a64, clean. Gates
+`jit_program_fuzz_{030,040}_mmutt_test`; Moira patch group 125.
+
 ## 2026-11-19 (fourth) — protected pages in the program fuzzer: three 68030 fault-frame defects
 
 `jit_program_fuzz --mmuprot` (implies `--mmu`) write-protects a seeded

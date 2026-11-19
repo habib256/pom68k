@@ -29,7 +29,7 @@
 //   jit_program_fuzz [--model 0|20|30|40] [--seeds N] [--first S] [--extra S,S..]
 //                    [--len N] [--raw PERMILLE] [--slices N] [--budget CYCLES]
 //                    [-v] [--trace] [--shrink] [--bisect] [--watch-jit]
-//                    [--patch ADDR=WORD] [--progress] [--smc] [--irq] [--irq-timed] [--fpu] [--ext] [--sys] [--fpexc] [--savestate] [--dcache] [--mmu] [--mmuprot]
+//                    [--patch ADDR=WORD] [--progress] [--smc] [--irq] [--irq-timed] [--fpu] [--ext] [--sys] [--fpexc] [--savestate] [--dcache] [--mmu] [--mmuprot] [--mmutt]
 //
 // A failure prints the seed; `--first S --seeds 1 -v` replays it alone.
 // `--shrink` turns body instructions into NOPs while a divergence remains,
@@ -231,6 +231,7 @@ bool gSys = false;      // --sys: SR/USP/RTE/STOP system transitions (Gen::sys)
 bool gDcache = false;   // --dcache: the architectural 68040 caches (POM68K_040_DCACHE), both on
 bool gMmu = false;      // --mmu: identity translation through real tables (68030/68040)
 bool gMmuProt = false;  // --mmuprot: with --mmu, random data pages write-protected / supervisor-only
+bool gMmuTt = false;    // --mmutt: with --mmu, random transparent-translation registers
 int gModel = 40;
 
 class Gen {
@@ -859,8 +860,41 @@ void load(FuzzCpu& cpu, moira::Model model, const Program& p, uint32_t ramSeed) 
             if (ramSeed & 1) put32(kTables, 1);
             cpu.setCRP(0x7FFF000200000000ull | kTables);
             cpu.setSRP(0);
-            cpu.setTT0(0);
-            cpu.setTT1(0);
+            // --mmutt: one seeded TT register over the whole 16 MB ($00xxxxxx,
+            // base and mask 0), enabled for a seeded subset of accesses —
+            // writes only, or reads and writes; user data, supervisor data,
+            // or every function code. A matching access bypasses the tables,
+            // so --mmuprot's write protection holds only for the others:
+            // the translator's DTLB must key its tags on what the TT matched.
+            // [B] MC68030UM-1989 §9.7.3 — TTx: base 31-24, mask 23-16, E 15,
+            // CI 10, R/W 9, RWM 8, FC base 6-4, FC mask 2-0.
+            uint32_t tt = 0;
+            if (gMmuTt) {
+                Rng tr{uint64_t(ramSeed) * 0xE7037ED1A0B428DBull + 11};
+                static constexpr uint32_t kFc[] = {
+                    1u << 4,                 // user data
+                    5u << 4,                 // supervisor data
+                    1u << 4 | 4u,            // user and supervisor data
+                    7u,                      // every function code
+                };
+                static constexpr uint32_t kDir[] = {
+                    0x0000u,                 // RWM 0, R/W 0: writes only
+                    0x0200u,                 // RWM 0, R/W 1: reads only
+                    0x0100u,                 // RWM 1: both directions
+                };
+                if (tr.below(5) != 0) {
+                    tt = 0x8000u | kFc[tr.below(4)] | kDir[tr.below(3)];
+                    if (tr.below(4) == 0) tt |= 0x0400u;      // CI
+                }
+                const bool second = tr.below(2) != 0;
+                cpu.setTT0(second ? 0 : tt);
+                cpu.setTT1(second ? tt : 0);
+                if (std::getenv("FUZZ_LOG_SLICES"))
+                    std::printf("    [mmutt] TT0=%08X TT1=%08X\n", cpu.getTT0(), cpu.getTT1());
+            } else {
+                cpu.setTT0(0);
+                cpu.setTT1(0);
+            }
             cpu.setTC(0x80000000u | 0xCu << 20 | 8u << 16 | 4u << 12 | 8u << 8);
         } else {
             // 68040, 4 KB pages: root (512 B) -> one pointer table (512 B)
@@ -877,6 +911,29 @@ void load(FuzzCpu& cpu, moira::Model model, const Program& p, uint32_t ramSeed) 
                 }
             }
             cpu.setITT0(0); cpu.setITT1(0); cpu.setDTT0(0); cpu.setDTT1(0);
+            // --mmutt: seeded DTTx/ITTx over the whole 16 MB, user-only,
+            // supervisor-only or both; a data one sometimes write-protected
+            // (W) or cache-inhibited. Matching accesses bypass the tables
+            // and --mmuprot's page protection.
+            // [B] MC68040UM §3.1.3 — base 31-24, mask 23-16, E 15, S 14-13
+            // (00 user, 01 supervisor, 1x ignore), U 9-8, CM 6-5, W 2.
+            if (gMmuTt) {
+                Rng tr{uint64_t(ramSeed) * 0xE7037ED1A0B428DBull + 13};
+                const auto oneTt = [&](bool data) -> uint32_t {
+                    if (tr.below(3) == 0) return 0;
+                    uint32_t v = 0x8000u | (tr.below(3) << 13);
+                    if (data) {
+                        if (tr.below(4) == 0) v |= 4;         // W
+                        v |= tr.below(4) == 0 ? 0x40u : cm;   // CM: serialized, else as the pages
+                    } else {
+                        v |= cm;
+                    }
+                    return v;
+                };
+                const uint32_t d = oneTt(true), i = oneTt(false);
+                if (tr.below(2)) cpu.setDTT0(d); else cpu.setDTT1(d);
+                if (tr.below(2)) cpu.setITT0(i); else cpu.setITT1(i);
+            }
             cpu.setURP040(root);
             cpu.setSRP040(root);
             cpu.setTC040(0x8000);
@@ -1006,6 +1063,7 @@ int main(int argc, char** argv) {
         else if (a == "--dcache") gDcache = true;
         else if (a == "--mmu") gMmu = true;
         else if (a == "--mmuprot") gMmu = gMmuProt = true;
+        else if (a == "--mmutt") gMmu = gMmuTt = true;
         else if (a == "--stats") stats = true;
         else if (a == "--extra" && i + 1 < argc) {
             // Comma-separated seeds run after the range: the regressions.

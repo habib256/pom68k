@@ -145,18 +145,35 @@ set_tests_properties(jit_program_fuzz_040_sys_test jit_program_fuzz_030_sys_test
                      PROPERTIES LABELS "jit;unit" TIMEOUT 300)
 # --mmuprot: a seeded quarter of the data and stack pages write-protected
 # (and, on the 68040, another quarter supervisor-only), so stores and
-# exception frames fault inside blocks. 68030 seeds: 278 (data buffer
-# stacked by a TAS fault), 1072 (stale (An)± fixup in a JIT thunk), 192
-# (restart latches across a save state taken while STOPped).
+# exception frames fault inside blocks. Seeds are per option set (the
+# options change the generated program). Combined: 112, 274 (data buffer
+# stacked by a TAS fault), 192 (restart latches across a save state taken
+# while STOPped). Plain --mmuprot: 278 (data buffer), 1072 (stale (An)±
+# fixup in a JIT thunk).
 add_test(NAME jit_program_fuzz_030_mmuprot_test
          COMMAND jit_program_fuzz --model 30 --mmuprot --sys --ext --fpu --smc
-                 --irq-timed --savestate --slices 20 --seeds 200 --extra 278,1072,192)
+                 --irq-timed --savestate --slices 20 --seeds 200 --extra 112,274,192)
+add_test(NAME jit_program_fuzz_030_mmuprot_plain_test
+         COMMAND jit_program_fuzz --model 30 --mmuprot --seeds 100 --extra 278,1072)
 add_test(NAME jit_program_fuzz_040_mmuprot_test
          COMMAND jit_program_fuzz --model 40 --mmuprot --sys --ext --fpu --smc
                  --irq-timed --savestate --slices 20 --seeds 200)
-set_tests_properties(jit_program_fuzz_030_mmuprot_test PROPERTIES
-                     ENVIRONMENT "POM68K_JIT_PROFIT_SCORE=0")
+# --mmutt: seeded transparent-translation registers over the whole bus
+# (68030 TTx direction-specific, 68040 DTTx/ITTx with S, W and CM). 68030
+# seeds 10, 508, 516 (TT0/TT1 writes only, user or supervisor data): a
+# write-only TT made a native RMW's read transparent too.
+add_test(NAME jit_program_fuzz_030_mmutt_test
+         COMMAND jit_program_fuzz --model 30 --mmutt --mmuprot --sys --ext --smc
+                 --seeds 200 --extra 10,508,516)
+add_test(NAME jit_program_fuzz_040_mmutt_test
+         COMMAND jit_program_fuzz --model 40 --mmutt --mmuprot --sys --ext --smc
+                 --dcache --seeds 200)
+set_tests_properties(jit_program_fuzz_030_mmuprot_test jit_program_fuzz_030_mmutt_test
+                     jit_program_fuzz_030_mmuprot_plain_test
+                     PROPERTIES ENVIRONMENT "POM68K_JIT_PROFIT_SCORE=0")
 set_tests_properties(jit_program_fuzz_030_mmuprot_test jit_program_fuzz_040_mmuprot_test
+                     jit_program_fuzz_030_mmutt_test jit_program_fuzz_040_mmutt_test
+                     jit_program_fuzz_030_mmuprot_plain_test
                      PROPERTIES LABELS "jit;unit" TIMEOUT 300)
 # --fpexc: FPCR also arms the FP exception enables, so posted 6888x
 # exceptions and 68040 FP frames (vectors 48-55) occur inside blocks, across
