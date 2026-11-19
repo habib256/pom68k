@@ -282,7 +282,21 @@ void Moira::fpuToPackedV(FpuExtended &v, const u32 wrd[3])
 void Moira::fpuFromPackedV(const FpuExtended &v, u32 wrd[3], int kfactor)
 {
     i32 kf = kfactor;
-    floatx80 f = floatx80_to_floatdecimal(fpuToFx80(v), &kf, fpuFloatStatus.get());
+    const floatx80 src = fpuToFx80(v);
+    floatx80 f = floatx80_to_floatdecimal(src, &kf, fpuFloatStatus.get());
+
+    // POM68K: a zero source with a k-factor above +17 still sets OPERR.
+    // [B] MC68881UM-1989 §6.1.3 — Table 6-2, FMOVE to P: "Result Exponent
+    // >999 (Decimal) or k-Factor > +17"; the FMOVE status table: "OPERR
+    // Set if the k-factor > +17", with no exception for zero.
+    // [D] WinUAE @ Hatari e77819f7 — fp_from_pack shares the same SoftFloat.
+    // SoftFloat returns a zero before its k-factor test, so the flag was
+    // lost (ruling D40, oracle/fuzz/disputes/NOTES.md); the packed zero is the
+    // same whatever the digit count. Infinities and NaNs keep their
+    // special-value path, which the manual does not rank against the
+    // k-factor here.
+    if ((src.high & 0x7FFF) == 0 && src.low == 0 && kfactor > 17)
+        float_raise(float_flag_invalid, fpuFloatStatus.get());
 
     if ((f.high & 0x7FFF) == 0x7FFF) {
 

@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 842 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 843 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 25 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 44 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 171 |
+| [Cross-cutting](#cross-cutting) | 172 |
 
 ---
 
@@ -289,7 +289,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-17 (third)** — [A Moira release cut for Dirk Hoffmann, every gate executed](CHANGELOG.md#2026-11-17-release-for-dirk)
 - **2026-11-18** — [The fork builds and behaves under upstream Moira's settings](CHANGELOG.md#2026-11-18-upstream-config)
 - **2026-11-18 (fifth)** — [A halted 68040 keeps the queue the interpreter would leave after a native JSR fault](CHANGELOG.md#2026-11-18-jsr040-queue)
-- **2026-11-19 (eighth)** — [Level 7 is transition sensitive from the 68020 up: a held NMI no longer stalls the core](CHANGELOG.md#2026-11-19-sanitizers)
+- **2026-11-19 (eighth)** — [Level 7 is transition sensitive from the 68020 up: a held NMI no longer stalls the core](CHANGELOG.md#2026-11-19-eighth--level-7-is-transition-sensitive-from-the-68020-up-a-held-nmi-no-longer-stalls-the-core)
 - **2026-11-19 (fifth)** — [Transparent translation in the program fuzzer: a native RMW read through a write-only 68030 TT](CHANGELOG.md#2026-11-19-fifth--transparent-translation-in-the-program-fuzzer-a-native-rmw-read-through-a-write-only-68030-tt)
 - **2026-11-19 (fourth)** — [protected pages in the program fuzzer: three 68030 fault-frame defects](CHANGELOG.md#2026-11-19-fourth--protected-pages-in-the-program-fuzzer-three-68030-fault-frame-defects)
 - **2026-11-19 (seventh)** — [Page sizes in the program fuzzer; a split CAS.L's locked-read fault on the 68040](CHANGELOG.md#2026-11-19-seventh--page-sizes-in-the-program-fuzzer-a-split-casls-locked-read-fault-on-the-68040)
@@ -904,4 +904,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-18 (second)** — [A random-program fuzzer finds six interpreter/translator/save-state defects](CHANGELOG.md#2026-11-18-program-fuzz)
 - **2026-11-18 (sixth)** — [Armed FP exceptions through the translator: no divergence in 16 000 seeds](CHANGELOG.md#2026-11-18-fpexc-sweep)
 - **2026-11-18 (third)** — [A CACR write that clears DE retires the native 040 cache-line entries](CHANGELOG.md#2026-11-18-cacr-publications)
+- **2026-11-19 (ninth)** — [FMOVE.P of a zero with k > +17 sets OPERR (ruling D40)](CHANGELOG.md#2026-11-19-sanitizers)
 

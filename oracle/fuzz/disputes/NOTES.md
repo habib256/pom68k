@@ -62,6 +62,24 @@ coverage, not a speed measurement; no A/B timing was run on the shared host.
 The earlier 151100/151200 generation was interrupted and is not a complete
 sweep. No core change or new pinned exception follows from this pass.
 
+## D40. FMOVE.P of a zero with a k-factor above +17 sets OPERR [fork follows the manual, 2026-11-19]
+
+MC68881UM-1989 §6.1.3, Table 6-2: the operand errors of "FMOVE to P" are
+"Result Exponent >999 (Decimal) or k-Factor > +17"; the FMOVE status table
+(PDF p. 125): "OPERR Set if the k-factor > + 17". Neither excepts a zero
+source. WinUAE @ Hatari e77819f7 converts through the shared SoftFloat
+`floatx80_to_floatdecimal`, which returns a zero before its `kfactor > 17`
+test, so the oracle leaves OPERR (and the accrued IOP bit) clear. The fork
+raises it (`Moira::fpuFromPackedV`); the packed image and the PC are those
+of the oracle, only FPSR differs ($2000 exception status, $80 accrued).
+Thirteen pinned vectors, every one verified to be FMOVE.P of ±0 with a
+static k from 21 to 55 (one to D7, which takes the Line-F after the
+conversion updates FPSR): 3 in `sst68030_fpuraw`, 4 in `sst68030_fpu2`, 6
+in `sst68030_fpuh`, listed in their `.known` files. Infinities and NaNs keep
+SoftFloat's special-value path; the manual does not rank them against the
+k-factor. Settled for silicon by: the FPSR of FMOVE.P #0 with k = 18 on a
+real 68881/68882.
+
 ## D39. An A-line, illegal or CHK instruction on a page's last word, the next page invalid [fork follows the manual, 2026-11-14]
 
 MC68040UM-1993 §3.5: "An ATC access error is not reported immediately, if

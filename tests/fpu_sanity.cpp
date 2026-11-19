@@ -130,12 +130,20 @@ void packedZeros() {
             std::memset(cpu.mem.data() + 0x4000, 0xA5, 12);
             cpu.setA(0, 0x4000);
             cpu.setD(1, 0xDEADBE80u | k);             // only low seven bits count
+            cpu.setFPSR(0);
             cpu.execute();
             next += 4;
             CHECK(std::memcmp(cpu.mem.data() + 0x4000, want, 12) == 0 &&
                   cpu.getPC0() == next,
                   "packed zero FPU=%d sign=%d dynamic=%d k=%u PC=%08X FPSR=%08X",
                   int(model), negative, dynamic, k, cpu.getPC0(), cpu.getFPSR());
+            // [B] MC68881UM-1989 Table 6-2: OPERR when the k-factor exceeds
+            // +17, a zero source included (ruling D40). k is signed 7-bit.
+            const bool operr = k < 64 && k > 17;
+            CHECK(bool(cpu.getFPSR() & 0x2000) == operr &&
+                  bool(cpu.getFPSR() & 0x80) == operr,
+                  "packed zero FPU=%d sign=%d dynamic=%d k=%u: FPSR=%08X, OPERR/IOP %s",
+                  int(model), negative, dynamic, k, cpu.getFPSR(), operr ? "expected" : "unexpected");
             ++transfers;
         }
     }

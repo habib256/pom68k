@@ -1402,6 +1402,32 @@ Newest first.
 ---
 
 <a id="2026-11-19-sanitizers"></a>
+## 2026-11-19 (ninth) — FMOVE.P of a zero with k > +17 sets OPERR (ruling D40)
+
+Closes the TODO item "Vérifier OPERR pour FMOVE.P de zéro avec k-facteur
+>17". The locked MC68881UM-1989 was fetched from `cache.nxp.com`, with its
+SHA-256 matching the lock, and read. [B] §6.1.3 Table 6-2 (PDF p. 232)
+lists, for FMOVE to P, "Result Exponent >999 (Decimal) or k-Factor > +17".
+The FMOVE status table (p. 125) has "OPERR Set if the k-factor > + 17".
+Neither excepts a zero. SoftFloat's `floatx80_to_floatdecimal` returns a
+zero before its `kfactor > 17` test, so OPERR was lost. WinUAE shares that
+SoftFloat, and so does the oracle. `fpuFromPackedV` now raises invalid for
+a zero source with k > 17. The vendored SoftFloat is untouched.
+
+The packed image and the PC were already right; only FPSR moves ($2000
+status, $80 accrued). Thirteen pinned oracle vectors now differ, and all
+thirteen are FMOVE.P of ±0 with a static k of 21 to 55: 3 in
+`sst68030_fpuraw`, 4 in `sst68030_fpu2`, 6 in `sst68030_fpuh`. They are
+listed under the new ruling D40 (`oracle/fuzz/disputes/NOTES.md`, the
+manual over the oracle). Those corpora are not versioned, so the asset-free
+proof is `fpu_sanity` packedZeros. It already ran 1 024 transfers (signed
+7-bit k, static and dynamic, both signs, 68881 and 68882) but checked only
+memory and PC. It now requires OPERR and IOP exactly when k > 17.
+Mutation-checked: without the fix, 368 checks fail. Infinities and NaNs
+keep SoftFloat's special-value path; the manual does not rank them against
+the k-factor. The locator lock gains MC68881UM-1989 §6.1.3 and Table 6-2.
+Moira patch group 128.
+
 ## 2026-11-19 (eighth) — Level 7 is transition sensitive from the 68020 up: a held NMI no longer stalls the core
 
 The TODO item had waited on its source ("section exacte à citer"). The

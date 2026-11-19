@@ -249,3 +249,10 @@
 @D12 0017f4 00011d28 | fpu2/tt seed=943 #677
 @D12 0017f4 000134b8 | fpu2/tt seed=943 #694
 @D12 0017f4 00010f2a | fpu2/tt seed=943 #714
+
+# D40 - FMOVE.P of a zero with a k-factor above +17. The fork sets OPERR
+# (MC68881UM-1989 Table 6-2); SoftFloat returns the zero before its k test.
+fpu2/identity seed=942 #320
+fpu2/off seed=941 #1364
+fpu2/off seed=941 #1746
+fpu2/off seed=941 #696

@@ -453,14 +453,6 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   dans `POM68K_VENDOR.md § MC68882 FPU execution` ; le correctif du
   2026-08-12 ne couvre que le cas préindexé valide.
 
-- [ ] **Vérifier OPERR pour FMOVE.P de zéro avec k-facteur >17.**
-  La table de statut de FMOVE.P du MC68881UM indique OPERR au-delà de
-  +17, mais le retour anticipé SoftFloat pour zéro évite ce contrôle.
-  La correction du décalage indéfini ne change volontairement pas les
-  flags ; ses 1 024 cas ne figent que l'image mémoire et le PC. Lire
-  aussi la priorité des valeurs spéciales avant de modifier le statut
-  ou de régénérer les références.
-
 ### Justesse 68040
 
 - [ ] **Donner des vecteurs à plusieurs instructions aux autres états en
