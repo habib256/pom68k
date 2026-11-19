@@ -196,6 +196,21 @@ set_tests_properties(jit_program_fuzz_020_ext2_test PROPERTIES
 set_tests_properties(jit_program_fuzz_030_ext2_test jit_program_fuzz_040_ext2_test
                      jit_program_fuzz_020_ext2_test
                      PROPERTIES LABELS "jit;unit" TIMEOUT 300)
+# The 68000 (compact Macs) on the threaded backend, the one engine valid
+# for it: window mode and blocks, with SR/USP/RTE/STOP, self-modifying
+# stores, timed interrupts and save states.
+add_test(NAME jit_program_fuzz_000_test
+         COMMAND jit_program_fuzz --model 0 --sys --smc --irq-timed --savestate
+                 --slices 20 --seeds 300)
+add_test(NAME jit_program_fuzz_000_blocks_test
+         COMMAND jit_program_fuzz --model 0 --sys --smc --irq-timed --savestate
+                 --slices 20 --seeds 300)
+set_tests_properties(jit_program_fuzz_000_test PROPERTIES
+                     ENVIRONMENT "POM68K_CPU_ENGINE=jit;POM68K_JIT_BACKEND=threaded")
+set_tests_properties(jit_program_fuzz_000_blocks_test PROPERTIES
+                     ENVIRONMENT "POM68K_CPU_ENGINE=jit;POM68K_JIT_BACKEND=threaded;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=1")
+set_tests_properties(jit_program_fuzz_000_test jit_program_fuzz_000_blocks_test
+                     PROPERTIES LABELS "jit;unit" TIMEOUT 300)
 # --lc040: the Quadra 605 / LC 475 CPU with the FPU templates on, so every
 # FPU instruction takes the 68LC040 F-line (vector 11, format $4) inside
 # blocks, under the MMU and across save states.

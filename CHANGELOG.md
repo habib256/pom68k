@@ -1415,6 +1415,12 @@ plus `--fpexc`, save states and timed interrupts, and with `--dcache --mmu
 2 500 on threaded with blocks, all clean. Gate
 `jit_program_fuzz_lc040_test`.
 
+The 68000, the compact Macs' CPU, had no program-fuzzer gate at all. On
+threaded, the one engine valid for it, it ran 4 000 seeds each of `--sys
+--smc`, the same with timed interrupts and save states, and `--irq
+--savestate --len 120 --raw 15`, in window mode and with blocks: clean.
+Gates `jit_program_fuzz_000_test` and `_000_blocks_test`.
+
 ## 2026-11-19 (eleventh) — `--ext2`: CAS2, MOVES, TAS and cache/ATC maintenance in the program fuzzer
 
 The generator never produced CAS2, MOVES, TAS, the 68040's CINV/CPUSH, its
