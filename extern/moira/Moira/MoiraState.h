@@ -106,9 +106,33 @@ template<class Ar> void Moira::pomVisitState(Ar& ar)
     // reloaded core stacked the prefetch-phase opcode $FFFF and a stale CCR
     // where the unsaved one stacked STOP's (tests/jit_program_fuzz.cpp
     // --mmuprot --irq-timed --savestate, 68030 seed 192). Format v34.
-    ar(mmuState, mmuAd, mmuFmovemStore, mmuIdx, mmuIdxDone, mmuDataBuffer,
-       mmuDispStore, mmuOpcodeV, mmuFixupReg, mmuFixupVal, mmuLogging,
-       mmuRmw, mmuCcrSave, mmuLastWritePc);
+    //
+    // …but only while STOPped. Generated code keeps none of these latches
+    // (Moira.h, PomJitLayout: re-established by the next interpreted
+    // instruction start), so outside STOP their live values depend on
+    // whether the last instruction ran native or interpreted — on the
+    // engine's warm-up, not on the guest. Carrying them verbatim made a
+    // snapshot engine-dependent: an LC II restored into a cold engine and
+    // run 150 000 cycles saved a different mmuCcrSave than the unsaved
+    // machine (savestate_v8_test determinism, x86-64 only — a64 lined up
+    // by chance). STOP itself always runs interpreted, so in STOP the
+    // latches are guest state. Elsewhere the visitor saves what the next
+    // mmuExecuteStart would set; the live core is not touched.
+    if (Ar::loading || isStopped()) {
+        ar(mmuState, mmuAd, mmuFmovemStore, mmuIdx, mmuIdxDone, mmuDataBuffer,
+           mmuDispStore, mmuOpcodeV, mmuFixupReg, mmuFixupVal, mmuLogging,
+           mmuRmw, mmuCcrSave, mmuLastWritePc);
+    } else {
+        u16 state[3] {};
+        u32 ad[10] {}, fmovem[2] {}, disp[2] {}, fixVal[2] {};
+        u8 fixReg[2] {};
+        int idx = 0, idxDone = 0;
+        u32 dataBuffer = 0, opcodeV = 0xFFFFFFFF, lastWritePc = 0;
+        bool logging = true;
+        u16 ccrSave = getCCR();
+        ar(state, ad, fmovem, idx, idxDone, dataBuffer, disp, opcodeV,
+           fixReg, fixVal, logging, mmuRmw, ccrSave, lastWritePc);
+    }
 
     if constexpr (Ar::loading) {
         cp = 0;                  // not carried; the next instruction

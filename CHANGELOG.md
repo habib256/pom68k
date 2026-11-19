@@ -40,6 +40,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **The 2026-11-19 (fourth) save-state v34 carried the 68030 restart latches verbatim; why did Linux CI go red?** → [Engine-dependent latches](#2026-11-19-latches-engine-dependent)
+
 - **The 2026-11-18 (second) trace check skipped a footprint word the window no longer covered; why was that wrong?** → [Refuse, not skip](#2026-11-18-trace-privilege)
 
 - **Why does a format-$2 group-2 frame now hold two different PCs, after the July oracle ruling made them equal?** → [The primary-manual ruling and scoped IA checks](#2026-11-17-group2-instruction-address)
@@ -1400,6 +1402,38 @@ Newest first.
 ---
 
 <a id="2026-11-19-sanitizers"></a>
+## 2026-11-19 (sixth) — The 68030 restart latches are guest state only while STOPped
+<a id="2026-11-19-latches-engine-dependent"></a>
+
+Correction to (fourth). Its save-state v34 carried the 68030 restart
+latches (`mmuCcrSave`, `mmuOpcodeV` and the rest) verbatim, and Linux CI went
+red on `savestate_v8_test`. That test restores an LC II into a second
+machine, runs 150 000 cycles, and finds the snapshot no longer equal to the
+unsaved machine's. Reproduced on x86-64 under Rosetta, a64 passing. The
+x86-64 save printed the CCR latched before a BRA run as generated code,
+which keeps none of these latches (Moira.h, `PomJitLayout`: the next
+interpreted instruction start re-establishes them). Their live value
+depends on whether the last instruction ran native or interpreted, which
+depends on the engine's warm-up, and a restored machine starts cold.
+Bisected in the visitor: `mmuCcrSave` alone flips the test.
+
+The latches are guest state when the last instruction is known to have
+been interpreted, and STOP always is: that is seed 192's case. The visitor
+now carries them while STOPped and, otherwise, saves the values the next
+`mmuExecuteStart` would set, without touching the live core. A
+non-STOPped snapshot followed by an interrupt whose frame push faults
+before the next instruction start stacks those values instead of the
+previous instruction's. That is the same corner where native execution
+already leaves them stale. [F] Settled by: a $B frame stacked by an
+interrupt that faults on a protected stack, on a real 68030.
+
+`moira_state_test` frameLatches030 checks both cases.
+`savestate_v8_test` passes on x86-64 and a64, and
+`jit_program_fuzz_030_mmuprot_test` (192) still passes. 3 000 seeds of three
+68030 `--savestate` combinations are clean. The pushes between 83b904cc and
+this fix went out through the hook's red-CI block; this commit carries the
+`CI-Fix` trailers.
+
 ## 2026-11-19 (fifth) — Transparent translation in the program fuzzer: a native RMW read through a write-only 68030 TT
 
 `jit_program_fuzz --mmutt` (implies `--mmu`) arms a seeded TT register over

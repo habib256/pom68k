@@ -18,6 +18,7 @@ public:
     using moira::Moira::mmuOpcodeV; using moira::Moira::mmuFixupReg;
     using moira::Moira::mmuFixupVal; using moira::Moira::mmuLogging;
     using moira::Moira::mmuCcrSave; using moira::Moira::mmuLastWritePc;
+    using moira::Moira::flags;
     std::vector<moira::u8> mem = std::vector<moira::u8>(1 << 20);
     mutable int holeReads = 0;
     bool wordHole040 = false;
@@ -229,6 +230,15 @@ void frameLatches030() {
     src.mmuDispStore[0] = 0x1234; src.mmuDispStore[1] = 0x5678;
     src.mmuOpcodeV = 0x4E72; src.mmuFixupReg[0] = 0x0C; src.mmuFixupVal[0] = 0x9000;
     src.mmuLogging = true; src.mmuCcrSave = 0x1F; src.mmuLastWritePc = 0x40070;
+    // Outside STOP the latches are engine-dependent and the visitor saves
+    // what the next instruction start would set (MoiraState.h).
+    restore(src, dst);
+    check(dst.mmuOpcodeV == 0xFFFFFFFF && dst.mmuDataBuffer == 0 && dst.mmuIdx == 0 &&
+          dst.mmuAd[3] == 0 && dst.mmuFixupReg[0] == 0 && dst.mmuCcrSave == src.getCCR() &&
+          src.mmuOpcodeV == 0x4E72,
+          "frame030: outside STOP, canonical latches saved, the live core untouched");
+    // While STOPped they are guest state (STOP always runs interpreted).
+    src.flags |= moira::State::STOPPED;
     restore(src, dst);
     bool same = dst.mmuOpcodeV == 0x4E72 && dst.mmuCcrSave == 0x1F &&
                 dst.mmuDataBuffer == 0xCAFEF00D && dst.mmuIdx == 4 && dst.mmuIdxDone == 2 &&
