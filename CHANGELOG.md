@@ -1450,6 +1450,16 @@ mode, with `--vmrte`, and with `--raw 15 --len 120`. 8 000 seeds each on
 a64 and 2 000 on x64, clean. Gates `jit_program_fuzz_{030,040}_vmrte_test`
 and `_devport_test` (the pre-fix binary fails the latter).
 
+After the push (67f3e5f6), on seeds outside every earlier range, with
+`POM68K_JIT_PROFIT_SCORE=0`:
+- a64: both gate command lines × 3 000 seeds per model;
+- x64 under Rosetta: 1 500 seeds per model.
+
+Every run is clean, with 82–97 % of the instructions native. The x64
+`unit|jit` tier passes, 283 of 283, once the test targets were rebuilt; its
+first run used stale binaries left behind by the GUI link failure (no
+x86-64 GLFW on the M4).
+
 ## 2026-11-19 (sixteenth) — 68030 RTE $B continues the instruction instead of re-issuing its completed accesses
 
 The TODO's "réexécuter l'instruction" item. After a bus fault, Moira
