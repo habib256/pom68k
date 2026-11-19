@@ -1444,6 +1444,13 @@ were three combinations:
 On a64 each ran 6 000 seeds per model. On x64 (Rosetta, the host it is the
 default on) the first two ran 1 500 seeds. All clean.
 
+And with the product's own admission policy (no `POM68K_JIT_PROFIT_SCORE`
+override, which the 68030 gates set to 0): `--ext --ext2 --sys --smc --fpu
+--len 120` and `--mmuprot --mmutt --mmupage --sys --ext --savestate
+--irq-timed --len 120` ran 6 000 seeds per model on a64 and 1 500 on x64,
+clean. On the a64 68030 the default score keeps most code on the window,
+as intended: 2.2 M of 119 M instructions native.
+
 ## 2026-11-19 (tenth) — FBcc's sixth predicate bit on the 6888x: settled by its manual
 
 Since 2026-11-07, FBcc evaluates five predicate bits on every FPU, like
