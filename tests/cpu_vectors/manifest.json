@@ -308,11 +308,29 @@
           "steps": 2,
           "seed": 2026112002,
           "trace": "t0"
+        },
+        {
+          "family": "core",
+          "mmu": "off",
+          "n": 32,
+          "steps": 6,
+          "seed": 2026112020,
+          "trace": "t1",
+          "trace-handler": "rte"
+        },
+        {
+          "family": "core",
+          "mmu": "off",
+          "n": 32,
+          "steps": 6,
+          "seed": 2026112021,
+          "trace": "t0",
+          "trace-handler": "rte"
         }
       ],
-      "sha256": "ce4370276f6e8c008748fb67978a83bb3c6e6949b57443099146389a6bc73419",
-      "bytes": 862679710,
-      "vectors": 1064
+      "sha256": "a3e27846e8a4a13e3f9f56875e08d56e104d7ffed1e768a3b74a490ed0293071",
+      "bytes": 869734229,
+      "vectors": 1128
     },
     "040": {
       "file": "040.json.gz",
@@ -458,11 +476,29 @@
           "steps": 2,
           "seed": 2026112013,
           "trace": "t0"
+        },
+        {
+          "family": "core",
+          "mmu": "off",
+          "n": 32,
+          "steps": 6,
+          "seed": 2026112030,
+          "trace": "t1",
+          "trace-handler": "rte"
+        },
+        {
+          "family": "core",
+          "mmu": "off",
+          "n": 32,
+          "steps": 6,
+          "seed": 2026112031,
+          "trace": "t0",
+          "trace-handler": "rte"
         }
       ],
-      "sha256": "96034a5dcce5150b57263b908078be4d21b9958440739c27811c7755a2219049",
-      "bytes": 91340993,
-      "vectors": 512
+      "sha256": "3d7074b116e5629d22e33315078a699ce3c802b3971c4b077faf56c015213f6e",
+      "bytes": 98882476,
+      "vectors": 576
     }
   }
 }

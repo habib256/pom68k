@@ -311,7 +311,7 @@ Plusieurs rangs de l'inventaire ne tiennent encore que par un boot.
 - [ ] **Activer la RAM stricte dans le replay public après avoir tranché
   son écart d'historique PMMU.** `tools/cpu_vectors.py replay` ne passe
   pas `--strict-ram`. Avec ce contrôle, le corpus public 030 passe
-  1063 / 1064 : `$2010A3` vaut `$09` au lieu de `$01` sur le vecteur
+  1127 / 1128 : `$2010A3` vaut `$09` au lieu de `$01` sur le vecteur
   `rmw/identity seed=2026111532 #15 geometry=4k-2level-long`.
   Même résultat vérifié sur `45bb774` et sur D12 ; aucune différence
   nouvelle due aux frames. Ne pas transformer ce cas en exception de

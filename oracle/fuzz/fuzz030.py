@@ -69,6 +69,10 @@ def main() -> int:
                          "treats a loaded Tx as just written and does not trace "
                          "the first step, so a lead-in instruction takes that step "
                          "and the generated one is the traced one (use --steps 2)")
+    ap.add_argument("--trace-handler", default="stub", choices=["stub", "rte"],
+                    help="with --trace: 'rte' makes vector 9's handler an RTE, so "
+                         "--steps 6 is a debugger's single-step loop (lead-in, then "
+                         "three times an instruction, its trace and the RTE)")
     ap.add_argument("--n", type=int, default=100)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--out", required=True)
@@ -95,9 +99,15 @@ def main() -> int:
             lead = (0x4E, 0x71) if args.trace == "t1" else (0xC1, 0x40)
             st.pc -= 2
             st.ram = list(st.ram) + [(st.pc, lead[0]), (st.pc + 1, lead[1])]
+            if args.trace_handler == "rte":
+                table = dict(st.ram)
+                handler = int.from_bytes(bytes(table.get(0x24 + k, 0) for k in range(4)), "big")
+                st.ram = st.ram + [(handler, 0x4E), (handler + 1, 0x73)]
         name = f"{args.family}/{args.mmu} seed={args.seed} #{i}"
         if args.trace != "none":
             name += f" trace={args.trace}"
+            if args.trace_handler == "rte":
+                name += " loop"
 
         if args.geometry != "32k":
             name += f" geometry={args.geometry}"

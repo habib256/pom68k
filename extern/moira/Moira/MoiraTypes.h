@@ -469,6 +469,9 @@ static constexpr int CHECK_CP       = (1 << 9);
 // POM68K: a 68030 RTE from a format-$B frame armed the access-log replay of
 // the next instruction (Moira.h, mmuReplayArmed). Set, it routes that one
 // instruction through execute() — never generated code, which keeps no log.
+// A 68040 RTE into a format-$7 frame sets it too: the rerun follows the RTE
+// with no instruction boundary, so execute() takes no trace or interrupt
+// before it (MoiraExec_cpp.h, execRte).
 static constexpr int RTE_REPLAY     = (1 << 10);
 
 // POM68K: reflects the T0 flag from the status register on the 68020 and up

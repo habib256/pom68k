@@ -40,6 +40,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"On the 68040 an exception drops the staged trace, and so does an RTE into a format-$7 frame" (2026-11-19 (nineteenth)) — the RTE case is deferred, not dropped** → [T0 and the single-step loop](#2026-11-20-t0-change-of-flow)
+
 - **"On the 68040 a staged trace does not preempt: the next instruction runs first" (Q2, July) — fitted to one-step vectors, where WinUAE never traces the first step after a load** → [Trace against the oracle](#2026-11-19-trace-against-the-oracle)
 
 - **The 2026-11-19 (fourth) save-state v34 carried the 68030 restart latches verbatim; why did Linux CI go red?** → [Engine-dependent latches](#2026-11-19-latches-engine-dependent)
@@ -1423,22 +1425,23 @@ that synchronize its pipe (NOP among them).
 
 - `fullPrefetch` calls carry a new `FLOW` flag where the reload follows a
   change of flow: taken Bcc, DBcc and FBcc, BRA, BSR, JMP, RTS, RTD, RTR,
-  RTE, CALLM, RTM. A not-taken DBcc reloads the pipe too and is not marked;
+  CALLM, RTM. A not-taken DBcc reloads the pipe too and is not marked;
   a first version hooked every `fullPrefetch` and traced it (10 of 27 DBcc
   vectors wrong on the 68030).
 - JSR, which has its own refill, calls `traceFlow()`.
 - An SR write made while T0 is set is traced whatever it loads (`setSR`;
-  the 68040 already did this through `trace040Pending`).
+  the 68040 already did this through `trace040Pending`): MOVE, ANDI, ORI
+  and EORI to SR, STOP, and RTE. The T0 an instruction *loads* traces
+  nothing — see the single-step loop below.
 - Below the 68040 an instruction trap (TRAP, TRAPcc, TRAPV, CHK, CHK2, zero
   divide) is traced after its own exception — the T0 twin of the T1 trace
   that stays pending over the same exceptions. The 68040 drops it.
-- 68040 only (`traceFlow040`): NOP, STOP, MOVEC and MOVE to USP, MOVES,
+- 68040 only (`traceFlow040`): NOP, MOVEC and MOVE to USP, MOVES,
   CAS, CAS2, CINV, CPUSH, PFLUSH, PTEST, FSAVE, FMOVEM to memory, FDBcc
   whether taken or not. Four directions follow WinUAE where the manual
   names only the mnemonic: `MOVEC Rc,Rn`, `MOVE USP,An`, FMOVEM from memory
   and FRESTORE are not traced ([F] at the site).
-- An RTE into a format-$7 frame is not a traced change of flow either
-  (same rule as the T1 and one-shot traces).
+- An RTE into a format-$7 frame: see the single-step loop below.
 
 `State::TRACING0` mirrors the bit. It carries no behaviour; a non-zero
 `flags` keeps the instruction in `execute()`, where the handlers can stage
@@ -1494,12 +1497,53 @@ described": unsettled, not a trace matter, left as it is. T1 re-measured
 after the T0 work: 3 000 / 3 000 core/off and every fault/identity vector,
 both models (seed 51).
 
+**The single-step loop, and two corrections it forced.** The cells above
+stop at the first trace. A debugger does not: its handler returns with RTE
+and the next instruction is traced in turn. `fuzz030.py`/`fuzz040.py
+--trace-handler rte` make vector 9's handler an RTE; six steps are then
+lead-in, and three times an instruction, its trace and the RTE. 1 500
+vectors per cell, core/off seed 61:
+
+| Loop vectors | T1 | T0, first version | Now |
+|---|---:|---:|---:|
+| 68030 | 1 500 / 1 500 | 1 332 / 1 500 | 1 500 / 1 500 |
+| 68040 | 1 498 / 1 500 | 332 / 1 500 | 1 500 / 1 500 |
+
+- *RTE is traced by the T0 it began with.* The first version marked RTE's
+  reload `FLOW`, so `traceFlow()` saw the T0 the RTE had just loaded and
+  traced the trace handler's own return, again and again. Both manuals
+  decide from "the state of these bits when an instruction begins
+  execution"; WinUAE's RTE runs `MakeFromSR_T0` (the old T0) and no
+  `check_t0_trace`. RTE's reload is no longer `FLOW`, and STOP lost its
+  `traceFlow040`: `setSR` has already staged the trace from the old T0.
+  Targeted vectors from an untraced start confirm the other side: MOVE
+  #$6700,SR entered with T0 clear is traced by neither. (A ruling "D43"
+  written before that measurement was withdrawn the same hour.)
+- *68040: the trace pending at an RTE into a format-$7 frame is deferred,
+  not dropped.* Yesterday's entry extended the 2026-11-14 rule ("no trace
+  before the rerun") by dropping the RTE's own staged trace. One-step and
+  two-step vectors cannot tell dropped from deferred; the loop can: in
+  "loop core/off seed=61 #128" WinUAE takes vector 9 after the rerun
+  instruction (`SPCFLAG_DOTRACE` stays set through `SPCFLAG_MMURESTART`),
+  with the T-less SR of the resumed context stacked. `execRte` now sets
+  `State::RTE_REPLAY` on a rerun and `execute()` takes neither the trace
+  nor an interrupt before the next instruction, as on the 68030 since
+  (eighteenth); the interrupt half of that was an open [F] ("the fork does
+  not model that yet"). The harness learned the same: `traceStaged()` is
+  false while `RTE_REPLAY` is set, or it would run the rerun instruction
+  as part of the RTE's step.
+
+A stopped processor cannot be judged by these vectors: WinUAE leaves the PC
+on the STOP instruction until it wakes, the fork has it past the operand
+(12 of 12 untraced STOP cells differ in PC alone, on both models).
+
 **Gates.** `tests/cpu_vectors`: 80 `trace=t0` vectors on the 68030 and 104
-on the 68040 (1 064 and 512 in all; the streams pinned yesterday are byte
-prefixes of the new ones). The lead-in under T0 is `EXG D0,D0`: with NOP
+on the 68040, then 64 loop vectors on each (1 128 and 576 in all; the
+streams pinned yesterday are byte prefixes of the new ones). The lead-in under T0 is `EXG D0,D0`: with NOP
 every 68040 vector traced its own lead-in (0 / 3 000 on the first try).
 `moira_rules_test` `traceOnChangeOfFlow` covers the 68020, which no oracle
-reaches. The program fuzzer's `--tracebit` now raises T0 half of the time
+reaches; `rteRerunTakesNoTrace040` now also requires the deferred trace
+after the rerun. The program fuzzer's `--tracebit` now raises T0 half of the time
 from the 68020 up, and `--t0only` raises nothing else:
 `jit_program_fuzz_{030,040}_t0_test`. Mutation, `TRACING0` no longer set:
 those two gates fail (1 and 2 seeds of 200); the mixed `--tracebit` gates

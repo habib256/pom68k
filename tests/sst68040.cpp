@@ -109,7 +109,11 @@ public:
     // Traced vectors (runVector): exceptions taken, and the trace exception
     // execute() has staged for its next call.
     unsigned long exceptions = 0;
-    bool traceStaged() const { return flags & moira::State::TRACE_EXC; }
+    // Not while RTE_REPLAY is set: the next execute() then runs the
+    // instruction an RTE resumes before it takes the trace.
+    bool traceStaged() const {
+        return (flags & moira::State::TRACE_EXC) && !(flags & moira::State::RTE_REPLAY);
+    }
     void dropStagedTrace() { flags &= ~moira::State::TRACE_EXC; }
 
 private:

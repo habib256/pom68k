@@ -574,8 +574,18 @@ Moira::execute()
         //     mmu030_retry the inner loop reruns the opcode without
         //     passing through do_specialties.
         // Gate: berr030_test (RTE continuation under a pending interrupt).
-        const bool rteContinues =
-            (flags & RTE_REPLAY) && mmuReplayArmed && reg.pc == mmuReplayPc;
+        // The 68040 has the same rule for the rerun of a format-$7 frame
+        // (execRte); its flag is consumed here, the 68030's by
+        // mmuExecuteStart.
+        bool rteContinues = false;
+        if (flags & RTE_REPLAY) [[unlikely]] {
+            if (cpuModel >= Model::M68EC040) {
+                rteContinues = true;
+                flags &= ~RTE_REPLAY;
+            } else {
+                rteContinues = mmuReplayArmed && reg.pc == mmuReplayPc;
+            }
+        }
 
         if (flags & (HALTED | TRACE_EXC | TRACING | TRACING0)) {
 

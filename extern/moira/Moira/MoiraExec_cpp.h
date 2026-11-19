@@ -6733,21 +6733,23 @@ Moira::execRte(u16 opcode)
 
     // [D] WinUAE newcpu.c do_specialties @ Hatari e77819f7: after an RTE
     // to a format-$7 frame (m68k_do_rte_mmu040 raises SPCFLAG_MMURESTART)
-    // the pending trace is not taken — "can't have interrupt when 040/060
-    // CPU reruns faulted instruction"; T1 still traces the rerun itself.
-    // The one-shot trace setSR arms when the old SR had T0 or T1 (the
-    // throwaway frame of "040 core/off seed=81001 #1204", fresh-seed sweep
-    // 2026-11-14) is dropped here. WinUAE also defers the interrupt to
-    // after the rerun; the fork does not model that yet. [F] for silicon.
-    // Settled by: a trace of a real 68040 returning through a throwaway
-    // frame with T0 set into an access-error frame.
+    // neither the pending trace nor an interrupt is taken before the rerun
+    // — "can't have interrupt when 040/060 CPU reruns faulted instruction".
+    // The trace is deferred, not dropped: SPCFLAG_DOTRACE stays set and
+    // vector 9 is taken after the rerun instruction. That holds for the
+    // one-shot setSR arms when the old SR had T0 or T1 (the throwaway frame
+    // of "040 core/off seed=81001 #1204", 2026-11-14) and for the RTE's own
+    // staged trace ("trace=t1" #1075 and #1284, core/off seed 11,
+    // 2026-11-19). Until 2026-11-20 the fork dropped both and took the
+    // interrupt; the single-step loop vector "loop core/off seed=61 #128"
+    // shows the deferred frame. RTE_REPLAY carries "no boundary before the
+    // next instruction" to execute(), as it does for the 68030's $B frame.
+    // [F] for silicon. Settled by: a trace of a real 68040 returning with
+    // T1 set into an access-error frame.
     // Gate: moira_rules_test (rteRerunTakesNoTrace040).
-    // The RTE's own staged trace (it began with T1 set) is dropped the same
-    // way: "trace=t1" vectors #1075 and #1284 of a 2 000-vector core/off
-    // sweep, seed 11 (2026-11-19).
     if (rerun040) {
-        trace040Pending = false;
-        flags &= ~State::TRACE_EXC;
+        if (trace040Pending) { trace040Pending = false; flags |= State::TRACE_EXC; }
+        flags |= State::RTE_REPLAY;
     }
 
     if (rteFpuMid) fpuCompleteBusy(true);
@@ -6836,10 +6838,16 @@ Moira::execRte(u16 opcode)
     }
 
     setPC(newpc);
-    // The rerun of a format-$7 frame is not a traced change of flow either
-    // (above: no trace before the rerun; "040 core/off seed=11 #2576
-    // trace=t0", 2026-11-20).
-    if (rerun040) fullPrefetch<C, POLL>(); else fullPrefetch<C, POLL | FLOW>();
+    // No FLOW here: RTE loads SR, and whether it is traced under T0 was
+    // decided by the T0 it BEGAN with — setSR staged that trace, and the
+    // rerun rule above may have dropped it. The T0 it loads traces nothing
+    // by itself, or a trace handler's own RTE would be traced for ever.
+    // [B] MC68030UM-1989 §8.1.7 — "The state of these bits when an
+    //     instruction begins execution determines whether the instruction
+    //     generates a trace exception".
+    // [D] WinUAE @ Hatari e77819f7 — RTE runs MakeFromSR_T0 (oldt0) and no
+    //     check_t0_trace. Single-step loop vectors of 2026-11-20.
+    fullPrefetch<C, POLL>();
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -7131,8 +7139,6 @@ Moira::execStop(u16 opcode)
     // POM68K: the first iteration tested the interrupt with the OLD mask
     // (Moira.h § stopGraceUntil).
     if constexpr (C == Core::C68000) stopGraceUntil = clock + 4;
-
-    traceFlow040<C>();
 
     FINALIZE
 }

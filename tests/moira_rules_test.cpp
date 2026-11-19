@@ -2775,6 +2775,19 @@ void rteRerunTakesNoTrace040()
           "68040 RTE through a T0 throwaway frame into a format-$7 frame: "
           "PC0=%08X (want 00003000) SP=%08X (want %08X) SR=%04X (want 2000), "
           "no trace before the rerun", c.getPC0(), c.getSP(), sp + 8 + 60, c.getSR());
+    // The trace is deferred, not dropped: the rerun instruction (the NOP at
+    // $3000) runs, then vector 9 is taken with the next PC stacked.
+    // "loop core/off seed=61 #128 trace=t1", 2026-11-20.
+    bool later = contained && executeContained(c);
+    const uint32_t afterNop = c.getPC0();
+    later = later && executeContained(c);
+    const uint32_t tsp = c.getSP();
+    CHECK(later && afterNop == 0x3002 && c.getPC0() == kHandler && tsp == sp + 8 + 60 - 12 &&
+          g16(c, tsp + 6) == 0x2024 && g32(c, tsp + 2) == 0x3002,
+          "68040 RTE into a format-$7 frame: the deferred trace follows the rerun; "
+          "PC0 after the rerun %08X (want 00003002), then %08X (want %08X), SP=%08X "
+          "(want %08X) format/vector=%04X stacked PC=%08X", afterNop, c.getPC0(), kHandler,
+          tsp, sp + 8 + 60 - 12, g16(c, tsp + 6), g32(c, tsp + 2));
 }
 
 void traceFollowsTheTracedInstruction()
