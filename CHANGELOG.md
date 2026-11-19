@@ -1434,6 +1434,16 @@ the JIT on every CACR write. That is the open TODO item awaiting the IIfx's
 store inventory (SCSI DMA, IOPs). a64 absorbs it on the fetch window (32.6 M
 window instructions); x64 recompiles. This is cost, not divergence.
 
+The threaded backend, the Windows x64 default for the 68030 and 68040, then
+had its own soak in its default window mode and with blocks forced. There
+were three combinations:
+- `--ext --ext2 --sys --smc --fpu --fpexc`;
+- `--mmuprot --mmutt --mmupage --sys --ext --savestate --irq-timed`;
+- `--dcache --mmu --ext --ext2 --sys --smc --savestate`.
+
+On a64 each ran 6 000 seeds per model. On x64 (Rosetta, the host it is the
+default on) the first two ran 1 500 seeds. All clean.
+
 ## 2026-11-19 (tenth) — FBcc's sixth predicate bit on the 6888x: settled by its manual
 
 Since 2026-11-07, FBcc evaluates five predicate bits on every FPU, like
