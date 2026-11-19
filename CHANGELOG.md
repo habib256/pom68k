@@ -1428,6 +1428,16 @@ Gates `jit_program_fuzz_040_mmuprot_cas_test` (807209, mutation-checked
 under its own options) and `jit_program_fuzz_{030,040}_mmupage_test`;
 Moira patch group 126.
 
+After the push, with the same binary:
+- 20 000 seeds for each of five `--mmuprot` option sets, per model
+  (200 000 in all; with `--sys --ext --smc --fpu`, `--sys --ext`,
+  `--ext --fpu --fpexc --irq`, `--sys --smc --len 96`, `--mmutt --sys
+  --ext --raw 20`): clean.
+- Every board's lockstep at 3 000 000 jittered checkpoints: identical,
+  full RAM identical.
+- The 68020 on the threaded backend, in window mode and with blocks, for
+  three combined option sets at 4 000 seeds each: clean.
+
 ## 2026-11-19 (sixth) — The 68030 restart latches are guest state only while STOPped
 <a id="2026-11-19-latches-engine-dependent"></a>
 
