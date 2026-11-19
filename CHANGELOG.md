@@ -1402,6 +1402,19 @@ Newest first.
 ---
 
 <a id="2026-11-19-sanitizers"></a>
+## 2026-11-19 (twelfth) — `--lc040`: FPU code on the 68LC040 in the program fuzzer
+
+The Quadra 605 and LC 475 run a 68LC040. The fuzzer ran one only without
+`--fpu`, so the LC040's F-line on FPU instructions (vector 11, format $4
+with the EA) was reached only through rare raw words. `--lc040` keeps the
+FPU templates on and selects the 68LC040 with no FPU, so every FPU
+instruction traps: 3 709 F-lines in the first 200 seeds. Three
+combinations were run: with `--ext --ext2 --sys --smc`, with every MMU mode
+plus `--fpexc`, save states and timed interrupts, and with `--dcache --mmu
+--savestate`. Each ran 10 000 seeds on a64, 2 500 on x64 (Rosetta) and
+2 500 on threaded with blocks, all clean. Gate
+`jit_program_fuzz_lc040_test`.
+
 ## 2026-11-19 (eleventh) — `--ext2`: CAS2, MOVES, TAS and cache/ATC maintenance in the program fuzzer
 
 The generator never produced CAS2, MOVES, TAS, the 68040's CINV/CPUSH, its

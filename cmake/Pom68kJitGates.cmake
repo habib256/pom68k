@@ -196,6 +196,13 @@ set_tests_properties(jit_program_fuzz_020_ext2_test PROPERTIES
 set_tests_properties(jit_program_fuzz_030_ext2_test jit_program_fuzz_040_ext2_test
                      jit_program_fuzz_020_ext2_test
                      PROPERTIES LABELS "jit;unit" TIMEOUT 300)
+# --lc040: the Quadra 605 / LC 475 CPU with the FPU templates on, so every
+# FPU instruction takes the 68LC040 F-line (vector 11, format $4) inside
+# blocks, under the MMU and across save states.
+add_test(NAME jit_program_fuzz_lc040_test
+         COMMAND jit_program_fuzz --model 40 --lc040 --fpu --fpexc --mmuprot --sys --ext
+                 --smc --irq-timed --savestate --slices 20 --seeds 200)
+set_tests_properties(jit_program_fuzz_lc040_test PROPERTIES LABELS "jit;unit" TIMEOUT 300)
 # --mmupage: a seeded page size (68030 256 B to 32 KB, 68040 4 or 8 KB),
 # so DTLB slices, refusals and code-window bounds meet pages other than
 # 4 KB.

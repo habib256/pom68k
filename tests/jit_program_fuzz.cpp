@@ -29,7 +29,7 @@
 //   jit_program_fuzz [--model 0|20|30|40] [--seeds N] [--first S] [--extra S,S..]
 //                    [--len N] [--raw PERMILLE] [--slices N] [--budget CYCLES]
 //                    [-v] [--trace] [--shrink] [--bisect] [--watch-jit]
-//                    [--patch ADDR=WORD] [--progress] [--smc] [--irq] [--irq-timed] [--fpu] [--ext] [--ext2] [--sys] [--fpexc] [--savestate] [--dcache] [--mmu] [--mmuprot] [--mmutt] [--mmupage]
+//                    [--patch ADDR=WORD] [--progress] [--smc] [--irq] [--irq-timed] [--fpu] [--ext] [--ext2] [--lc040] [--sys] [--fpexc] [--savestate] [--dcache] [--mmu] [--mmuprot] [--mmutt] [--mmupage]
 //
 // A failure prints the seed; `--first S --seeds 1 -v` replays it alone.
 // `--shrink` turns body instructions into NOPs while a divergence remains,
@@ -227,6 +227,7 @@ constexpr uint32_t kBodyWord = 29;         // first body word: after the prologu
 bool gFpu = false;   // --fpu: 68040 with its FPU, 68030 with a 68882
 bool gExt = false;   // --ext: the wider template set (Gen::ext); changes every program
 bool gExt2 = false;  // --ext2: CAS2, MOVES, TAS, CINV/CPUSH, PFLUSH/PTEST (Gen::ext2)
+bool gLc040 = false; // --lc040: with --model 40 --fpu, FPU code on a 68LC040 (F-line, format $4)
 bool gFpExc = false;    // --fpexc: FPCR also arms FP exceptions (with --fpu)
 bool gSys = false;      // --sys: SR/USP/RTE/STOP system transitions (Gen::sys)
 bool gDcache = false;   // --dcache: the architectural 68040 caches (POM68K_040_DCACHE), both on
@@ -803,7 +804,8 @@ Program build(uint64_t seed, uint32_t len, uint32_t rawPermille) {
 }
 
 moira::FPUModel fpuModelFor(moira::Model model) {
-    return !gFpu || model == moira::Model::M68000 ? moira::FPUModel::NONE
+    return !gFpu || model == moira::Model::M68000 || model == moira::Model::M68LC040
+               ? moira::FPUModel::NONE
          : model == moira::Model::M68030 || model == moira::Model::M68020
              ? moira::FPUModel::M68882
                                          : moira::FPUModel::M68040;
@@ -1134,6 +1136,7 @@ int main(int argc, char** argv) {
         else if (a == "--fpu") gFpu = true;
         else if (a == "--ext") gExt = true;
         else if (a == "--ext2") gExt2 = true;
+        else if (a == "--lc040") gLc040 = true;
         else if (a == "--sys") gSys = true;
         else if (a == "--fpexc") gFpu = gFpExc = true;
         else if (a == "--savestate") gSave = true;
@@ -1167,7 +1170,11 @@ int main(int argc, char** argv) {
     const moira::Model m = model == 0 ? moira::Model::M68000
                          : model == 20 ? moira::Model::M68020
                          : model == 30 ? moira::Model::M68030
-                         : gFpu ? moira::Model::M68040 : moira::Model::M68LC040;
+                         : gFpu && !gLc040 ? moira::Model::M68040 : moira::Model::M68LC040;
+    // --lc040: the Quadra 605 / LC 475 CPU. --fpu still generates the FPU
+    // templates, and every one of them takes the 68LC040's F-line (vector
+    // 11, format $4 with the EA) — inside blocks, under the MMU, across
+    // save states — instead of executing.
     const uint32_t family = model == 0 ? jit::kGuest68000
                           : model == 20 ? jit::kGuest68020
                           : model == 30 ? jit::kGuest68030 : jit::kGuest68040;
