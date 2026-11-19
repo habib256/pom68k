@@ -945,9 +945,29 @@ Moira::execInterrupt(u8 level)
             else
                 writeStackFrame0000<C>(status, reg.pc, queue.ird);
 
-            if (reg.sr.m) {
+            {
+                const bool masterStack = reg.sr.m;
+                if (masterStack) {
 
-                writeStackFrame0001<C>(status, reg.pc, queue.ird);
+                    writeStackFrame0001<C>(status, reg.pc, queue.ird);
+                }
+                // POM68K: the interrupt sequence is billed like the other
+                // exceptions of this core (TRAP #n: CYCLES_68020(20)) —
+                // until 2026-11-19 it cost 0 cycles, so a burst of
+                // interrupts was free in guest time.
+                // [B] MC68020UM-1992 §8.2.17 — Interrupt (I-Stack)
+                //     26 (2/0/4), (M-Stack) 41 (2/0/8): the "cache case"
+                //     column, the one this core's TRAP #n 20 (1/0/4) uses.
+                //     The two reads, four (eight) writes are included.
+                // [B] MC68030UM-1989 §11.6.17 — the 68030's own figures,
+                //     Interrupt (I-Stack) 23 (2/0/4), (M-Stack) 33, i-cache
+                //     case; its TRAP #n is 18 where this core charges 20.
+                // [F] The core keeps one 68020 timing table for the 68020,
+                //     68030 and 68040 alike, as it does for TRAP; the
+                //     68040 manual gives no exception timing. Settled by: a
+                //     bus trace of an autovectored interrupt on a real
+                //     68030 and 68040.
+                sync(masterStack ? 41 : 26);
             }
     }
 

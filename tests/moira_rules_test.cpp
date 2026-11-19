@@ -2253,6 +2253,43 @@ void level7TransitionSensitive()
     }
 }
 
+void interruptSequenceBilled()
+{
+    // [B] MC68020UM-1992 §8.2.17: Interrupt (I-Stack) 26 (2/0/4), (M-Stack)
+    // 41 (2/0/8), the column the 020 core's TRAP #n (20) uses. An execute()
+    // that takes the interrupt runs no instruction, so the clock moves by
+    // the sequence alone. Until 2026-11-19 it moved by 0.
+    for (moira::Model m : { moira::Model::M68020, moira::Model::M68030,
+                            moira::Model::M68040 }) {
+        for (bool master : { false, true }) {
+            TestCpu c(m);
+            p32(c, 27 * 4, kHandler);                   // level-3 autovector
+            for (int i = 0; i < 8; i++) p16(c, kHandler + 2 * i, kNop);
+            stage(c, kNop, 0);
+            for (int i = 0; i < 16; i++) p16(c, kCode + 2 * i, kNop);
+            c.setSR(master ? 0x3000 : 0x2000);          // S, M, mask 0
+            c.setSP(0x8000);
+            for (int i = 0; i < 4; i++) c.execute();    // run out any delay
+            c.setIPL(3);
+            c.execute();                                // samples the pin
+            const auto before = c.getClock();
+            int n = 0;
+            while (c.getPC0() != kHandler && n++ < 4) {
+                const auto t = c.getClock();
+                c.execute();
+                if (c.getPC0() == kHandler) {
+                    const long long cost = (long long)(c.getClock() - t);
+                    const long long want = master ? 41 : 26;
+                    CHECK(cost == want, "model %d %s-stack interrupt costs %lld cycles, want %lld",
+                          int(m), master ? "M" : "I", cost, want);
+                }
+            }
+            CHECK(c.getPC0() == kHandler && c.getClock() > before,
+                  "model %d: the interrupt was not taken", int(m));
+        }
+    }
+}
+
 void movesReleasesAlternateFc()
 {
     // POM68K_VENDOR.md row 37: MOVES puts SFC or DFC on the function-code
@@ -2885,6 +2922,7 @@ int main(int argc, char** argv)
     unresetFpZero();
     irqDelayAfterMaskLowering();
     level7TransitionSensitive();
+    interruptSequenceBilled();
     movesReleasesAlternateFc();
     watchpointsUnderMmu();
     externalBusError020();
@@ -2910,6 +2948,6 @@ int main(int argc, char** argv)
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68030 MOVE to (xxx).L last write, 68EC030 plain-020 path with a 68030 "
-                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, the 68040 lock ending with TAS/CAS/CAS2, a memory-indirect pointer read outside the lock, BKPT without a data access, 68040 bit-field and JSR store faults restart, the SR-write refill as a fetch, no trace before a format-$7 rerun, PACK/UNPK -(An) faults on the 68030/68040, level 7 on a transition from the 68020 up\n");
+                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, the 68040 lock ending with TAS/CAS/CAS2, a memory-indirect pointer read outside the lock, BKPT without a data access, 68040 bit-field and JSR store faults restart, the SR-write refill as a fetch, no trace before a format-$7 rerun, PACK/UNPK -(An) faults on the 68030/68040, level 7 on a transition from the 68020 up, the billed 020-core interrupt sequence\n");
     return 0;
 }

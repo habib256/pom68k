@@ -570,21 +570,6 @@ par `cacheBoost` ; le reste est correction locale.
   boost ; `setPomCache040Timing` n'a aucun appelant hors tests. Le boot
   n'atteint pas le Finder dans le budget calibré de cinq milliards de
   cycles *invités* — ce n'est donc pas qu'une question de vitesse hôte.
-- [ ] **Facturer la séquence d'interruption du cœur 68020.**
-  `execInterrupt<Core::C68020>` n'appelle aucun `SYNC` (vide sur ce cœur) :
-  une interruption coûte 0 cycle sur 020/030/040. Le niveau 7 tenu ne fige
-  plus le cœur depuis qu'il est sensible au front (CHANGELOG 2026-11-19
-  (eighth), [B] MC68020UM-1992 §6.1.9, MC68030UM-1989 §8.1.9,
-  MC68040UM-1993 §8.2.9),
-  mais une rafale d'interruptions reste gratuite en temps invité. Les
-  chiffres sont trouvés : [B] MC68020UM-1992 §8.2.17 (PDF p. 254),
-  interruption pile I 26 (2/0/4) au mieux et en cache, 33 (2/2/4) au pire,
-  pile M 41 / 48 ; [B] MC68030UM-1989 §11.6.17 (PDF p. 592), pile I 23
-  (2/0/4) en cache, 24 (2/2/4) sans, pile M 33 / 34. Le MC68040UM-1993 n'a
-  pas de table d'instructions : [F] pour le 68040. Reste à décider comment
-  les facturer sur un cœur qui compte déjà ses accès bus (lectures et
-  écritures incluses dans le total), puis à requalifier les étalons de
-  boot 020/030/040, car le temps invité de chaque carte bougera.
 - [ ] **Requalifier `irqDelay` = 2.** Profondeur empirique, réglée sur
   SimCity 2000 avec le boost et appliquée à tout modèle ≥ 68020, 68040
   compris ; le symptôme d'origine a reçu ensuite une autre cause racine

@@ -51,9 +51,20 @@ template<class Ar> void Moira::pomVisitState(Ar& ar)
         State::LOGGING;
     const int liveDebug = flags & kDebugFlags;
     int guestFlags = flags & ~kDebugFlags;
+    // `fcl` is the function code of the LAST bus access. Nothing reads it
+    // at an instruction boundary — every access sets it before use
+    // (readFC, pomJitData030Ok) — and generated code never updates it, so
+    // its live value says whether that access ran native or interpreted.
+    // Carried verbatim, it made a snapshot engine-dependent: a Quadra 605
+    // restored into a cold JIT and run 1 200 frames differed from the
+    // unsaved run in this byte alone once interrupts were billed
+    // (q605_savestate_etalon, 2026-11-19). The canonical reset value is
+    // saved and restored instead. Format v36.
+    u8 fclCanonical = FC::USER_PROG;
     ar(trace040Pending, tracePc040,
-       fcl, fcSource, exception, loopModeDelay,
+       fclCanonical, fcSource, exception, loopModeDelay,
        readBuffer, writeBuffer, guestFlags);
+    if constexpr (Ar::loading) fcl = fclCanonical;
     if constexpr (Ar::loading)
         flags = (guestFlags & ~kDebugFlags) | liveDebug;
 

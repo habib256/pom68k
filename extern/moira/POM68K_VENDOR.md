@@ -54,9 +54,9 @@ pair):
 | | | how to re-measure |
 |---|---|---|
 | distinct `pom*` extension identifiers | **116** (65 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **561** | `grep -rn POM68K Moira/ \| wc -l` |
+| `POM68K`-marked lines | **562** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **17 of 27** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **128** | this file |
+| patch groups in the inventory below | **130** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h`, `MoiraState.h`, `MoiraMmu030Walk.h` | — |
 
 One hundred and sixteen patch groups, two of which (the JIT seam, row 22, and the ATC
@@ -298,6 +298,8 @@ gate in the last column of each row.
 | 126 | **A 68040 read leaves no stale write value for a split fault's WB3D** — `mmu040Read` zeroes `mmu040FullVal`, which `mmu040Fault` stacks as WB3D for a split access translated as a write | `MoiraExecMMU_cpp.h` | a split CAS.L faulting on its locked read stacked the last interpreted store's value, which native stores do not leave; the unsplit case already stacked 0 | `jit_program_fuzz_040_mmuprot_cas_test` (seed 807209) |
 | 127 | **Level 7 is transition sensitive from the 68020 up** — `nmiLatch` records a pin transition to 7 in `setIPL`, the level-7 acknowledge consumes it, and `irqEligible()` replaces every `reg.ipl > reg.sr.ipl \|\| reg.ipl == 7` test; the 68000/68010 keep the level-sensitive reading; save-state v35 | `Moira.h`, `Moira.cpp`, `MoiraExceptions_cpp.h`, `MoiraExecFPU_cpp.h`, `MoiraState.h` | [B] MC68020UM-1992 §6.1.9, MC68030UM-1989 §8.1.9, MC68040UM-1993 §8.2.9; a held level 7 re-entered the handler after every instruction, at constant clock on the 68020 core | `moira_rules_test` level7TransitionSensitive; `jit_program_fuzz_020_irq7_test` (seed 3) |
 | 128 | **FMOVE.P of a zero with a k-factor above +17 sets OPERR** — `fpuFromPackedV` raises invalid for a zero source when k > 17, which SoftFloat's early zero return skipped | `MoiraExecFPU_cpp.h` | [B] MC68881UM-1989 §6.1.3 Table 6-2; the oracle shares SoftFloat and leaves it clear (ruling D40, 13 vectors in the `sst68030_fpu*` `.known` lists) | `fpu_sanity` packedZeros (1 024 transfers, mutation-checked) |
+| 129 | **The 020-core interrupt sequence is billed** — `execInterrupt<C68020>` syncs 26 cycles (I-stack) or 41 (M-stack throwaway frame) after stacking, where it charged none | `MoiraExceptions_cpp.h` | [B] MC68020UM-1992 §8.2.17, the "cache case" column this core's TRAP #n (20) already uses; one table for 020/030/040 ([F] for the 030/040) | `moira_rules_test` interruptSequenceBilled |
+| 130 | **`fcl` is saved canonically** — the visitor writes and restores FC::USER_PROG for the last-access function code, never consumed at an instruction boundary and not maintained by generated code (format v36) | `MoiraState.h` | carried verbatim it made a snapshot engine-dependent once interrupts were billed (one byte, 1 200 frames after a Quadra 605 restore) | `q605_savestate_etalon` |
 
 Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54, 56, 59-75 and 79-86 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
 when nothing arms them); rows 48 and 55 are performance alone, with no architectural effect. Row 58 is evidence documentation only. The ten files carrying no `POM68K` marker at all —

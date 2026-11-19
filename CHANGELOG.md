@@ -1402,6 +1402,39 @@ Newest first.
 ---
 
 <a id="2026-11-19-sanitizers"></a>
+## 2026-11-19 (fifteenth) — The 020-core interrupt sequence is billed; `fcl` saved canonically
+
+Closes the TODO item "Facturer la séquence d'interruption du cœur 68020".
+`execInterrupt<Core::C68020>`, which runs the 68020, 68030 and 68040, called
+no `SYNC`, since that macro is empty on this core. An interrupt cost 0
+cycles, so a burst of interrupts was free in guest time. It now syncs 26
+cycles (I-stack) or 41 (M-stack, with the throwaway frame) after stacking.
+[B] MC68020UM-1992 §8.2.17, Interrupt (I-Stack) 26 (2/0/4), (M-Stack) 41
+(2/0/8). That is the "cache case" column, the one this core's TRAP #n
+(`CYCLES_68020(20)`) already uses, with the reads and writes included.
+[B] MC68030UM-1989 §11.6.17 gives 23 / 33 for the 68030, whose TRAP is 18.
+The core keeps one 68020 table for all three models, as it does for
+TRAP ([F]; the 68040 manual has no exception timing). `moira_rules_test`
+interruptSequenceBilled checks the clock delta of an execute() that takes
+the interrupt, on the 68020, 68030 and 68040 and on both stacks.
+Mutation-checked: 12 failures at 0 cycles.
+
+Every asset tier was then run (`ctest -L
+"etalon|m030|m040|asset-optional|asset-required"`, 455 tests). Every boot,
+input, persist and soak etalon passed unchanged; the billed cycles moved no
+pinned screen or deadline. One test failed: `q605_savestate_etalon`
+(1 200 frames after a restore diverge). The two snapshots, dumped and
+compared, differ in exactly one byte of 33 MB: Moira's `fcl`, the function
+code of the last bus access (2 against 1). Nothing reads it at an
+instruction boundary, because every access sets it first, and generated
+code never maintains it. Its saved value therefore recorded whether the
+last access ran native or interpreted, and a restored machine starts with
+a cold JIT. The billed cycles had moved the snapshot point onto such an
+access. The visitor now saves and restores the canonical
+`FC::USER_PROG`. Save-state format v36. After the fix, the twelve
+save-state tests and `asset-none|jit|cpu-vectors` (210) pass. Moira patch
+groups 129 and 130.
+
 ## 2026-11-19 (fourteenth) — A native D-cache hit counted twice when its instruction was replayed
 
 The random flag-combination soak (180 option sets drawn from every
