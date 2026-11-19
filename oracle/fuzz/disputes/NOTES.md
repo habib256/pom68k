@@ -1208,9 +1208,21 @@ STOP never enters the stopped condition.
 **D42 — LINK A7 on the 68030.** `LINK.W A7` and `LINK.L A7`: the oracle's
 68030 table reads the source register before it decrements A7 and pushes
 the entry value; its 68040 table pushes the decremented one. The fork
-pushes the decremented value on every model, the 68000 behaviour measured
-by SingleStepTests/680x0. 24 of 24 targeted 68030 vectors differ, with or
+pushes the decremented value on every model: the operation line of
+M68000PRM-1992 (LINK, PDF p. 215) stores the register after "SP – 4 → SP",
+for the whole family, and SingleStepTests/680x0 measures it on the 68000. 24 of 24 targeted 68030 vectors differ, with or
 without a trace bit; the 68040 ones agree.
 
 A taken FBcc to an odd target under T0 (11 vectors of 12 000) is D28 seen
 through the trace: the oracle sets the odd PC, traces, and stacks it.
+
+**D44 — CAS2 Dn:Dn on the 68040 (oracle kept against the manual).** The
+class-balanced cells (`opcells.py --set classes`) showed the fork writing
+Dc1 then Dc2 on a failed CAS2 for every model. M68000PRM-1992 (CAS2, PDF
+p. 172) says that with one compare register "memory operand 1 is stored in
+the data register", and WinUAE's 68030 table does that; both now hold for
+the 68020 and 68030. Its 68040 table writes Dc1 then Dc2 on purpose
+("68040: register update order swapped"), which leaves operand 2. The
+68040 keeps that order: it was the fork's behaviour already, and the note
+is the same author's as `m68k_mull`'s "68040 is different", which no manual
+contradicts. A real 68040 settles it.

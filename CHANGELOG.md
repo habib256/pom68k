@@ -1526,16 +1526,48 @@ vectors per cell, core/off seed 61:
   "loop core/off seed=61 #128" WinUAE takes vector 9 after the rerun
   instruction (`SPCFLAG_DOTRACE` stays set through `SPCFLAG_MMURESTART`),
   with the T-less SR of the resumed context stacked. `execRte` now sets
-  `State::RTE_REPLAY` on a rerun and `execute()` takes neither the trace
-  nor an interrupt before the next instruction, as on the 68030 since
-  (eighteenth); the interrupt half of that was an open [F] ("the fork does
-  not model that yet"). The harness learned the same: `traceStaged()` is
+  `State::RTE_REPLAY` on a rerun with a trace pending, and `execute()`
+  runs the rerun instruction before that trace. A first version set the
+  flag on every rerun and held the interrupt back too, as the 68030 does
+  since (eighteenth): `jit_asset_free_lockstep_test` went red on both
+  hosts, because an untraced rerun then never reached the generated MOVEM
+  CM guard that gate exists to witness. The flag is now set only when a
+  trace is pending; the interrupt half stays an open [F] ("the fork does
+  not model that"). The harness learned the same rule: `traceStaged()` is
   false while `RTE_REPLAY` is set, or it would run the rerun instruction
   as part of the RTE's step.
 
 A stopped processor cannot be judged by these vectors: WinUAE leaves the PC
 on the STOP instruction until it wakes, the fork has it past the operand
 (12 of 12 untraced STOP cells differ in PC alone, on both models).
+
+**Class-balanced cells: two defects that have nothing to do with trace.**
+`LINK A7` had survived every corpus. The reason is arithmetic: a uniform
+random opcode is a MOVE two times in three, LINK is 16 words of 65 536 and
+`LINK A7` two of them. `oracle/fuzz/opcells.py` (new) draws N states per
+instruction *form* (`--set forms`, behind a lead-in, for trace) or per
+small *encoding class* with random register fields, extension words and
+operands (`--set classes`, 152 classes on the 68030, 156 on the 68040).
+Two seeds of 150 states, 45 600 and 46 800 vectors:
+
+- **68040 MULS.L / MULU.L with a 64-bit product into one register.** The
+  fork wrote Dl then Dh on every model, so `Dn:Dn` kept the high half. On
+  the 68040 the order is Dh then Dl — WinUAE `m68k_mull`, "68040 is
+  different" — and the register keeps the low half. 18 of 19 such vectors
+  differed (upstream's comment "68040 switched the write-order" sat above
+  the unswitched writes). The manuals call the result undefined: [D] only.
+- **68020/68030 CAS2 with Dc1 = Dc2 and a failing comparison.** The fork
+  wrote Dc1 then Dc2, leaving memory operand 2. M68000PRM-1992, CAS2 (PDF
+  p. 172): "memory operand 1 is stored in the data register"; WinUAE's
+  68030 table agrees. 43 vectors of 45 600. The 68040 keeps Dc1-then-Dc2:
+  WinUAE says "68040: register update order swapped", against the manual's
+  family-wide sentence — recorded as ruling D44 for a real 68040 to settle.
+
+After both, the class cells fail only on D12 (format-$2 instruction
+address), D42 (`LINK A7`, 68030 — now held by the reference manual's
+operation line, "SP – 4 → SP; An → (SP)", PDF p. 215) and the stopped PC.
+Gates: `moira_rules_test` `mullSameRegister` and `cas2SameCompareRegister`,
+68020 to 68040.
 
 **Gates.** `tests/cpu_vectors`: 80 `trace=t0` vectors on the 68030 and 104
 on the 68040, then 64 loop vectors on each (1 128 and 576 in all; the

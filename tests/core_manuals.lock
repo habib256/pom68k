@@ -157,8 +157,10 @@
       "pdf_pages": 646,
       "locators": {
         "CINV": 457,
+        "CAS2": 172,
         "CLR": 177,
         "DIVS": 196,
+        "LINK": 215,
         "MOVE16": 230,
         "MOVEM": 232,
         "PFLUSH": 489,

@@ -574,13 +574,15 @@ Moira::execute()
         //     mmu030_retry the inner loop reruns the opcode without
         //     passing through do_specialties.
         // Gate: berr030_test (RTE continuation under a pending interrupt).
-        // The 68040 has the same rule for the rerun of a format-$7 frame
-        // (execRte); its flag is consumed here, the 68030's by
-        // mmuExecuteStart.
+        // On the 68040 the flag means less: a trace pending at an RTE into
+        // a format-$7 frame follows the rerun instruction (execRte). The
+        // interrupt is not held back there. Its flag is consumed here, the
+        // 68030's by mmuExecuteStart.
         bool rteContinues = false;
+        bool traceAfterRerun = false;
         if (flags & RTE_REPLAY) [[unlikely]] {
             if (cpuModel >= Model::M68EC040) {
-                rteContinues = true;
+                traceAfterRerun = true;
                 flags &= ~RTE_REPLAY;
             } else {
                 rteContinues = mmuReplayArmed && reg.pc == mmuReplayPc;
@@ -600,7 +602,7 @@ Moira::execute()
             // jeter AddressError depuis jumpToVector ; sur 68000 c'est une
             // ADDRESS ERROR (groupe 0) à prendre, pas un abort de l'émulateur
             // (crash « terminate » observé sur Beyond the Ice Palace, bureau TOS).
-            if ((flags & TRACE_EXC) && !rteContinues) {
+            if ((flags & TRACE_EXC) && !rteContinues && !traceAfterRerun) {
 
                 // The previous instruction began with T1 set: its trace
                 // exception is taken now, before this instruction starts.

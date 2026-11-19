@@ -61,6 +61,7 @@ existing ruling only when doing so turns no gate red (maintainer's decision,
 | Ruling | Oracle (kept) | Manual | Held by | Settled by |
 |---|---|---|---|---|
 | **D30** | 68040, unsupported data type on an opclass 000/010 instruction: taken at once, format $3 | M68040UM § 9.7 (unsupported data types): "instructions cause a pre-instruction exception" — format $0, taken by the next FPU instruction, as the arithmetic exceptions of D24 | `sst68040_fpu` (hundreds of format-$3, vector-55 frames), `fpu040_test` | the oracle itself calls it a simplification (`fpp.c`: "simplification: always mid/post-instruction exception"); a real frame, or the D24 machinery extended to vector 55 with two-instruction vectors to hold it. Noted 2026-11-07 while reading § 9.7 for D24 |
+| **D44** | 68040 CAS2 with Dc1 = Dc2 and a failing comparison leaves memory operand 2 in the register (Dc1 written, then Dc2) | M68000PRM-1992, CAS2 (PDF p. 172): "memory operand 1 is stored in the data register", stated for the MC68020, MC68030 and MC68040 alike. The 68020/68030 follow it since 2026-11-20 | `moira_rules_test` (cas2SameCompareRegister); WinUAE `gencpu.c i_CAS2` carries "68040: register update order swapped", the same author's note as `m68k_mull`'s "68040 is different" | CAS2 Dn:Dn with a failing comparison on a real 68040 |
 
 ### Rulings where the fork does not follow the oracle
 
@@ -89,7 +90,7 @@ eager writes. `cache040_test` supplies their host-bus witnesses.
 | **D34** | MOVEM with CM reuses stacked EA only for indexed/PC-relative modes | `gencpu.c start_mmu040_movem` @ Hatari e77819f7 reuses it for all modes | MC68040UM-1993 §8.4.6.2 lists modes 110 and 111/010–011; §8.4.6.7 repeats the operand prefix. Bare-core, state and JIT continuation witnesses | primary-manual/source-reading ruling; no patched oracle or corpus exception |
 | **D39** | 68040: an A-line, illegal or CHK instruction on a page's last word before a non-resident page reports the ATC access error | Takes the instruction's own exception (`gencpu.c` @ Hatari e77819f7 fetches the next opcode only at the next instruction) | MC68040UM-1993 §3.5 names exactly this case; `moira_rules_test` (`deferredPrefetchFault`) holds it on both models | primary-manual ruling; the `pagend` cells of `tests/cpu_vectors` leave the three opcodes out, no corpus exception |
 | **D41** | STOP that begins with T0 set is traced, whatever SR value it loads, and does not stop | Not traced when the loaded SR changes none of T1, T0, S, M and the mask: `MakeFromSR_x` returns before its `oldt0` test (`newcpu.c` @ Hatari e77819f7), and the processor stops | MC68030UM-1989 §8.1.7 (status register manipulations are traced in this mode) and MC68040UM-1993 §8.2.6 (STOP is in the list; a traced STOP "never enters the stopped condition"); the oracle's exception is a shortcut for an unchanged SR, not a rule | STOP #$6700 under SR = $6700 on a real 68030 or 68040 |
-| **D42** | `LINK A7` pushes the decremented A7 on every model | The 68030 table (`cpuemu_32.c`, both sizes) pushes the undecremented A7; the 68040 table (`cpuemu_31.c`) the decremented one | the 68000 rule measured by SingleStepTests/680x0, and the oracle's own 68040 table; 24 targeted vectors of 2026-11-20, in no pinned corpus | `LINK A7` on a real 68030 |
+| **D42** | `LINK A7` pushes the decremented A7 on every model | The 68030 table (`cpuemu_32.c`, both sizes) pushes the undecremented A7; the 68040 table (`cpuemu_31.c`) the decremented one | M68000PRM-1992, LINK (PDF p. 215): "SP – 4 → SP; An → (SP); SP → An; SP + dn → SP", the register stored after the stack pointer moved, for the whole family; the 68000 measured by SingleStepTests/680x0; the oracle's own 68040 table. 24 targeted vectors of 2026-11-20, in no pinned corpus | `LINK A7` on a real 68030 |
 
 D23b — FRESTORE of a 68040 frame accepted by a 68882 — left this table on
 2026-11-07: the acceptance was WinUAE's permissive setting, not the
@@ -189,6 +190,15 @@ and LEA. BD size, bit 3, I/IS and suppression bits are drawn independently,
 including reserved encodings (see D17). It compares emulator behavior, not
 silicon-defined behavior for reserved words. The sweep appends these cells
 after the older families so their existing seed assignments stay stable.
+
+`opcells.py` complements the families where a uniform draw starves an
+instruction: `generate --set forms --trace t0|t1` runs fixed instruction
+forms behind a lead-in (the trace sweep of 2026-11-20), `generate --set
+classes` draws N states per small encoding class with random register
+fields, extension words and operands, and `report <dir>` tabulates a
+runner's `--dump` per form. `fuzz030.py`/`fuzz040.py --trace t1|t0` set a
+trace bit behind a lead-in instruction, and `--trace-handler rte` turns the
+vector into a single-step loop.
 
 `fuzz030.py --geometry 4k-2level` selects 4 KB pages and two levels of
 short descriptors (IS=8, TIA=TIB=6). Its tables occupy $200000–$204FFF;

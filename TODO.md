@@ -450,8 +450,16 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   chargé ne change ni T, ni S, ni M, ni le masque : le cœur trace (manuel),
   WinUAE non (retour anticipé de `MakeFromSR_x`) — tranché pour le manuel,
   un vrai 68030/68040 le confirmerait.
-- [ ] **Trancher `LINK A7` sur 68030.** Le cœur empile A7 décrémenté sur
-  tous les modèles (règle SingleStepTests du 68000) ; la table 68030 de
+- [ ] **Trancher CAS2 `Dn:Dn` sur 68040 (D44).** Comparaison en échec avec
+  un seul registre de comparaison : le manuel de référence (M68000PRM-1992,
+  CAS2) y met l'opérande mémoire 1 pour toute la famille, WinUAE l'opérande
+  2 sur le 68040 (« register update order swapped »). Le cœur suit le
+  manuel sur 68020/68030 depuis le 2026-11-20 et garde l'ordre de l'oracle
+  sur 68040 — décision du mainteneur ou d'un vrai 68040. Même question,
+  sans manuel, pour `MULx.L Dn,Dm:Dm` sur 68040 (moitié basse, [D] seul).
+- [ ] **Confirmer `LINK A7` sur un vrai 68030 (D42).** Le cœur empile A7
+  décrémenté sur tous les modèles ([B] M68000PRM-1992 LINK, ligne
+  « Operation » ; SingleStepTests sur le 68000) ; la table 68030 de
   WinUAE (`cpuemu_32.c`, `op_4808_32_ff` et la forme mot) empile A7
   d'origine, sa table 68040 A7 décrémenté. 24 vecteurs ciblés sur 24
   (2026-11-20), sans lien avec la trace ; aucun corpus épinglé ne

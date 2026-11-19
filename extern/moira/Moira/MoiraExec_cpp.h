@@ -1977,8 +1977,27 @@ Moira::execCas2(u16 opcode)
 
     } else {
 
-        writeD<S>(dc1, data1);
-        writeD<S>(dc2, data2);
+        // The order shows only when Dc1 and Dc2 are the same register: it
+        // then holds memory operand 1 below the 68040.
+        // [B] M68000PRM-1992 CAS2 — "If Dc1 and Dc2 specify the same data
+        //     register and the comparison fails, memory operand 1 is stored
+        //     in the data register."
+        // [D] WinUAE gencpu.c i_CAS2 @ Hatari e77819f7 — Dc2 then Dc1 below
+        //     the 68040, and "68040: register update order swapped".
+        // POM68K: until 2026-11-20 every model wrote Dc1 then Dc2, which is
+        // the oracle's 68040 order; 43 class-balanced 68030 vectors of
+        // 45 600 differed. The 68040 keeps that order against the manual's
+        // family-wide sentence (ruling D44, oracle/README.md).
+        // [F] for the 68040. Settled by: CAS2 Dn:Dn on a real 68040 with a
+        //     failing comparison.
+        // Gate: moira_rules_test (cas2SameCompareRegister).
+        if (cpuModel >= Model::M68EC040) {
+            writeD<S>(dc1, data1);
+            writeD<S>(dc2, data2);
+        } else {
+            writeD<S>(dc2, data2);
+            writeD<S>(dc1, data1);
+        }
     }
 
     if constexpr (C == Core::C68020) {
@@ -3268,6 +3287,12 @@ Moira::execLink(u16 opcode)
     // Write to stack
     // POM68K: LINK A7 pushes the DECREMENTED stack pointer under the native
     // rules too, following SingleStepTests/680x0
+    // [B] M68000PRM-1992 LINK — "SP – 4 → SP; An → (SP); SP → An; SP + dn →
+    //     SP": the register is stored after the stack pointer moved, on the
+    //     whole family and for both sizes.
+    // [D] WinUAE @ Hatari e77819f7 — its 68040 table agrees; its 68030
+    //     table (cpuemu_32.c) reads the register first and pushes the entry
+    //     value. Ruling D42, oracle/README.md.
     push <C, Long>(readA(ax) - (ax == 7 ? 4 : 0));
 
     // Modify address register and stack pointer
@@ -5279,6 +5304,25 @@ Moira::execMullMoira(u16 opcode)
 
     prefetch<C, POLL>();
 
+    // The 64-bit product: Dl then Dh on the 68020/68030, Dh then Dl on the
+    // 68040. The order shows only when both halves name one register, which
+    // then keeps the high half below the 68040 and the low half on it.
+    // [D] WinUAE newcpu_common.c m68k_mull @ Hatari e77819f7 — "68040 is
+    //     different". Until 2026-11-20 the fork wrote Dl first on every
+    //     model: 18 of 19 class-balanced 68040 vectors with Dh = Dl differed.
+    // [F] The manuals call the result undefined when the two are the same
+    //     register. Settled by: MULS.L Dn,Dm:Dm on a real 68040.
+    // Gate: moira_rules_test (mullSameRegister).
+    const auto write64 = [&](u64 r) {
+        if (cpuModel >= Model::M68EC040) {
+            writeD(dh, u32(r >> 32));
+            writeD(dl, u32(r));
+        } else {
+            writeD(dl, u32(r));
+            writeD(dh, u32(r >> 32));
+        }
+    };
+
     switch (____xx__________(ext)) {
 
         case 0b00: { // Unsigned 32 bit
@@ -5292,9 +5336,7 @@ Moira::execMullMoira(u16 opcode)
 
             result = mullu<C, Long>(data, readD(dl));
 
-            // Note: 68040 switched the write-order
-            writeD(dl, u32(result));
-            writeD(dh, u32(result >> 32));
+            write64(result);
             break;
 
         case 0b10: // Signed 32 bit
@@ -5307,9 +5349,7 @@ Moira::execMullMoira(u16 opcode)
 
             result = mulls<C, Long>(data, readD(dl));
 
-            // Note: 68040 switched the write-order
-            writeD(dl, u32(result));
-            writeD(dh, u32(result >> 32));
+            write64(result);
             break;
     }
 }
@@ -6733,23 +6773,25 @@ Moira::execRte(u16 opcode)
 
     // [D] WinUAE newcpu.c do_specialties @ Hatari e77819f7: after an RTE
     // to a format-$7 frame (m68k_do_rte_mmu040 raises SPCFLAG_MMURESTART)
-    // neither the pending trace nor an interrupt is taken before the rerun
-    // — "can't have interrupt when 040/060 CPU reruns faulted instruction".
-    // The trace is deferred, not dropped: SPCFLAG_DOTRACE stays set and
-    // vector 9 is taken after the rerun instruction. That holds for the
-    // one-shot setSR arms when the old SR had T0 or T1 (the throwaway frame
-    // of "040 core/off seed=81001 #1204", 2026-11-14) and for the RTE's own
-    // staged trace ("trace=t1" #1075 and #1284, core/off seed 11,
-    // 2026-11-19). Until 2026-11-20 the fork dropped both and took the
-    // interrupt; the single-step loop vector "loop core/off seed=61 #128"
-    // shows the deferred frame. RTE_REPLAY carries "no boundary before the
-    // next instruction" to execute(), as it does for the 68030's $B frame.
-    // [F] for silicon. Settled by: a trace of a real 68040 returning with
-    // T1 set into an access-error frame.
+    // the pending trace is not taken before the rerun — "can't have
+    // interrupt when 040/060 CPU reruns faulted instruction". It is
+    // deferred, not dropped: SPCFLAG_DOTRACE stays set and vector 9 is
+    // taken after the rerun instruction. That holds for the one-shot setSR
+    // arms when the old SR had T0 or T1 (the throwaway frame of "040
+    // core/off seed=81001 #1204", 2026-11-14) and for the RTE's own staged
+    // trace ("trace=t1" #1075 and #1284, core/off seed 11, 2026-11-19).
+    // Until 2026-11-20 the fork dropped both; the single-step loop vector
+    // "loop core/off seed=61 #128" shows the deferred frame. RTE_REPLAY
+    // tells execute() to run the next instruction before that trace. It is
+    // set only when a trace is pending: an untraced rerun stays free to run
+    // in generated code (jit_asset_free_lockstep_test, MOVEM CM guard).
+    // WinUAE also defers the interrupt to after the rerun; the fork does
+    // not model that. [F] for silicon. Settled by: a trace of a real 68040
+    // returning with T1 set into an access-error frame.
     // Gate: moira_rules_test (rteRerunTakesNoTrace040).
-    if (rerun040) {
-        if (trace040Pending) { trace040Pending = false; flags |= State::TRACE_EXC; }
-        flags |= State::RTE_REPLAY;
+    if (rerun040 && (trace040Pending || (flags & State::TRACE_EXC))) {
+        trace040Pending = false;
+        flags |= State::TRACE_EXC | State::RTE_REPLAY;
     }
 
     if (rteFpuMid) fpuCompleteBusy(true);

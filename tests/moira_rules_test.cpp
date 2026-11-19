@@ -2907,6 +2907,62 @@ void traceOnChangeOfFlow()
     }
 }
 
+void mullSameRegister()
+{
+    // MULS.L / MULU.L with a 64-bit product whose two halves name the same
+    // register: the 68020 and 68030 leave the high half there, the 68040 the
+    // low half. [D] WinUAE newcpu_common.c m68k_mull @ Hatari e77819f7
+    // ("68040 is different"); class-balanced cells of 2026-11-20.
+    struct Row { moira::Model model; const char* name; bool low; };
+    static const Row rows[] = {
+        { moira::Model::M68020, "68020", false }, { moira::Model::M68030, "68030", false },
+        { moira::Model::M68040, "68040", true },
+    };
+    for (const Row& r : rows) {
+        for (const bool isSigned : { false, true }) {
+            TestCpu c(r.model);
+            stage(c, 0x4c03, 0);                    // MUL?.L D3,D0:D0
+            const uint16_t ext = uint16_t(0x0400 | (isSigned ? 0x0800 : 0));
+            p16(c, kCode + 2, ext); c.setIRC(ext);
+            p16(c, kCode + 4, kNop);
+            c.setD(3, 0x88af2b9c); c.setD(0, 0x0ad4a9c2);
+            const bool contained = executeContained(c);
+            const uint32_t want = isSigned ? (r.low ? 0x6db90838 : 0xfaf3b9a5)
+                                           : (r.low ? 0x6db90838 : 0x05c86367);
+            CHECK(contained && c.getD(0) == want,
+                  "%s %s D3,D0:D0: D0=%08X (want %08X, the %s half)", r.name,
+                  isSigned ? "MULS.L" : "MULU.L", c.getD(0), want, r.low ? "low" : "high");
+        }
+    }
+}
+
+void cas2SameCompareRegister()
+{
+    // CAS2 with Dc1 = Dc2 and a failing comparison: the register receives
+    // memory operand 1 on the 68020 and 68030 ([B] M68000PRM-1992 CAS2),
+    // operand 2 on the 68040 ([D] WinUAE gencpu.c i_CAS2 @ Hatari e77819f7,
+    // "68040: register update order swapped"; ruling D44).
+    struct Row { moira::Model model; const char* name; uint32_t want; };
+    static const Row rows[] = {
+        { moira::Model::M68020, "68020", 0x11111234 }, { moira::Model::M68030, "68030", 0x11111234 },
+        { moira::Model::M68040, "68040", 0x11115678 },
+    };
+    for (const Row& r : rows) {
+        TestCpu c(r.model);
+        stage(c, 0x0cfc, 0);                        // CAS2.W D0:D0,D1:D2,(A0):(A1)
+        p16(c, kCode + 2, 0x8040); p16(c, kCode + 4, 0x9080);
+        p16(c, kCode + 6, kNop);
+        c.setIRC(0x8040);
+        p16(c, 0x30000, 0x1234); p16(c, 0x30010, 0x5678);
+        c.setA(0, 0x30000); c.setA(1, 0x30010);
+        c.setD(0, 0x1111ffff); c.setD(1, 0); c.setD(2, 0);
+        const bool contained = executeContained(c);
+        CHECK(contained && c.getD(0) == r.want && g16(c, 0x30000) == 0x1234,
+              "%s CAS2.W D0:D0 with a failing comparison: D0=%08X (want %08X)", r.name,
+              c.getD(0), r.want);
+    }
+}
+
 void packUnpkFaultRestoresAn()
 {
     // [D] WinUAE gencpu.c i_PACK/i_UNPK @ Hatari e77819f7 (cpuemu_31/32
@@ -3067,6 +3123,8 @@ int main(int argc, char** argv)
     rteRerunTakesNoTrace040();
     traceFollowsTheTracedInstruction();
     traceOnChangeOfFlow();
+    mullSameRegister();
+    cas2SameCompareRegister();
     packUnpkFaultRestoresAn();
 
     if (failures) {
@@ -3080,6 +3138,6 @@ int main(int argc, char** argv)
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68030 MOVE to (xxx).L last write, 68EC030 plain-020 path with a 68030 "
-                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, the 68040 lock ending with TAS/CAS/CAS2, a memory-indirect pointer read outside the lock, BKPT without a data access, 68040 bit-field and JSR store faults restart, the SR-write refill as a fetch, no trace before a format-$7 rerun, PACK/UNPK -(An) faults on the 68030/68040, level 7 on a transition from the 68020 up, the billed 020-core interrupt sequence, the trace exception after the traced instruction, trace on change of flow\n");
+                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, the 68040 lock ending with TAS/CAS/CAS2, a memory-indirect pointer read outside the lock, BKPT without a data access, 68040 bit-field and JSR store faults restart, the SR-write refill as a fetch, no trace before a format-$7 rerun, PACK/UNPK -(An) faults on the 68030/68040, level 7 on a transition from the 68020 up, the billed 020-core interrupt sequence, the trace exception after the traced instruction, trace on change of flow, MULx.L into one register, CAS2 with one compare register\n");
     return 0;
 }
