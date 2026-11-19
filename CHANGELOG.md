@@ -1446,6 +1446,13 @@ Tiers: `asset-none|jit|cpu-vectors` 210 / 210 and the whole asset set
 boot, VM and save-state etalon is unchanged. x64 `berr030_test`,
 `moira_state_test` and `moira_rules_test` pass.
 
+After the three pushes (CI green on each), the whole on the same binary:
+- every board lockstep at 3 000 000 jittered checkpoints is identical,
+  with the clocks a few thousand cycles later than this morning, as
+  billed interrupts should make them;
+- a second random flag-combination soak, 148 option sets of 2 000 seeds,
+  is clean.
+
 ## 2026-11-19 (fifteenth) — The 020-core interrupt sequence is billed; `fcl` saved canonically
 
 Closes the TODO item "Facturer la séquence d'interruption du cœur 68020".
