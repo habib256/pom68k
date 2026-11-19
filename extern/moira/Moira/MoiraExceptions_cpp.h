@@ -865,6 +865,11 @@ Moira::execInterrupt(u8 level)
     // Recover from stop state and terminate loop mode
     flags &= ~(State::STOPPED | State::LOOPING);
 
+    // POM68K: this acknowledge answers the pending level-7 transition
+    // (Moira.h, nmiLatch); a later one needs a new transition or a mask
+    // lowered below 7.
+    if (level == 7) nmiLatch = false;
+
     // Clear the polled IPL value
     reg.ipl = 0;
 

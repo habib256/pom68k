@@ -692,7 +692,7 @@ Moira::fpuRunBusy(int cycles, u16 opcode, u16 ext)
         left -= quantum;
         fpu.busyUntil = clock + left;
         pollIpl();
-        if (left && (reg.ipl > reg.sr.ipl || reg.ipl == 7))
+        if (left && irqEligible())
             throw FpuMidInstruction(reg.ipl);
     }
     fpuCompleteBusy(false);

@@ -36,6 +36,8 @@ template<class Ar> void Moira::pomVisitState(Ar& ar)
     ar(queue.irc, queue.ird, irqMode, ipl,
        iplPrev, iplChangeClock, iplChangeClockPrev,
        iplDelay4, iplDelay2, iplDeferred, irqDelay, stopGraceUntil);
+    // The level-7 transition latch (Moira.h, nmiLatch). Format v35.
+    ar(nmiLatch);
 
     // cp is a per-instruction EA penalty, reset by AVAILABILITY on C68020.
     // It is not maintained by the JIT. Leaving it out keeps snapshots

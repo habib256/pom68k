@@ -245,6 +245,7 @@ template <Core C> void
 Moira::reset()
 {
     flags = State::CHECK_IRQ;
+    nmiLatch = false;                       // a level 7 held through reset is no transition
 
     reg = { };
     reg.sr.s = 1;
@@ -496,7 +497,7 @@ Moira::execute()
     using namespace State;
 
     // Check the integrity of the IRQ flag
-    if (reg.ipl > reg.sr.ipl || reg.ipl == 7) assert(flags & CHECK_IRQ);
+    if (irqEligible()) assert(flags & CHECK_IRQ);
 
     // Check the integrity of the trace flag
     assert(!!(flags & TRACING) == reg.sr.t1);
@@ -671,7 +672,7 @@ Moira::execute()
             // CHECK_IRQ : sans ça, checkForIrq() ne re-testerait jamais et le CPU
             // dormirait malgré une IRQ présentée (cas mesuré : raster « stop #$2100 »
             // de Super Hang-On, réveil ~350 cyc trop tard sur un événement tiers).
-            if (reg.ipl > reg.sr.ipl || reg.ipl == 7)
+            if (irqEligible())
                 flags |= State::CHECK_IRQ;
             sync(MOIRA_MIMIC_MUSASHI ? 1 : 2);
             return;
@@ -862,7 +863,7 @@ Moira::processException(const std::exception &exc)
 bool
 Moira::checkForIrq()
 {
-    if (reg.ipl > reg.sr.ipl || reg.ipl == 7) {
+    if (irqEligible()) {
 
         // Exit loop mode
         if (flags & State::LOOPING) flags &= ~State::LOOPING;
@@ -1351,6 +1352,7 @@ Moira::setIPL(u8 val)
         iplChangeClockPrev = iplChangeClock;
         iplPrev = ipl;
         iplChangeClock = clock;
+        if (val == 7) nmiLatch = true;      // a transition from a lower level
         ipl = val;
         flags |= State::CHECK_IRQ;
 

@@ -88,6 +88,30 @@ protected:
     // Current value on the IPL (Interrupt Priority Level) pins
     u8 ipl {};
 
+    // POM68K: level 7 is transition sensitive on the 68020 and later.
+    // [B] MC68020UM-1992 §6.1.9 — level 7 transition sensitive (Fig. 6-3).
+    // [B] MC68030UM-1989 §8.1.9 — the same rule, in the same words.
+    // [B] MC68040UM-1993 §8.2.9 — the same rule (Fig. 8-3).
+    // "The processor recognizes an interrupt request each time the
+    // external interrupt request level changes from some lower level to
+    // level 7, regardless of the value in the mask"; a level 7 held under
+    // mask 7 raises no second interrupt, but a mask lowered below 7
+    // recognises it by level comparison. The
+    // latch records a PIN transition to 7 (setIPL) and is consumed by the
+    // level-7 interrupt that answers it. The sampled level cannot serve:
+    // execInterrupt zeroes it, so every resample would look like an edge.
+    // Upstream Moira took a held level 7 again after every instruction —
+    // on the 68020 core, whose interrupt sequence bills no cycle, a stall
+    // at constant clock (tests/jit_program_fuzz.cpp --model 20 --irq-timed,
+    // seed 3, before the harness fell back to level 6). The 68000/68010
+    // keep the upstream behaviour (no primary source consulted for them).
+    bool nmiLatch {};
+    bool irqEligible() const {
+        if (reg.ipl > reg.sr.ipl) return true;
+        if (reg.ipl != 7) return false;
+        return cpuModel < Model::M68EC020 || nmiLatch;
+    }
+
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // NEOST_IPLFETCH : historique de la broche IPL pour reconnaissance différée
     // (port fidèle de WinUAE ipl_fetch_next). iplDelay4 == 0 ⇒ feature OFF, donc

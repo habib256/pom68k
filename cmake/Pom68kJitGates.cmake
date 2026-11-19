@@ -163,6 +163,20 @@ add_test(NAME jit_program_fuzz_040_mmuprot_test
 add_test(NAME jit_program_fuzz_040_mmuprot_cas_test
          COMMAND jit_program_fuzz --model 40 --mmuprot --sys --ext --smc --fpu
                  --seeds 100 --extra 807209)
+# The 68020 on the threaded backend with timed interrupts at every level,
+# 7 included: a held level 7 used to wedge the interpreter at constant
+# clock (seed 3) until level 7 became transition sensitive (Moira.h,
+# nmiLatch). Window mode and blocks.
+add_test(NAME jit_program_fuzz_020_irq7_test
+         COMMAND jit_program_fuzz --model 20 --irq-timed --ext --sys --seeds 300 --extra 3)
+add_test(NAME jit_program_fuzz_020_irq7_blocks_test
+         COMMAND jit_program_fuzz --model 20 --irq-timed --ext --sys --seeds 300 --extra 3)
+set_tests_properties(jit_program_fuzz_020_irq7_test PROPERTIES
+                     ENVIRONMENT "POM68K_CPU_ENGINE=jit;POM68K_JIT_BACKEND=threaded")
+set_tests_properties(jit_program_fuzz_020_irq7_blocks_test PROPERTIES
+                     ENVIRONMENT "POM68K_CPU_ENGINE=jit;POM68K_JIT_BACKEND=threaded;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=1")
+set_tests_properties(jit_program_fuzz_020_irq7_test jit_program_fuzz_020_irq7_blocks_test
+                     PROPERTIES LABELS "jit;unit" TIMEOUT 300)
 # --mmupage: a seeded page size (68030 256 B to 32 KB, 68040 4 or 8 KB),
 # so DTLB slices, refusals and code-window bounds meet pages other than
 # 4 KB.

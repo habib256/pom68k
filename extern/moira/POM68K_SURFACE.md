@@ -403,8 +403,13 @@ through the startup snapshot.
   (deferred-recognition rules apply when `iplDelay4 != 0`: settled → new
   value; recent → previous value; very recent → `iplDeferred`, applied at
   the next `execute()` slow path). Also feeds the JIT timing probe.
-- `checkForIrq()` compares `reg.ipl` with `reg.sr.ipl` (level 7 always
-  taken) and clears `CHECK_IRQ` once `reg.ipl == ipl` and nothing is taken.
+- `checkForIrq()` takes the interrupt when `irqEligible()`: `reg.ipl`
+  above `reg.sr.ipl`, or a sampled level 7 — on the 68000/68010 always, from
+  the 68020 up only while `nmiLatch` holds a pin transition to 7 that no
+  level-7 acknowledge has consumed yet ([B] MC68030UM-1989 §8.1.9; `setIPL`
+  sets the latch). It clears `CHECK_IRQ` once `reg.ipl == ipl` and nothing
+  is taken, so a held level 7 under mask 7 no longer keeps the slow path
+  armed.
 
 Recognition points (where `reg.ipl` is refreshed):
 

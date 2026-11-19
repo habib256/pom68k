@@ -54,9 +54,9 @@ pair):
 | | | how to re-measure |
 |---|---|---|
 | distinct `pom*` extension identifiers | **116** (65 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **558** | `grep -rn POM68K Moira/ \| wc -l` |
+| `POM68K`-marked lines | **560** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **17 of 27** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **126** | this file |
+| patch groups in the inventory below | **127** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h`, `MoiraState.h`, `MoiraMmu030Walk.h` | — |
 
 One hundred and sixteen patch groups, two of which (the JIT seam, row 22, and the ATC
@@ -296,6 +296,7 @@ gate in the last column of each row.
 | 124 | **The 68030 restart latches are save-state** — `pomVisitState` carries `mmuState`, `mmuAd`, `mmuFmovemStore`, `mmuIdx`/`mmuIdxDone`, `mmuDataBuffer`, `mmuDispStore`, `mmuOpcodeV`, the fixups, `mmuLogging`, `mmuRmw`, `mmuCcrSave`, `mmuLastWritePc` (format v34) — verbatim while STOPped; otherwise the values the next `mmuExecuteStart` would set, because generated code does not keep them | `MoiraState.h` | they stay live until the next instruction start; an interrupt frame faulting after a reload stacked prefetch-phase values | `moira_state_test` frameLatches030; `savestate_v8_test` determinism (x86-64); `jit_program_fuzz_030_mmuprot_test` (seed 192) |
 | 125 | **A 68030 data write probe is refused where a TT treats the two directions differently** — `pomJitProbeData` returns false when `mmuMatchTTAccess` answers differently for the write and the read | `MoiraExecMMU_cpp.h` | both backends read a true RMW through its write translation; a write-only TT made that read transparent, skipping the table walk and its U bit | `jit_program_fuzz_030_mmutt_test` (seed 128) |
 | 126 | **A 68040 read leaves no stale write value for a split fault's WB3D** — `mmu040Read` zeroes `mmu040FullVal`, which `mmu040Fault` stacks as WB3D for a split access translated as a write | `MoiraExecMMU_cpp.h` | a split CAS.L faulting on its locked read stacked the last interpreted store's value, which native stores do not leave; the unsplit case already stacked 0 | `jit_program_fuzz_040_mmuprot_cas_test` (seed 807209) |
+| 127 | **Level 7 is transition sensitive from the 68020 up** — `nmiLatch` records a pin transition to 7 in `setIPL`, the level-7 acknowledge consumes it, and `irqEligible()` replaces every `reg.ipl > reg.sr.ipl \|\| reg.ipl == 7` test; the 68000/68010 keep the level-sensitive reading; save-state v35 | `Moira.h`, `Moira.cpp`, `MoiraExceptions_cpp.h`, `MoiraExecFPU_cpp.h`, `MoiraState.h` | [B] MC68020UM-1992 §6.1.9, MC68030UM-1989 §8.1.9, MC68040UM-1993 §8.2.9; a held level 7 re-entered the handler after every instruction, at constant clock on the 68020 core | `moira_rules_test` level7TransitionSensitive; `jit_program_fuzz_020_irq7_test` (seed 3) |
 
 Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54, 56, 59-75 and 79-86 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
 when nothing arms them); rows 48 and 55 are performance alone, with no architectural effect. Row 58 is evidence documentation only. The ten files carrying no `POM68K` marker at all —

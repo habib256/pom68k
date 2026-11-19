@@ -1402,6 +1402,60 @@ Newest first.
 ---
 
 <a id="2026-11-19-sanitizers"></a>
+## 2026-11-19 (eighth) — Level 7 is transition sensitive from the 68020 up: a held NMI no longer stalls the core
+
+The TODO item had waited on its source ("section exacte à citer"). The
+three user's manuals pinned in `tests/core_manuals.lock` say the same
+thing. They were fetched, matched against their locked SHA-256 (the
+68040's from `cache.nxp.com`, since `www.nxp.com` returns an HTML page)
+and read from their text layer. Their locators are now in the lock:
+- [B] MC68020UM-1992 §6.1.9, PDF p. 137, Fig. 6-3.
+- [B] MC68030UM-1989 §8.1.9, PDF p. 418.
+- [B] MC68040UM-1993 §8.2.9, PDF p. 225, Fig. 8-3.
+
+The 1984 MC68020, 1990 MC68030 and bitsavers MC68040 editions read the
+same.
+
+"The processor recognizes an interrupt request each time the external
+interrupt request level changes from some lower level to level 7,
+regardless of the value in the mask." A level 7 held under mask 7 raises
+no second interrupt. One is taken on a new transition (7 → 3 → 7), or by
+level comparison once a MOVE to SR or RTE lowers the mask below 7.
+
+Upstream Moira took level 7 whenever the sampled level was 7. On the
+68020 core, whose interrupt sequence bills no cycle, a held level 7
+re-entered the handler after every instruction at constant clock: the
+fuzzer's seed 3 stalled the interpreter, and the harness had fallen back
+to level 6.
+
+`Moira::nmiLatch` records a *pin* transition to 7 (`setIPL`). The level-7
+acknowledge consumes it. `irqEligible()` replaces the five
+`reg.ipl > reg.sr.ipl || reg.ipl == 7` tests: the checks in `execute` and
+STOP, `checkForIrq`, and the FPU busy-wait. The sampled level cannot carry
+the edge, because `execInterrupt` zeroes it and every resample would look
+like one. Reset clears the latch. Save-state format v35 carries it. The
+68000 and 68010 keep the level-sensitive reading: no primary source was
+consulted for them, and their compact-Mac and NeoST lineage is out of this
+scope.
+
+`moira_rules_test` level7TransitionSensitive replays Fig. 8-3 on the
+68020, 68030 and 68040: a held level gives one entry, 7 → 3 → 7 gives
+two, and a lowered mask gives a second entry. It also pins the 68000 and
+68010. Mutation-checked: without the latch, the 68020 entered the handler
+23 times. The fuzzer drops its level-6 fallback. Gates
+`jit_program_fuzz_020_irq7_test` and `_blocks_test` (threaded, window and
+blocks, seed 3). TODO keeps the other half of the item: the interrupt
+sequence still costs 0 cycles on these cores. Moira patch group 127.
+
+The harness fallback had covered only `--irq-timed`. Its plain `--irq`
+mode still stalled: before the fix, `--model 20 --smc --irq --savestate`
+sat at guest clock 96 874 until it was killed. After it, that mode ran
+2 000 seeds clean on threaded in window mode and with blocks. Tiers:
+- a64 `asset-none|jit|cpu-vectors`: 203 / 203 after the regenerations.
+- a64 `m030`: 155 / 155.
+- a64 `m040`: 107 / 107.
+- x64 `asset-none`: 170 / 170, under the same regenerations.
+
 ## 2026-11-19 (seventh) — Page sizes in the program fuzzer; a split CAS.L's locked-read fault on the 68040
 
 `jit_program_fuzz --mmupage` (implies `--mmu`) picks a seeded page size: on

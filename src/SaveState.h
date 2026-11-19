@@ -322,7 +322,7 @@ inline constexpr char     kMagic[8]  = {'P','O','M','6','8','K','S','S'};
 // trapped single-precision FMOVE out rounds its 6888x frame operand with.
 // v33: the 68040 access-error frame latches that outlive an instruction —
 // the MOVE16 line buffer (PD0-PD3) and WB2A.
-inline constexpr u32      kVersion   = 34;
+inline constexpr u32      kVersion   = 35;
 
 struct Header {
     u32 version     = kVersion;

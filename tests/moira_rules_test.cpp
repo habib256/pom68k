@@ -2204,6 +2204,55 @@ void irqDelayAfterMaskLowering()
     }
 }
 
+void level7TransitionSensitive()
+{
+    // [B] MC68020UM-1992 §6.1.9 Fig. 6-3, MC68030UM-1989 §8.1.9,
+    // MC68040UM-1993 §8.2.9 Fig. 8-3: level 7 is recognised on each
+    // transition of the request from a lower level to 7, and by level
+    // comparison when the mask drops below 7 — never again merely because
+    // it is still held under mask 7 (Moira.h, nmiLatch). The 68000 and
+    // 68010 keep upstream Moira's level-sensitive reading, pinned here so
+    // that changing them is a decision.
+    // `moveSr`: the handler's first instruction lowers the mask to 5.
+    const auto entries = [](moira::Model m, bool retransition, bool moveSr) {
+        TestCpu c(m);
+        p32(c, 31 * 4, kHandler);                       // level-7 autovector
+        for (int i = 0; i < 64; i++) p16(c, kHandler + 2 * i, kNop);
+        if (moveSr) { p16(c, kHandler, 0x46fc); p16(c, kHandler + 2, 0x2500); }
+        stage(c, kNop, 0);
+        for (int i = 0; i < 64; i++) p16(c, kCode + 2 * i, kNop);
+        c.setSR(0x2500);
+        for (int i = 0; i < 4; i++) c.execute();        // run out any delay
+        int n = 0;
+        c.setIPL(7);
+        for (int i = 0; i < 24; i++) { c.execute(); if (c.getPC0() == kHandler) n++; }
+        if (retransition) {
+            c.setIPL(3);
+            for (int i = 0; i < 4; i++) c.execute();
+            c.setIPL(7);
+            for (int i = 0; i < 24; i++) { c.execute(); if (c.getPC0() == kHandler) n++; }
+        }
+        return n;
+    };
+    for (moira::Model m : { moira::Model::M68020, moira::Model::M68030,
+                            moira::Model::M68040 }) {
+        const int held = entries(m, false, false);
+        CHECK(held == 1, "model %d: a held level 7 entered the handler %d times, want 1",
+              int(m), held);
+        const int twice = entries(m, true, false);
+        CHECK(twice == 2, "model %d: 7 -> 3 -> 7 entered the handler %d times, want 2",
+              int(m), twice);
+        const int compared = entries(m, false, true);
+        CHECK(compared >= 2, "model %d: a mask lowered below a held level 7 "
+              "entered the handler %d times, want a second entry", int(m), compared);
+    }
+    for (moira::Model m : { moira::Model::M68000, moira::Model::M68010 }) {
+        const int held = entries(m, false, false);
+        CHECK(held > 1, "model %d: the 68000/68010 level-sensitive level 7 "
+              "changed (%d entries)", int(m), held);
+    }
+}
+
 void movesReleasesAlternateFc()
 {
     // POM68K_VENDOR.md row 37: MOVES puts SFC or DFC on the function-code
@@ -2835,6 +2884,7 @@ int main(int argc, char** argv)
     reset68000();
     unresetFpZero();
     irqDelayAfterMaskLowering();
+    level7TransitionSensitive();
     movesReleasesAlternateFc();
     watchpointsUnderMmu();
     externalBusError020();
@@ -2860,6 +2910,6 @@ int main(int argc, char** argv)
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68030 MOVE to (xxx).L last write, 68EC030 plain-020 path with a 68030 "
-                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, the 68040 lock ending with TAS/CAS/CAS2, a memory-indirect pointer read outside the lock, BKPT without a data access, 68040 bit-field and JSR store faults restart, the SR-write refill as a fetch, no trace before a format-$7 rerun, PACK/UNPK -(An) faults on the 68030/68040\n");
+                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, the 68040 lock ending with TAS/CAS/CAS2, a memory-indirect pointer read outside the lock, BKPT without a data access, 68040 bit-field and JSR store faults restart, the SR-write refill as a fetch, no trace before a format-$7 rerun, PACK/UNPK -(An) faults on the 68030/68040, level 7 on a transition from the 68020 up\n");
     return 0;
 }

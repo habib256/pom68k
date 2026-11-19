@@ -1190,13 +1190,9 @@ int main(int argc, char** argv) {
                 const moira::i64 at = now + 1 + irqR.below(3000);
                 const moira::i64 drop = at + 1 + irqR.below(600);
                 auto level = moira::u8(1 + irqR.below(7));
-                // A held level 7 on the 68020 core wedges the INTERPRETER:
-                // Moira retakes it at every execute() (level-sensitive,
-                // where the 68000-family manuals recognise level 7 on a transition) and
-                // the 68020 interrupt sequence charges no cycle, so the
-                // clock never reaches `dropAt` (seed 3, --model 20). No
-                // board raises level 7 today; TODO.md (› Temps) keeps it.
-                if (gModel == 20 && level == 7) level = 6;
+                // Level 7 included on every model: a held level 7 used to
+                // wedge the 68020 interpreter (seed 3, --model 20) until
+                // Moira made it transition sensitive (Moira.h, nmiLatch).
                 ref->arm(at, drop, level);
                 nat->arm(at, drop, level);
             }
