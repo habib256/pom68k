@@ -1402,6 +1402,19 @@ Newest first.
 ---
 
 <a id="2026-11-19-sanitizers"></a>
+## 2026-11-19 (tenth) — FBcc's sixth predicate bit on the 6888x: settled by its manual
+
+Since 2026-11-07, FBcc evaluates five predicate bits on every FPU, like
+FScc, FDBcc, FTRAPcc and the oracle. The site carried an [F]: "no manual at
+hand". The locked MC68881UM-1989 settles the 68881/68882. [B] §4.7.3,
+Table 4-20 (PDF p. 194), note 3: the 1XXXXX predicates are "Not used,
+redundant encodings with 0XXXXX. No F-line trap is taken if these bit
+patterns are used." The comment at `execFBcc` is now [B] for the 6888x. The
+68040 stays [F], since MC68040UM-1993 only places the predicate in "the lower
+six bits" in its BSUN-handler description. The TODO item is narrowed to the
+68040, and the lock gains §4.7.3 and Table 4-20. No behaviour change;
+`moira_rules_test` fbccPredicateIsFiveBits still holds both rigs.
+
 ## 2026-11-19 (ninth) — FMOVE.P of a zero with k > +17 sets OPERR (ruling D40)
 
 Closes the TODO item "Vérifier OPERR pour FMOVE.P de zéro avec k-facteur

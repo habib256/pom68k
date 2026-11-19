@@ -2002,8 +2002,13 @@ Moira::execFBcc(u16 opcode)
     //     `condition &= 0x1f` for every FPU model. Until 2026-11-07 this
     //     handler took a Line-F instead, from a reading of the dead
     //     `#if 0` block of that same function — no source ever said so.
-    // [F] No manual at hand states what a 68882 or a 68040 does with bit
-    //     5. Settled by: FBcc $F2A1 (predicate $21) on real hardware.
+    // [B] MC68881UM-1989 §4.7.3 — Table 4-20, note 3, for the 68881/68882:
+    //     predicates 1XXXXX are "redundant encodings with 0XXXXX. No F-line
+    //     trap is taken if these bit patterns are used." The five-bit
+    //     reading is the coprocessor's own.
+    // [F] For the 68040 no manual says so: MC68040UM-1993 only locates the
+    //     predicate in "the lower six bits" (the BSUN handler's view).
+    //     Settled by: FBcc $F2A1 (predicate $21) on a real 68040.
     // Gate: sst68040 (fpuraw cells); fuzz seeds 808, 809 on the 68030.
 
     fpu.state = 1;                          // [D] @ Hatari e77819f7: maybe_idle_state (fpp.c:2195)

@@ -443,11 +443,13 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   mémoire efface l'octet d'état puis prend un Line-F) ; la table d'opcodes
   de l'oracle les refuse d'emblée. 63 vecteurs listés. *Tranche :
   `$F23D $0000` sur un vrai 68030 + 68882.*
-- [ ] **Décider le sixième bit du prédicat FBcc sur preuve.** Depuis le
-  2026-11-07 FBcc évalue cinq bits sur tout FPU, comme FScc/FDBcc/FTRAPcc
-  et comme l'oracle ; l'ancien Line-F venait d'une lecture du bloc mort
-  de `fpp_cond`. Aucun manuel sous la main ne tranche (grade F au site).
-  *Tranche : FBcc `$F2A1` sur un vrai 68882 et un vrai 68040.*
+- [ ] **Décider le sixième bit du prédicat FBcc du 68040 sur preuve.**
+  FBcc évalue cinq bits sur tout FPU, comme FScc/FDBcc/FTRAPcc et
+  l'oracle. Pour le 6888x c'est réglé par [B] MC68881UM-1989 §4.7.3,
+  Table 4-20, note 3 : les prédicats 1XXXXX sont redondants avec 0XXXXX et
+  ne prennent pas de Line-F (CHANGELOG 2026-11-19 (tenth)). Le MC68040UM-1993
+  ne dit rien du bit 5 (grade F au site). *Tranche : FBcc `$F2A1` sur un
+  vrai 68040.*
 - [ ] **Trancher l'ordre de lecture de FMOVEM en EA indirect mémoire à
   extension complète avant un Line-F de direction.** Laissé « still open »
   dans `POM68K_VENDOR.md § MC68882 FPU execution` ; le correctif du
