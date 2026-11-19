@@ -97,6 +97,19 @@ template<class Ar> void Moira::pomVisitState(Ar& ar)
     for (auto& w : mmu040Move16) ar(w);
     ar(mmu040Wb2Address);
 
+    // The 68030 counterpart: the per-instruction restart bookkeeping that
+    // mmuExecuteStart resets at the NEXT instruction start. Until then it is
+    // live — an interrupt or trace exception whose frame push faults (a
+    // protected stack page) stacks a format-$B frame from it, and the fault
+    // builder applies its (An)± fixups. A snapshot taken between the two —
+    // typically while STOPped, the interrupt still to come — lost it: the
+    // reloaded core stacked the prefetch-phase opcode $FFFF and a stale CCR
+    // where the unsaved one stacked STOP's (tests/jit_program_fuzz.cpp
+    // --mmuprot --irq-timed --savestate, 68030 seed 192). Format v34.
+    ar(mmuState, mmuAd, mmuFmovemStore, mmuIdx, mmuIdxDone, mmuDataBuffer,
+       mmuDispStore, mmuOpcodeV, mmuFixupReg, mmuFixupVal, mmuLogging,
+       mmuRmw, mmuCcrSave, mmuLastWritePc);
+
     if constexpr (Ar::loading) {
         cp = 0;                  // not carried; the next instruction
                                  // would zero it anyway (see above)

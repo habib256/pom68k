@@ -429,6 +429,18 @@ Moira::mmuExecuteStart()
     // [F] for silicon: an internal register. Settled by: the $B frame a real
     // 68030 stacks for a fault that follows an indexed-EA instruction.
     mmuDispStore[0] = mmuDispStore[1] = 0;
+    // The data buffer too, for the same reason. A format-$B frame stacks it
+    // as the data output buffer (mmuWb3Data = mmuDataBuffer), and a fault
+    // taken before the faulting instruction has moved it — the locked read
+    // of TAS/CAS, write-probed — stacked whatever the last data access left
+    // there. Generated code keeps no such latch, so the same TAS on a
+    // write-protected page stacked the lap counter's value from the
+    // previous instruction under the interpreter and from an older one
+    // under the translator (tests/jit_program_fuzz.cpp --mmuprot, 68030
+    // seed 278). A vector starts from zero, so the corpora are unchanged.
+    // [F] for silicon: the 68030's DOB on a read fault is not specified.
+    // Settled by: the $B frame of a TAS faulting on a write-protected page.
+    mmuDataBuffer = 0;
     mmuFixupReg[0] = mmuFixupReg[1] = 0;
     mmuCcrSave = getCCR();
     mmuLogging = true;
@@ -2530,6 +2542,8 @@ Moira::pomJitReadData(u32 addr, int bytes, u32 &out) noexcept
     try {
         if (cpuModel == Model::M68030) {
             if (fcSource != 0) return false;
+            // See pomJitWriteData: no (An)± fixup belongs to a thunk access.
+            mmuFixupReg[0] = mmuFixupReg[1] = 0;
             setFC(FC::USER_DATA);               // readFC() ORs in sr.s
             switch (bytes) {
                 case 1: out = mmuRead<Core::C68020, Byte, 0>(addr); return true;
@@ -2555,6 +2569,16 @@ Moira::pomJitWriteData(u32 addr, int bytes, u32 val) noexcept
     try {
         if (cpuModel == Model::M68030) {
             if (fcSource != 0) return false;
+            // POM68K: the 68030 fault builder applies the (An)± fixups it
+            // finds in mmuFixupReg when it throws (mmu030fixupmod), and this
+            // thunk swallows the throw so generated code can replay the
+            // instruction through Moira. None of those fixups belongs to a
+            // thunk access — generated code commits and rolls back its own
+            // EA — but mmuFixupReg still held the last INTERPRETED
+            // instruction's: a MOVE.W SR,(A4)+ before a native MOVE.L
+            // D6,-(A0) faulting on a write-protected page left A4 two too
+            // high (tests/jit_program_fuzz.cpp --mmuprot, 68030 seed 1072).
+            mmuFixupReg[0] = mmuFixupReg[1] = 0;
             setFC(FC::USER_DATA);
             switch (bytes) {
                 case 1: mmuWrite<Core::C68020, Byte, 0>(addr, val); return true;
@@ -2593,6 +2617,7 @@ Moira::pomJitReadProg(u32 addr, u16 &out) noexcept
     try {
         if (fcSource != 0) return false;
         if (cpuModel == Model::M68030) {
+            mmuFixupReg[0] = mmuFixupReg[1] = 0;   // see pomJitWriteData
             setFC(FC::USER_PROG);
             out = u16(mmuRead<Core::C68020, Word, 0>(addr));
         } else if (cpuModel >= Model::M68EC040) {

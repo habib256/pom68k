@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 837 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 838 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -9,7 +9,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | Subsystem | Entries |
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 114 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 146 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 147 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 37 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 32 |
@@ -139,7 +139,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-16 (fourth)** — [The public 030 JIT gate had compiled zero blocks](CHANGELOG.md#2026-11-16-public-jit-census)
 - **2026-11-19** — [Long boot locksteps, a hundred times the gates: identical](CHANGELOG.md#2026-11-19-long-locksteps)
 - **2026-11-19 (second)** — [Eleven more boards get a JIT lockstep, every family whose 68030/68040 runs translated by default](CHANGELOG.md#2026-11-19-board-locksteps)
-- **2026-11-19 (third)** — [Under ASan: a use-after-free when a window run flushed the JIT; under UBSan: bit-field width overflow](CHANGELOG.md#2026-11-19-sanitizers)
+- **2026-11-19 (third)** — [Under ASan: a use-after-free when a window run flushed the JIT; under UBSan: bit-field width overflow](CHANGELOG.md#2026-11-19-third--under-asan-a-use-after-free-when-a-window-run-flushed-the-jit-under-ubsan-bit-field-width-overflow)
 
 ## CPU cores, MMU, FPU and the WinUAE oracle
 
@@ -289,6 +289,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-17 (third)** — [A Moira release cut for Dirk Hoffmann, every gate executed](CHANGELOG.md#2026-11-17-release-for-dirk)
 - **2026-11-18** — [The fork builds and behaves under upstream Moira's settings](CHANGELOG.md#2026-11-18-upstream-config)
 - **2026-11-18 (fifth)** — [A halted 68040 keeps the queue the interpreter would leave after a native JSR fault](CHANGELOG.md#2026-11-18-jsr040-queue)
+- **2026-11-19 (fourth)** — [protected pages in the program fuzzer: three 68030 fault-frame defects](CHANGELOG.md#2026-11-19-sanitizers)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E
 

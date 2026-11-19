@@ -11,6 +11,13 @@ namespace {
 constexpr moira::u32 kHole = 0x80000;
 class Cpu : public moira::Moira {
 public:
+    // The 68030 restart latches, for frameLatches030.
+    using moira::Moira::mmuState; using moira::Moira::mmuAd;
+    using moira::Moira::mmuIdx; using moira::Moira::mmuIdxDone;
+    using moira::Moira::mmuDataBuffer; using moira::Moira::mmuDispStore;
+    using moira::Moira::mmuOpcodeV; using moira::Moira::mmuFixupReg;
+    using moira::Moira::mmuFixupVal; using moira::Moira::mmuLogging;
+    using moira::Moira::mmuCcrSave; using moira::Moira::mmuLastWritePc;
     std::vector<moira::u8> mem = std::vector<moira::u8>(1 << 20);
     mutable int holeReads = 0;
     bool wordHole040 = false;
@@ -213,6 +220,25 @@ void frameLatches040() {
     check(same, "frame040: MOVE16 buffer and WB2A round-trip");
 }
 
+void frameLatches030() {
+    Cpu src(moira::Model::M68030), dst(moira::Model::M68030);
+    src.start(); dst.start();
+    src.mmuState[0] = 3; src.mmuState[1] = 0x0100; src.mmuState[2] = 0x22;
+    for (int i = 0; i < 10; i++) src.mmuAd[i] = 0x01010101u * moira::u32(i + 1);
+    src.mmuIdx = 4; src.mmuIdxDone = 2; src.mmuDataBuffer = 0xCAFEF00D;
+    src.mmuDispStore[0] = 0x1234; src.mmuDispStore[1] = 0x5678;
+    src.mmuOpcodeV = 0x4E72; src.mmuFixupReg[0] = 0x0C; src.mmuFixupVal[0] = 0x9000;
+    src.mmuLogging = true; src.mmuCcrSave = 0x1F; src.mmuLastWritePc = 0x40070;
+    restore(src, dst);
+    bool same = dst.mmuOpcodeV == 0x4E72 && dst.mmuCcrSave == 0x1F &&
+                dst.mmuDataBuffer == 0xCAFEF00D && dst.mmuIdx == 4 && dst.mmuIdxDone == 2 &&
+                dst.mmuState[1] == 0x0100 && dst.mmuState[2] == 0x22 &&
+                dst.mmuDispStore[1] == 0x5678 && dst.mmuFixupReg[0] == 0x0C &&
+                dst.mmuFixupVal[0] == 0x9000 && dst.mmuLogging && dst.mmuLastWritePc == 0x40070;
+    for (int i = 0; i < 10; i++) same &= dst.mmuAd[i] == src.mmuAd[i];
+    check(same, "frame030: per-instruction restart latches round-trip");
+}
+
 void cache040State(moira::Model model, unsigned disabled) {
     Cpu direct(model);
     direct.program(0x1000, {0x7001, 0x7002, 0x4E71, 0x4E71});
@@ -301,6 +327,7 @@ int main() {
     pending68882(); clearedDf030(); pipe030(); frame040(false); frame040(true);
     hostState();
     frameLatches040();
+    frameLatches030();
     movem040();
     for (auto model : {moira::Model::M68LC040, moira::Model::M68040})
         for (unsigned disabled = 0; disabled < 3; ++disabled)

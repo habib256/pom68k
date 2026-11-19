@@ -1400,6 +1400,37 @@ Newest first.
 ---
 
 <a id="2026-11-19-sanitizers"></a>
+## 2026-11-19 (fourth) — protected pages in the program fuzzer: three 68030 fault-frame defects
+
+`jit_program_fuzz --mmuprot` (implies `--mmu`) write-protects a seeded
+quarter of the data and stack pages and, on the 68040, makes another quarter
+supervisor-only, so stores, locked reads and exception frames fault inside
+generated blocks. The 68040 ran clean from the start (4 000 seeds, every
+mode combined). The 68030 found three defects, all in the format-$B frame
+or its side effects:
+
+- **Data output buffer.** A TAS on a write-protected page faults on its
+  write-probed locked read, before the instruction moves `mmuDataBuffer`;
+  the frame stacked whatever the last data access left there — the lap
+  counter under the interpreter, an older value under the translator. It is
+  now reset at every instruction start with the rest of the restart
+  bookkeeping. [F] for silicon: the DOB on a read fault is unspecified
+  (seed 278).
+- **Stale (An)± fixup in a JIT thunk.** The fault builder applies the
+  fixups recorded in `mmuFixupReg`; a native `MOVE.L D6,-(A0)` faulting
+  after an interpreted `MOVE.W SR,(A4)+` applied the latter's +2 to A4.
+  The 68030 data and program thunks clear the fixups first (seed 1072).
+- **Restart latches across a save state.** Taken while STOPped, a snapshot
+  dropped the latches the interrupt's faulting frame push still stacks
+  (STOP's opcode and CCR): the reloaded core stacked prefetch-phase values.
+  `pomVisitState` carries them; save-state format v34 (seed 192;
+  `moira_state_test` frameLatches030).
+
+After the fixes: 4 000 seeds per model of `--mmuprot --sys --ext --smc
+--fpu --irq-timed --savestate` and 3 000 of `--mmuprot --irq-timed
+--savestate --fpexc`, clean. Gates `jit_program_fuzz_030_mmuprot_test` and
+`jit_program_fuzz_040_mmuprot_test`; Moira patch groups 122-124.
+
 ## 2026-11-19 (third) — Under ASan: a use-after-free when a window run flushed the JIT; under UBSan: bit-field width overflow
 
 `jit_program_fuzz` and `jit_lockstep_board_test` built in

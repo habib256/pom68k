@@ -29,7 +29,7 @@
 //   jit_program_fuzz [--model 0|20|30|40] [--seeds N] [--first S] [--extra S,S..]
 //                    [--len N] [--raw PERMILLE] [--slices N] [--budget CYCLES]
 //                    [-v] [--trace] [--shrink] [--bisect] [--watch-jit]
-//                    [--patch ADDR=WORD] [--progress] [--smc] [--irq] [--irq-timed] [--fpu] [--ext] [--sys] [--fpexc] [--savestate] [--dcache] [--mmu]
+//                    [--patch ADDR=WORD] [--progress] [--smc] [--irq] [--irq-timed] [--fpu] [--ext] [--sys] [--fpexc] [--savestate] [--dcache] [--mmu] [--mmuprot]
 //
 // A failure prints the seed; `--first S --seeds 1 -v` replays it alone.
 // `--shrink` turns body instructions into NOPs while a divergence remains,
@@ -230,6 +230,7 @@ bool gFpExc = false;    // --fpexc: FPCR also arms FP exceptions (with --fpu)
 bool gSys = false;      // --sys: SR/USP/RTE/STOP system transitions (Gen::sys)
 bool gDcache = false;   // --dcache: the architectural 68040 caches (POM68K_040_DCACHE), both on
 bool gMmu = false;      // --mmu: identity translation through real tables (68030/68040)
+bool gMmuProt = false;  // --mmuprot: with --mmu, random data pages write-protected / supervisor-only
 int gModel = 40;
 
 class Gen {
@@ -827,6 +828,20 @@ void load(FuzzCpu& cpu, moira::Model model, const Program& p, uint32_t ramSeed) 
         const auto tablePage = [](uint32_t page) {
             return page >= kTables && page < kTables + 0x11000;
         };
+        // --mmuprot: a seeded quarter of the data and stack pages
+        // ($10000-$3FFFF) become write-protected, and on the 68040 another
+        // quarter supervisor-only (S, bit 7), so user-mode code (--sys) and
+        // stores take access faults in the middle of generated blocks — the
+        // protection the translator's DTLB tags and refusals must honour.
+        // The code page, the vectors and the tables stay plain.
+        Rng pr{uint64_t(ramSeed) * 0xA0761D6478BD642Full + 5};
+        const auto protBits = [&](uint32_t page, bool m040) -> uint32_t {
+            if (!gMmuProt || page < 0x10000 || page >= 0x40000) return 0;
+            const uint32_t roll = pr.below(8);
+            if (roll < 2) return 4;                          // W: write-protected
+            if (m040 && roll < 4) return 0x80;               // S: supervisor only
+            return 0;
+        };
         if (model == moira::Model::M68030) {
             // TC: E, PS 4 KB, IS 8, TIA 4, TIB 8 (8+4+8+12 = 32). Level A:
             // sixteen short table descriptors; level B: 256 short page
@@ -838,7 +853,7 @@ void load(FuzzCpu& cpu, moira::Model model, const Program& p, uint32_t ramSeed) 
                 put32(kTables + 4 * i, tb | 2);
                 for (uint32_t j = 0; j < 256; j++) {
                     const uint32_t page = i << 20 | j << 12;
-                    put32(tb + 4 * j, page | (tablePage(page) ? 4 : 0) | 1);   // WP over the tables
+                    put32(tb + 4 * j, page | (tablePage(page) ? 4 : 0) | protBits(page, false) | 1);
                 }
             }
             if (ramSeed & 1) put32(kTables, 1);
@@ -857,7 +872,8 @@ void load(FuzzCpu& cpu, moira::Model model, const Program& p, uint32_t ramSeed) 
                 put32(ptr + 4 * j, (pages + 0x100 * j) | 2);
                 for (uint32_t k = 0; k < 64; k++) {
                     const uint32_t page = (j << 18) | (k << 12);
-                    put32(pages + 0x100 * j + 4 * k, page | cm | (tablePage(page) ? 4 : 0) | 1);
+                    put32(pages + 0x100 * j + 4 * k,
+                          page | cm | (tablePage(page) ? 4 : 0) | protBits(page, true) | 1);
                 }
             }
             cpu.setITT0(0); cpu.setITT1(0); cpu.setDTT0(0); cpu.setDTT1(0);
@@ -989,6 +1005,7 @@ int main(int argc, char** argv) {
         else if (a == "--savestate") gSave = true;
         else if (a == "--dcache") gDcache = true;
         else if (a == "--mmu") gMmu = true;
+        else if (a == "--mmuprot") gMmu = gMmuProt = true;
         else if (a == "--stats") stats = true;
         else if (a == "--extra" && i + 1 < argc) {
             // Comma-separated seeds run after the range: the regressions.

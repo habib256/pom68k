@@ -54,9 +54,9 @@ pair):
 | | | how to re-measure |
 |---|---|---|
 | distinct `pom*` extension identifiers | **116** (65 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **555** | `grep -rn POM68K Moira/ \| wc -l` |
+| `POM68K`-marked lines | **556** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **17 of 27** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **121** | this file |
+| patch groups in the inventory below | **124** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h`, `MoiraState.h`, `MoiraMmu030Walk.h` | — |
 
 One hundred and sixteen patch groups, two of which (the JIT seam, row 22, and the ATC
@@ -291,6 +291,9 @@ gate in the last column of each row.
 | 119 | **A CACR write retires the published native 040 cache-line entries** — `setCACR` calls `pomJitCache040Bump()` when the cache model is armed and the value changes | `Moira.cpp` | entries are published only while DE=1 (`pomJitCache040Publish`), but one published before a MOVEC cleared DE stayed live, so generated code read the copyback line where the interpreter, D-cache disabled, read memory | `jit_program_fuzz_040_mmu_dcache_test` (seed 959, `FUZZ_CACR_FLUSH=0`) |
 | 120 | **The JIT's 68040 JSR helper leaves the interpreter's instruction-start queue** — `pomJitJsr040` sets `queue.irc` to the word after the opcode, read side-effect free from the code window, as `mmu040InstrStart` leaves it | `MoiraExecMMU_cpp.h` | the 68040 refetches its queue at every instruction start, so the word shows only where none follows: a push fault with no stack for the frame halts the core, and the halted queue held the previous instruction's terminal word | `jit_program_fuzz_040_sys_mmu_test` (seed 3499) |
 | 121 | **Bit-field widths are normalised in unsigned arithmetic** — `execBitFieldDn` and `execBitFieldEa` compute `((width - 1) & 31) + 1` on `u32` | `MoiraExec_cpp.h` | a width taken from a data register holding $80000000 made `width - 1` overflow `int`, undefined behaviour; the value is the same for every input | UBSan on `jit_program_fuzz` (`build-cpu-sanitize`) |
+| 122 | **The 68030 data buffer is reset at every instruction start** — `mmuExecuteStart` zeroes `mmuDataBuffer` with the other restart bookkeeping | `MoiraExecMMU_cpp.h` | a fault taken before the faulting instruction moved it (TAS's write-probed locked read) stacked, as the $B data output buffer, whatever the last data access had left — a value generated code does not keep | `jit_program_fuzz_030_mmuprot_test` (seed 278) |
+| 123 | **The JIT's 68030 data and program thunks carry no stale (An)± fixup** — `pomJitReadData`, `pomJitWriteData` and `pomJitReadProg` clear `mmuFixupReg` before the access | `MoiraExecMMU_cpp.h` | the fault builder applied the last interpreted instruction's fixup to An when a native access faulted | `jit_program_fuzz_030_mmuprot_test` (seed 1072) |
+| 124 | **The 68030 restart latches are save-state** — `pomVisitState` carries `mmuState`, `mmuAd`, `mmuFmovemStore`, `mmuIdx`/`mmuIdxDone`, `mmuDataBuffer`, `mmuDispStore`, `mmuOpcodeV`, the fixups, `mmuLogging`, `mmuRmw`, `mmuCcrSave`, `mmuLastWritePc` (format v34) | `MoiraState.h` | they stay live until the next instruction start; an interrupt frame faulting after a reload stacked prefetch-phase values | `moira_state_test` frameLatches030; `jit_program_fuzz_030_mmuprot_test` (seed 192) |
 
 Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54, 56, 59-75 and 79-86 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
 when nothing arms them); rows 48 and 55 are performance alone, with no architectural effect. Row 58 is evidence documentation only. The ten files carrying no `POM68K` marker at all —
