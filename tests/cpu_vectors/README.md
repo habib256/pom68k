@@ -7,8 +7,8 @@ strict-FPU adapter and direct-root ATC correction), not an independent silicon r
 
 | Model | Vectors | Cells |
 |---|---:|---|
-| 68030 + 68882 | 984 | integer core, translated MMU and faults, FPU arithmetic, two-instruction FPU continuation, instructions against a page whose successor is invalid |
-| full 68040 | 408 | the same, plus 8 KB pages, three-instruction FPU-handler/FSAVE sequences and faults under random transparent-translation windows |
+| 68030 + 68882 | 1064 | integer core, translated MMU and faults, FPU arithmetic, two-instruction FPU continuation, instructions against a page whose successor is invalid |
+| full 68040 | 512 | the same, plus 8 KB pages, three-instruction FPU-handler/FSAVE sequences and faults under random transparent-translation windows |
 
 `manifest.json` records every generator option and seed, plus the count,
 uncompressed size and SHA-256 of each canonical JSON stream. The gzip files
@@ -22,6 +22,11 @@ loaded T1 as just written and does not trace the first step; the NOP takes
 that step, so the generated instruction is the traced one and its trace
 exception belongs to the vector. `sst68030`/`sst68040` reproduce both rules
 in `runVector`.
+
+They are followed by `trace=t0` vectors, trace on change of flow (80 on the
+68030; 104 on the 68040, which adds an FPU cell for FSAVE, FMOVEM and
+FDBcc). Their lead-in is `EXG D0,D0`, not NOP: the 68040 traces NOP itself
+in this mode.
 
 `d23a-contract.json` is a separate, unmodified vector from the locked July
 030 corpus (`fpu/off seed=11 #292`). It is not part of either stream above.

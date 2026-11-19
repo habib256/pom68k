@@ -260,7 +260,8 @@ bool gMmuProt = false;  // --mmuprot: with --mmu, random data pages write-protec
 bool gMmuTt = false;    // --mmutt: with --mmu, random transparent-translation registers
 bool gMmuPage = false;  // --mmupage: with --mmu, a seeded page size (030 256 B-32 KB, 040 4/8 KB)
 bool gVmRte = false;    // --vmrte: with --mmuprot, the bus-error handler repairs and RTEs
-bool gTraceBit = false; // --tracebit: SR.T1 set at slice boundaries; vector 9 counts and RTEs
+bool gTraceBit = false; // --tracebit: SR.T1 or T0 set at slice boundaries; vector 9 counts and RTEs
+bool gT0Only = false;   // --t0only: --tracebit raising T0 only (68020 and up)
 int gModel = 40;
 
 class Gen {
@@ -1208,6 +1209,7 @@ int main(int argc, char** argv) {
         else if (a == "--mmupage") gMmu = gMmuPage = true;
         else if (a == "--vmrte") gMmu = gMmuProt = gVmRte = true;
         else if (a == "--tracebit") gTraceBit = true;
+        else if (a == "--t0only") gTraceBit = gT0Only = true;
         else if (a == "--devport") gDevPort = true;
         else if (a == "--stats") stats = true;
         else if (a == "--extra" && i + 1 < argc) {
@@ -1395,12 +1397,17 @@ int main(int argc, char** argv) {
                             (long long)(target - c0), ref->getPC0(), ref->getA(0), ref->getA(3),
                             ref->assertAt == INT64_MAX ? -1LL : (long long)(ref->assertAt - c0),
                             ref->dropAt == INT64_MAX ? -1LL : (long long)(ref->dropAt - c0));
-            // --tracebit: T1 rises at a slice boundary, identically on both
+            // --tracebit: T1 or T0 rises at a slice boundary, identically on both
             // cores, wherever the program happens to be (a block's middle
             // on the translated side).
             if (ok && gTraceBit && traceR.chance(350)) {
-                ref->setSR(moira::u16(ref->getSR() | 0x8000));
-                nat->setSR(moira::u16(nat->getSR() | 0x8000));
+                // From the 68020 up, T0 (trace on change of flow) half of
+                // the time: branches, jumps, returns, SR writes and, on
+                // the 68040, the instructions that synchronize its pipe.
+                // --t0only: T0 at every such boundary.
+                const moira::u16 bit = gModel != 0 && (traceR.chance(500) || gT0Only) ? 0x4000 : 0x8000;
+                ref->setSR(moira::u16((ref->getSR() & 0x3FFF) | bit));
+                nat->setSR(moira::u16((nat->getSR() & 0x3FFF) | bit));
             }
             if (ok && gIrq && !gIrqTimed) {
                 uint8_t level = 0;

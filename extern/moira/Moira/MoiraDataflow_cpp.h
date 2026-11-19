@@ -960,6 +960,11 @@ Moira::prefetch()
 template <Core C, Flags F, int delay> void
 Moira::fullPrefetch()
 {
+    // FLOW marks the reload after a change of flow — a taken branch, a
+    // jump or a return — as opposed to a not-taken DBcc's or an SR write's
+    // (Moira.h, traceFlow).
+    if constexpr (C == Core::C68020 && (F & FLOW)) traceFlow();
+
     // POM68K O4 slice 3: see prefetch — jumps do not fetch the target on
     // the mode-5 68030; the fetch happens at the next instruction start.
     // Q3: same for the 68040.

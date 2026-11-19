@@ -608,6 +608,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-20 — T0, trace on change of flow, exists: the bit was stored and did nothing](#2026-11-20-t0-change-of-flow)
 - [2026-11-19 (nineteenth) — Trace had never met the oracle: the 68020/68030 frame was format $0, the 68040 ran one instruction too many](#2026-11-19-trace-against-the-oracle)
 - [2026-11-19 (eighteenth) — No interrupt or trace between a 68030 RTE $B and the instruction it continues](#2026-11-19-rte-b-no-boundary)
 - [2026-11-19 (third) — Under ASan: a use-after-free when a window run flushed the JIT; under UBSan: bit-field width overflow](#2026-11-19-sanitizers)
@@ -1404,6 +1405,108 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-20-t0-change-of-flow"></a>
+## 2026-11-20 — T0, trace on change of flow, exists: the bit was stored and did nothing
+
+SR bit 14 on the 68020 and up selects "trace on change of flow". The fork
+kept the bit and never looked at it, on any model, in the interpreter or
+in generated code. Yesterday's tooling ((nineteenth): `--trace t0`, the
+traced step of `sst68030`/`sst68040`) made it measurable, so it was
+implemented against the oracle, one instruction class at a time.
+
+**What is traced.** [B] MC68030UM-1989 §8.1.7: "all branches, jumps,
+instruction traps, returns, and coprocessor instructions that modify the
+program counter flow", and status register manipulations. [B]
+MC68040UM-1993 §8.2.6 gives the 68040 its own list, with the instructions
+that synchronize its pipe (NOP among them).
+
+- `fullPrefetch` calls carry a new `FLOW` flag where the reload follows a
+  change of flow: taken Bcc, DBcc and FBcc, BRA, BSR, JMP, RTS, RTD, RTR,
+  RTE, CALLM, RTM. A not-taken DBcc reloads the pipe too and is not marked;
+  a first version hooked every `fullPrefetch` and traced it (10 of 27 DBcc
+  vectors wrong on the 68030).
+- JSR, which has its own refill, calls `traceFlow()`.
+- An SR write made while T0 is set is traced whatever it loads (`setSR`;
+  the 68040 already did this through `trace040Pending`).
+- Below the 68040 an instruction trap (TRAP, TRAPcc, TRAPV, CHK, CHK2, zero
+  divide) is traced after its own exception — the T0 twin of the T1 trace
+  that stays pending over the same exceptions. The 68040 drops it.
+- 68040 only (`traceFlow040`): NOP, STOP, MOVEC and MOVE to USP, MOVES,
+  CAS, CAS2, CINV, CPUSH, PFLUSH, PTEST, FSAVE, FMOVEM to memory, FDBcc
+  whether taken or not. Four directions follow WinUAE where the manual
+  names only the mnemonic: `MOVEC Rc,Rn`, `MOVE USP,An`, FMOVEM from memory
+  and FRESTORE are not traced ([F] at the site).
+- An RTE into a format-$7 frame is not a traced change of flow either
+  (same rule as the T1 and one-shot traces).
+
+`State::TRACING0` mirrors the bit. It carries no behaviour; a non-zero
+`flags` keeps the instruction in `execute()`, where the handlers can stage
+the trace, and out of generated code. A save state made before today has
+the bit without the flag: the visitor derives it on load, no format change.
+
+**Measurements (AArch64, interpreter against WinUAE @ Hatari e77819f7).**
+
+| Vectors, T0 set | Before | After |
+|---|---:|---:|
+| 68030 core/off, seed 11 | 2 742 / 4 000 | 4 000 / 4 000 |
+| 68040 core/off, seed 11 | 3 174 / 4 000 | 4 000 / 4 000 |
+| 68030 random/off, seed 31 | 11 424 / 12 000 | 11 677 / 12 000 |
+| 68040 random/off, seed 31 | 11 415 / 12 000 | 11 703 / 12 000 |
+
+What is left in the two random rows was classified vector by vector from
+`--dump`: 308 (68030) and 297 (68040) differ only in the instruction
+address of a format-$2 CHK/zero-divide/TRAPcc frame — the 2026-11-17 ruling
+against the oracle, present without any trace bit. The other 15, all on the
+68030, were first filed as "FBcc to an odd target" from two samples; read
+one by one they are 11 of those (the oracle traces first and stacks the odd
+PC; the fork raises the address error at once), 3 `LINK A7` (unrelated to
+trace, below) and 1 EORI to CCR — a class the random families barely
+reach, and a real T0 case. That prompted targeted vectors: 12 states per
+instruction form, 66 forms on the 68030 and 78 on the 68040, under T0 and
+under T1. They added ANDI/ORI/EORI to CCR to the list below the 68040
+(traced by `cpuemu_32.c`, not by `cpuemu_31.c`; MOVE to CCR on neither),
+and they isolate what remains:
+
+- the format-$2 instruction address of CHK, TRAPV and TRAPcc (the ruling);
+- STOP #$6700 entered with SR already $67xx: `MakeFromSR_x` returns early
+  when T1, T0, S, M and the mask do not change, so WinUAE does not trace it
+  and stops. The fork traces every STOP that begins with T0 set; a traced
+  STOP "never enters the stopped condition" (MC68040UM-1993 §8.2.6). Ruled
+  for the manual, at the site in `setSR`;
+- `LINK A7` on the 68030, both sizes: WinUAE's 68030 table pushes the
+  undecremented A7, its 68040 table the decremented one, as the fork does
+  on every model (the 68000 rule from SingleStepTests). `TODO.md`.
+
+1 500 vectors per cell, seed 41: 68030 core/identity, fault/identity, rmw,
+pagend 1 500 / 1 500, mmu 1 475 / 1 475; fpu fails on the same 18 vectors as
+its untraced twin. 68040 fault/identity 1 499 / 1 499, mmu 1 462 / 1 462,
+rmw, pagend, sysraw, fline 1 500 / 1 500; fpu fails on the same 9 vectors
+as its untraced twin, fpuraw on the same 11 plus instruction-address-only
+differences (3, against 11 untraced: the second step differs between the
+twins). 68040 core/identity 1 497 / 1 498: in
+#535 a MOVES loads A7 with $2E, the trace frame lands on vector 9 and the
+oracle has already read the vector, where the fork stacks first and reads
+the overwritten vector. MC68030UM-1989 §8.1 describes stacking as the third
+step and the vector load as the last, and warns in the same paragraph that
+the bus cycles "are not guaranteed to occur in the order in which they are
+described": unsettled, not a trace matter, left as it is. T1 re-measured
+after the T0 work: 3 000 / 3 000 core/off and every fault/identity vector,
+both models (seed 51).
+
+**Gates.** `tests/cpu_vectors`: 80 `trace=t0` vectors on the 68030 and 104
+on the 68040 (1 064 and 512 in all; the streams pinned yesterday are byte
+prefixes of the new ones). The lead-in under T0 is `EXG D0,D0`: with NOP
+every 68040 vector traced its own lead-in (0 / 3 000 on the first try).
+`moira_rules_test` `traceOnChangeOfFlow` covers the 68020, which no oracle
+reaches. The program fuzzer's `--tracebit` now raises T0 half of the time
+from the 68020 up, and `--t0only` raises nothing else:
+`jit_program_fuzz_{030,040}_t0_test`. Mutation, `TRACING0` no longer set:
+those two gates fail (1 and 2 seeds of 200); the mixed `--tracebit` gates
+mostly do not (0, 1 and 0 seeds on the 68030, 68040 and threaded 68020),
+because a block's closing branch usually runs through the interpreter's
+handler, which stages the trace by itself. The flag matters for a branch
+compiled inline.
 
 <a id="2026-11-19-trace-against-the-oracle"></a>
 ## 2026-11-19 (nineteenth) — Trace had never met the oracle: the 68020/68030 frame was format $0, the 68040 ran one instruction too many

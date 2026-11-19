@@ -2823,6 +2823,77 @@ void traceFollowsTheTracedInstruction()
     }
 }
 
+void traceOnChangeOfFlow()
+{
+    // T1 = 0, T0 = 1: only an instruction that changes the flow takes the
+    // trace exception; the frame is the same format $2, its address the
+    // instruction's.
+    // [B] MC68020UM-1992 §6.1.7; MC68030UM-1989 §8.1.7; MC68040UM-1993
+    //     §8.2.6 (which adds NOP, among others, on the 68040).
+    // [D] WinUAE @ Hatari e77819f7 — "trace=t0" cells of tests/cpu_vectors
+    //     for the 68030 and 68040. An instruction trap is traced after its
+    //     own exception on the 68020/68030 and not on the 68040.
+    // Until 2026-11-20 T0 was stored and had no effect.
+    struct Row { moira::Model model; const char* name; bool is040; };
+    static const Row rows[] = {
+        { moira::Model::M68020, "68020", false }, { moira::Model::M68030, "68030", false },
+        { moira::Model::M68040, "68040", true },
+    };
+    constexpr uint32_t sp0 = 0x8000, kTrapHandler = kHandler + 0x40;
+    for (const Row& r : rows) {
+        struct Case { uint16_t opcode; const char* what; int traced; uint32_t next; };
+        // traced: 1 always, 0 never, 2 on the 68040 only
+        static const Case cases[] = {
+            { 0x6002, "BRA.S", 1, kCode + 4 },
+            { 0x7255, "MOVEQ", 0, kCode + 2 },
+            { kNop,   "NOP",   2, kCode + 2 },
+        };
+        for (const Case& k : cases) {
+            TestCpu c(r.model);
+            p32(c, 9 * 4, kHandler);
+            p16(c, kHandler, kNop);
+            stage(c, k.opcode, 0);
+            c.setSR(0x6700);
+            bool contained = executeContained(c);
+            contained = contained && executeContained(c);   // the trace, or the next NOP
+            const bool want = k.traced == 1 || (k.traced == 2 && r.is040);
+            const uint32_t sp = c.getSP();
+            const bool traced = c.getPC0() == kHandler && sp == sp0 - 12 &&
+                                g16(c, sp + 6) == 0x2024 && g32(c, sp + 2) == k.next &&
+                                g32(c, sp + 8) == kCode && c.getSR() == 0x2700;
+            const bool plain = c.getPC0() == k.next + 2 && sp == sp0 && c.getSR() == 0x6700;
+            CHECK(contained && (want ? traced : plain),
+                  "%s T0, %s: want %s; PC0=%08X SP=%08X SR=%04X format/vector=%04X "
+                  "stacked PC=%08X address=%08X",
+                  r.name, k.what, want ? "a trace exception" : "no trace", c.getPC0(), sp,
+                  c.getSR(), g16(c, sp + 6), g32(c, sp + 2), g32(c, sp + 8));
+        }
+        {   // TRAP #0: its own exception first, then the trace below the 68040
+            TestCpu c(r.model);
+            p32(c, 9 * 4, kHandler);
+            p32(c, 32 * 4, kTrapHandler);
+            p16(c, kHandler, kNop);
+            p16(c, kTrapHandler, kNop);
+            stage(c, 0x4e40, 0);
+            c.setSR(0x6700);
+            bool contained = executeContained(c);
+            contained = contained && executeContained(c);
+            const uint32_t sp = c.getSP();
+            const bool both = c.getPC0() == kHandler && sp == sp0 - 8 - 12 &&
+                              g16(c, sp + 6) == 0x2024 && g32(c, sp + 2) == kTrapHandler &&
+                              g32(c, sp + 8) == kCode && g16(c, sp + 12) == 0x6700 &&
+                              g16(c, sp + 12 + 6) == 0x0080;
+            const bool trapOnly = c.getPC0() == kTrapHandler + 2 && sp == sp0 - 8 &&
+                                  g16(c, sp) == 0x6700 && g16(c, sp + 6) == 0x0080;
+            CHECK(contained && (r.is040 ? trapOnly : both),
+                  "%s T0, TRAP #0: want %s; PC0=%08X SP=%08X (entry %08X) top "
+                  "format/vector=%04X", r.name,
+                  r.is040 ? "the trap alone" : "the trap, then the trace", c.getPC0(), sp, sp0,
+                  g16(c, sp + 6));
+        }
+    }
+}
+
 void packUnpkFaultRestoresAn()
 {
     // [D] WinUAE gencpu.c i_PACK/i_UNPK @ Hatari e77819f7 (cpuemu_31/32
@@ -2982,6 +3053,7 @@ int main(int argc, char** argv)
     srWriteRefillIsAFetch();
     rteRerunTakesNoTrace040();
     traceFollowsTheTracedInstruction();
+    traceOnChangeOfFlow();
     packUnpkFaultRestoresAn();
 
     if (failures) {
@@ -2995,6 +3067,6 @@ int main(int argc, char** argv)
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68030 MOVE to (xxx).L last write, 68EC030 plain-020 path with a 68030 "
-                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, the 68040 lock ending with TAS/CAS/CAS2, a memory-indirect pointer read outside the lock, BKPT without a data access, 68040 bit-field and JSR store faults restart, the SR-write refill as a fetch, no trace before a format-$7 rerun, PACK/UNPK -(An) faults on the 68030/68040, level 7 on a transition from the 68020 up, the billed 020-core interrupt sequence, the trace exception after the traced instruction\n");
+                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, the 68040 lock ending with TAS/CAS/CAS2, a memory-indirect pointer read outside the lock, BKPT without a data access, 68040 bit-field and JSR store faults restart, the SR-write refill as a fetch, no trace before a format-$7 rerun, PACK/UNPK -(An) faults on the 68030/68040, level 7 on a transition from the 68020 up, the billed 020-core interrupt sequence, the trace exception after the traced instruction, trace on change of flow\n");
     return 0;
 }

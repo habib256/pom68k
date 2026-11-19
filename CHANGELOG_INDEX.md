@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 853 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 854 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 25 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 44 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 176 |
+| [Cross-cutting](#cross-cutting) | 177 |
 
 ---
 
@@ -915,4 +915,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-19 (ninth)** — [FMOVE.P of a zero with k > +17 sets OPERR (ruling D40)](CHANGELOG.md#2026-11-19-ninth--fmovep-of-a-zero-with-k--17-sets-operr-ruling-d40)
 - **2026-11-19 (seventeenth)** — [Device reads in the program fuzzer: a native RTS read its return address twice](CHANGELOG.md#2026-11-19-seventeenth--device-reads-in-the-program-fuzzer-a-native-rts-read-its-return-address-twice)
 - **2026-11-19 (tenth)** — [FBcc's sixth predicate bit on the 6888x: settled by its manual](CHANGELOG.md#2026-11-19-tenth--fbccs-sixth-predicate-bit-on-the-6888x-settled-by-its-manual)
+- **2026-11-20** — [T0, trace on change of flow, exists: the bit was stored and did nothing](CHANGELOG.md#2026-11-20-t0-change-of-flow)
 

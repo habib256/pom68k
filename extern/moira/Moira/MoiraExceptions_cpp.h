@@ -763,6 +763,7 @@ Moira::execException(M68kException exc, int nr)
 
             // Branch to exception handler
             jumpToVector<C,AE_SET_RW|AE_SET_IF>(vector);
+            traceInstructionTrap<C>(status);
             break;
 
         case M68kException::PRIVILEGE:
@@ -836,6 +837,7 @@ Moira::execException(M68kException exc, int nr)
 
             // Branch to exception handler
             jumpToVector<C>(vector);
+            traceInstructionTrap<C>(status);
             break;
 
         default:

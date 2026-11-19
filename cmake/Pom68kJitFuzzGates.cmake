@@ -167,10 +167,13 @@ set_tests_properties(jit_program_fuzz_030_vmrte_test PROPERTIES
                      ENVIRONMENT "POM68K_JIT_PROFIT_SCORE=0")
 set_tests_properties(jit_program_fuzz_030_vmrte_test jit_program_fuzz_040_vmrte_test
                      PROPERTIES LABELS "jit;unit" TIMEOUT 300)
-# --tracebit: SR.T1 rises at slice boundaries, wherever the program is; the
-# trace handler counts and RTEs, so every instruction takes vector 9 until
-# an exception or a MOVE to SR ends the run. Judges the staged trace, its
-# format-$2 frame and the engine's hand-over of a traced core to execute().
+# --tracebit: SR.T1 — or, from the 68020 up, T0 half of the time — rises at
+# slice boundaries, wherever the program is; the trace handler counts and
+# RTEs, so every instruction (T1) or every change of flow (T0) takes vector
+# 9 until an exception or a MOVE to SR ends the run. Judges the staged
+# trace, its format-$2 frame and the engine's hand-over of a traced core to
+# execute(). --t0only raises T0 alone: with State::TRACING0 dropped, the two
+# native arms below fail (a branch compiled inline takes no trace).
 add_test(NAME jit_program_fuzz_030_trace_test
          COMMAND jit_program_fuzz --model 30 --tracebit --ext --ext2 --sys --smc --mmu --fpu
                  --irq-timed --savestate --slices 20 --seeds 200)
@@ -183,8 +186,16 @@ add_test(NAME jit_program_fuzz_020_trace_blocks_test
 add_test(NAME jit_program_fuzz_000_trace_blocks_test
          COMMAND jit_program_fuzz --model 0 --tracebit --sys --smc --irq-timed
                  --savestate --slices 20 --seeds 200)
-set_tests_properties(jit_program_fuzz_030_trace_test PROPERTIES
+add_test(NAME jit_program_fuzz_030_t0_test
+         COMMAND jit_program_fuzz --model 30 --t0only --ext --ext2 --sys --smc --mmu --fpu
+                 --irq-timed --savestate --slices 20 --seeds 200)
+add_test(NAME jit_program_fuzz_040_t0_test
+         COMMAND jit_program_fuzz --model 40 --t0only --ext --ext2 --sys --smc --mmu --fpu
+                 --irq-timed --savestate --slices 20 --seeds 200)
+set_tests_properties(jit_program_fuzz_030_trace_test jit_program_fuzz_030_t0_test PROPERTIES
                      ENVIRONMENT "POM68K_JIT_PROFIT_SCORE=0")
+set_tests_properties(jit_program_fuzz_030_t0_test jit_program_fuzz_040_t0_test
+                     PROPERTIES LABELS "jit;unit" TIMEOUT 300)
 set_tests_properties(jit_program_fuzz_020_trace_blocks_test jit_program_fuzz_000_trace_blocks_test
                      PROPERTIES
                      ENVIRONMENT "POM68K_CPU_ENGINE=jit;POM68K_JIT_BACKEND=threaded;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=1")

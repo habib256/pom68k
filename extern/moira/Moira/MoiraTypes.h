@@ -471,6 +471,12 @@ static constexpr int CHECK_CP       = (1 << 9);
 // instruction through execute() — never generated code, which keeps no log.
 static constexpr int RTE_REPLAY     = (1 << 10);
 
+// POM68K: reflects the T0 flag from the status register on the 68020 and up
+// (trace on change of flow). It carries no behaviour of its own: a non-zero
+// `flags` keeps the instruction in execute(), out of generated code, where
+// traceFlow() can stage the trace exception.
+static constexpr int TRACING0       = (1 << 11);
+
 }
 
 /* Instruction Flags
@@ -511,6 +517,7 @@ static constexpr u64 IMPL_DEC       = (1 << 14);  // Omit 2 cycle delay in -(An)
 // POM68K O4 slice 3 (68030 MMU bus layer)
 static constexpr u64 MMU_NOFIXUP    = (1 << 15);  // Suppress (An)± fixup arming (MOVEM)
 static constexpr u64 MMU_RAWBUF     = (1 << 16);  // 030 write buffer holds the value as passed (FScc, ADD/SUB)
+static constexpr u64 FLOW           = (1 << 17);  // fullPrefetch after a change of flow (T0 trace)
 }
 
 //

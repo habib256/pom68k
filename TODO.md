@@ -311,7 +311,7 @@ Plusieurs rangs de l'inventaire ne tiennent encore que par un boot.
 - [ ] **Activer la RAM stricte dans le replay public après avoir tranché
   son écart d'historique PMMU.** `tools/cpu_vectors.py replay` ne passe
   pas `--strict-ram`. Avec ce contrôle, le corpus public 030 passe
-  983 / 984 : `$2010A3` vaut `$09` au lieu de `$01` sur le vecteur
+  1063 / 1064 : `$2010A3` vaut `$09` au lieu de `$01` sur le vecteur
   `rmw/identity seed=2026111532 #15 geometry=4k-2level-long`.
   Même résultat vérifié sur `45bb774` et sur D12 ; aucune différence
   nouvelle due aux frames. Ne pas transformer ce cas en exception de
@@ -438,15 +438,24 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   vrai 68030 (TAS sur page protégée, DF effacé par le gestionnaire). Le
   020/EC020 garde sa reprise propre (`berr020_test`). Garder `berr030_test`
   et les boots.
-- [ ] **Implémenter T0, la trace sur changement de flux (68020 à 68040).**
-  Le bit est stocké et n'a aucun effet. [B] MC68030UM-1989 §8.1.7 et
-  MC68040UM-1993 §8.2.6 (liste d'instructions du 68040) : branchements
-  pris, sauts, retours, trappes, manipulations de SR. WinUAE le fait par
-  `check_t0_trace` aux recharges du préfetch. L'outillage existe depuis le
-  2026-11-19 (`CHANGELOG` (nineteenth)) : `fuzz030.py`/`fuzz040.py
-  --trace t0`, et le pas tracé de `sst68030`/`sst68040`. Mesure de départ,
-  68030 core/off seed 11 : 2 064 / 3 000. Le JIT doit rendre la main à
-  l'interpréteur sous T0 (aucun drapeau `State` aujourd'hui).
+- [ ] **T0 : les restes après l'implémentation du 2026-11-20.** La trace sur
+  changement de flux suit l'oracle (`CHANGELOG` 2026-11-20). Restes :
+  (1) un FBcc pris vers une cible impaire sous T0, 68030 : l'oracle prend la
+  trace d'abord (PC impair empilé), le cœur lève l'erreur d'adresse tout de
+  suite — 11 vecteurs sur 12 000 `random/off seed=31` ; (2) sur 68040,
+  quatre directions où le manuel ne nomme que le mnémonique et où le cœur
+  suit WinUAE : `MOVEC Rc,Rn`, `MOVE USP,An`, FMOVEM depuis la mémoire et
+  FRESTORE ne tracent pas ([F] au site, `traceFlow040`) ; (3) le 68020 nu
+  n'a que `moira_rules_test`, aucun oracle ; (4) STOP sous T0 quand le SR
+  chargé ne change ni T, ni S, ni M, ni le masque : le cœur trace (manuel),
+  WinUAE non (retour anticipé de `MakeFromSR_x`) — tranché pour le manuel,
+  un vrai 68030/68040 le confirmerait.
+- [ ] **Trancher `LINK A7` sur 68030.** Le cœur empile A7 décrémenté sur
+  tous les modèles (règle SingleStepTests du 68000) ; la table 68030 de
+  WinUAE (`cpuemu_32.c`, `op_4808_32_ff` et la forme mot) empile A7
+  d'origine, sa table 68040 A7 décrémenté. 24 vecteurs ciblés sur 24
+  (2026-11-20), sans lien avec la trace ; aucun corpus épinglé ne
+  contient ce cas. [F] : un 68030 réel, ou l'ordre du microcode.
 - [ ] **Généraliser le report du pipe de préfetch.** `mmuCapturePipe`
   capture quatre mots après PMOVE TC/CRP/SRP seulement, pour un idiome de
   la ROM LC II ; PFLUSH, une écriture de TT ou une cible de saut n'ont rien.

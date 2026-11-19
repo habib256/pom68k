@@ -2037,7 +2037,7 @@ Moira::execFBcc(u16 opcode)
         }
 
         reg.pc = newpc;
-        fullPrefetch<C, POLL>();
+        fullPrefetch<C, POLL | FLOW>();
 
     } else {
 
@@ -2109,7 +2109,7 @@ Moira::execFDbcc(u16 opcode)
             }
 
             reg.pc = newpc;
-            fullPrefetch<C, POLL>();
+            fullPrefetch<C, POLL | FLOW>();
 
         } else {
 
@@ -2122,6 +2122,8 @@ Moira::execFDbcc(u16 opcode)
         reg.pc += 2;
         fullPrefetch<C, POLL>();
     }
+
+    traceFlow040<C>();                       // T0: FDBcc, taken or not
 
     CYCLES_68020(ck)
 
@@ -2357,6 +2359,7 @@ Moira::execFSave(u16 opcode)
         fpu.expPend = 0;
         prefetch<C, POLL>();
         CYCLES_68020(frameSize == 4 ? FPU_CK_FSAVE_NULL : FPU_CK_FSAVE_IDLE2)
+        traceFlow040<C>();                   // T0: FSAVE, always
         FINALIZE
         return;
     }
@@ -3264,6 +3267,7 @@ Moira::execFMovem(u16 opcode)
 
             if constexpr (M == Mode::PI) writeA(n, ad);
             if constexpr (M == Mode::PD) writeA(n, ad - incr);
+            if (toEa) traceFlow040<C>();     // T0: FMOVEM control registers to memory
         }
 
     } else {
@@ -3402,6 +3406,7 @@ Moira::execFMovem(u16 opcode)
         if (mmu030) mmuLogging = logSave;
 
         if constexpr (M == Mode::PI || M == Mode::PD) writeA(n, ad);
+        if (toEa) traceFlow040<C>();         // T0: FMOVEM registers to memory
     }
 
     prefetch<C, POLL>();

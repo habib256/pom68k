@@ -926,6 +926,19 @@ Moira::execAndiccr(u16 opcode)
         u8  dst = getCCR();
         setCCR(u8(logic<C, I, S>(src, dst)));
         prefetch<C, POLL>();
+
+        // T0: ANDI, ORI and EORI to CCR are traced below the 68040.
+        // [B] MC68030UM-1989 §8.1.7 — the mode "includes status register
+        //     manipulations", traced "any time an instruction that can
+        //     modify the status register is executed".
+        // [B] MC68040UM-1993 §8.2.6 — the 68040's list has the three "to
+        //     SR" forms only.
+        // [D] WinUAE @ Hatari e77819f7 — cpuemu_32.c ANDSR.B/ORSR.B/EORSR.B
+        //     run check_t0_trace, cpuemu_31.c does not; MOVE to CCR is
+        //     traced on neither.
+        if constexpr (C == Core::C68020) {
+            if (cpuModel < Model::M68EC040) traceFlow();
+        }
     }
 
     //           00  10  20        00  10  20        00  10  20
@@ -1027,7 +1040,7 @@ Moira::execBra(u16 opcode)
     }
 
     reg.pc = newpc;
-    fullPrefetch<C, POLL>();
+    fullPrefetch<C, POLL | FLOW>();
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -1096,7 +1109,7 @@ Moira::execBcc(u16 opcode)
 
         // Take branch
         reg.pc = newpc;
-        fullPrefetch<C, POLL>();
+        fullPrefetch<C, POLL | FLOW>();
 
         //           00  10  20        00  10  20        00  10  20
         //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -1643,7 +1656,7 @@ Moira::execBsr(u16 opcode)
 
         // Jump to new address
         reg.pc = newpc;
-        fullPrefetch<C, POLL>();
+        fullPrefetch<C, POLL | FLOW>();
 
     } else {
 
@@ -1690,7 +1703,7 @@ Moira::execBsr(u16 opcode)
         // Jump to new address
         reg.pc = newpc;
 
-        fullPrefetch<C>();
+        fullPrefetch<C, FLOW>();
     }
 
 
@@ -1778,7 +1791,7 @@ Moira::execCallm(u16 opcode)
     writeR(moduleReg, moduleData);
     reg.sp = frame;                    // A7 selection is intentionally lost
     reg.pc = entry + 2;
-    fullPrefetch<C, POLL>();
+    fullPrefetch<C, POLL | FLOW>();
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -1865,6 +1878,8 @@ Moira::execCas(u16 opcode)
     }
 
     prefetch<C, POLL>();
+
+    traceFlow040<C>();
 
     FINALIZE
 }
@@ -1973,6 +1988,8 @@ Moira::execCas2(u16 opcode)
     prefetch<C, POLL>();
 
     CYCLES_68020 (12)
+
+    traceFlow040<C>();
 
     FINALIZE
 }
@@ -2712,7 +2729,7 @@ Moira::execDbcc(u16 opcode)
             // Branch
             if (takeBranch) {
                 reg.pc = newpc;
-                fullPrefetch<C, POLL>();
+                fullPrefetch<C, POLL | FLOW>();
                 CYCLES_68000(10);
                 CYCLES_68020(6);
 
@@ -3036,7 +3053,7 @@ Moira::execJmp(u16 opcode)
     reg.pc = ea;
 
     // Fill the prefetch queue
-    fullPrefetch<C, POLL>();
+    fullPrefetch<C, POLL | FLOW>();
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -3180,6 +3197,8 @@ Moira::execJsr(u16 opcode)
             prefetch<C>();
             break;
     }
+
+    if constexpr (C == Core::C68020) traceFlow();    // T0: a jump
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -4202,6 +4221,8 @@ Moira::execMovecRxRc(u16 opcode)
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
     CYCLES_IP   ( 0,  0,  0,        0,  0,  0,        0, 10, 12);
 
+    traceFlow040<C>();
+
     FINALIZE
 }
 
@@ -4778,6 +4799,8 @@ Moira::execMoves(u16 opcode)
     CYCLES_AW   ( 0, 26,  9,        0, 26,  9,        0, 32,  9)
     CYCLES_AL   ( 0, 30,  9,        0, 30,  9,        0, 36,  9)
 
+    traceFlow040<C>();
+
     FINALIZE
 }
 
@@ -5057,6 +5080,8 @@ Moira::execMoveAnUsp(u16 opcode)
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
     CYCLES_IP   ( 0,  0,  0,        0,  0,  0,        4,  6,  2)
+
+    traceFlow040<C>();
 
     FINALIZE
 }
@@ -6048,6 +6073,8 @@ Moira::execNop(u16 opcode)
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
     CYCLES_IP   ( 0,  0,  0,        0,  0,  0,        4,  4,  2)
 
+    traceFlow040<C>();
+
     FINALIZE
 }
 
@@ -6294,7 +6321,7 @@ Moira::execRtd(u16 opcode)
     }
 
     setPC(newpc);
-    fullPrefetch<C, POLL>();
+    fullPrefetch<C, POLL | FLOW>();
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -6809,7 +6836,10 @@ Moira::execRte(u16 opcode)
     }
 
     setPC(newpc);
-    fullPrefetch<C, POLL>();
+    // The rerun of a format-$7 frame is not a traced change of flow either
+    // (above: no trace before the rerun; "040 core/off seed=11 #2576
+    // trace=t0", 2026-11-20).
+    if (rerun040) fullPrefetch<C, POLL>(); else fullPrefetch<C, POLL | FLOW>();
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -6860,7 +6890,7 @@ Moira::execRtm(u16 opcode)
     writeR(moduleReg, oldModuleData);
     reg.sp = (type == 1 && accessStatus >= 4 ? savedSp : frame + 24) + argc;
     reg.pc = newPc;
-    fullPrefetch<C, POLL>();
+    fullPrefetch<C, POLL | FLOW>();
 
     CYCLES_68020(19)
 
@@ -6935,7 +6965,7 @@ Moira::execRtr(u16 opcode)
     }
 
     setPC(newpc);
-    fullPrefetch<C, POLL>();
+    fullPrefetch<C, POLL | FLOW>();
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -6990,7 +7020,7 @@ Moira::execRts(u16 opcode)
     }
 
     setPC(newpc);
-    fullPrefetch<C, POLL>();
+    fullPrefetch<C, POLL | FLOW>();
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -7101,6 +7131,8 @@ Moira::execStop(u16 opcode)
     // POM68K: the first iteration tested the interrupt with the OLD mask
     // (Moira.h § stopGraceUntil).
     if constexpr (C == Core::C68000) stopGraceUntil = clock + 4;
+
+    traceFlow040<C>();
 
     FINALIZE
 }
@@ -7484,6 +7516,8 @@ Moira::execCinv(u16 opcode)
 
     CYCLES_68020(4)
 
+    traceFlow040<C>();
+
     FINALIZE
 }
 
@@ -7505,6 +7539,8 @@ Moira::execCpush(u16 opcode)
     prefetch<C, POLL>();
 
     CYCLES_68020(4)
+
+    traceFlow040<C>();
 
     FINALIZE
 }

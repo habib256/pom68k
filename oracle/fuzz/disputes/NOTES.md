@@ -1187,3 +1187,30 @@ replaces precisely that expected IA, and compares every other CPU/FPU/RAM
 field normally. Corrected or invalid oracle frames fail as stale. Contract
 tests cover both harnesses, unrelated register/RAM changes, incorrect IA,
 resume-PC corruption, malformed addresses and duplicate or missing rules.
+
+<a id="d41-d42-trace-sweep"></a>
+### D41, D42 — two rulings from the trace sweep (2026-11-20)
+
+The trace vectors of 2026-11-19/20 (`fuzz030.py`/`fuzz040.py --trace`, and
+targeted cells of 12 states per instruction form) left two classes where
+the fork keeps its answer. Neither is in a pinned corpus.
+
+**D41 — STOP under T0 with an unchanged SR.** STOP #$6700 entered with
+SR = $67xx: WinUAE's `MakeFromSR_x` returns early when T1, T0, S, M and the
+interrupt mask are unchanged, before the `oldt0 && t0trace` test, so no
+trace is armed and the processor stops (11 of 12 targeted 68030 vectors, 9
+of 12 on the 68040; the others change M). STOP #$2700 from the same SR is
+traced by both. The fork traces every SR write made while T0 is set.
+MC68030UM-1989 §8.1.7 (PDF p. 416) puts status register manipulations in
+the mode; MC68040UM-1993 §8.2.6 (PDF p. 223) lists STOP and says a traced
+STOP never enters the stopped condition.
+
+**D42 — LINK A7 on the 68030.** `LINK.W A7` and `LINK.L A7`: the oracle's
+68030 table reads the source register before it decrements A7 and pushes
+the entry value; its 68040 table pushes the decremented one. The fork
+pushes the decremented value on every model, the 68000 behaviour measured
+by SingleStepTests/680x0. 24 of 24 targeted 68030 vectors differ, with or
+without a trace bit; the 68040 ones agree.
+
+A taken FBcc to an odd target under T0 (11 vectors of 12 000) is D28 seen
+through the trace: the oracle sets the odd PC, traces, and stacks it.

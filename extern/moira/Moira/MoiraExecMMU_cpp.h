@@ -1493,6 +1493,8 @@ Moira::execPFlush40(u16 opcode)
 
     CYCLES_68020(4)
 
+    traceFlow040<C>();
+
     FINALIZE
 }
 
@@ -1829,6 +1831,8 @@ Moira::execPTest40(u16 opcode)
     prefetch<C, POLL>();
 
     CYCLES_68020(8)
+
+    traceFlow040<C>();
 
     FINALIZE
 }

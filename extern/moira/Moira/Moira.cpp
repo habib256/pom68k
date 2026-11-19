@@ -577,7 +577,7 @@ Moira::execute()
         const bool rteContinues =
             (flags & RTE_REPLAY) && mmuReplayArmed && reg.pc == mmuReplayPc;
 
-        if (flags & (HALTED | TRACE_EXC | TRACING)) {
+        if (flags & (HALTED | TRACE_EXC | TRACING | TRACING0)) {
 
             // Only continue if the CPU is not halted
             if (flags & HALTED) {
@@ -617,13 +617,15 @@ Moira::execute()
                 goto done;
             }
 
+            // The instruction about to run is the one a trace exception
+            // would report: its address goes into the format-$2 trace frame
+            // of the 68020 and up (execException, TRACE), whether T1 traces
+            // it or T0 does because it changes the flow (traceFlow).
+            if (flags & (TRACING | TRACING0)) tracePc040 = reg.pc;
+
             // Check if the T flag is set inside the status register
             if ((flags & TRACING) && !(flags & STOPPED)) {
                 flags |= TRACE_EXC;
-                // The instruction about to run is the traced one: its
-                // address goes into the format-$2 trace frame of the 68020
-                // and up (execException, TRACE).
-                tracePc040 = reg.pc;
             }
         }
 
@@ -970,6 +972,21 @@ Moira::setSR(u16 val)
     // RTE chains. Harness state loads are safe: reset() precedes them.
     if (cpuModel >= Model::M68EC040 && (reg.sr.t1 || reg.sr.t0))
         trace040Pending = true;
+
+    // The same rule on the 68020 and 68030 through the staged trace: an SR
+    // write made while T0 was set is a change of flow, whatever it loads.
+    // [B] MC68030UM-1989 §8.1.7 — trace on change of flow "includes status
+    //     register manipulations".
+    // [B] MC68040UM-1993 §8.2.6 — a traced STOP "never enters the stopped
+    //     condition".
+    // [D] WinUAE @ Hatari e77819f7 — MakeFromSR_x, `oldt0 && t0trace`; but
+    //     it returns before that test when the write changes none of T1,
+    //     T0, S, M and the mask, so STOP #$6700 entered with exactly that
+    //     SR is not traced there and stops. The manuals know no such
+    //     exception and are not overruled by an emulator's shortcut: the
+    //     fork traces it on every model (ruling D41, oracle/README.md).
+    else if (cpuModel >= Model::M68020 && reg.sr.t0 && !reg.sr.t1)
+        flags |= State::TRACE_EXC;
 
     // [F] POM68K: empirical IRQ-recognition delay after an SR write lowers
     // the mask, applied to 68020+ (POM68K_VENDOR.md § IRQ delay). The

@@ -65,8 +65,13 @@ template<class Ar> void Moira::pomVisitState(Ar& ar)
        fclCanonical, fcSource, exception, loopModeDelay,
        readBuffer, writeBuffer, guestFlags);
     if constexpr (Ar::loading) fcl = fclCanonical;
-    if constexpr (Ar::loading)
+    if constexpr (Ar::loading) {
         flags = (guestFlags & ~kDebugFlags) | liveDebug;
+        // POM68K: TRACING0 mirrors SR.T0 (MoiraTypes.h). A state saved before
+        // 2026-11-20 has the bit without the flag; derive it, so that a
+        // guest saved with T0 set is traced after the load.
+        if (reg.sr.t0) flags |= State::TRACING0; else flags &= ~State::TRACING0;
+    }
 
     // 68881/68882 state. FpuExtended is a plain {high, low} pair with no
     // visit(), so its halves are listed explicitly.

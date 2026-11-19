@@ -1975,8 +1975,55 @@ private:
     void clearTraceFlag() { reg.sr.t1 = false; flags &= ~State::TRACING; }
     
     // Enables or disables trace mode (T0 flag)
-    void setTrace0Flag() { reg.sr.t0 = true; }
-    void clearTrace0Flag() { reg.sr.t0 = false; }
+    void setTrace0Flag() { reg.sr.t0 = true; flags |= State::TRACING0; }
+    void clearTrace0Flag() { reg.sr.t0 = false; flags &= ~State::TRACING0; }
+
+    // POM68K: trace on change of flow (T1 = 0, T0 = 1). Called by an
+    // instruction that changed the program flow, once it can no longer
+    // fault: it takes the trace exception when it completes, like an
+    // instruction that began with T1 set.
+    // [B] MC68030UM-1989 §8.1.7 — "Instructions that are traced in this
+    //     mode include all branches, jumps, instruction traps, returns, and
+    //     coprocessor instructions that modify the program counter flow.
+    //     This mode also includes status register manipulations".
+    // [B] MC68040UM-1993 §8.2.6 — the 68040's own list.
+    // [D] WinUAE @ Hatari e77819f7 — check_t0_trace.
+    // Gate: cpu_vectors030_test, cpu_vectors040_test (trace=t0 cells).
+    void traceFlow() {
+        if (reg.sr.t0 && !reg.sr.t1) [[unlikely]] flags |= State::TRACE_EXC;
+    }
+    // An instruction trap (TRAP, TRAPcc, TRAPV, CHK, CHK2, zero divide)
+    // taken under T0 is traced once its own exception is processed, on the
+    // 68020 and 68030 — where a T1 trace stays pending over the same
+    // exceptions. `status` is the SR the trap stacked.
+    // [B] MC68030UM-1989 §8.1.7 — "instruction traps" are in the list, and
+    //     "the forced exception processing occurs before the trace
+    //     exception is processed".
+    // [D] WinUAE @ Hatari e77819f7 — the exception's pipe refill runs
+    //     check_t0_trace; on the 68040 exception_check_trace drops it.
+    // The 68040 also traces, under T0, instructions that synchronize or
+    // reload its pipeline without branching.
+    // [B] MC68040UM-1993 §8.2.6 — the list: CAS, CAS2, CINV, CPUSH, FDBcc,
+    //     FMOVEM, FRESTORE, FSAVE, MOVE USP, MOVEC, MOVES, NOP, PFLUSH,
+    //     PTEST, STOP, besides the branches, jumps, returns and SR writes.
+    // [D] WinUAE @ Hatari e77819f7 (cpuemu_31.c, fpp.c trace_t0_68040)
+    //     narrows four of them by direction: MOVEC and MOVE USP to the
+    //     register, FMOVEM to memory, and no FRESTORE. The fork follows the
+    //     oracle where the manual names only the mnemonic.
+    // [F] Whether MOVEC Rc,Rn, MOVE USP,An, FMOVEM from memory and
+    //     FRESTORE trace on silicon. Settled by: a 68040 run under T0 over
+    //     those four.
+    template <Core C> void traceFlow040() {
+        if constexpr (C == Core::C68020) {
+            if (cpuModel >= Model::M68EC040) traceFlow();
+        }
+    }
+    template <Core C> void traceInstructionTrap(u16 status) {
+        if constexpr (C == Core::C68020) {
+            if (cpuModel < Model::M68EC040 && (status & 0xC000) == 0x4000) [[unlikely]]
+                flags |= State::TRACE_EXC;
+        }
+    }
     
     // Disables both trace flags (T0 and T1)
     void clearTraceFlags() { clearTraceFlag(); clearTrace0Flag(); }
