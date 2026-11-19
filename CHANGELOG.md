@@ -1424,6 +1424,16 @@ interrupts, and one with `--dcache --mmu --sys --ext --savestate`) ran
 threaded ran 5 000 seeds in window mode and with blocks. All clean. Gates
 `jit_program_fuzz_{020,030,040}_ext2_test`.
 
+Then all eleven board locksteps on x64 (Rosetta, not instrumented) at
+2 000 000 jittered checkpoints: identical, full RAM identical. The IIfx
+stood out, compiling 857 695 blocks for 2.8 M runs where a64 compiles
+9 924. The board lockstep now prints flush causes, and they are the same
+on both hosts. 25 201 "wrapper hint/reset" flushes in 611 M guest cycles,
+one every 24 k cycles, all from `IIfxCpu::didChangeCACR`, which still drops
+the JIT on every CACR write. That is the open TODO item awaiting the IIfx's
+store inventory (SCSI DMA, IOPs). a64 absorbs it on the fetch window (32.6 M
+window instructions); x64 recompiles. This is cost, not divergence.
+
 ## 2026-11-19 (tenth) — FBcc's sixth predicate bit on the 6888x: settled by its manual
 
 Since 2026-11-07, FBcc evaluates five predicate bits on every FPU, like

@@ -219,6 +219,15 @@ int run(const char* name, std::function<std::unique_ptr<Mem>()> makeMem,
                 name, steps, (long long)cpuRef->getClock(),
                 (unsigned long long)st.blocksCompiled, (unsigned long long)st.blocksRun,
                 (unsigned long long)st.windowInstrs);
+    // Flush causes: a backend whose compile count runs far ahead of its
+    // block runs is invalidating something in a loop.
+    std::printf("[jit_lockstep_board]   flushes=%llu invalidations=%llu:",
+                (unsigned long long)st.flushes, (unsigned long long)st.invalidations);
+    for (int i = 0; i < int(jit::Flush::Count); i++)
+        if (st.flushCauses[i])
+            std::printf(" %s=%llu", jit::flushName(jit::Flush(i)),
+                        (unsigned long long)st.flushCauses[i]);
+    std::printf("\n");
     return 0;
 }
 

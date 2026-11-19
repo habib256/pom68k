@@ -636,7 +636,10 @@ d'instruction.
   2026-11-13 (`CHANGELOG` (fifth)).
   `kJitStoreInventoryComplete` ne manque plus que sur le IIfx, qui vide
   le JIT à chaque écriture de CACR (DMA SCSI et IOP à auditer avant toute
-  déclaration ; compter d'abord les vidages par trame au Finder). GLUE et
+  déclaration ; compter d'abord les vidages par trame au Finder). Point de
+  départ mesuré le 2026-11-19 : 25 201 vidages en 611 M cycles de boot
+  (`jit_lockstep_board_test iifx 2000000`, qui imprime désormais les
+  causes) ; x64 y recompile 857 695 blocs contre 9 924 sur a64. GLUE et
   Pb030 l'ont depuis le 2026-11-12 (`CHANGELOG` (eighth), (ninth)) :
   SE/30 sous System 7 quatre fois plus vite, PowerBook 030 −29 à −40 %.
   Restes : `se30_boot_etalon` perd 5 % (blocs périmés gardés à travers
