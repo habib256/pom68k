@@ -1456,6 +1456,15 @@ sat at guest clock 96 874 until it was killed. After it, that mode ran
 - a64 `m040`: 107 / 107.
 - x64 `asset-none`: 170 / 170, under the same regenerations.
 
+After the push (CI green):
+- Every interrupt mode on the 68040 and 68030 is clean: `--irq --savestate
+  --ext --sys`, `--irq-timed --fpexc --ext --savestate`, and `--irq-timed
+  --mmuprot --sys --ext --smc --savestate`, at 8 000 seeds each on a64 and
+  2 000 on x64.
+- `build-cpu-sanitize` (ASan/UBSan, rebuilt on all of the day's Moira
+  changes), `ctest -L "jit|cpu-vectors" -LE "m030|m040"`: 76 / 76 executed,
+  0 soft-skipped, no sanitizer report.
+
 ## 2026-11-19 (seventh) — Page sizes in the program fuzzer; a split CAS.L's locked-read fault on the 68040
 
 `jit_program_fuzz --mmupage` (implies `--mmu`) picks a seeded page size: on
