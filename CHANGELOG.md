@@ -1415,6 +1415,18 @@ six bits" in its BSUN-handler description. The TODO item is narrowed to the
 68040, and the lock gains §4.7.3 and Table 4-20. No behaviour change;
 `moira_rules_test` fbccPredicateIsFiveBits still holds both rigs.
 
+Soak the same morning, on the binary of the FMOVE.P fix, of combinations not
+run before:
+- `--fpexc --fpu --mmuprot --sys --ext --savestate --irq-timed`;
+- `--dcache --mmuprot --mmupage --fpu --sys --ext --smc --savestate`;
+- `--fpexc --fpu --mmutt --mmupage --ext --irq`;
+- `--smc --mmuprot --mmutt --mmupage --len 120 --raw 10 --sys`.
+
+Every one ran 10 000 seeds per model on a64 and 2 500 on x64 (Rosetta),
+clean. With `POM68K_040_DCACHE=1`, the Quadra 630, Quadra 700 and Centris
+650 board locksteps at 2 000 000 jittered checkpoints are identical, full
+RAM identical.
+
 ## 2026-11-19 (ninth) — FMOVE.P of a zero with k > +17 sets OPERR (ruling D40)
 
 Closes the TODO item "Vérifier OPERR pour FMOVE.P de zéro avec k-facteur
