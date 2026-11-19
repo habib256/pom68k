@@ -1629,13 +1629,12 @@ void memProbe(Asm& a, const Layout& L, bool super, int bytes, bool write,
             a.lsrW(12, 12, 3);
             a.addImmW(12, 12, 1);
         }
-        if (countCacheHit) {
-            addCacheRot040(a, L.cache040DRot);
-        } else if (cacheWrite) {
-            a.ldrW(13, 1, kCacheRotD); a.addW(12, 12, 13); a.strW(12, 1, kCacheRotD);
-        } else {
-            a.strW(12, 1, kCacheRotD);
-        }
+        // Every native hit stages its count; the instruction's retirement
+        // (or a pair's publication) commits it, so a later exit to the
+        // slow path — an odd RTS target, say — leaves Moira's exact replay
+        // the only count (commitAtcInstruction040).
+        if (!gAtcContext040) initAtcContext040(a, L);
+        a.ldrW(13, 1, kCacheRotD); a.addW(12, 12, 13); a.strW(12, 1, kCacheRotD);
         if (countCacheHit) {
             a.ldrX(12, 0, L.cache040Hits);
             a.addImmX(12, 12, 1);

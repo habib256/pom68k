@@ -1402,6 +1402,41 @@ Newest first.
 ---
 
 <a id="2026-11-19-sanitizers"></a>
+## 2026-11-19 (fourteenth) — A native D-cache hit counted twice when its instruction was replayed
+
+The random flag-combination soak (180 option sets drawn from every
+fuzzer flag, 2 000 seeds each) found one failure: 68040 seed 9121429,
+with `--dcache` under the MMU and timed interrupts. Interpreter and
+translator disagreed on the D-cache replacement counter, `rot`: $0 against
+$2. Both native backends failed it; threaded passed. Disabling
+`POM68K_JIT_040_LINE_READ` alone made it pass.
+
+The case is an RTS that pops an odd return address 3 314 times. The native
+RTS reads the return address through the published-line hit path, which
+counted the hit into `pomCache040D.rot` at once, being the instruction's
+sole access. It then found the target odd and left for the slow path.
+Moira's exact replay counted the same read again: one extra count per
+pass, modulo 4. Any native instruction that leaves for the slow path after
+a counted read hit had the same defect, not just RTS: a JMP/JSR target,
+for instance.
+
+Native D-cache counts are now staged. They accumulate in the frame slot
+`cacheRotD`, which `initAtcContext040` / `beginAtcInstruction040` clear at
+the start of every memory instruction, and are committed at retirement by
+`commitAtcInstruction040`. A pair that publishes its hits early still
+commits through `commitDeferredCacheRot040`, which now clears the slot so
+the retirement commit cannot count it twice. An exit to the slow path drops
+the staged count and leaves the replay's as the only one. Both a64 and
+x64 are changed. The diagnostic `Cache040::hits` counter is still
+incremented at the probe.
+
+After the fix, the seed passes on a64 and x64. 4 000 seeds each of three
+`--dcache` combinations on a64 and 1 500 each of two on x64 are clean. The
+14 dcache, copyback and 040-board gates pass, and the Quadra 630, Quadra
+700 and Centris 650 board locksteps under `POM68K_040_DCACHE=1` at
+2 000 000 checkpoints are identical. Gate
+`jit_program_fuzz_040_dcache_replay_test` (the pre-fix binary fails it).
+
 ## 2026-11-19 (thirteenth) — The IIfx earns its store inventory: the CACR flush retired on the last 68030 board
 
 The IIfx was the only 68030 board still dropping all generated code on a

@@ -33,6 +33,13 @@ void initAtcContext040(Asm& a, const Layout& L) {
         a.movW(12, gAtcInstruction040->fetchWords040 & 3);
         a.strW(12, 1, kAtcCacheFetches040);
         a.strB(31, 1, kAtcCacheSaved040);
+        // The D-cache counts of this instruction's native hits, staged
+        // until it retires (commitAtcInstruction040). Seen 2026-11-19: a
+        // native RTS counted its stack read's hit, found an odd return
+        // address, and left for the slow path — whose exact replay counted
+        // the same read again (jit_program_fuzz --dcache, 68040 seed
+        // 9121429: rot interp $0 jit $2).
+        a.strW(31, 1, uint32_t(offsetof(Frame, cacheRotD)));
     }
     gAtcContext040 = true;
 }
@@ -91,11 +98,15 @@ void addCacheRot040(Asm& a, uint32_t rot) {
     a.strB(13, 0, rot);
 }
 
-// The deferred D-cache delta of the cache-only probes, once their hits are
-// published (commitReplayableMemory, the atomic MOVE cache pair).
+// The staged D-cache delta of this instruction's native hits: committed
+// early once a cache-only pair has published its hits
+// (commitReplayableMemory, the atomic MOVE cache pair), otherwise at
+// retirement (commitAtcInstruction040). The slot is cleared, so the
+// retirement commit never counts a delta twice.
 void commitDeferredCacheRot040(Asm& a, const Layout& L) {
     a.ldrW(12, 1, kCacheRotD);
     addCacheRot040(a, L.cache040DRot);
+    a.strW(31, 1, kCacheRotD);
 }
 
 void commitAtcInstruction040(Asm& a, const Layout& L) {
@@ -116,6 +127,7 @@ void commitAtcInstruction040(Asm& a, const Layout& L) {
             addCacheRot040(a, L.cache040IRot);
             a.strW(31, 1, kAtcCacheFetches040);
             a.strB(31, 1, kAtcCacheSaved040);
+            commitDeferredCacheRot040(a, L);    // the staged D-cache hits
         }
     }
     if (!gAtcContext040) {

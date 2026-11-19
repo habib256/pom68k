@@ -18,6 +18,9 @@ void Emitter::beginAtcInstruction040(size_t i) {
     if (L_.cache040Live) {
         a_.movMI(Sz::L, F(kFAtcCacheFetches040), int32_t(ir_.instrs[i].fetchWords040 & 3));
         a_.movMI(Sz::B, F(kFAtcCacheSaved040), 0);
+        // This instruction's staged D-cache hit counts (the AArch64
+        // generator's initAtcContext040 gives the reason).
+        a_.movMI(Sz::L, F(kFCacheRotD), 0);
     }
     atcContext040_ = true;
 }
@@ -58,6 +61,7 @@ void Emitter::commitDeferredCacheRot040() {
     a_.movRM(Sz::L, R8, F(kFCacheRotD));
     a_.aluMR(Asm::Op::ADD, Sz::B, at(L_.cache040DRot), R8);
     a_.aluMI(Asm::Op::AND, Sz::B, at(L_.cache040DRot), 3);
+    a_.movMI(Sz::L, F(kFCacheRotD), 0);     // never committed twice
 }
 
 void Emitter::commitAtcInstruction040() {
@@ -80,6 +84,7 @@ void Emitter::commitAtcInstruction040() {
             a_.aluMI(Asm::Op::AND, Sz::B, at(L_.cache040IRot), 3);
             a_.movMI(Sz::L, F(kFAtcCacheFetches040), 0);
             a_.movMI(Sz::B, F(kFAtcCacheSaved040), 0);
+            commitDeferredCacheRot040();    // the staged D-cache hits
         }
     }
     if (!atcContext040_) {

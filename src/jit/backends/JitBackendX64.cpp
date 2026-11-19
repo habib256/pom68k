@@ -1842,14 +1842,9 @@ void Emitter::memProbe(Reg addr, int bytes, bool write, Label& miss, AtcRoute ro
             a_.shiftRI(Sz::L, R8, 5, 3);
             a_.aluRI(Asm::Op::ADD, Sz::L, R8, 1);
         }
-        if (countCacheHit) {
-            a_.aluMR(Asm::Op::ADD, Sz::B, at(L_.cache040DRot), R8);
-            a_.aluMI(Asm::Op::AND, Sz::B, at(L_.cache040DRot), 3);
-        } else if (cacheWrite) {
-            a_.aluMR(Asm::Op::ADD, Sz::L, F(kFCacheRotD), R8);
-        } else {
-            a_.movMR(Sz::L, F(kFCacheRotD), R8);
-        }
+        // Every native hit stages its count; retirement (or a pair's
+        // publication) commits it (commitAtcInstruction040).
+        a_.aluMR(Asm::Op::ADD, Sz::L, F(kFCacheRotD), R8);
         // Only sole-access instructions enter this path, so the diagnostic
         // hit count cannot become speculative and then be replayed.
         if (countCacheHit) {

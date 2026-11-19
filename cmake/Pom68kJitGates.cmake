@@ -211,6 +211,15 @@ set_tests_properties(jit_program_fuzz_000_blocks_test PROPERTIES
                      ENVIRONMENT "POM68K_CPU_ENGINE=jit;POM68K_JIT_BACKEND=threaded;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=1")
 set_tests_properties(jit_program_fuzz_000_test jit_program_fuzz_000_blocks_test
                      PROPERTIES LABELS "jit;unit" TIMEOUT 300)
+# 68040 seed 9121429 (--dcache under the MMU, timed interrupts): a native
+# RTS counted its stack read's D-cache hit, found an odd return address and
+# left for the slow path, whose exact replay counted it again. Native hit
+# counts are now staged until the instruction retires.
+add_test(NAME jit_program_fuzz_040_dcache_replay_test
+         COMMAND jit_program_fuzz --model 40 --fpu --ext --ext2 --dcache --mmu
+                 --irq-timed --slices 20 --len 120 --seeds 60 --extra 9121429)
+set_tests_properties(jit_program_fuzz_040_dcache_replay_test PROPERTIES
+                     LABELS "jit;unit" TIMEOUT 300)
 # --lc040: the Quadra 605 / LC 475 CPU with the FPU templates on, so every
 # FPU instruction takes the 68LC040 F-line (vector 11, format $4) inside
 # blocks, under the MMU and across save states.
