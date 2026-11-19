@@ -29,7 +29,7 @@
 //   jit_program_fuzz [--model 0|20|30|40] [--seeds N] [--first S] [--extra S,S..]
 //                    [--len N] [--raw PERMILLE] [--slices N] [--budget CYCLES]
 //                    [-v] [--trace] [--shrink] [--bisect] [--watch-jit]
-//                    [--patch ADDR=WORD] [--progress] [--smc] [--irq] [--irq-timed] [--fpu] [--ext] [--sys] [--fpexc] [--savestate] [--dcache] [--mmu] [--mmuprot] [--mmutt] [--mmupage]
+//                    [--patch ADDR=WORD] [--progress] [--smc] [--irq] [--irq-timed] [--fpu] [--ext] [--ext2] [--sys] [--fpexc] [--savestate] [--dcache] [--mmu] [--mmuprot] [--mmutt] [--mmupage]
 //
 // A failure prints the seed; `--first S --seeds 1 -v` replays it alone.
 // `--shrink` turns body instructions into NOPs while a divergence remains,
@@ -226,6 +226,7 @@ constexpr uint32_t kCode    = 0x00040000;
 constexpr uint32_t kBodyWord = 29;         // first body word: after the prologue
 bool gFpu = false;   // --fpu: 68040 with its FPU, 68030 with a 68882
 bool gExt = false;   // --ext: the wider template set (Gen::ext); changes every program
+bool gExt2 = false;  // --ext2: CAS2, MOVES, TAS, CINV/CPUSH, PFLUSH/PTEST (Gen::ext2)
 bool gFpExc = false;    // --fpexc: FPCR also arms FP exceptions (with --fpu)
 bool gSys = false;      // --sys: SR/USP/RTE/STOP system transitions (Gen::sys)
 bool gDcache = false;   // --dcache: the architectural 68040 caches (POM68K_040_DCACHE), both on
@@ -300,6 +301,7 @@ public:
         if (gFpu && r_.chance(200)) { fpu(); return; }
         if (gExt && r_.chance(250)) { ext(); return; }
         if (gSys && r_.chance(120)) { sys(); return; }
+        if (gExt2 && r_.chance(150)) { ext2(); return; }
         std::vector<uint16_t> e1, e2;
         const uint16_t dn = uint16_t(r_.below(8));
         const uint16_t sz = uint16_t(r_.below(3));
@@ -684,6 +686,61 @@ public:
             emit(uint16_t(0x4E58 | an));
             break;
         }
+        }
+    }
+
+    // --ext2: the locked and alternate-space accesses and the cache/ATC
+    // maintenance --ext leaves out. CAS2 through two address registers
+    // (MC68030UM-1989 CAS2: Rn bit 15 = A); MOVES after SFC/DFC are loaded
+    // with a data or program code; TAS on memory; on the 68040 CINV/CPUSH
+    // of every cache/scope and, under --mmu, PFLUSH/PTEST of an An page;
+    // on the 68030 under --mmu, PFLUSH by FC and EA and PTESTR level 7.
+    // Behind its own flag so every other mode keeps its programs.
+    void ext2() {
+        std::vector<uint16_t> e;
+        const uint16_t an = uint16_t(r_.below(7));
+        switch (r_.below(5)) {
+        case 0: {   // CAS2.W / CAS2.L Dc1:Dc2,Du1:Du2,(An1):(An2)
+            const auto word = [&]() {
+                return uint16_t(0x8000 | r_.below(7) << 12 | r_.below(8) << 6 | r_.below(8));
+            };
+            const uint16_t w1 = word(), w2 = word();
+            emit(r_.chance(500) ? 0x0CFC : 0x0EFC, {w1, w2});
+            break;
+        }
+        case 1: {   // MOVEQ #fc,D0; MOVEC D0,SFC; MOVEC D0,DFC; MOVES
+            static const uint16_t fcs[] = {1, 2, 5, 6};
+            emit(uint16_t(0x7000 | fcs[r_.below(4)]));
+            emit(0x4E7B, {0x0000});
+            emit(0x4E7B, {0x0001});
+            const uint16_t sz = uint16_t(r_.below(3));
+            const uint16_t m = ea(true, false, false, sz == 0 ? 1 : sz == 1 ? 2 : 4, e);
+            const uint16_t x = uint16_t((r_.chance(500) ? 0x8000 : 0) | r_.below(8) << 12 |
+                                        (r_.chance(500) ? 0x0800 : 0));
+            emit(uint16_t(0x0E00 | sz << 6 | m), {x}, e);
+            break;
+        }
+        case 2:     // TAS <memory>
+            emit(uint16_t(0x4AC0 | ea(true, false, false, 1, e)), e);
+            break;
+        default:
+            if (gModel == 40) {
+                if (gMmu && r_.chance(400)) {
+                    static const uint16_t ops[] = {0xF500, 0xF508, 0xF548, 0xF568};
+                    emit(uint16_t(ops[r_.below(4)] | an));    // PFLUSHN/PFLUSH/PTESTW/PTESTR (An)
+                } else {
+                    emit(uint16_t(0xF400 | (1 + r_.below(3)) << 6 | (r_.chance(500) ? 0x20 : 0) |
+                                  (1 + r_.below(3)) << 3 | an));  // CINV/CPUSH line/page/all
+                }
+            } else if (gModel == 30 && gMmu) {
+                if (r_.chance(500))                               // PFLUSH #fc,#7,(An)
+                    emit(uint16_t(0xF010 | an), {uint16_t(0x3800 | 7 << 5 | 0x10 | r_.below(8))});
+                else                                              // PTESTR #fc,(An),#7
+                    emit(uint16_t(0xF010 | an), {uint16_t(0x8000 | 7 << 10 | 0x0200 | 0x10 | r_.below(8))});
+            } else {
+                emit(0x4E71);
+            }
+            break;
         }
     }
 
@@ -1076,6 +1133,7 @@ int main(int argc, char** argv) {
         else if (a == "--irq-timed") gIrq = gIrqTimed = true;
         else if (a == "--fpu") gFpu = true;
         else if (a == "--ext") gExt = true;
+        else if (a == "--ext2") gExt2 = true;
         else if (a == "--sys") gSys = true;
         else if (a == "--fpexc") gFpu = gFpExc = true;
         else if (a == "--savestate") gSave = true;

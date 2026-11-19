@@ -177,6 +177,25 @@ set_tests_properties(jit_program_fuzz_020_irq7_blocks_test PROPERTIES
                      ENVIRONMENT "POM68K_CPU_ENGINE=jit;POM68K_JIT_BACKEND=threaded;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=1")
 set_tests_properties(jit_program_fuzz_020_irq7_test jit_program_fuzz_020_irq7_blocks_test
                      PROPERTIES LABELS "jit;unit" TIMEOUT 300)
+# --ext2: CAS2, MOVES (SFC/DFC loaded), TAS, 68040 CINV/CPUSH and, under
+# --mmu, PFLUSH/PTEST — the locked, alternate-space and cache/ATC
+# maintenance accesses --ext leaves out.
+add_test(NAME jit_program_fuzz_030_ext2_test
+         COMMAND jit_program_fuzz --model 30 --ext2 --ext --sys --smc --mmu
+                 --irq-timed --savestate --slices 20 --seeds 150)
+add_test(NAME jit_program_fuzz_040_ext2_test
+         COMMAND jit_program_fuzz --model 40 --ext2 --ext --sys --smc --mmu --dcache
+                 --irq-timed --savestate --slices 20 --seeds 150)
+add_test(NAME jit_program_fuzz_020_ext2_test
+         COMMAND jit_program_fuzz --model 20 --ext2 --ext --sys --smc --irq-timed
+                 --savestate --slices 20 --seeds 200)
+set_tests_properties(jit_program_fuzz_030_ext2_test PROPERTIES
+                     ENVIRONMENT "POM68K_JIT_PROFIT_SCORE=0")
+set_tests_properties(jit_program_fuzz_020_ext2_test PROPERTIES
+                     ENVIRONMENT "POM68K_JIT_BACKEND=threaded;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=1")
+set_tests_properties(jit_program_fuzz_030_ext2_test jit_program_fuzz_040_ext2_test
+                     jit_program_fuzz_020_ext2_test
+                     PROPERTIES LABELS "jit;unit" TIMEOUT 300)
 # --mmupage: a seeded page size (68030 256 B to 32 KB, 68040 4 or 8 KB),
 # so DTLB slices, refusals and code-window bounds meet pages other than
 # 4 KB.

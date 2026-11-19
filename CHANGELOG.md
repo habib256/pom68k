@@ -1402,6 +1402,28 @@ Newest first.
 ---
 
 <a id="2026-11-19-sanitizers"></a>
+## 2026-11-19 (eleventh) — `--ext2`: CAS2, MOVES, TAS and cache/ATC maintenance in the program fuzzer
+
+The generator never produced CAS2, MOVES, TAS, the 68040's CINV/CPUSH, its
+PFLUSH/PTEST on an An page, or the 68030's page PFLUSH and PTEST. These
+are the locked, alternate-space and maintenance accesses the translator
+must hand back or survive. `--ext2` adds them behind a flag of its own, so
+every other option set keeps its programs and its gate seeds:
+- CAS2.W/.L through two address registers;
+- MOVES of every size and direction, after SFC/DFC are loaded with a user
+  or supervisor, data or program code;
+- TAS on memory;
+- on the 68040, CINV/CPUSH of every cache and scope and, under `--mmu`,
+  PFLUSHN/PFLUSH/PTESTW/PTESTR (An);
+- on the 68030 under `--mmu`, PFLUSH #fc,#7,(An) and PTESTR #fc,(An),#7.
+
+It found nothing. Each of three combinations (`--ext2 --ext --sys --smc
+--fpu`, the same with every MMU mode plus save states and timed
+interrupts, and one with `--dcache --mmu --sys --ext --savestate`) ran
+10 000 seeds per model on a64 and 2 500 on x64 (Rosetta). The 68020 on
+threaded ran 5 000 seeds in window mode and with blocks. All clean. Gates
+`jit_program_fuzz_{020,030,040}_ext2_test`.
+
 ## 2026-11-19 (tenth) — FBcc's sixth predicate bit on the 6888x: settled by its manual
 
 Since 2026-11-07, FBcc evaluates five predicate bits on every FPU, like
