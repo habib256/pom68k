@@ -4309,9 +4309,17 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
         if (!control.valid || control.kind != ControlFlowKind::Return ||
             in.words != 1 || traced030(L, in) != 10) return false;
         auto memory = instructionMemoryPlan(in.memory, proofOptions(L));
-        const MemoryAccessPlan read = memory.access(
+        MemoryAccessPlan read = memory.access(
             MemoryDirection::Read, MemoryOperand::Stack, 4, 3, 7);
         if (!read.valid() || !memory.complete()) return false;
+        // The odd-target check below can still send the instruction to the
+        // slow path, whose replay reads the stack again. An exact thunk is
+        // a real bus access (a device page, the 040 cache's exact path), so
+        // it may not precede a bail: refuse the non-plain page up front and
+        // let the interpreter perform the one read (jit_program_fuzz
+        // --devport, seed 50005621: a stack moved onto the port page read
+        // the return address twice).
+        read.exactThunk = false;
         a.ldrW(9, 0, L.a + 7 * 4);
         memLoadGuest(a, L, ir.super, 32, 11, slow, read);
         a.ubfxW(9, 11, 0, 1); a.cbnzW(9, slow);
@@ -4400,7 +4408,11 @@ bool emitBranchInstr(Asm& a, const Layout& L, const BlockIr& ir,
         if (fullIndirect) {
             addrOfFullIndirectPointer(a, L, ea);
             if (!jsr) {
-                memLoadGuest(a, L, ir.super, 32, 11, slow, pointerRead);
+                // Odd-target and target-word bails follow this read: no
+                // exact thunk ahead of them (see RTS above).
+                MemoryAccessPlan pointerPlain = pointerRead;
+                pointerPlain.exactThunk = false;
+                memLoadGuest(a, L, ir.super, 32, 11, slow, pointerPlain);
                 finishFullIndirect(a, L, ea, 11);
             } else {
                 // computeEA reads the pointer before JSR pushes. Prove both

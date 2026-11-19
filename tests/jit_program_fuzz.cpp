@@ -29,7 +29,7 @@
 //   jit_program_fuzz [--model 0|20|30|40] [--seeds N] [--first S] [--extra S,S..]
 //                    [--len N] [--raw PERMILLE] [--slices N] [--budget CYCLES]
 //                    [-v] [--trace] [--shrink] [--bisect] [--watch-jit]
-//                    [--patch ADDR=WORD] [--progress] [--smc] [--irq] [--irq-timed] [--fpu] [--ext] [--ext2] [--lc040] [--sys] [--fpexc] [--savestate] [--dcache] [--mmu] [--mmuprot] [--mmutt] [--mmupage]
+//                    [--patch ADDR=WORD] [--progress] [--smc] [--irq] [--irq-timed] [--fpu] [--ext] [--ext2] [--lc040] [--sys] [--fpexc] [--savestate] [--dcache] [--mmu] [--mmuprot] [--mmutt] [--mmupage] [--vmrte] [--devport]
 //
 // A failure prints the seed; `--first S --seeds 1 -v` replays it alone.
 // `--shrink` turns body instructions into NOPs while a divergence remains,
@@ -92,10 +92,20 @@ void onCrash(int sig, siginfo_t* info, void* uc) {
     std::_Exit(128 + sig);
 }
 
+// --devport: a 4 KB "device" page inside the data area. Every byte read
+// there returns a running counter and advances it, so a read performed one
+// time too many or too few on either side — an access the RTE $B
+// continuation must not re-issue, a replayed thunk — shows in the
+// registers and in `portReads`. The direct views refuse the page, so the
+// translator reaches it through the bus as a board's I/O would be.
+bool gDevPort = false;
+constexpr uint32_t kPort = 0x00018000;
+
 class FuzzCpu : public moira::Moira {
 public:
     FuzzCpu() : mem(1 << 24, 0) {}
     std::vector<uint8_t> mem;
+    mutable uint64_t portReads = 0;   // --devport
     jit::CodeGuard* guard = nullptr;
     // --trace: report interpreter stores into the program itself.
     uint32_t watchLo = 1, watchHi = 0;
@@ -158,8 +168,15 @@ private:
                                 logTag, vector, getPC0(), (long long)getClock(), getSR(),
                                 mmu040FaultAddr, mmu040Ssw, getTC040(), getURP040());
     }
-    moira::u8 read8(moira::u32 a) const override { return mem[a & 0xFFFFFF]; }
+public:
+    static bool inPort(moira::u32 a) { return gDevPort && (a & 0xFFF000) == kPort; }
+private:
+    moira::u8 read8(moira::u32 a) const override {
+        if (inPort(a)) return moira::u8(portReads++ * 0x9D + 0x31);
+        return mem[a & 0xFFFFFF];
+    }
     moira::u16 read16(moira::u32 a) const override {
+        if (inPort(a)) { const moira::u8 hi = read8(a); return moira::u16(hi << 8 | read8(a + 1)); }
         return moira::u16((mem[a & 0xFFFFFF] << 8) | mem[(a + 1) & 0xFFFFFF]);
     }
     void write8(moira::u32 a, moira::u8 v) const override {
@@ -188,14 +205,19 @@ jit::MemoryHooks hooks(FuzzCpu* cpu) {
     // therefore goes through the map, where the write guard sees it.
     h.codeSpan = [](void* s, uint32_t p, uint32_t& len) -> const uint8_t* {
         auto& c = *static_cast<FuzzCpu*>(s);
-        if (p >= c.mem.size()) { len = 0; return nullptr; }
+        // The port is I/O for fetches too: a board's codeSpan refuses its
+        // register pages, and a jump into one (PEA/RTS onto $18xxx) must
+        // reach the bus on both sides.
+        if (p >= c.mem.size() || FuzzCpu::inPort(p)) { len = 0; return nullptr; }
         len = uint32_t(c.mem.size()) - p;
+        if (gDevPort && p < kPort) len = std::min(len, kPort - p);   // stop before the port
         return c.mem.data() + p;
     };
     h.dataSpan = [](void* s, uint32_t p, uint32_t& len, int) -> uint8_t* {
         auto& c = *static_cast<FuzzCpu*>(s);
-        if (p >= c.mem.size()) { len = 0; return nullptr; }
+        if (p >= c.mem.size() || FuzzCpu::inPort(p)) { len = 0; return nullptr; }
         len = uint32_t(c.mem.size()) - p;
+        if (gDevPort && p < kPort) len = std::min(len, kPort - p);   // stop before the port
         return c.mem.data() + p;
     };
     h.setGuard = [](void* s, jit::CodeGuard* g) { static_cast<FuzzCpu*>(s)->guard = g; };
@@ -220,6 +242,7 @@ struct Rng {
 constexpr uint32_t kHandler = 0x00001000;  // JMP head.L
 constexpr uint32_t kCounter = 0x00001100;  // lap counter (long), then IRQ count
 constexpr uint32_t kIrqHandler = 0x00001200;
+constexpr uint32_t kBerrHandler = 0x00001280;  // --vmrte: repair, then RTE
 constexpr uint32_t kStack   = 0x00030000;
 constexpr uint32_t kData    = 0x00010000;  // A0..A6 start in [kData, kData+64K)
 constexpr uint32_t kCode    = 0x00040000;
@@ -235,6 +258,7 @@ bool gMmu = false;      // --mmu: identity translation through real tables (6803
 bool gMmuProt = false;  // --mmuprot: with --mmu, random data pages write-protected / supervisor-only
 bool gMmuTt = false;    // --mmutt: with --mmu, random transparent-translation registers
 bool gMmuPage = false;  // --mmupage: with --mmu, a seeded page size (030 256 B-32 KB, 040 4/8 KB)
+bool gVmRte = false;    // --vmrte: with --mmuprot, the bus-error handler repairs and RTEs
 int gModel = 40;
 
 class Gen {
@@ -813,6 +837,7 @@ moira::FPUModel fpuModelFor(moira::Model model) {
 
 void load(FuzzCpu& cpu, moira::Model model, const Program& p, uint32_t ramSeed) {
     std::fill(cpu.mem.begin(), cpu.mem.end(), 0);
+    cpu.portReads = 0;          // --devport: one divergence must not leak into later seeds
     auto put16 = [&](uint32_t a, uint16_t v) { cpu.mem[a] = uint8_t(v >> 8); cpu.mem[a + 1] = uint8_t(v); };
     auto put32 = [&](uint32_t a, uint32_t v) { put16(a, uint16_t(v >> 16)); put16(a + 2, uint16_t(v)); };
     for (uint32_t v = 0; v < 256; v++) put32(v * 4, kHandler);
@@ -824,6 +849,30 @@ void load(FuzzCpu& cpu, moira::Model model, const Program& p, uint32_t ramSeed) 
     put16(kIrqHandler + 6, 0x4E73);                                   // RTE
     for (uint32_t v = 24; v < 32; v++) put32(v * 4, kIrqHandler);
     put32(kCounter, p.laps);
+    // --vmrte: the virtual-memory pattern. A protection fault's handler
+    // makes the data space transparent (68030 PMOVE abs.L,TT0; 68040
+    // MOVEC D7,DTT0) and returns with RTE, so the faulted instruction
+    // CONTINUES — the 68030 from its format-$B access log (RTE_REPLAY),
+    // the 68040 through its format-$7 write-backs and rerun. A budget per
+    // program falls back to JMP head for a fault no TT repairs (an address
+    // above 16 MB), so a fault never loops on its own RTE.
+    if (gVmRte) {
+        put32(kCounter + 8, 8);                                       // budget
+        uint32_t h = kBerrHandler;
+        put16(h, 0x53B9); put32(h + 2, kCounter + 8); h += 6;         // SUBQ.L #1,budget
+        put16(h, 0x6B00); put16(h + 2, uint16_t(kHandler - (h + 2))); h += 4;  // BMI.W JMP head
+        if (model == moira::Model::M68030) {
+            put16(h, 0xF039); put16(h + 2, 0x0800);                   // PMOVE (abs).L,TT0
+            put32(h + 4, kCounter + 12); h += 8;
+            put32(kCounter + 12, 0x00008114);   // $00xxxxxx, R/W both, user+super data
+        } else {
+            const uint32_t dtt = 0x0000C000u | (gDcache ? 0x20u : 0u);   // E, S ignored, CM
+            put16(h, 0x2E3C); put32(h + 2, dtt); h += 6;              // MOVE.L #dtt,D7
+            put16(h, 0x4E7B); put16(h + 2, 0x7006); h += 4;           // MOVEC D7,DTT0
+        }
+        put16(h, 0x4E73);                                             // RTE
+        put32(2 * 4, kBerrHandler);
+    }
     Rng r{uint64_t(ramSeed) * 0x9E3779B97F4A7C15ull + 7};
     for (uint32_t a = kData; a < kData + 0x20000; a += 8) {
         const uint64_t x = r.next();
@@ -1030,6 +1079,7 @@ bool same(FuzzCpu& a, FuzzCpu& b, std::string& why) {
         why = buf;
         return false;
     };
+    if (a.portReads != b.portReads) return diff("device-port reads", a.portReads, b.portReads);
     if (a.getPC0() != b.getPC0()) return diff("PC", a.getPC0(), b.getPC0());
     if (a.getClock() != b.getClock()) return diff("clock", a.getClock(), b.getClock());
     for (int i = 0; i < 8; i++)
@@ -1145,6 +1195,8 @@ int main(int argc, char** argv) {
         else if (a == "--mmuprot") gMmu = gMmuProt = true;
         else if (a == "--mmutt") gMmu = gMmuTt = true;
         else if (a == "--mmupage") gMmu = gMmuPage = true;
+        else if (a == "--vmrte") gMmu = gMmuProt = gVmRte = true;
+        else if (a == "--devport") gDevPort = true;
         else if (a == "--stats") stats = true;
         else if (a == "--extra" && i + 1 < argc) {
             // Comma-separated seeds run after the range: the regressions.
@@ -1161,6 +1213,16 @@ int main(int argc, char** argv) {
         }
         else if (a == "--trace") verbose = traceAll = true;
         else { std::fprintf(stderr, "unknown argument %s\n", a.c_str()); return 2; }
+    }
+    // --vmrte's handler opens a TT over the whole data space, the page
+    // tables included, so random stores can rewrite descriptors. The
+    // interpreter keeps running on its ATC entries, as silicon would; a
+    // core reloaded from a save state flushes them and walks the broken
+    // tables (the seed-511 hazard the tables' write protection exists for).
+    // Such a guest is broken on hardware too: the combination is refused.
+    if (gVmRte && gSave) {
+        std::fprintf(stderr, "--vmrte cannot combine with --savestate\n");
+        return 2;
     }
     gModel = model;
     if ((model != 0 && model != 20 && model != 30 && model != 40) || slices == 0) {
@@ -1280,6 +1342,7 @@ int main(int argc, char** argv) {
                 nat->pomVisitState(w);
                 auto fresh = std::make_unique<FuzzCpu>();
                 fresh->mem = nat->mem;
+                fresh->portReads = nat->portReads;
                 fresh->setModel(m);
                 fresh->setFPUModel(fpuModelFor(m));
                 fresh->setPomCache040(gDcache);

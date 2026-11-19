@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 850 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 851 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 25 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 44 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 175 |
+| [Cross-cutting](#cross-cutting) | 176 |
 
 ---
 
@@ -294,7 +294,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-19 (fifth)** — [Transparent translation in the program fuzzer: a native RMW read through a write-only 68030 TT](CHANGELOG.md#2026-11-19-fifth--transparent-translation-in-the-program-fuzzer-a-native-rmw-read-through-a-write-only-68030-tt)
 - **2026-11-19 (fourth)** — [protected pages in the program fuzzer: three 68030 fault-frame defects](CHANGELOG.md#2026-11-19-fourth--protected-pages-in-the-program-fuzzer-three-68030-fault-frame-defects)
 - **2026-11-19 (seventh)** — [Page sizes in the program fuzzer; a split CAS.L's locked-read fault on the 68040](CHANGELOG.md#2026-11-19-seventh--page-sizes-in-the-program-fuzzer-a-split-casls-locked-read-fault-on-the-68040)
-- **2026-11-19 (sixteenth)** — [68030 RTE $B continues the instruction instead of re-issuing its completed accesses](CHANGELOG.md#2026-11-19-sanitizers)
+- **2026-11-19 (sixteenth)** — [68030 RTE $B continues the instruction instead of re-issuing its completed accesses](CHANGELOG.md#2026-11-19-sixteenth--68030-rte-b-continues-the-instruction-instead-of-re-issuing-its-completed-accesses)
 - **2026-11-19 (sixth)** — [The 68030 restart latches are guest state only while STOPped](CHANGELOG.md#2026-11-19-sixth--the-68030-restart-latches-are-guest-state-only-while-stopped)
 - **2026-11-19 (thirteenth)** — [The IIfx earns its store inventory: the CACR flush retired on the last 68030 board](CHANGELOG.md#2026-11-19-thirteenth--the-iifx-earns-its-store-inventory-the-cacr-flush-retired-on-the-last-68030-board)
 - **2026-11-19 (twelfth)** — [`--lc040`: FPU code on the 68LC040 in the program fuzzer](CHANGELOG.md#2026-11-19-twelfth----lc040-fpu-code-on-the-68lc040-in-the-program-fuzzer)
@@ -911,5 +911,6 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-19 (fifteenth)** — [The 020-core interrupt sequence is billed; `fcl` saved canonically](CHANGELOG.md#2026-11-19-fifteenth--the-020-core-interrupt-sequence-is-billed-fcl-saved-canonically)
 - **2026-11-19 (fourteenth)** — [A native D-cache hit counted twice when its instruction was replayed](CHANGELOG.md#2026-11-19-fourteenth--a-native-d-cache-hit-counted-twice-when-its-instruction-was-replayed)
 - **2026-11-19 (ninth)** — [FMOVE.P of a zero with k > +17 sets OPERR (ruling D40)](CHANGELOG.md#2026-11-19-ninth--fmovep-of-a-zero-with-k--17-sets-operr-ruling-d40)
+- **2026-11-19 (seventeenth)** — [Device reads in the program fuzzer: a native RTS read its return address twice](CHANGELOG.md#2026-11-19-sanitizers)
 - **2026-11-19 (tenth)** — [FBcc's sixth predicate bit on the 6888x: settled by its manual](CHANGELOG.md#2026-11-19-tenth--fbccs-sixth-predicate-bit-on-the-6888x-settled-by-its-manual)
 

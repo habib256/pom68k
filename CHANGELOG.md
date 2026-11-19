@@ -1402,6 +1402,54 @@ Newest first.
 ---
 
 <a id="2026-11-19-sanitizers"></a>
+## 2026-11-19 (seventeenth) — Device reads in the program fuzzer: a native RTS read its return address twice
+
+The fuzzer gained two modes.
+
+`--vmrte` (implies `--mmuprot`) is the virtual-memory pattern. The
+bus-error handler makes the data space transparent (68030 `PMOVE
+(abs).L,TT0`, 68040 `MOVEC D7,DTT0`) and returns with RTE, so the faulted
+instruction continues. On the 68030 that is the RTE $B access-log replay
+(sixteenth); on the 68040, the format-$7 write-backs and rerun. A
+per-program budget falls back to `JMP head` for a fault no TT repairs, so a
+fault never loops on its own RTE. A temporary count showed about 200 replays
+activating per 2 000 68030 seeds, with 1 to 3 logged accesses each.
+`--vmrte` refuses `--savestate`. The TT also opens the page tables to random
+stores, and a reloaded core would walk a table the interpreter is not using:
+the seed-511 hazard the tables' write protection exists for. It was met as
+68040 seed 40003778, which failed on every backend, threaded included.
+
+`--devport` turns a 4 KB data page into a device: every byte read returns a
+running counter and advances it. The direct views and the code window
+refuse the page, as a board's I/O pages are refused. A read performed once
+too often on either side then shows in the registers and in the compared
+read count. The first runs found three harness gaps, now fixed: the counter
+not reset per program, code fetched from the port through the code window,
+and window lengths running into the port.
+
+They also found one engine defect, on a64 and on the 68030 and 68040
+alike, seed 50005621. An `EXG A7,A6` put the stack on the port, and a native
+RTS read the return address through an exact thunk, a real bus access. Its
+odd-target check then sent it to the slow path, where the replay read it
+again. The plan contract already says no exact access may precede a bail
+("a successful source cannot be duplicated"), and x64's JMP pointer read
+already obeyed it. Native RTS on a64 and x64, and a64's JMP through a
+memory pointer, now drop the exact thunk: a non-plain page goes to the slow
+path before any access, and the interpreter performs the one read. RAM
+pages keep their DTLB path.
+
+A mutation check found the limit of these modes. With the RTE_REPLAY flag
+removed, the soak stays green: the random generator does not build a
+completed device read followed by a fault inside one instruction. The
+continuation itself is held by `berr030_test`, and the fuzzer holds
+interpreter/translator agreement on these paths.
+
+Soak after the fix: four combinations per model, `--devport` with
+`--ext --ext2 --sys --smc --fpu --irq-timed --savestate`, with every MMU
+mode, with `--vmrte`, and with `--raw 15 --len 120`. 8 000 seeds each on
+a64 and 2 000 on x64, clean. Gates `jit_program_fuzz_{030,040}_vmrte_test`
+and `_devport_test` (the pre-fix binary fails the latter).
+
 ## 2026-11-19 (sixteenth) — 68030 RTE $B continues the instruction instead of re-issuing its completed accesses
 
 The TODO's "réexécuter l'instruction" item. After a bus fault, Moira

@@ -220,6 +220,35 @@ add_test(NAME jit_program_fuzz_040_dcache_replay_test
                  --irq-timed --slices 20 --len 120 --seeds 60 --extra 9121429)
 set_tests_properties(jit_program_fuzz_040_dcache_replay_test PROPERTIES
                      LABELS "jit;unit" TIMEOUT 300)
+# --vmrte: the virtual-memory pattern — a protection fault's handler makes
+# the data space transparent and RTEs, so the faulted instruction continues
+# (68030 format-$B access-log replay under RTE_REPLAY, 68040 format-$7
+# write-backs and rerun), interpreter against translator.
+add_test(NAME jit_program_fuzz_030_vmrte_test
+         COMMAND jit_program_fuzz --model 30 --vmrte --devport --sys --ext --ext2 --smc
+                 --irq-timed --slices 20 --seeds 200)
+add_test(NAME jit_program_fuzz_040_vmrte_test
+         COMMAND jit_program_fuzz --model 40 --vmrte --devport --sys --ext --ext2 --smc
+                 --irq-timed --slices 20 --seeds 200)
+set_tests_properties(jit_program_fuzz_030_vmrte_test PROPERTIES
+                     ENVIRONMENT "POM68K_JIT_PROFIT_SCORE=0")
+set_tests_properties(jit_program_fuzz_030_vmrte_test jit_program_fuzz_040_vmrte_test
+                     PROPERTIES LABELS "jit;unit" TIMEOUT 300)
+# --devport: a 4 KB page whose every read advances a counter, refused to
+# the direct views as a board's I/O is. A read performed once too often on
+# either side shows. Seed 50005621: a stack moved onto the port, and the
+# native RTS read its return address through an exact thunk before the
+# odd-target bail, whose replay read it again.
+add_test(NAME jit_program_fuzz_030_devport_test
+         COMMAND jit_program_fuzz --model 30 --devport --ext --ext2 --sys --irq-timed
+                 --savestate --slices 20 --seeds 200 --extra 50005621)
+add_test(NAME jit_program_fuzz_040_devport_test
+         COMMAND jit_program_fuzz --model 40 --devport --ext --ext2 --sys --irq-timed
+                 --savestate --slices 20 --seeds 200 --extra 50005621)
+set_tests_properties(jit_program_fuzz_030_devport_test PROPERTIES
+                     ENVIRONMENT "POM68K_JIT_PROFIT_SCORE=0")
+set_tests_properties(jit_program_fuzz_030_devport_test jit_program_fuzz_040_devport_test
+                     PROPERTIES LABELS "jit;unit" TIMEOUT 300)
 # --lc040: the Quadra 605 / LC 475 CPU with the FPU templates on, so every
 # FPU instruction takes the 68LC040 F-line (vector 11, format $4) inside
 # blocks, under the MMU and across save states.

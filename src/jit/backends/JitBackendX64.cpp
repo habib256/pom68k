@@ -1072,9 +1072,12 @@ bool Emitter::emitSubroutine(size_t i) {
         if (!control.valid || control.kind != ControlFlowKind::Return ||
             traced030(i) != 10 || !tracedQueueIs(i, ircAfter)) return false;
         auto memory = instructionMemoryPlan(in.memory, proofOptions(L_));
-        const MemoryAccessPlan read = memory.access(
+        MemoryAccessPlan read = memory.access(
             MemoryDirection::Read, MemoryOperand::Stack, 4, 3, 7);
         if (!read.valid() || !memory.complete()) return false;
+        // No exact thunk ahead of the odd-target bail below: its replay
+        // would repeat a device read (the AArch64 generator's RTS).
+        read.exactThunk = false;
         a_.movRM(Sz::L, RAX, A(7));
         memLoad(RAX, 2, RDI, read);                 // the return address
         // Odd target: the 68040 raises an address error, and it does so
