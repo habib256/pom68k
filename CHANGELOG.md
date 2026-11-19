@@ -606,6 +606,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-19 (eighteenth) — No interrupt or trace between a 68030 RTE $B and the instruction it continues](#2026-11-19-rte-b-no-boundary)
 - [2026-11-19 (third) — Under ASan: a use-after-free when a window run flushed the JIT; under UBSan: bit-field width overflow](#2026-11-19-sanitizers)
 - [2026-11-19 (second) — Eleven more boards get a JIT lockstep, every family whose 68030/68040 runs translated by default](#2026-11-19-board-locksteps)
 - [2026-11-19 — Long boot locksteps, a hundred times the gates: identical](#2026-11-19-long-locksteps)
@@ -1401,7 +1402,49 @@ Newest first.
 
 ---
 
-<a id="2026-11-19-sanitizers"></a>
+<a id="2026-11-19-rte-b-no-boundary"></a>
+## 2026-11-19 (eighteenth) — No interrupt or trace between a 68030 RTE $B and the instruction it continues
+
+First of the two residues the sixteenth entry left open. An interrupt that
+became pending while the RTE ran was taken at the next `execute()`; its
+handler's first instruction dropped the access-log replay, and the faulted
+instruction later restarted from zero and re-issued the accesses it had
+completed. The site carried an [F] asking for a bus trace of a real 68030.
+
+It did not need one. The oracle already answers: in WinUAE's
+`m68k_run_mmu030` (Hatari e77819f7) an RTE that sets `mmu030_retry` reruns
+the opcode inside the inner loop, without passing through `do_specialties`,
+so neither an interrupt nor a trace can be taken there. That agrees with
+MC68030UM-1989 §8.2.1: RTE restores the internal state and continues the
+instruction, and a format-$0 interrupt frame taken at that point could not
+carry that state. [B] and [D] agree, so the [F] is retired.
+
+`Moira::execute()` now computes `rteContinues` (the `RTE_REPLAY` flag, the
+replay armed, `pc` equal to the frame's) and, when it holds, takes neither
+the staged trace exception nor the interrupt; both stay pending and are
+taken at the boundary after the continued instruction. `irqDelay` still
+counts that instruction.
+
+Gate: `berr030_test`, "RTE continuation + IRQ" — level 7 rises before the
+RTE, whose own IPL poll latches it; `CMPM.L (A0)+,(A1)+` must read `(A0)`
+once and the interrupt must follow it. Mutation-checked: with the interrupt
+gating removed, two of its four checks fail. A first version of the test
+raised the pin after the RTE and passed on the mutant — the pin is only
+seen by the next instruction's poll, so it guarded nothing.
+
+Evidence, AArch64: `unit|jit` 282 / 282; 4 000 fresh seeds of the
+`jit_program_fuzz_030_vmrte_test` option set from seed 1482900 — 178 493
+interrupts on each side, 0 failures, 85 % native. Not run: the x86-64 leg
+(the change is in the interpreter, which the flag forces for that
+instruction on every backend).
+
+Second residue unchanged: the locked RMW with DF cleared stays excluded
+from the substitution, and that one does need a real 68030 (`TODO.md`).
+
+Also fixed here: the `2026-11-19-sanitizers` anchor had been stranded above
+the (seventeenth) heading by entries prepended beneath it; it is back above
+(third).
+
 ## 2026-11-19 (seventeenth) — Device reads in the program fuzzer: a native RTS read its return address twice
 
 The fuzzer gained two modes.
@@ -1944,6 +1987,7 @@ Soak after the push, both models, three combinations (`--mmuprot` with
 --smc --irq-timed --savestate`, and with `--fpexc --sys --irq`): 15 000
 seeds each on a64, 5 000 each on x64 under Rosetta, clean.
 
+<a id="2026-11-19-sanitizers"></a>
 ## 2026-11-19 (third) — Under ASan: a use-after-free when a window run flushed the JIT; under UBSan: bit-field width overflow
 
 `jit_program_fuzz` and `jit_lockstep_board_test` built in

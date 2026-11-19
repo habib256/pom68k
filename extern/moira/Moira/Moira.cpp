@@ -563,6 +563,20 @@ Moira::execute()
         // Slow path: Process flags one by one
         //
 
+        // POM68K: a 68030 RTE from a format-$B frame resumes INSIDE the
+        // faulted instruction, so no instruction boundary lies between the
+        // RTE and the instruction it continues: a pending trace or
+        // interrupt waits for the boundary that follows the continuation.
+        // [B] MC68030UM-1989 §8.2.1 — RTE restores the internal state and
+        //     continues the instruction; a format-$0 interrupt frame taken
+        //     there could not carry that state.
+        // [D] WinUAE newcpu.c m68k_run_mmu030 @ Hatari e77819f7 — with
+        //     mmu030_retry the inner loop reruns the opcode without
+        //     passing through do_specialties.
+        // Gate: berr030_test (RTE continuation under a pending interrupt).
+        const bool rteContinues =
+            (flags & RTE_REPLAY) && mmuReplayArmed && reg.pc == mmuReplayPc;
+
         if (flags & (HALTED | TRACE_EXC | TRACING)) {
 
             // Only continue if the CPU is not halted
@@ -576,7 +590,7 @@ Moira::execute()
             // jeter AddressError depuis jumpToVector ; sur 68000 c'est une
             // ADDRESS ERROR (groupe 0) à prendre, pas un abort de l'émulateur
             // (crash « terminate » observé sur Beyond the Ice Palace, bureau TOS).
-            if (flags & TRACE_EXC) {
+            if ((flags & TRACE_EXC) && !rteContinues) {
 
                 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                 // POM68K Q2: on the 68040 a staged trace does not
@@ -626,7 +640,7 @@ Moira::execute()
             // the IRQ (breaks the SimCity-2000 redraw livelock).
             if (irqDelay) {
                 irqDelay--;
-            } else {
+            } else if (!rteContinues) {
                 try {
                     if (checkForIrq()) goto done;
                 } catch (const std::exception &exc) {

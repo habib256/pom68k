@@ -54,7 +54,7 @@ pair):
 | | | how to re-measure |
 |---|---|---|
 | distinct `pom*` extension identifiers | **116** (65 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **566** | `grep -rn POM68K Moira/ \| wc -l` |
+| `POM68K`-marked lines | **567** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **17 of 27** | `grep -rln POM68K Moira/ \| wc -l` |
 | patch groups in the inventory below | **131** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h`, `MoiraState.h`, `MoiraMmu030Walk.h` | — |

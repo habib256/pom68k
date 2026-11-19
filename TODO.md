@@ -427,18 +427,17 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   émettent un mot puis un octet (grade F au site, `execBitFieldEa`). Le JIT
   compte deux accès ATC 040 pour suivre le cœur. *Bloqué : capture de bus de
   `BFEXTU (An){0:24}` sur un vrai 68030 ou 68040.*
-- [ ] **RTE $B : les deux restes de la continuation 68030.** Depuis le
-  2026-11-19 (`CHANGELOG` (sixteenth)) le 68030 continue l'instruction
-  depuis le journal d'accès du cadre ([B] MC68030UM-1989 §8.2.1) : les
-  accès complétés ne sont plus réémis, et le DF effacé ne dépend plus du
-  bit 9 du SSW. Restes : (1) une interruption prise entre le RTE et
-  l'instruction continuée abandonne le rejeu et l'instruction repart de
-  zéro, comme avant ([F] : trace de bus d'un vrai 68030) ; (2) le RMW
-  verrouillé à DF effacé reste exclu de la substitution — WinUAE y tient
-  l'instruction pour finie, le manuel suggère de continuer avec le tampon
-  d'entrée ; trancher sur un vrai 68030 (TAS sur page protégée, DF effacé
-  par le gestionnaire). Le 020/EC020 garde sa reprise propre
-  (`berr020_test`). Garder `berr030_test` et les boots.
+- [ ] **RTE $B : le reste de la continuation 68030.** Depuis le
+  2026-11-19 (`CHANGELOG` (sixteenth), (eighteenth)) le 68030 continue
+  l'instruction depuis le journal d'accès du cadre ([B] MC68030UM-1989
+  §8.2.1) : les accès complétés ne sont plus réémis, le DF effacé ne dépend
+  plus du bit 9 du SSW, et ni interruption ni trace ne s'intercalent entre
+  le RTE et l'instruction continuée. Reste : le RMW verrouillé à DF effacé
+  est exclu de la substitution — WinUAE y tient l'instruction pour finie,
+  le manuel suggère de continuer avec le tampon d'entrée ; trancher sur un
+  vrai 68030 (TAS sur page protégée, DF effacé par le gestionnaire). Le
+  020/EC020 garde sa reprise propre (`berr020_test`). Garder `berr030_test`
+  et les boots.
 - [ ] **Généraliser le report du pipe de préfetch.** `mmuCapturePipe`
   capture quatre mots après PMOVE TC/CRP/SRP seulement, pour un idiome de
   la ROM LC II ; PFLUSH, une écriture de TT ou une cible de saut n'ont rien.

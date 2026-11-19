@@ -2204,11 +2204,9 @@ protected:
     // [D] WinUAE @ Hatari e77819f7 — m68k_do_rte_mmu030 restores
     //     mmu030_idx_done and mmu030_ad; ACCESS_CHECK_GET/PUT serve
     //     idx < idx_done from the log.
-    // [F] Only the very next instruction start consumes it: an interrupt
-    //     taken first runs its handler's first instruction, which drops the
-    //     replay, and the faulted instruction later restarts as before.
-    //     Settled by: a bus trace of a real 68030 taking an interrupt
-    //     between an RTE $B and the instruction it continues.
+    // Only the very next instruction start consumes it, and execute()
+    // takes no trace or interrupt before that start (Moira.cpp,
+    // rteContinues): the continuation is not an instruction boundary.
     bool mmuReplayArmed {};
     bool mmuReplayActive {};
     u8 mmuReplayDone {};

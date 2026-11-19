@@ -39,6 +39,7 @@ public:
     int readFaultsRemaining = -1;
     int writeFaultsRemaining = -1;
     int vector2Count = 0;
+    int vector31Count = 0;
     bool traceReads = false;
     std::vector<moira::u32> readLog;
 
@@ -53,6 +54,7 @@ private:
     void didChangeCACR(moira::u32 value) override { pomInvalidateIcache030(value); }
     void didJumpToVector(int nr, moira::u32) override {
         if (nr == 2) ++vector2Count;
+        if (nr == 31) ++vector31Count;
     }
 
     bool faultNow(bool write) {
@@ -283,6 +285,65 @@ int main() {
               "RTE continuation: CMPM compares the logged operand (equal)");
         check(m.cpu.getA(0) == src + 4 && m.cpu.getA(1) == HOLE_LO + 4,
               "RTE continuation: each postincrement applied once");
+    }
+
+    // An interrupt that becomes pending while the RTE runs is taken after
+    // the continued instruction, not before it: the continuation is not an
+    // instruction boundary (MC68030UM-1989 §8.2.1; WinUAE m68k_run_mmu030
+    // reruns the opcode without passing through do_specialties). Until
+    // 2026-11-19 the interrupt was taken first, the log was dropped and
+    // the restarted CMPM read (A0) a second time.
+    {
+        Img m;
+        m.cpu.readFaultsRemaining = 1;
+        m.at(0); m.w32(0x8000); m.w32(0x1180);
+        m.at(8); m.w32(0x3180);
+        m.at(0x7C); m.w32(0x3200);                      // level-7 autovector
+        const uint32_t src = 0x5000;
+        m.cpu.mem[src] = 0x11; m.cpu.mem[src + 1] = 0x22;
+        m.cpu.mem[src + 2] = 0x33; m.cpu.mem[src + 3] = 0x44;
+        m.cpu.mem[HOLE_LO] = 0x11; m.cpu.mem[HOLE_LO + 1] = 0x22;
+        m.cpu.mem[HOLE_LO + 2] = 0x33; m.cpu.mem[HOLE_LO + 3] = 0x44;
+
+        m.at(0x1180);
+        m.w16(0xB388);                                  // CMPM.L (A0)+,(A1)+
+        m.w16(0x57C2);                                  // SEQ D2
+        m.w16(0x4E72); m.w16(0x2700);
+
+        m.at(0x3180);
+        m.w16(0x4E73);                                  // RTE → continue CMPM
+        m.at(0x3200);
+        m.w16(0x4E73);                                  // interrupt handler
+
+        m.cpu.reset();
+        m.cpu.setA(0, src);
+        m.cpu.setA(1, HOLE_LO);
+        m.cpu.traceReads = true;
+        bool raised = false;
+        int beforeCmpm = -1;
+        for (int steps = 64; steps--;) {
+            m.cpu.execute();
+            if (!raised && m.cpu.vector2Count == 1 && m.cpu.getPC() == 0x3180) {
+                // The pin rises before the RTE; the RTE's own IPL poll
+                // latches it, so it is pending at the RTE's end.
+                m.cpu.setIPL(7);
+                raised = true;
+            } else if (raised && beforeCmpm < 0 && m.cpu.getA(1) == HOLE_LO + 4) {
+                beforeCmpm = m.cpu.vector31Count;
+                m.cpu.setIPL(0);
+            }
+        }
+        int srcReads = 0;
+        for (moira::u32 a : m.cpu.readLog) if (a == src) srcReads++;
+        check(raised && m.cpu.vector2Count == 1,
+              "RTE continuation + IRQ: one $B fault taken");
+        check(srcReads == 1,
+              "RTE continuation + IRQ: the completed (A0) read is not re-issued");
+        check(beforeCmpm == 0 && m.cpu.vector31Count == 1,
+              "RTE continuation + IRQ: the interrupt follows the instruction");
+        check((m.cpu.getD(2) & 0xFF) == 0xFF &&
+              m.cpu.getA(0) == src + 4 && m.cpu.getA(1) == HOLE_LO + 4,
+              "RTE continuation + IRQ: CMPM completes once");
     }
 
     // ── 3. instruction fetch fault: $B frame, FB|RB SSW ─────────────────
