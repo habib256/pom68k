@@ -248,3 +248,5 @@ overwrites it, including a one-gate `ctest -R`.
 | Nov 17 08:13 +04 | aarch64 | default | 159 | 159 | 0 | 0 | 45bb774 baseline before D12: complete rebuilt asset-none tier; 159 executed, no soft-skip, 433.12 s; authorized GUI/PTY/loopback access |
 | Nov 20 19:24 +04 | x86_64 | default | 292 | 289 | 2 | 1 | rebase onto upstream Moira ce28239 (worktree, before commit): ctest -L 'unit\|jit\|cpu-vectors' -j12, 291/292 in 1172 s; the red is jit_program_fuzz_030_sys_test Timeout at 300 s under load, 19.5 s and green alone |
 | Nov 20 19:44 +04 | x86_64 | default | 330 | 321 | 9 | 0 | same tree: ctest -L etalon -j12, 330/330 in 6606 s; nine floppy-media gates soft-skipped (no .moof/.img images on this host), 27 gates of 68020 machines executed |
+| Nov 21 01:29 +04 | x86_64 | default | 292 | 290 | 2 | 0 | 68020 i-cache on, fetch timing corrected (worktree at 19c04cb8 + TODO): ctest -L 'unit\|jit\|cpu-vectors' -j8, 292/292 in 1315 s |
+| Nov 21 01:51 +04 | x86_64 | default | 330 | 321 | 9 | 0 | same tree: ctest -L etalon -j12, 330/330 in 6479 s; the nine floppy-media gates soft-skipped again (no .moof/.img images on this host) |

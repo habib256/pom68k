@@ -424,6 +424,22 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   depuis le rang 154).
   *Bloqué pour le temps réel : un TimeDBRA d'un vrai Mac II ou LC, ou une
   capture de bus.*
+- [ ] **Preuves dues à l'état rebasé.** Le rebasage du 2026-11-20 et
+  l'activation du cache 68020 du 2026-11-21 sont prouvés sur x86-64
+  (paliers `unit|jit|cpu-vectors` et `etalon`) et, au palier sans assets,
+  sur AArch64 par la CI macOS. Il manque : (1) les paliers ROM
+  `m000`/`m020`/`m030`/`m040` sur l'hôte AArch64 ; (2) les neuf etalons
+  disquette qui se sautent sur l'hôte x86-64 faute d'images (`plus_moof_*`,
+  `*_oids_moof_etalon`, `moof_media_state_etalon`, `lcii_floppy144_etalon`,
+  `maciifdhd_moof_boot_etalon`, `maciifdhd_floppy_boot_etalon`) — à rejouer
+  avec le volume d'assets monté ; (3) un build Windows/MSVC du cœur à
+  quatre unités de compilation (`release.yml` est le seul workflow qui le
+  fasse) ; (4) le build Pi et sa passe PGO, dont les chiffres de
+  `docs/RASPBERRY_PI.md` datent de l'unité unique.
+- [ ] **Projet Xcode de l'amont.** `Moira.xcodeproj` ne liste ni les trois
+  fichiers C de SoftFloat, ni `MoiraState.h`, `MoiraCache040.h`,
+  `MoiraMmu030Walk.h`, ni les cinq définitions : le fork s'y dépose par
+  CMake seulement. À faire sur un hôte macOS, ou à laisser à l'amont.
 - [ ] **Tenir le Runner de l'amont vert.** Depuis le 2026-11-20 le Runner
   non modifié de l'amont (Moira contre Musashi) passe sur le fork déposé
   dans son arbre, sous sa configuration (`POM68K_VENDOR.md` rang 148). Rien

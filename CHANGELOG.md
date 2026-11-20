@@ -40,6 +40,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"`MOIRA_EMULATE_ICACHE` is false here… the Macintosh II and LC boot gates pin today's timing" (2026-11-20 (sixth)) — the cache is on since the next day: once a hit stops being discounted, a warm loop costs what the tables always charged, and no boot gate moved** → [Upstream's 68020 instruction cache is on](#2026-11-21-icache-020-on)
+
 - **"A re-sync [with upstream Moira] is no longer a merge with conflicts; it is a port" (2026-08-09) and "the fork changed too much of upstream's design to merge back" (release README, 2026-11-17) — the port was done in one session, and the fork is now based on upstream's master** → [The Moira fork is rebased onto upstream's master](#2026-11-20-rebase-on-upstream)
 
 - **"On the 68040 an exception drops the staged trace, and so does an RTE into a format-$7 frame" (2026-11-19 (nineteenth)) — the RTE case is deferred, not dropped** → [T0 and the single-step loop](#2026-11-20-t0-change-of-flow)
@@ -287,6 +289,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
+- **What does an instruction fetch cost on the 68020, cached or not?** → [A hit adds nothing to the cache-case tables, a bus fetch adds 2 on a 32-bit port: warm loops land on the manual's cache case, 2026-11-21](#2026-11-21-icache-020-on)
 - **Does upstream Moira's own test runner pass on the fork, and what is the fork's base?** → [Unmodified `testRunner` at upstream `ce28239`, thirteen passes, four seeds, 2026-11-20; `MOIRA_MIMIC_MUSASHI` restores Musashi's behaviour where the fork's rulings depart](#2026-11-20-rebase-on-upstream)
 - **Does a bus fault followed by a bare RTE leave the state of a run that never faulted?** → [`fault_transparency_test`, since 2026-11-20: every cycle of 1 023 instructions; the 68030 continuation lost count across an extended EA](#2026-11-20-fault-transparency)
 - **What does a push or a pop do when the stack page faults?** → [LINK and PEA end on their push, JSR and BSR restart with A7 intact — measured 2026-11-20 with the user stack on faulting pages](#2026-11-20-stack-fault-cells)
@@ -616,6 +619,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-21 — Upstream's 68020 instruction cache is on, with its fetch timing corrected; three defects of upstream's code fixed](#2026-11-21-icache-020-on)
 - [2026-11-20 (seventh) — The release for Dirk Hoffmann, cut on his master and accepted by his Runner](#2026-11-20-release-on-upstream-master)
 - [2026-11-20 (sixth) — The Moira fork is rebased onto upstream's master, and upstream's own Runner passes on it](#2026-11-20-rebase-on-upstream)
 - [2026-11-20 (fifth) — A write to SR or CCR at a page end took the bus error of its own refill; an RTE whose frame faults reran from a moved A7; ADDX and SUBX's pending store](#2026-11-20-addx-subx-buffer)
@@ -1419,6 +1423,105 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-21-icache-020-on"></a>
+## 2026-11-21 — Upstream's 68020 instruction cache is on, with its fetch timing corrected; three defects of upstream's code fixed
+
+Yesterday's rebase carried Dirk Hoffmann's 68020 instruction cache switched
+off, because its timing counted the cache twice. The author asked for the
+other answer before the release goes out: turn it on, correct the count,
+and fix the three defects that reading his code had turned up. Each was
+first reproduced on unmodified upstream `ce28239` with a small program.
+
+**The timing.** Upstream's 68020 tables are the manual's cache-case column
+(NOP 2, ADD.L Dn,Dn 2, MOVE.L Dn,(An) 4, DBcc 6/10 — [B] MC68020UM-1992
+§8.2), and `readInstr` then subtracted 2 for every fetch that made no bus
+cycle and added 0 or 4 for one that did. A warm loop was charged less than
+the manual's best case, and the cycle budget existed to borrow against that
+debt. The correction keeps the tables and moves the anchor: a fetch served
+by the cache or the latch adds nothing; a fetch that makes a bus cycle adds
+2 from a 32-bit port and 6 from a narrower one. Per loop iteration, 32-bit
+port, both configurations:
+
+| Loop | Manual best / cache / worst | Upstream warm / cache off | Fork warm / cache off |
+|---|---|---|---|
+| 8 × NOP + DBF | 19 / 22 / 33 | 4.5 / 12 | 22 / 32 |
+| 8 × MOVE.L D0,(A0) + DBF | 27 / 38 / 49 | 18 / 28 | 38 / 48 |
+| DBF alone | 3 / 6 / 9 | 2 / 4 | 6 / 8 |
+
+Warm loops land on the cache case exactly; with the cache off they land one
+clock under the worst case, not investigated. The +2 is anchored on those
+two columns; the +6 is upstream's own spacing between port widths, shifted
+with the anchor, and graded [F]. `syncCp` and `CycleBudget` are as upstream
+wrote them: with no negative charge left their debt path is cold, and
+`icache020_test` checks that 200 warm or cache-off passes never borrow.
+
+**On in POM68K** (row 147). `MOIRA_EMULATE_ICACHE` defaults to true and no
+longer refuses the JIT build. It applies to the 68020 and EC020 only: the
+68030, 68040 and EC030 keep their own models, and their corpora and gates
+passed without a changed expectation. What it means for the three 68020
+machines:
+
+- Fetches are longword line fills, hits make no bus access, and at reset
+  CACR.E is clear, so every longword goes to the bus until the ROM enables
+  the cache. The Macintosh II and II FDHD report a 32-bit port, the LC a
+  16-bit one; both widths are [F] — nothing in the tree grades them and the
+  GLUE's per-region DSACK is not modelled.
+- An aligned data longword keeps the fork's two-word transfer where
+  upstream makes one `read32`: with the Mac II on a 32-bit port upstream's
+  split bypassed the plain-68020 /BERR record, and `berr020_test` lost 328
+  checks. 788 / 788 under both widths with the fork's transfer.
+- The opt-in JIT no longer accelerates a 68020 guest: translated code would
+  bypass the cache, so the engine hands the 68020 and EC020 to the
+  interpreter (`pomCacheOwnsFetch`, `POM68K_JIT.md` § 2.1). Their default
+  engine was the interpreter already. `jit_program_fuzz_020_*`,
+  `jit_macii_boot_etalon` and `jit_lc_boot_etalon` now compare the
+  interpreter with itself.
+- Save-state format 38: the lines, the latch and the budget travel
+  (`moira_state_test` warmIcache020).
+- Low memory after a boot, before → after: Macintosh II TimeDBRA 2615 →
+  2623, TimeSCCDB 1121 → 1120; LC unchanged (10433, 4471). A warm DBRA
+  costs the 6 the tables always charged, which is why the ROM's own
+  calibration barely moves. No golden was re-pinned.
+
+**The three defects** (rows 151 to 153; reproduced on upstream, and fixes
+1 to 3 applied to unmodified upstream still pass its Runner):
+
+- MOVES `<ea>,Rn` left the alternate function code selected after an
+  address error: the 26 writes of the exception frame, the vector fetch and
+  the handler ran with FC = SFC. `moira_rules_test` (movesFcAfterFault010).
+- A DBcc whose count expires read pc+2 from the bus although it was cached
+  ([B] §8.2.15: cache case 10 (0/0/0)). `icache020_test`. Row 154 does the
+  same for the refill after a write to SR or CCR, TRAPV and the first fetch
+  of an exception handler.
+- DIVS.L: under `MOIRA_MIMIC_MUSASHI`, a 64-bit dividend of −2⁶³ divided by
+  −1 killed the host with SIGFPE. `moira_upstream_config_test`
+  (divslOverflow). Upstream also asserts on two legal forms in a debug
+  build and overwrites the dividend on a 32-bit overflow; the fork had
+  dropped both already (rows 43, 55).
+
+**Proof on this state.** The standalone tiers at each of the three
+commits: `unit|jit` 76 / 76 and `corpus` 14 / 14 (sst68000 with bus order
+and timing). Upstream's unmodified Runner on the fork in upstream's tree:
+thirteen passes PASSED on seeds 2349, 1, 7 and 2026 — the Runner does not
+compare cycles on the 68020 once the cache is on, so it holds the bus
+traffic and the fixes, not the timing; the timing rests on the manual
+anchors of `icache020_test`. On the optimised build (x86-64, GCC 15.2,
+`RelWithDebInfo`, LTO and `-march=native`, 67 min, no warning):
+
+| Tier | Result |
+|---|---|
+| `unit\|jit\|cpu-vectors`, `ctest -j8` | 292 / 292 in 1 315 s (yesterday's timeout of a fuzz gate under `-j12` did not recur) |
+| `etalon`, `ctest -j12` | 330 / 330 in 6 479 s; the same nine floppy-media gates soft-skipped for want of images on this host |
+
+Not run on this state: any AArch64 tier beyond what CI's macOS job covers;
+`callm_rtm_test`'s new 76-against-82 is explained from the code layout (one
+line fill fewer on the format-error exit), not traced.
+
+Open, and in `TODO.md`: the fill charged to the first fetch of an interrupt
+handler is lost when the next instruction clears `budget.cp`; nothing above
+grade F settles a narrow port or either machine's port width; the JIT on a
+68020.
 
 <a id="2026-11-20-release-on-upstream-master"></a>
 ## 2026-11-20 (seventh) — The release for Dirk Hoffmann, cut on his master and accepted by his Runner
