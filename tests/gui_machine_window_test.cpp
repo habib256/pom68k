@@ -235,6 +235,18 @@ int main() {
 
     GuiSessionState state;
     state.startup.considered = true; // This fake machine has no session ROM.
+    // The ROM window scans on open: keep it off the host's roms/ (every
+    // catalogued dump reported Missing, as on a runner without assets).
+    const auto noRoms = [](const pom68k::roms::RomSearch&) {
+        std::vector<pom68k::roms::RomStatus> rows;
+        for (const pom68k::roms::RomDump& d : pom68k::roms::kRomDumps) {
+            pom68k::roms::RomStatus row;
+            row.dump = &d;
+            rows.push_back(row);
+        }
+        return rows;
+    };
+    state.roms.scanner = noRoms;
     FakeMachine machine;
     int statusDraws = 0;
     bindMachineControls(state.machine, machine, [&] {
@@ -657,6 +669,26 @@ int main() {
         check(clickMenuItem(ui, kMachineControlWindowTitle, draw) && !state.machine.showWindow, "« Dashboard » toggles the dashboard off");
         ui.frame(draw);
         check(!windowShown(kMachineControlWindowTitle), "the dashboard is gone");
+        check(ui.click("Windows", draw) &&
+                  clickMenuItem(ui, kAbstractionWindowTitle, draw) &&
+                  state.abstraction.showWindow,
+              "« Abstraction Levels » opens from the Windows menu");
+        ui.frame(draw);
+        check(windowShown(kAbstractionWindowTitle), "the abstraction window is shown");
+        capture(ui, "machine-abstraction");
+        state.abstraction.showWindow = false;
+        ui.frame(draw);
+        check(ui.click("Machine", draw) && clickMenuItem(ui, "ROM Status...", draw) &&
+                  state.roms.showWindow && !state.roms.focus,
+              "« ROM Status... » opens from the Machine menu, about this machine");
+        for (int i = 0; i < 200 && state.roms.job; ++i) ui.frame(draw);
+        ui.frame(draw);
+        check(windowShown(kRomWindowTitle) && state.roms.scanned && !state.roms.fetched,
+              "the ROM window is shown, scanned, and downloaded nothing");
+        check(ui.click("Windows", draw) && clickMenuItem(ui, kRomWindowTitle, draw) &&
+                  !state.roms.showWindow,
+              "the Windows menu toggles it off");
+        ui.frame(draw);
     }
 
     check(ui.click("Machine", draw) &&
@@ -797,6 +829,51 @@ int main() {
                   guide.relaunch.switchArguments == guide.startup.arguments,
               "launch uses only the prepared profile, ROM and media, without the old session");
         ui.frame(drawGuide);
+
+        // No ROM found for the chosen model: the guide offers the download
+        // and the ROM window, and starts nothing by itself. The ROM is
+        // marked absent by hand: on a host with roms/, discovery finds it.
+        {
+            GuiSessionState offer;
+            offer.startup.considered = true;
+            int fetches = 0;
+            std::vector<std::string> asked;
+            offer.roms.scanner = noRoms;
+            offer.roms.fetcher = [&](const pom68k::roms::RomSearch&,
+                                     const pom68k::roms::FetchOptions& o) {
+                ++fetches;
+                asked = o.only;
+                pom68k::roms::FetchResult r;   // this gate has no network
+                r.error = r.summary = "no transport in this gate: nothing was fetched";
+                return r;
+            };
+            auto drawOffer = [&] { drawShellFrame(offer, pom68k::SnapMachine::Plus); };
+            openStartupWindow(offer, pom68k::SnapMachine::Plus);
+            offer.startup.romFound = false;
+            ui.frame(drawOffer); ui.frame(drawOffer);
+            check(ui.find("Download ROMs for this Mac...") && ui.find("ROM Status...") &&
+                      fetches == 0 && !offer.roms.showWindow,
+                  "a model without its ROM is offered the download, nothing started");
+            capture(ui, "startup-rom-offer");
+            check(ui.click("Download ROMs for this Mac...", drawOffer) && !offer.startup.open &&
+                      offer.roms.showWindow && offer.roms.focus == pom68k::SnapMachine::Plus,
+                  "the click opens the ROM window on that model");
+            for (int i = 0; i < 200 && offer.roms.job; ++i) ui.frame(drawOffer);
+            ui.frame(drawOffer);
+            check(fetches == 1 &&
+                      asked.size() == pom68k::roms::romDumpsForProfile("plus").size(),
+                  "and downloads that model's dumps only");
+            capture(ui, "startup-rom-window");
+            const auto* back = ui.findContaining("Back to Set Up a Macintosh");
+            check(back && ui.clickAt(back->bb.GetCenter(), drawOffer) && !offer.roms.showWindow,
+                  "« Back to Set Up a Macintosh » closes the ROM window");
+            ui.frame(drawOffer); ui.frame(drawOffer);
+            check(offer.startup.open && offer.startup.profile == pom68k::SnapMachine::Plus &&
+                      windowShown(kStartupWindowTitle),
+                  "and reopens the guide on the same model");
+            offer.startup.open = false;
+            ui.frame(drawOffer);
+        }
 
         GuiStartupState invalid;
         invalid.profile = pom68k::SnapMachine::LcII;

@@ -32,6 +32,10 @@ public:
         const std::string& relative, std::string& matched);
     static std::string findPath(const std::string& relative);
     static std::string findRomBySignature(const std::string& signature, bool refresh = false);
+    // Drop every cached signature walk (hits and misses alike), so the next
+    // lookup sees files installed since: the ROM window calls this after a
+    // download or an import (GuiRomWindow.cpp).
+    static void forgetRomSignatures();
     static std::string executableDirectory();
 };
 

@@ -57,6 +57,10 @@ Machine and full-system gates soft-skip when their declared assets are absent;
 never report a green soft-skip as executed coverage. `STATUS.md`, generated
 from the configured manifests, owns the current totals and recorded execution
 census. Section 6 below explains the labels and asset contracts.
+To populate a private tree, the ROM downloader (`src/RomFetch.h`) fills
+`roms/` and `python3 tools/fetch_test_media.py` installs the reference media
+listed in `tools/test_media.sha256` — see
+[the ROM catalogue](#the-rom-catalogue-status-download-and-import).
 
 ### Sources of truth before editing
 
@@ -94,6 +98,7 @@ hand-maintained backlog or overview.
 | The JIT | [§4](#4-jit--the-second-execution-engine) → `src/jit/POM68K_JIT.md` |
 | Every environment variable the code reads | [§5 Environment knobs](#5-environment-knobs--the-complete-list) |
 | Which `ctest` tier to run | [§6 Test tiers](#6-test-tiers-and-gates) |
+| Where a ROM dump is looked for, downloaded or imported | [§6 ROM catalogue](#the-rom-catalogue-status-download-and-import) |
 
 Platform sections are **one per board generation**, each with a reference
 machine; the other members of a family are identity/clock variants listed
@@ -1121,9 +1126,13 @@ them with the code:
 10. A beyond-boot pair (`*_soak_etalon` / `*_persist_etalon`) through
     `tests/BeyondBoot.h`. Boot proves the machine starts; the pair proves it
     keeps running and writes.
-11. `assets.lock`: the ROM identity with this profile's slug —
-    `tools/verify_assets.py` requires every catalogue profile exactly once
-    among the `machine-rom` rows, so a profile with no asset row fails.
+11. `assets.lock` and `src/RomCatalog.h`: the ROM identity with this
+    profile's slug, in both — `tools/verify_assets.py` requires every
+    catalogue profile exactly once among the `machine-rom` rows, the
+    catalogue's `static_assert` requires one required machine ROM per
+    profile, and `rom_catalog_test` requires the two files to agree row for
+    row. Any new firmware or declaration ROM the board opens gets a row in
+    both too.
 
 **The record**: `CLAUDE.md`'s machine table and profile count (compiled and
 compared by `docs_test`), `DEV.md` § 2.x, a `docs/*_BRINGUP.md` if the board
@@ -2366,7 +2375,7 @@ the same decoder and overrides the variable — `RuntimeConfigRelaunch.cpp`) —
 [§3.3bis](#33bis-what-else-can-live-on-the-bus-scsitarget--daynaport)),
 `POM68K_FIRMWARE_ROOT` (`<dir>` **replaces** both default search bases
 `./` and `../` for every dump `FirmwareManifest::verify` looks up —
-`FirmwareManifest.h:89-93`; a path that does not hold `roms/…` makes every
+`FirmwareManifest.h:47-51`; a path that does not hold `roms/…` makes every
 MCU fall back to HLE, which is the point when qualifying a packaged build).
 
 **Product / LLE-AArch64 mode** — the `--lle-aarch64` promise, captured by
@@ -3273,6 +3282,94 @@ reports a substitute, which is what makes the stderr policy hold for a
 GUI-only user; it never re-opens after being closed, and never appears on a
 fully-LLE machine.
 
+### The "Abstraction Levels (LLE / HLE)" window (`src/GuiAbstractionWindow.*`)
+
+The master table of `docs/LLE_VS_HLE.md`, live: one row per subsystem
+(CPU cores, MMU/FPU/040 cache, board logic, SCC, storage, ADB and the
+microcontrollers, video, sound, host-side machinery) in that document's
+five classes — Pure LLE, LLE simplified, HLE replacement, HLE hack, Host
+convenience. The rows are data in `src/AbstractionCatalog.*` (no ImGui);
+`abstraction_catalog_test` checks that every file a row names exists, that
+every platform kind, `lle::Module` and `firmware::kManifest` entry has a
+row, and that the document's table lists the same ids, classes and
+sections. Edit the catalogue and the table together.
+
+What only the window can say is the class **running now**, and it takes it
+from the same sources as the rest of the shell, never from a second copy:
+a firmware row (Egret/Cuda, ADB transceiver, Toby declaration ROM, M50753,
+Pangola ROM) reads the device's report in the session's `lle::Registry` —
+present only when the machine built the part, degraded to its fallback
+class when it runs the substitute, with the dump path the device searched
+as the hint; the engine row reads the CPU binding (`GuiCpuPanelState`); the
+Mac II Slot Manager hack shows engaged only while the ADB fallback runs.
+« This machine » filters by the profile's platform kind
+(`MachineCatalog.h`); « All machines » dims what this one lacks. The window
+explains and never changes anything: a firmware choice is still the
+Peripherals window's. It is reached from **Peripherals → Abstraction
+levels…** and from Windows; `gui_windows_test` renders it headlessly
+(`gui_abstraction*.ppm`) and `gui_machine_window_test` opens it from the
+menu.
+
+### The "ROM Status" window (`src/GuiRomWindow.*`)
+
+The ROM catalogue (§ "The ROM catalogue" below) against this host, and the
+only place the GUI downloads or imports a dump. One row per `kRomDumps`
+entry, grouped by kind (machine ROMs, controller firmware, declaration
+ROMs): the store's state chip (Verified / Shadowed / Mismatch / Missing,
+with its detail), the label, the need (Required / Substitute - the HLE
+fallback runs / Optional), the profiles that use it, where it was found
+and, for a missing row, what is lost (`absent`) and whether RetroBIOS also
+serves it or only the POM68K archive does. « This machine » keeps the rows
+of the focused profile (the running machine, or the model the Set Up
+window is preparing); « All dumps » shows the catalogue with those rows
+highlighted; a text filter matches label, id, path and machine. The
+summary line counts verified and missing dumps and names the destination
+(`writableRomsDir`), or why nothing can be installed.
+
+**Threads.** Every action is a job on ONE worker thread the window owns
+(`RomJob`): the scan (every candidate hashed), the download (`fetchRoms`)
+and the import (`importRoms`). The frame reads a mutex-guarded copy of the
+progress; Cancel sets the atomic the library polls and joins; the state's
+destructor does the same, so quitting mid-download waits one curl poll
+(30 ms), not the download. Every job ends with a scan unless cancelled, and
+a cancelled download or import is followed by one. The browser build has no
+threads: there the job runs inline and the download is refused
+(`romFetchAvailable`).
+
+**Network.** Opening the window only scans. A download starts on a click
+in this window or on « Download ROMs for this Mac... » in **Set Up a
+Macintosh**, which is offered (never started) when no ROM file was found
+for the chosen model; that button opens this window on the model, and
+« Back to Set Up a Macintosh » returns to the guide, which looks for the
+ROM again. The result separates dumps from the POM68K archive, from
+RetroBIOS and failures, and states `archiveError` on its own line.
+
+**After an install** the window rescans and calls
+`MachineFactory::forgetRomSignatures()`, so the Machine menu's greyed
+profiles and the guide's discovery see the new files. A running machine
+keeps the firmware and declaration ROMs it started with; the window says
+so.
+
+**Drops.** The application has one drop callback (`DiskBaysDrop.cpp`), and
+`diskBaysRouteDrop` routes each path: the ROM window first
+(`romDropWanted`: a folder, a `.zip`, or a file exactly the size of a
+catalogued dump whose extension is not another disk image's - none is a
+floppy or CD size, and dumps are often `.bin`, which the Disks window reads
+as a CD), then a disk image to the Disks
+window, then any other small file to the importer, which reports what it
+did not recognise. Dropped ROM inputs are queued and imported on the next
+free frame, and the window opens.
+
+It is reached from **Machine → ROM Status...**, from Windows, from the Set
+Up guide and from a degraded firmware row of the Abstraction Levels window.
+`gui_rom_window_test` renders it headlessly with no network and no ROM
+(`gui_roms-*.ppm`): an empty temporary tree with the real scanner, a fake
+scan with every state, a held fake download (progress, Cancel), a mixed
+finished result, the real `fetchRoms` over a fake transport whose archive
+answers 404, the destructor joining mid-download, the drop router and a
+dropped import. `gui_machine_window_test` opens it from the menu and drives
+the guide's offer and the way back.
+
 ### The "AppleTalk / Ethernet" window (`src/NetworkWindow.*`)
 
 Out of `GuiShell.cpp` since 2026-09-13, when the DaynaPort selector took the
@@ -3348,8 +3445,10 @@ to a bare MDB at offset 1024 for the flat `.dsk` images.
 **Why it exists**: `roms/` and `hdv/` are user-provided and gitignored, so a
 gate's fixture can change under it with nothing in the record. On 2026-08-06
 that cost two wrong "code regression" diagnoses — `CHANGELOG.md` 2026-08-09.
-`assets.lock` (repo root) pins the qualified reference set: machine ROMs,
+`assets.lock` (repo root) pins the qualified reference set: machine ROMs
+(and `machine-rom-variant` rows — another revision a profile accepts),
 declaration ROMs, controller firmware, reference disks and reference floppies.
+Its ROM rows are, row for row, the ROM catalogue described below.
 The manifest itself is the source of truth for the current inventory.
 Each row records role, label, size, SHA-256, path and qualified
 `MachineCatalog` profile slugs. The tracked manifest contains only identities,
@@ -3392,6 +3491,64 @@ all three; nobody read it, because a fixture is not where you look for a
 regression. **Read the ASSET lines of a red gate before its diff** — that is
 what they are for, and a criterion that a fixture edit can move is not a
 criterion (`tests/FinderSignature.h`).
+
+### The ROM catalogue: status, download and import
+
+`src/RomCatalog.h` (`kRomDumps`) lists every user-provided dump POM68K opens:
+machine ROMs, Egret/Cuda/PIC/PMU/PG&E firmware and declaration ROMs — 52
+rows — each with its label, **canonical path** (the path a download or an
+import writes, and its member name in the archive), the other paths the code
+also probes, size, SHA-256, CRC-32, the profiles that use it, what its
+absence costs (`Required` / `Substitute` / `Optional`) and, when RetroBIOS
+carries it, where. It is held to the existing owners rather than standing
+beside them: a `static_assert` against `kMachineProfiles` (one required
+machine ROM per profile, every menu ROM catalogued) and `rom_catalog_test`
+against `assets.lock`, `firmware::kManifest` and the literal paths the
+devices open.
+
+The library `pom68k_roms` (headless, no ImGui) has four parts:
+
+| Header | Owns |
+|---|---|
+| `RomStore.h` | `RomSearch` (working dir, executable dir, firmware root), `scanRoms`/`checkRom` — the runtime's own search order, every candidate hashed — `writableRomsDir`, and `installRom`, the only writer |
+| `RomFetch.h` | `fetchRoms`: the POM68K archive first, RetroBIOS at a pinned commit second |
+| `RomImport.h` | `importRoms`: files, folders and zips identified by SHA-256 |
+| `ZipReader.h`, `HostProcess.h` | in-process stored/deflate zip reading; one helper program run with argv, deadline and stop |
+
+**Writes.** `installRom` checks size and SHA-256 before touching the disk,
+leaves identical bytes alone, copies a different file in the way into
+`roms-replaced/` (beside `roms/`, outside the signature scan) and refuses to
+replace it if that copy fails, then writes beside the destination and
+renames. A symlink in the way is replaced by a file; its target is never
+written. `writableRomsDir` is `<cwd>/roms`, else `<cwd>/../roms`, else a new
+`<cwd>/roms`; packaged builds start in their data directory, so downloads land
+there, and a folder inside a macOS `.app` or a read-only one is refused.
+
+**Sources.** Primary: `https://archive.org/download/pom68k_firm/pom68k_firm.zip`
+(one zip, members named by catalogue path). Secondary: RetroBIOS
+(`github.com/Abdess/retrobios`) at the commit pinned in `RomFetch.h`; 20 rows
+map to a file or a romset member there, each verified byte for byte, the
+other 32 are archive-only. Any byte from either is gated by `installRom`. A
+zip whose directory declares more than 96 MiB is refused before unpacking. The
+transport is the system `curl` with `--proto =https --proto-redir =https`, a
+size ceiling and timeouts (the argv is pinned by `rom_fetch_test`); the
+browser build reports the download as unavailable.
+
+**Archives.** `tools/build_asset_archives.py firm --out <file>` builds
+`pom68k_firm.zip` from a private `roms/` tree — dumps are found by digest
+whatever their local name, missing rows are listed — and
+`tools/build_asset_archives.py media --out <file>` builds `pom68k_media.zip`
+from the explicit list `tools/test_media.sha256` (the `assets.lock` reference
+media plus the other images asset-requiring gates open; not the whole of
+`hdv/`). `tools/fetch_test_media.py` installs that media into a tree, never
+overwriting a file and keeping `ref/` copies read-only. Neither script uploads
+anything, and the builder refuses to write inside the repository.
+
+**Gates** (all `asset-none`): `rom_catalog_test`, `zip_reader_test`,
+`rom_fetch_test` (a fake server: archive ok, 403, HTML, wrong member, wrong
+RetroBIOS bytes, zip bomb, backup-before-replace, cancel, shadowed save, curl
+argv, the process runner), `rom_import_test`, and the two scripts'
+`--self-test`s, `asset_archives_script_test` and `fetch_test_media_test`.
 
 Pinned CPU vector suites, which are gates in their own right:
 `sst68000` (**1 000 058** accepted SingleStepTests 68000 vectors),

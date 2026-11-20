@@ -1,5 +1,6 @@
 // POM68K — first launch and preparation of another Macintosh.
 #include "GuiStartupWindow.h"
+#include "GuiRomWindow.h"
 #include "GuiSessionState.h"
 #include "MachineFactory.h"
 #include "DiskBays.h"
@@ -46,6 +47,7 @@ void discoverRom(GuiStartupState& form, bool refresh = false) {
     if (found.empty() && profile.romCrc32)
         found = app::MachineFactory::findRomBySignature(profile.romCrc32, refresh);
     copyPath(form.rom, found.empty() ? profile.romPath : found);
+    form.romFound = !found.empty();
     form.ready = false;
     form.message.clear();
 }
@@ -102,6 +104,7 @@ void drawFileBrowser(GuiStartupState& form) {
                 }
                 copyPath(form.browsing == 1 ? form.rom : form.media,
                          app::utf8FromPath(absolute));
+                if (form.browsing == 1) form.romFound = true;
                 form.browsing = 0;
                 form.ready = false;
                 form.message.clear();
@@ -125,8 +128,22 @@ void openStartupWindow(GuiSessionState& state, SnapMachine current) {
     form.modelSearch.fill(0);
     form.media[0] = 0;
     discoverRom(form);
-    if (!form.missingRom && !state.sessionFile.romName.empty())
+    if (!form.missingRom && !state.sessionFile.romName.empty()) {
         copyPath(form.rom, state.sessionFile.romName);
+        form.romFound = true;   // the ROM this session runs on
+    }
+}
+
+void reopenStartupWindowFor(GuiSessionState& state, SnapMachine profile) {
+    GuiStartupState& form = state.startup;
+    form.considered = true;
+    form.profile = profile;
+    form.floppy = !storageCapabilities(*machineProfile(profile)).scsi;
+    form.open = form.popupRequested = true;
+    form.ready = false;
+    form.browsing = 0;
+    form.modelSearch.fill(0);
+    discoverRom(form, true);   // files may have arrived since the last walk
 }
 
 bool validateStartup(GuiStartupState& form) {
@@ -252,6 +269,24 @@ void drawStartupWindow(GuiSessionState& state, SnapMachine current) {
     if (ImGui::Button("Browse ROM...")) startBrowsing(form, 1);
     ImGui::SameLine();
     if (ImGui::Button("Search roms/")) discoverRom(form, true);
+    // No ROM file for this model: offer, never start, the ROM window's
+    // download. The button is the consent to the network access; the ROM
+    // window shows the progress and leads back here.
+    if (!form.romFound && selected) {
+        ImGui::TextWrapped("No ROM for the %s was found in roms/. POM68K can download the dumps "
+                           "this model uses, or import files you already have.", selected->label);
+        if (ImGui::Button("Download ROMs for this Mac...")) {
+            romWindowDownloadFor(state, form.profile);
+            form.open = false;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("ROM Status...")) {
+            romWindowShowFor(state, form.profile);
+            form.open = false;
+            ImGui::CloseCurrentPopup();
+        }
+    }
     ImGui::SeparatorText("3. Choose a startup disk");
     if (selected && selected->platform == PlatformKind::Compact && storageCapabilities(*selected).scsi) {
         if (ImGui::RadioButton("Hard disk", !form.floppy)) { form.floppy = false; changed = true; }

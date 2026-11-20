@@ -32,6 +32,7 @@ class Asset:
 ROLE_ROOTS = {
     "firmware": ("roms",),
     "machine-rom": ("roms",),
+    "machine-rom-variant": ("roms",),
     "declaration-rom": ("roms",),
     "reference-disk": ("hdv", "ref"),
     "reference-floppy": ("disks35", "ref"),

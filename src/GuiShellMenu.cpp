@@ -9,6 +9,7 @@
 // user can reach is decided once, here:
 //
 //   Machine        run/pause/fast-forward, save state, typing, recording,
+//                  « Set Up a Macintosh », « ROM Status »,
 //                  « Change machine » (one submenu per board family),
 //                  « Session » (save / reopen a .pomsession),
 //                  drive sounds
@@ -25,9 +26,11 @@
 
 #include "DiskBays.h"
 #include "DockLayout.h"
+#include "GuiAbstractionWindow.h"
 #include "GuiDisplay.h"
 #include "GuiEngineWindow.h"
 #include "GuiMachineControls.h"
+#include "GuiRomWindow.h"
 #include "GuiSerialWindow.h"
 #include "GuiSessionMenu.h"
 #include "LleSession.h"
@@ -38,6 +41,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <utility>
 
 namespace pom68k::gui {
 namespace {
@@ -197,6 +201,11 @@ void drawShellFrame(GuiSessionState& state, SnapMachine current) {
             ImGui::Separator();
             if (ImGui::MenuItem("Set Up a Macintosh..."))
                 openStartupWindow(state_, current);
+            if (ImGui::MenuItem("ROM Status...", nullptr, state_.roms.showWindow)) {
+                state_.roms.showWindow = !state_.roms.showWindow;
+                state_.roms.focus.reset();          // about the running machine
+                state_.roms.returnToStartup = false;
+            }
             drawMachineCatalogue(state_, current);
             drawSessionMenu(state_);
             const bool sounds = !state_.audio.floppySfx.isMuted();
@@ -219,6 +228,7 @@ void drawShellFrame(GuiSessionState& state, SnapMachine current) {
                 ImGui::TextDisabled("(POM68K_APPLETALK=0, no network card)");
             ImGui::MenuItem("Serial ports...", nullptr, &state_.serial.showWindow);
             peripheralMenuItem("LLE / HLE controllers...");
+            ImGui::MenuItem("Abstraction levels...", nullptr, &state_.abstraction.showWindow);
             ImGui::EndMenu();
         }
         drawCpuMenu(state_, speed, registry.requested() && registry.qualified());
@@ -230,6 +240,8 @@ void drawShellFrame(GuiSessionState& state, SnapMachine current) {
             ImGui::MenuItem(kNetworkWindowTitle, nullptr,
                             &state_.network.showWindow);
             peripheralMenuItem(kPeripheralWindowTitle);
+            ImGui::MenuItem(kAbstractionWindowTitle, nullptr, &state_.abstraction.showWindow);
+            ImGui::MenuItem(kRomWindowTitle, nullptr, &state_.roms.showWindow);
             ImGui::MenuItem("Accelerated engine", nullptr, &state_.cpu.showJit,
                             bool(state_.cpu.setCpuEngine));
             ImGui::MenuItem(kSerialWindowTitle, nullptr, &state_.serial.showWindow);
@@ -258,6 +270,10 @@ void drawShellFrame(GuiSessionState& state, SnapMachine current) {
     drawAppleTalkWindow(state_.network);
     drawEngineWindow(state_.cpu);
     peripheralWindow(state_.peripherals);
+    drawAbstractionWindow(state_, current);
+    drawRomWindow(state_, current);
+    if (const auto back = std::exchange(state_.roms.backToStartup, std::nullopt))
+        reopenStartupWindowFor(state_, *back);   // it looks for the ROM again
     drawStartupWindow(state_, current);
     if (state_.relaunch.showWindow) {
         state_.relaunch.showWindow = false;

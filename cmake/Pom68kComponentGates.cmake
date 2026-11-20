@@ -59,12 +59,12 @@ set_tests_properties(gui_session_smoke_test PROPERTIES
 if(EXISTS "${IMGUI_DIR}/imgui.cpp")
     add_executable(gui_windows_test tests/gui_windows_test.cpp
         src/PeripheralWindow.cpp src/NetworkWindow.cpp src/DiskBays.cpp
-        src/GuiEngineWindow.cpp src/DockLayout.cpp src/GuiMachineControls.cpp src/GuiTypingWindow.cpp src/GuiSerialWindow.cpp src/GuiDebuggerWindow.cpp
+        src/GuiEngineWindow.cpp src/DockLayout.cpp src/GuiMachineControls.cpp src/GuiTypingWindow.cpp src/GuiSerialWindow.cpp src/GuiDebuggerWindow.cpp src/GuiAbstractionWindow.cpp src/GuiRomWindow.cpp
         ${IMGUI_DIR}/imgui.cpp ${IMGUI_DIR}/imgui_draw.cpp
         ${IMGUI_DIR}/imgui_tables.cpp ${IMGUI_DIR}/imgui_widgets.cpp)
     target_include_directories(gui_windows_test PRIVATE ${IMGUI_DIR})
     target_compile_definitions(gui_windows_test PRIVATE IMGUI_ENABLE_TEST_ENGINE)
-    target_link_libraries(gui_windows_test PRIVATE pom68k_core pom68k_app)
+    target_link_libraries(gui_windows_test PRIVATE pom68k_core pom68k_app pom68k_roms)
     add_test(NAME gui_windows_test COMMAND gui_windows_test)
     # The machine window itself: the menu bar (GuiShellMenu.cpp), the screen
     # window with its mouse surface and keyboards (GuiScreen.h), the cabinet
@@ -72,13 +72,13 @@ if(EXISTS "${IMGUI_DIR}/imgui.cpp")
     add_executable(gui_machine_window_test tests/gui_machine_window_test.cpp
         src/GuiShellMenu.cpp src/GuiSessionMenu.cpp src/GuiStartupWindow.cpp src/GuiMachineControls.cpp src/GuiTypingWindow.cpp src/GuiSerialWindow.cpp src/GuiDebuggerWindow.cpp src/GuiDisplayWindow.cpp
         src/PeripheralWindow.cpp src/NetworkWindow.cpp src/DiskBays.cpp
-        src/GuiEngineWindow.cpp src/DockLayout.cpp
+        src/GuiEngineWindow.cpp src/DockLayout.cpp src/GuiAbstractionWindow.cpp src/GuiRomWindow.cpp
         src/FloppySound.cpp src/miniaudio_impl.cpp
         ${IMGUI_DIR}/imgui.cpp ${IMGUI_DIR}/imgui_draw.cpp
         ${IMGUI_DIR}/imgui_tables.cpp ${IMGUI_DIR}/imgui_widgets.cpp)
     target_include_directories(gui_machine_window_test PRIVATE ${IMGUI_DIR})
     target_compile_definitions(gui_machine_window_test PRIVATE IMGUI_ENABLE_TEST_ENGINE)
-    target_link_libraries(gui_machine_window_test PRIVATE pom68k_core pom68k_app)
+    target_link_libraries(gui_machine_window_test PRIVATE pom68k_core pom68k_app pom68k_roms)
     # The session state carries the drive-sound players (miniaudio, loaded
     # at run time through dlopen): the same host libraries as the GUI.
     if(UNIX AND NOT APPLE)
@@ -86,6 +86,21 @@ if(EXISTS "${IMGUI_DIR}/imgui.cpp")
         target_link_libraries(gui_machine_window_test PRIVATE ${CMAKE_DL_LIBS} Threads::Threads m)
     endif()
     add_test(NAME gui_machine_window_test COMMAND gui_machine_window_test)
+    # The ROM Status window with its worker thread: fake scanner/fetcher,
+    # the real fetch over a fake transport, the drop router. No network,
+    # no ROM (tests/gui_rom_window_test.cpp).
+    add_executable(gui_rom_window_test tests/gui_rom_window_test.cpp
+        src/GuiRomWindow.cpp src/DiskBays.cpp src/DockLayout.cpp src/GuiMachineControls.cpp
+        ${IMGUI_DIR}/imgui.cpp ${IMGUI_DIR}/imgui_draw.cpp
+        ${IMGUI_DIR}/imgui_tables.cpp ${IMGUI_DIR}/imgui_widgets.cpp)
+    target_include_directories(gui_rom_window_test PRIVATE ${IMGUI_DIR})
+    target_compile_definitions(gui_rom_window_test PRIVATE IMGUI_ENABLE_TEST_ENGINE)
+    target_link_libraries(gui_rom_window_test PRIVATE pom68k_core pom68k_app pom68k_roms)
+    if(UNIX AND NOT APPLE)
+        find_package(Threads REQUIRED)
+        target_link_libraries(gui_rom_window_test PRIVATE Threads::Threads)
+    endif()
+    add_test(NAME gui_rom_window_test COMMAND gui_rom_window_test)
 else()
     # Registered on every configure so the registry (STATUS.md, docs_test)
     # does not depend on whether setup_imgui.sh ran: without Dear ImGui the
@@ -94,6 +109,9 @@ else()
              COMMAND ${CMAKE_COMMAND} -E echo
                      "SKIP: Dear ImGui absent (${IMGUI_DIR}) - run ./setup_imgui.sh")
     add_test(NAME gui_machine_window_test
+             COMMAND ${CMAKE_COMMAND} -E echo
+                     "SKIP: Dear ImGui absent (${IMGUI_DIR}) - run ./setup_imgui.sh")
+    add_test(NAME gui_rom_window_test
              COMMAND ${CMAKE_COMMAND} -E echo
                      "SKIP: Dear ImGui absent (${IMGUI_DIR}) - run ./setup_imgui.sh")
 endif()
@@ -490,6 +508,13 @@ target_compile_definitions(docs_test PRIVATE
     POM68K_GATE_MANIFEST="${CMAKE_CURRENT_BINARY_DIR}/pom68k_gate_manifest.tsv"
     POM68K_PERF_BUDGET_FILE="${CMAKE_CURRENT_SOURCE_DIR}/performance_budgets.tsv")
 add_test(NAME docs_test COMMAND docs_test
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+# The abstraction catalogue (src/AbstractionCatalog.*) against the files it
+# names, the firmware manifest, every platform kind, and the master table of
+# docs/LLE_VS_HLE.md. Asset-free; runs from the source root.
+add_executable(abstraction_catalog_test tests/abstraction_catalog_test.cpp)
+target_link_libraries(abstraction_catalog_test PRIVATE pom68k_app)
+add_test(NAME abstraction_catalog_test COMMAND abstraction_catalog_test
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
 # The env-knob surface against DEV.md § 5 and config_knobs.tsv. The exact

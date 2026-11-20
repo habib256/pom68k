@@ -3,8 +3,11 @@
 #include "DiskBays.h"
 #include "GuiDisplay.h"
 #include "DockLayout.h"
+#include "GuiRomWindow.h"
 #include "HfsBlankVolume.h"
+#include "RomImport.h"
 #include "ScsiDisk.h"
+#include "SessionFile.h"
 
 #include "imgui.h"
 
@@ -447,6 +450,16 @@ bool diskBaysOfferDroppedImage(const std::string& path) {
     rememberImage(path);
     gOpen = true;               // dropping an image is a request to use it
     return true;
+}
+
+DropRoute diskBaysRouteDrop(const std::string& path) {
+    const fs::path p = app::pathFromUtf8(path);
+    DropRoute route = DropRoute::Ignored;
+    if (gui::romDropWanted(p)) route = DropRoute::Rom;
+    else if (diskBaysOfferDroppedImage(path)) return DropRoute::Disk;
+    else if (roms::romImportCandidate(p)) route = DropRoute::Rom;
+    if (route == DropRoute::Rom) gui::romWindowOfferDrop({path});
+    return route;
 }
 
 // ── Menu entry ─────────────────────────────────────────────────────────────

@@ -487,8 +487,17 @@ add_library(pom68k_app STATIC
     src/RuntimeConfig.cpp src/RuntimeConfigProduct.cpp src/RuntimeConfigSerial.cpp
     src/RuntimeConfigCore.cpp src/RuntimeConfigMachine.cpp src/RuntimeConfigProfile.cpp src/RuntimeConfigFirmware.cpp
     src/RuntimeConfigRelaunch.cpp src/RuntimeConfigNetwork.cpp
-    src/MachineFactory.cpp src/MachineSession.cpp src/SessionFile.cpp)
+    src/MachineFactory.cpp src/MachineSession.cpp src/SessionFile.cpp src/AbstractionCatalog.cpp)
 target_include_directories(pom68k_app PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+# ─── ROM store (headless) — catalogue status, download and import ──────
+# src/RomCatalog.h is the table; the library finds, fetches (system curl)
+# and imports dumps. RomSearch.cpp alone links pom68k_app, so a gate that
+# builds its own RomSearch links nothing else.
+add_library(pom68k_roms STATIC
+    src/ZipReader.cpp src/HostProcess.cpp src/RomStore.cpp src/RomSearch.cpp
+    src/RomFetch.cpp src/RomImport.cpp)
+target_include_directories(pom68k_roms PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(pom68k_roms PUBLIC pom68k_app)
 # ─── GUI executable (Dear ImGui, fetched by setup_imgui.sh) ──────────────
 set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/imgui)
 if(EXISTS "${IMGUI_DIR}/imgui.cpp")
@@ -505,7 +514,7 @@ if(EXISTS "${IMGUI_DIR}/imgui.cpp")
         src/GuiMachineRuntime.cpp
         src/GuiHostServices.cpp
         src/GuiHostSerial.cpp
-        src/GuiShell.cpp src/GuiShellMenu.cpp src/GuiSessionMenu.cpp src/GuiStartupWindow.cpp src/GuiMachineControls.cpp src/GuiTypingWindow.cpp src/GuiSerialWindow.cpp src/GuiDebuggerWindow.cpp src/GuiEngineWindow.cpp
+        src/GuiShell.cpp src/GuiShellMenu.cpp src/GuiSessionMenu.cpp src/GuiStartupWindow.cpp src/GuiMachineControls.cpp src/GuiTypingWindow.cpp src/GuiSerialWindow.cpp src/GuiDebuggerWindow.cpp src/GuiEngineWindow.cpp src/GuiAbstractionWindow.cpp src/GuiRomWindow.cpp
         src/GuiSmokeScenario.cpp
         src/PlatformComposers.cpp src/PlatformCompact.cpp
         src/PlatformToby.cpp
@@ -520,7 +529,7 @@ if(EXISTS "${IMGUI_DIR}/imgui.cpp")
         src/NetworkWindow.cpp src/DockLayout.cpp ${IMGUI_SOURCES}
         $<$<CXX_COMPILER_ID:MSVC>:${CMAKE_CURRENT_SOURCE_DIR}/packaging/windows/POM68K.manifest>)
     target_include_directories(${PROJECT_NAME} PRIVATE ${IMGUI_DIR} ${IMGUI_DIR}/backends)
-    target_link_libraries(${PROJECT_NAME} PRIVATE pom68k_core pom68k_app)
+    target_link_libraries(${PROJECT_NAME} PRIVATE pom68k_core pom68k_app pom68k_roms)
     # Version stamp for `POM68K --version` (release smoke gates). Single
     # source of truth: the repo-root VERSION file; packagers override with
     # -DPOM68K_VERSION=<tag>. Target-scoped so bumping it recompiles one TU.
@@ -588,6 +597,7 @@ elseif(POM68K_TESTS)
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/tests
                         ${CMAKE_CURRENT_SOURCE_DIR}/src)
     include(cmake/Pom68kComponentGates.cmake)
+    include(cmake/Pom68kRomGates.cmake)
     include(cmake/Pom68kMachineGates.cmake)
     include(cmake/Pom68kOracleGates.cmake)
     include(cmake/Pom68kJitGates.cmake)

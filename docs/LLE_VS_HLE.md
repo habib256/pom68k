@@ -56,6 +56,81 @@ and the ranked list of what is left.
 | **HLE hack** | Emulator reaches *into the guest* — patches ROM/RAM, injects events | **Eliminate.** List is empty on every default path (§ 4.1) |
 | **Host convenience** | No guest-visible effect (media formats, rendering, audio host) | Keep |
 
+## Master table — what each subsystem is emulated as
+
+One row per subsystem, in the classes above. This is the table the
+**« Abstraction Levels (LLE / HLE) »** window renders (`src/AbstractionCatalog.*`,
+`src/GuiAbstractionWindow.*`, `DEV.md` § 6), and `abstraction_catalog_test`
+holds the two to the same ids, classes and sections — edit them together.
+The window adds what a document cannot: the class **running now** on the
+current machine. For a firmware row (*Without its dump* is not `-`) that is
+what the device reported to the session's `lle::Registry`; *required* means
+there is no substitute and the machine refuses to start without the dump.
+The engine row shows the interpreter or the accelerated backend, and the
+Slot Manager hack shows whether its fallback is engaged.
+
+*Section* points at the prose that carries the evidence. A `-` marks a
+subsystem this inventory has not yet given a section of its own (ATA, the
+two Power Managers, the Pangola ROM): its class here is read from the code
+and its bring-up note, and is the first thing to re-check when a section is
+written. Video rows for the Duo and PowerBook panels sit under § 1.1 by
+analogy; that section's audit has not covered them yet.
+
+<!-- abstraction-catalogue:begin -->
+| Id | Subsystem | Class | Without its dump | Section |
+|---|---|---|---|---|
+| `cpu-68000` | 68000 core (Moira) | Pure LLE | - | 1.2 |
+| `cpu-680x0` | 68020 / 68030 / 68040 cores (Moira) | LLE simplified | - | 1.2 |
+| `cpu-mmu` | 68030 PMMU / 68040 MMU and ATC | Pure LLE | - | 1.11 |
+| `cpu-fpu` | 68881 / 68882 / 68040 FPU | Pure LLE | - | 4.2 |
+| `cpu-cache040` | 68040 caches | LLE simplified | - | 1.2 |
+| `cpu-engine` | Execution engine (interpreter / JIT) | Pure LLE | - | 1.11 |
+| `memory-map` | Memory controllers and address decode | Pure LLE | - | 3 |
+| `via` | VIA 6522 and E clock | Pure LLE | - | 3 |
+| `pseudo-via` | Pseudo-VIA (integrated VIA2) | Pure LLE | - | 3 |
+| `nubus` | NuBus slots and declaration ROMs | LLE simplified | - | 1.8 |
+| `iop` | Apple PIC I/O processors (SCC / SWIM-ADB IOPs) | Pure LLE | - | 1.2 |
+| `scc` | SCC 8530 | LLE simplified | - | 1.4 |
+| `daynaport` | DaynaPort SCSI/Link Ethernet | LLE simplified | - | 1.5 |
+| `appletalk-stack` | In-process AppleTalk peer (AFP, PAP) | LLE simplified | - | 1.10 |
+| `network-host` | Host network bridges (LToUDP, MacIP / Ethernet NAT) | Host convenience | - | 3 |
+| `floppy-iwm` | IWM / SWIM (ISM) floppy controller | LLE simplified | - | 1.3 |
+| `floppy-swim2` | SWIM2 floppy controller | LLE simplified | - | 1.3 |
+| `floppy-drive` | Sony drive and flux store | LLE simplified | - | 1.3 |
+| `scsi-5380` | SCSI NCR 5380 | LLE simplified | - | 1.5 |
+| `scsi-53c96` | SCSI NCR 53C96 | LLE simplified | - | 1.5 |
+| `scsi-target` | SCSI disk and CD-ROM targets | LLE simplified | - | 1.5 |
+| `ata` | ATA (IDE) disk | LLE simplified | - | - |
+| `media-formats` | Media formats and the flat-HFS facade | Host convenience | - | 3 |
+| `adb-transceiver` | ADB transceiver (PIC1654S) | Pure LLE | HLE replacement | 2 |
+| `adb-slot-shift-hack` | Mac II Slot Manager phantom SHIFT | HLE hack | - | 2 |
+| `adb-devices` | ADB keyboard and mouse | Pure LLE | - | 1.6 |
+| `egret-cuda` | Egret / Cuda (ADB, PRAM, clock, power) | Pure LLE | HLE replacement | 1.9 |
+| `pmu-m50753` | M50753 Power Manager (Portable, PowerBook 1x0) | Pure LLE | required | - |
+| `pmu-pge` | PG&E Power Manager (Duo, PowerBook 150) | Pure LLE | - | - |
+| `rtc` | RTC / PRAM chip | Pure LLE | - | 3 |
+| `video-compact` | Compact 512x342 video | LLE simplified | - | 1.1 |
+| `video-toby` | Toby video card (Mac II, IIfx) | LLE simplified | - | 1.1 |
+| `toby-declrom` | Toby declaration ROM (342-0008-a) | Pure LLE | HLE replacement | 3 |
+| `video-se30` | SE/30 internal video | LLE simplified | - | 1.1 |
+| `video-v8` | V8 video and Ariel RAMDAC | LLE simplified | - | 1.1 |
+| `video-rbv` | RBV video (IIsi, IIci) | LLE simplified | - | 1.1 |
+| `video-sonora` | Sonora video | LLE simplified | - | 1.1 |
+| `video-vasp` | VASP video | LLE simplified | - | 1.1 |
+| `video-dafb` | DAFB | LLE simplified | - | 1.1 |
+| `video-valkyrie` | Valkyrie | LLE simplified | - | 1.1 |
+| `video-csc` | CSC / GSC LCD controllers (Duo) | LLE simplified | - | 1.1 |
+| `video-pb030` | Niagra / Ponti / GSC LCD (PowerBook 1x0) | LLE simplified | - | 1.1 |
+| `video-lcd` | 1-bit LCD frame buffers (Portable, PowerBook 140/170) | LLE simplified | - | 1.1 |
+| `video-pangola` | Pangola / WD90C26 color LCD and its declaration ROM | Pure LLE | required | - |
+| `asc` | ASC / EASC family | LLE simplified | - | 1.7 |
+| `dfac` | DFAC audio stage | LLE simplified | - | 1.7 |
+| `host-agent` | Guest disk agent (Disques) and its SCSI mailbox | Host convenience | - | 3 |
+| `host-text` | Clipboard read-back and typed text | Host convenience | - | 3 |
+| `host-audio` | Host audio, drive sounds | Host convenience | - | 3 |
+| `host-state` | Save states and PRAM files | Host convenience | - | 1.11 |
+<!-- abstraction-catalogue:end -->
+
 ---
 
 # 1. Open gaps — LLE with simplification
@@ -1202,7 +1277,11 @@ round when assumed otherwise:
   alone is insufficient.**
 
 **Host convenience** (guest-invisible): `MacAudioHost.h`, GUI (`main.cpp`),
-trace tools, PRAM file persistence, LToUDP peer bridging, `FloppySound.*`.
+trace tools, PRAM file persistence, LToUDP peer bridging, `FloppySound.*`,
+the desk-scrap reader and host typing (`GuestScrap.h`, `TextTyping.h` — real
+key presses, no guest code run), and the opt-in guest disk agent with its
+SCSI mailbox (`ScsiAgentMailbox.h`, `share/POM68KDisques.bin`), which no
+machine needs to boot.
 
 **PRAM persistence is on all twelve platforms** (corrected 2026-08-12 — the
 old "absent on the compacts, Mac II, IIfx and Duo" claim, which also reached
@@ -1235,7 +1314,9 @@ Centris, Q700), or the PG&E's own internal RAM + 32 KB SRAM on the Duo
   opens on it, product mode refuses it, and its consequence is stated in the
   row: System 6 and 7.0 boot, System 7.5.5 parks a slot VBL task the fallback
   never releases (CHANGELOG 2026-09-15). It is never completed into firmware
-  Apple did not ship.
+  Apple did not ship. Listed among the host conveniences for its history, it
+  is classified by what it now is: the master table's `toby-declrom` row
+  counts it as the **HLE replacement** fallback of the real ROM.
 
 ---
 

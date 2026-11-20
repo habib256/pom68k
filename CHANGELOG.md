@@ -620,6 +620,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 ## Index by date
 
 - [2026-11-21 — Upstream's 68020 instruction cache is on, with its fetch timing corrected; three defects of upstream's code fixed](#2026-11-21-icache-020-on)
+- [2026-11-20 (eighth) — One ROM catalogue with a status window, a downloader and an importer; the LLE/HLE inventory as a window](#2026-11-20-rom-status-and-abstraction-windows)
 - [2026-11-20 (seventh) — The release for Dirk Hoffmann, cut on his master and accepted by his Runner](#2026-11-20-release-on-upstream-master)
 - [2026-11-20 (sixth) — The Moira fork is rebased onto upstream's master, and upstream's own Runner passes on it](#2026-11-20-rebase-on-upstream)
 - [2026-11-20 (fifth) — A write to SR or CCR at a page end took the bus error of its own refill; an RTE whose frame faults reran from a moved A7; ADDX and SUBX's pending store](#2026-11-20-addx-subx-buffer)
@@ -1522,6 +1523,69 @@ Open, and in `TODO.md`: the fill charged to the first fetch of an interrupt
 handler is lost when the next instruction clears `budget.cp`; nothing above
 grade F settles a narrow port or either machine's port width; the JIT on a
 68020.
+<a id="2026-11-20-rom-status-and-abstraction-windows"></a>
+## 2026-11-20 (eighth) — One ROM catalogue with a status window, a downloader and an importer; the LLE/HLE inventory as a window
+
+Until today a missing or wrong dump showed far from its cause: a profile
+greyed in the machine menu, a controller quietly on its HLE fallback, a gate
+that soft-skipped. Three lists named the dumps (`kMachineProfiles`,
+`firmware::kManifest`, `assets.lock`) and nothing held them to one another.
+
+**The catalogue.** `src/RomCatalog.h` lists the 52 dumps the code opens —
+machine ROMs, controller firmware, declaration ROMs — with size, SHA-256,
+canonical path, the profiles that use each and what is lost without it. A
+`static_assert` ties it to `kMachineProfiles`; `rom_catalog_test` checks it
+row for row against `assets.lock`, the strict manifest and the literal paths
+the devices open. The comparison found what the three lists had let drift:
+nine dumps the code opens that `assets.lock` did not name (Cuda 0417/0789,
+Egret 0850/344s0100, the Duo battery ID, the 8-24 declaration ROM, three ROM
+revisions the gates open, now under a `machine-rom-variant` role), and an
+LC 580 whose catalogue CRC (06684214) is not the ROM its gates boot
+(064DC91D) — both are catalogued, the disagreement is left standing and
+visible. SHA-256 has one implementation, `src/Sha256.h`.
+
+**Where a dump comes from.** `RomFetch` asks POM68K's own archive first
+(`archive.org/details/pom68k_firm`, one zip), then RetroBIOS at a pinned
+commit (`c25426f1`), through the system `curl` restricted to HTTPS with size
+and time ceilings. Every download passes the catalogue's size and SHA-256
+before it is installed; a different file already in place is copied to
+`roms-replaced/` first; a zip is refused before unpacking when its central
+directory announces more than the cap. Measured against the local dumps,
+RetroBIOS serves 20 of the 52 byte-for-byte (9 machine ROMs, 9 controller
+dumps, 2 declaration ROMs); 32 exist only in the archive, the three M50753
+power managers among them. `RomImport` identifies files, folders and zips by
+SHA-256 and recombines MAME's high/low chip pairs. **The archive items did
+not exist on this date**: a real fetch into an empty tree got curl's exit 22
+from archive.org, installed five dumps from RetroBIOS and reported the
+archive's reason for the rest. `tools/build_asset_archives.py` builds the
+two zips from a local tree (`firm`: 52 dumps, 11.8 MiB; `media`: the 18
+images of `tools/test_media.sha256`, 209.6 MiB) and uploads nothing;
+`tools/fetch_test_media.py` puts the media back, file by file against the
+list, never over an existing file.
+
+**The windows.** "ROM Status" (Machine menu) shows the catalogue against the
+disk — Verified, Shadowed, Mismatch, Missing — for the current machine or
+all, downloads on a click and never otherwise, imports what is dropped on
+the application window, and makes `MachineFactory` forget its cached ROM
+signature walks so a newly installed dump ungreys its profiles without a
+restart. "Set Up a Macintosh" offers the download when the chosen model has
+no ROM. "Abstraction Levels (LLE / HLE)" draws `src/AbstractionCatalog.*`,
+50 rows in the five classes of `docs/LLE_VS_HLE.md`, whose new master table
+`abstraction_catalog_test` holds to the catalogue; rows that depend on the
+session (controller firmware, the Toby declaration ROM, the execution
+engine) show what is running, from `lle::Registry`.
+
+**Evidence.** Eight new asset-free gates (`zip_reader_test`,
+`rom_catalog_test`, `rom_fetch_test`, `rom_import_test`,
+`asset_archives_script_test`, `fetch_test_media_test`,
+`abstraction_catalog_test`, `gui_rom_window_test`), run with no `roms/` and
+no network: the servers are played by an injected transport. x86-64 only.
+**Not proven:** the Windows/MSVC and Emscripten paths were written and never
+compiled here; no download was driven from the GUI against the real servers;
+the drop was gated at the router, not at the GLFW callback. Two readings the
+inventory surfaced and did not settle: `NuBus.h` calls itself HLE where the
+doc says LLE simplified, and `LLE_VS_HLE.md` § 3 puts the Centris and
+Quadra 700 PRAM in Egret/Cuda XPRAM where the code holds a discrete `Rtc`.
 
 <a id="2026-11-20-release-on-upstream-master"></a>
 ## 2026-11-20 (seventh) — The release for Dirk Hoffmann, cut on his master and accepted by his Runner
