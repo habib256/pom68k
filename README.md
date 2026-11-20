@@ -333,6 +333,30 @@ strict product qualification; runtime fallback order and implementation
 details are documented in [`DEV.md`](DEV.md) and the corresponding memory
 classes.
 
+### Downloading or importing ROMs
+
+POM68K ships no ROM, but it knows every dump it can use: the ROM catalogue
+(`src/RomCatalog.h`) names each machine ROM, controller firmware and
+declaration ROM with its SHA-256, the machines that use it and what is lost
+without it. From that list POM68K can fill your `roms/` folder in two ways:
+
+- **Download what is missing.** Dumps come from POM68K's own archive on
+  archive.org (`pom68k_firm`, one zip) and, for the 20 dumps it carries,
+  from RetroBIOS (`github.com/Abdess/retrobios`) at a fixed commit. HTTPS
+  goes through the system `curl` (present on macOS, Windows 10 and later and
+  most Linux systems). The browser build cannot download.
+- **Import what you already have.** Hand POM68K a dump under any file name,
+  a folder, or a zip such as a MAME romset or a ROM collection; every file is
+  recognised by its content, not its name, and installed under the name
+  POM68K looks for. MAME's two-chip images of the 128K, 512K and Plus ROMs
+  are recombined.
+
+Either way, nothing is installed unless its size and SHA-256 are the
+catalogue's. A file already at that place that is *not* the expected dump is
+first copied to `roms-replaced/` next to `roms/`, and left in place if that
+copy fails. Files are added to the `roms/` of the data directory described
+above (never inside a macOS application bundle).
+
 ## Media and persistent files
 
 POM68K accepts SCSI hard disks, writable HFS volumes, floppy images and SCSI
