@@ -13,7 +13,9 @@
 //   [D] upstream Moira ce28239 — the program traces (every bus access with
 //       its clock) of this file's programs were identical between upstream
 //       ce28239 and the fork rebased onto it on 2026-11-20
-//       (icache_compare, run on both cores).
+//       (icache_compare, run on both cores), before the fork routed the
+//       expired DBcc's read through the cache (inventory row 152), which
+//       removes upstream's R16 at the DBcc's pc+2 and nothing else.
 //   [F] cycle totals: what both cores charge, not a measurement.
 //       Settled by: a 68020 bus capture of these programs.
 //
@@ -312,12 +314,14 @@ void checkModel(Model model)
         CHECK(reads(b8, a, a + 1, 1) == 1, "loop-port8: byte $%05X not read once", a);
     CHECK(p16.d1 == 6 && p8.d1 == 6, "narrow-port loops: D1=%X/%X", p16.d1, p8.d1);
 
-    // Phase counts below are 32-bit fills (R32) of the subroutine's lines.
-    // [D] upstream's DBcc reads the word after the displacement as a data-
-    // style PROG read when the count expires (execDbcc, ce28239), outside
-    // the cache; that R16 is not a fill and is not counted.
+    // Phase counts below are every read of the subroutine's lines, of any
+    // size. [B] § 8.2.15: DBcc with the count expired, cache case 10(0/0/0),
+    // makes no instruction access when the code is cached. Upstream ce28239
+    // read the word after the displacement as an R16 straight from the bus
+    // (execDbcc), past the cache, on every pass; the fork routes it through
+    // the cache (inventory row 152), so a hit phase reads nothing at all.
     auto fills = [](const Trace &t, size_t k, u32 base) {
-        return reads(t.phase(k), base, base + 12, 4);
+        return reads(t.phase(k), base, base + 12);
     };
 
     // ── E clear bypasses valid lines; set again, they hit ───────────────

@@ -8,7 +8,10 @@
 // test runner (Runner/, against Musashi) uses those settings, so the fork must
 // still build and honour them.
 //
-// The cell: a taken branch to an odd target. With address errors emulated the
+// The cells: a taken branch to an odd target, and DIVS.L overflowing on the
+// most negative dividend (below).
+//
+// The branch cell: a taken branch to an odd target. With address errors emulated the
 // 68000, 68030 and 68040 take vector 3; with them disabled no model does, as in
 // upstream, where misaligned() returns false. The 68030/68040 checks had been
 // added outside misaligned() and ignored the setting (Moira::oddFlowTarget).
@@ -73,6 +76,44 @@ void oddBranch(moira::Model model, const char* name)
     }
 }
 
+// DIVS.L overflow of the most negative dividend by -1 (inventory row 153;
+// upstream ce28239, reproduced 2026-11-20). 64/32: $80000000:00000000 / -1,
+// whose host division INT64_MIN / -1 killed an x86-64 process with SIGFPE
+// under MOIRA_MIMIC_MUSASHI. 32/32: $80000000 / -1, which overwrote the
+// dividend without MOIRA_MIMIC_MUSASHI. [B] M68000PRM-1992 DIVS: on overflow
+// V is set and the destination registers are unaffected. Under
+// MOIRA_MIMIC_MUSASHI the 32/32 result is Musashi's (V clear, quotient
+// $80000000), which upstream intends in that mode: only the absence of a
+// crash and the 64/32 overflow are checked there.
+void divslOverflow(bool wide)
+{
+    const char* name = wide ? "DIVS.L D2,D1:D0" : "DIVS.L D2,D0";
+    TestCpu c(moira::Model::M68020);
+    const uint16_t ext = wide ? 0x0c01 : 0x0800;
+    p16(c, 0x1000, 0x4c42);
+    p16(c, 0x1002, ext);
+    p16(c, 0x1004, 0x4e71);
+    c.reset();
+    c.setSR(0x2700);
+    c.setSP(0x8000);
+    c.setPC(0x1000); c.setPC0(0x1000);
+    c.setIRD(0x4c42); c.setIRC(ext);
+    c.setD(0, wide ? 0 : 0x80000000u);
+    c.setD(1, wide ? 0x80000000u : 0x12345678u);
+    c.setD(2, 0xffffffffu);
+    c.execute();
+
+    const bool v = (c.getSR() & 2) != 0;
+    const bool kept = c.getD(0) == (wide ? 0u : 0x80000000u) &&
+                      c.getD(1) == (wide ? 0x80000000u : 0x12345678u);
+    if (c.getPC() != 0x1004 || ((wide || !MOIRA_MIMIC_MUSASHI) && (!v || !kept))) {
+        std::printf("  FAIL %s: PC=%08X V=%d D0=%08X D1=%08X (want V=1, "
+                    "registers unchanged)\n", name, c.getPC(), int(v),
+                    c.getD(0), c.getD(1));
+        failures++;
+    }
+}
+
 } // namespace
 
 int main()
@@ -85,6 +126,8 @@ int main()
     oddBranch(moira::Model::M68030, "68030");
     oddBranch(moira::Model::M68LC040, "68LC040");
     oddBranch(moira::Model::M68040, "68040");
+    divslOverflow(true);
+    divslOverflow(false);
     std::printf("%s (%d failure%s)\n", failures ? "FAILED" : "PASS",
                 failures, failures == 1 ? "" : "s");
     return failures ? 1 : 0;

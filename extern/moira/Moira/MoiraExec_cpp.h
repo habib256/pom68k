@@ -2868,7 +2868,26 @@ Moira::execDbcc(u16 opcode)
 
             } else {
 
-                (void)read<C, AddrSpace::PROG, Word>(reg.pc + 2);
+                // [B] MC68020UM-1992 §8.2.15: DBcc, count expired, cache case
+                // 10(0/0/0), worst case 10(0/3/0): the word at pc+2 is an
+                // instruction fetch, made on the bus only when it misses.
+                // POM68K: upstream read it straight from the bus on every
+                // core, past the 68020 cache (reproduced on unmodified
+                // ce28239, 2026-11-20). The fetch goes through readInstr for
+                // its FC, watchpoint and /BERR record, but its charge is
+                // dropped: the 10 above is the same with or without the
+                // bus cycle. Gate: icache020_test (DBF trace).
+                if constexpr (C == Core::C68020 && MOIRA_EMULATE_ICACHE) {
+                    if (cpuModel == Model::M68020 || cpuModel == Model::M68EC020) {
+                        auto cp = budget.cp;
+                        (void)readInstr<C>(reg.pc + 2);
+                        budget.cp = cp;
+                    } else {
+                        (void)read<C, AddrSpace::PROG, Word>(reg.pc + 2);
+                    }
+                } else {
+                    (void)read<C, AddrSpace::PROG, Word>(reg.pc + 2);
+                }
                 CYCLES_68000(14);
                 CYCLES_68020(10);
 
@@ -4886,6 +4905,13 @@ Moira::execMoves(u16 opcode)
                 fcSource = 0;
                 queue.irc = old;
                 throw exc;
+
+            } catch (BusError &) {
+
+                // POM68K: a host /BERR on the write releases DFC as well
+                // (see the read direction below). Gate: moira_rules_test.
+                fcSource = 0;
+                throw;
             }
 
             // Switch back to the old FC pin values
@@ -4950,7 +4976,24 @@ Moira::execMoves(u16 opcode)
         if constexpr (M == Mode::AW) SYNC(4);
         if constexpr (M == Mode::AL) SYNC(4);
 
-        u32 data = readM<C, M, S>(ea);
+        // [B] MC68020UM-1992 §2.2: SFC/DFC give the function code of the
+        // MOVES operand access; every other access gets the automatic one.
+        // POM68K: upstream cleared fcSource on the normal path alone, so
+        // after an address error (or a host /BERR) on this read every later
+        // access, the stacking included, kept reporting SFC. The frame is
+        // built at the throw and keeps the SFC; the MMU fault path clears it
+        // in processException (row 37). Gate: moira_rules_test
+        // (movesFcAfterFault010).
+        u32 data;
+        try {
+            data = readM<C, M, S>(ea);
+        } catch (AddressError &) {
+            fcSource = 0;
+            throw;
+        } catch (BusError &) {
+            fcSource = 0;
+            throw;
+        }
         if (cpuModel >= Model::M68EC040) mmu040Moves = -1;
 
         if (dst < 8) {

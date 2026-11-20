@@ -90,6 +90,11 @@ public:
     bool traceBus = false;
     uint32_t busBase = 0;
     mutable std::string bus;
+    // Cell "MOVES function code after a fault": readFC() at every 16-bit
+    // callback, as {address, fc, write}.
+    struct FcAccess { moira::u32 addr; moira::u8 fc; bool write; };
+    bool logFc = false;
+    mutable std::vector<FcAccess> fcLog;
 
 private:
     void traceAccess(char kind, moira::u32 a) const {
@@ -124,6 +129,7 @@ private:
         return mem[a & 0xfffff];
     }
     moira::u16 read16(moira::u32 a) const override {
+        if (logFc) fcLog.push_back({ a, readFC(), false });
         observeMovem(a, false);
         traceAccess('w', a);
         if (hole(a) && !holeWritesOnly) berr(a, false);
@@ -136,6 +142,7 @@ private:
         const_cast<TestCpu*>(this)->mem[a & 0xfffff] = v;
     }
     void write16(moira::u32 a, moira::u16 v) const override {
+        if (logFc) fcLog.push_back({ a, readFC(), true });
         observeMovem(a, true);
         traceAccess('W', a);
         if (hole(a)) berr(a, true);
@@ -2384,6 +2391,99 @@ void movesReleasesAlternateFc()
     }
 }
 
+void movesFcAfterFault010()
+{
+    // Inventory row 151 (upstream ce28239, reproduced 2026-11-20): MOVES
+    // <ea>,Rn set fcSource for its read and cleared it on the normal path
+    // only, so after an address error on that read every later access --
+    // the whole stacking, the vector fetch, the handler -- reported SFC.
+    // [B] MC68020UM-1992 §2.2: SFC/DFC give the function code of the MOVES
+    // operand access alone. Both directions, an address error (odd A0) and
+    // a host /BERR (extBusError000), on the 68010, the one core where the
+    // two exceptions reach execMoves. The faulted access itself keeps SFC
+    // or DFC (it is user data, FC 1, here); everything after it must be
+    // supervisor data (5) or supervisor program (6).
+    struct Case { bool write; bool berr; const char* name; };
+    for (Case k : { Case{ false, false, "read, address error" },
+                    Case{ true,  false, "write, address error" },
+                    Case{ false, true,  "read, /BERR" },
+                    Case{ true,  true,  "write, /BERR" } }) {
+        TestCpu c(moira::Model::M68010);
+        p32(c, 2 * 4, kHandler);                    // vector 2: bus error
+        p32(c, 3 * 4, kHandler);                    // vector 3: address error
+        p16(c, kHandler, kNop);
+        p16(c, kHandler + 2, 0x3239);               // MOVE.W $00003000,D1
+        p32(c, kHandler + 4, 0x3000);
+        p16(c, kHandler + 8, kNop);
+        p16(c, kHandler + 10, kNop);
+        stage(c, 0x0e50, 0);                        // MOVES.W (A0),D0 / D0,(A0)
+        const uint16_t ext = k.write ? 0x0800 : 0x0000;
+        p16(c, kCode + 2, ext); c.setIRC(ext);
+        c.setSFC(1); c.setDFC(1);                   // user data
+        c.setA(0, k.berr ? kHole : 0x4001);
+        c.holeArmed = k.berr;
+        c.logFc = true;
+        (void)executeContained(c);
+        for (int i = 0; i < 4 && c.getPC0() != kHandler + 8; i++) c.execute();
+        CHECK(c.getPC0() == kHandler + 8, "68010 MOVES %s: handler not reached "
+              "(PC0=%08X)", k.name, c.getPC0());
+        // Everything after the faulted access: skip up to and including it.
+        size_t first = 0;
+        for (size_t i = 0; i < c.fcLog.size(); i++) {
+            const auto& e = c.fcLog[i];
+            if ((e.addr & 0xffffff) == (k.berr ? kHole : 0x4000u) ||
+                (e.addr & 0xffffff) == 0x4001u) first = i + 1;
+        }
+        int stacked = 0, bad = 0, dataRead = -1;
+        for (size_t i = first; i < c.fcLog.size(); i++) {
+            const auto& e = c.fcLog[i];
+            if (e.write) stacked++;
+            if (!e.write && e.addr == 0x3000) dataRead = e.fc;
+            if ((e.fc & 4) == 0) {
+                if (bad++ == 0)
+                    std::printf("    first wrong FC: %c%06X FC=%u\n",
+                                e.write ? 'W' : 'R', unsigned(e.addr), e.fc);
+            }
+        }
+        CHECK(stacked > 0 && bad == 0, "68010 MOVES %s: %d of the accesses after "
+              "the fault carry a user FC (%d stacking writes)", k.name, bad, stacked);
+        CHECK(dataRead == 5, "68010 MOVES %s: the handler's data read has FC %d, "
+              "not 5", k.name, dataRead);
+        CHECK(c.readFC() & 4, "68010 MOVES %s: readFC() is %u after the handler",
+              k.name, c.readFC());
+    }
+}
+
+void divslOverflowKeepsRegisters()
+{
+    // Inventory row 153 (upstream ce28239, reproduced 2026-11-20): upstream's
+    // divlsMoira asserted on both overflow forms below, and its 32/32 form
+    // overwrote the dividend. The fork had already dropped the asserts and
+    // kept the registers (rows 43 and 55); this pins it on every model of
+    // the 020 core, in a build with asserts or without.
+    // [B] M68000PRM-1992 DIVS: on overflow V is set and the destination
+    // operands are unaffected.
+    for (moira::Model m : { moira::Model::M68020, moira::Model::M68030,
+                            moira::Model::M68040 }) {
+        for (bool wide : { false, true }) {
+            TestCpu c(m);
+            const uint16_t ext = wide ? 0x0c01 : 0x0800;     // D1:D0 / D0
+            stage(c, 0x4c42, 0);                             // DIVS.L D2,...
+            p16(c, kCode + 2, ext); c.setIRC(ext);
+            c.setD(0, wide ? 0 : 0x80000000u);
+            c.setD(1, wide ? 0x80000000u : 0x12345678u);
+            c.setD(2, 0xffffffffu);
+            const bool contained = executeContained(c);
+            CHECK(contained && (c.getSR() & 2) &&
+                  c.getD(0) == (wide ? 0u : 0x80000000u) &&
+                  c.getD(1) == (wide ? 0x80000000u : 0x12345678u),
+                  "model %d DIVS.L %s: V=%d D0=%08X D1=%08X", int(m),
+                  wide ? "64/32" : "32/32", int((c.getSR() & 2) != 0),
+                  c.getD(0), c.getD(1));
+        }
+    }
+}
+
 void watchpointsUnderMmu()
 {
     // POM68K_VENDOR.md row 20: on the 68030 and 68040 data accesses go
@@ -3496,6 +3596,8 @@ int main(int argc, char** argv)
     interruptSequenceBilled();
     masterStackInterrupt();
     movesReleasesAlternateFc();
+    movesFcAfterFault010();
+    divslOverflowKeepsRegisters();
     watchpointsUnderMmu();
     externalBusError020();
     oddStackInterruptFrame();
@@ -3529,6 +3631,6 @@ int main(int argc, char** argv)
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68030 MOVE to (xxx).L last write, 68EC030 plain-020 path with a 68030 "
-                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, the 68040 lock ending with TAS/CAS/CAS2, a memory-indirect pointer read outside the lock, BKPT without a data access, 68040 bit-field and JSR store faults restart, the SR-write refill as a fetch, no trace before a format-$7 rerun, PACK/UNPK -(An) faults on the 68030/68040, level 7 on a transition from the 68020 up, the billed 020-core interrupt sequence, the throwaway frame of an interrupt taken with M set, the trace exception after the traced instruction, trace on change of flow, MULx.L into one register, CAS2 with one compare register, MOVE from SR/CCR ending on its store, the 68030 CAS2 extension long, LINK/UNLK/PEA/JSR/BSR/RTD stack faults, the UNPK source fixup and the pending store of NEG, NEGX, ADDX, SUBX and ASL, the deferred refill fault after an SR or CCR write\n");
+                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, 68010 MOVES function code after an address error or /BERR, DIVS.L overflow keeping its registers, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, the 68040 lock ending with TAS/CAS/CAS2, a memory-indirect pointer read outside the lock, BKPT without a data access, 68040 bit-field and JSR store faults restart, the SR-write refill as a fetch, no trace before a format-$7 rerun, PACK/UNPK -(An) faults on the 68030/68040, level 7 on a transition from the 68020 up, the billed 020-core interrupt sequence, the throwaway frame of an interrupt taken with M set, the trace exception after the traced instruction, trace on change of flow, MULx.L into one register, CAS2 with one compare register, MOVE from SR/CCR ending on its store, the 68030 CAS2 extension long, LINK/UNLK/PEA/JSR/BSR/RTD stack faults, the UNPK source fixup and the pending store of NEG, NEGX, ADDX, SUBX and ASL, the deferred refill fault after an SR or CCR write\n");
     return 0;
 }

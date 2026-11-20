@@ -298,16 +298,48 @@ up holding memory operand 2. The manual says operand 1.
 - Upstream: still present.
 - Config/Runner: non-Musashi branch only. Musashi writes Dc1 then Dc2.
 
-Two more items sit inside rows filed under C or B:
+**Row 151 — MOVES leaves SFC on the pins after an address error.** The
+`<ea>,Rn` direction sets `fcSource` and clears it on the normal path only:
+after an address error on the read, the stacking, the vector fetch and the
+handler all report SFC. The fork also clears it on a host bus error in both
+directions.
+- Models: 68010 (`misaligned()` is never true on the 68020 core).
+- Where: `execMoves`.
+- Evidence: [B] MC68020UM-1992 §2.2. Reproduced on unmodified upstream
+  ce28239 on 2026-11-20 (a small host program, 68010, address errors on).
+- Gate: `moira_rules_test (movesFcAfterFault010)`.
+- Upstream: still present.
+- Config/Runner: needs `MOIRA_EMULATE_ADDRESS_ERROR`; invisible to the Runner.
 
-- Row 55 drops `assert(S == Word)` from `divlsMoira`. Upstream still has the
-  assert, which fires in debug builds on DIVS.L of $80000000:00000000 by −1,
-  a legitimate overflow.
-- Row 37 releases SFC/DFC (`fcSource`) when a MOVES takes an MMU bus
-  fault. Upstream's `execMoves` has the same shape for an *address error* in
-  the `<ea>,Rn` direction: `readM` throws while `fcSource == 1`, and nothing
-  resets it before the frame is written. The fork does not change that path
-  either. This was found by reading the code and has not been tested.
+**Row 152 — DBcc count expired: a 68020 program read past the cache.** The
+word at pc+2 is read straight from the bus on every pass, cached or not.
+- Models: 68020, 68EC020 with `MOIRA_EMULATE_ICACHE`.
+- Where: `execDbcc`.
+- Evidence: [B] MC68020UM-1992 §8.2.15 (cache case 10(0/0/0)). Reproduced
+  on unmodified upstream ce28239 on 2026-11-20. No clock change.
+- Gate: `icache020_test`.
+- Upstream: still present.
+- Config/Runner: the Runner compares writes, not reads; no effect on it.
+
+**Row 153 — DIVS.L $80000000:00000000 / −1.** Upstream's `divlsMoira`
+asserts on both overflow forms (the fork had dropped the asserts and kept
+the registers, rows 43 and 55), and `divlsMusashi<Long>` divides INT64_MIN
+by −1 unguarded: SIGFPE on an x86-64 host.
+- Models: 68020 and up.
+- Where: `divlsMusashi`, `divlsMoira`, `execDivlMoira`.
+- Evidence: [B] M68000PRM-1992, DIVS. Reproduced on unmodified upstream
+  ce28239 on 2026-11-20 (assert in a debug build without Musashi; SIGFPE
+  with it, debug and release).
+- Gate: `moira_upstream_config_test (divslOverflow)`,
+  `moira_rules_test (divslOverflowKeepsRegisters)`.
+- Upstream: still present.
+- Config/Runner: the Musashi half is reachable by the Runner's random
+  operands only by chance; the 32/32 Musashi result (V clear) is kept.
+
+One more item sits inside a row filed under C:
+
+- Row 55 drops `assert(S == Word)` from `divlsMoira`; row 153 above covers
+  it with the rest of that overflow.
 
 ### A.2 Rows touching upstream code where upstream is already right
 

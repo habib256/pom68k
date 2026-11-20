@@ -989,6 +989,16 @@ Moira::divlsMusashi(u64 op1, u32 op2)
 
     if constexpr (S == Long) {
 
+        // [B] M68000PRM-1992 DIVS: $80000000:00000000 / -1 overflows (V).
+        // POM68K: upstream divided unguarded; INT64_MIN / -1 is undefined in
+        // C++ and kills an x86-64 host with SIGFPE (reproduced on unmodified
+        // ce28239, 2026-11-20). Gate: moira_upstream_config_test (divsl).
+        if (i64(op1) == INT64_MIN && i32(op2) == -1) {
+
+            reg.sr.v = 1;
+            return { u32(0), u32(0) };
+        }
+
         quotient  = u64(i64(op1) / i64(i32(op2)));
         remainder = u64(i64(op1) % i64(i32(op2)));
 
