@@ -59,7 +59,7 @@ set_tests_properties(gui_session_smoke_test PROPERTIES
 if(EXISTS "${IMGUI_DIR}/imgui.cpp")
     add_executable(gui_windows_test tests/gui_windows_test.cpp
         src/PeripheralWindow.cpp src/NetworkWindow.cpp src/DiskBays.cpp
-        src/GuiEngineWindow.cpp src/DockLayout.cpp src/GuiMachineControls.cpp src/GuiTypingWindow.cpp src/GuiSerialWindow.cpp src/GuiDebuggerWindow.cpp
+        src/GuiEngineWindow.cpp src/DockLayout.cpp src/GuiMachineControls.cpp src/GuiTypingWindow.cpp src/GuiSerialWindow.cpp src/GuiDebuggerWindow.cpp src/GuiAbstractionWindow.cpp
         ${IMGUI_DIR}/imgui.cpp ${IMGUI_DIR}/imgui_draw.cpp
         ${IMGUI_DIR}/imgui_tables.cpp ${IMGUI_DIR}/imgui_widgets.cpp)
     target_include_directories(gui_windows_test PRIVATE ${IMGUI_DIR})
@@ -72,7 +72,7 @@ if(EXISTS "${IMGUI_DIR}/imgui.cpp")
     add_executable(gui_machine_window_test tests/gui_machine_window_test.cpp
         src/GuiShellMenu.cpp src/GuiSessionMenu.cpp src/GuiStartupWindow.cpp src/GuiMachineControls.cpp src/GuiTypingWindow.cpp src/GuiSerialWindow.cpp src/GuiDebuggerWindow.cpp src/GuiDisplayWindow.cpp
         src/PeripheralWindow.cpp src/NetworkWindow.cpp src/DiskBays.cpp
-        src/GuiEngineWindow.cpp src/DockLayout.cpp
+        src/GuiEngineWindow.cpp src/DockLayout.cpp src/GuiAbstractionWindow.cpp
         src/FloppySound.cpp src/miniaudio_impl.cpp
         ${IMGUI_DIR}/imgui.cpp ${IMGUI_DIR}/imgui_draw.cpp
         ${IMGUI_DIR}/imgui_tables.cpp ${IMGUI_DIR}/imgui_widgets.cpp)

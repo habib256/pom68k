@@ -24,6 +24,7 @@
 
 #include "DiskBays.h"
 #include "GuiDebuggerWindow.h"
+#include "GuiAbstractionWindow.h"
 #include "GuiDisplay.h"
 #include "GuiEngineWindow.h"
 #include "GuiSerialWindow.h"
@@ -260,6 +261,51 @@ int main() {
         // Cancel-less reopen: staging was dropped with the apply.
         ui.frame(draw);
         check(ui.find("Apply and restart") == nullptr, "nothing pending after the apply");
+    }
+
+    // ── Abstraction Levels (LLE / HLE) ─────────────────────────────
+    // A Mac II whose ADB transceiver fell back to HLE and whose Toby card
+    // runs its real declaration ROM: the live rows must say so, and the
+    // filter must reach every machine's rows.
+    {
+        pom68k::abstraction::SessionView view;
+        view.machine = pom68k::SnapMachine::MacII;
+        pom68k::lle::Device adb;
+        adb.module = pom68k::lle::HleAdbModem;
+        adb.mode = pom68k::lle::Mode::Hle;
+        adb.why = pom68k::lle::Why::HleNoDump;
+        adb.candidates = {"roms/adbmodem/342s0440-b.bin"};
+        pom68k::lle::Device toby;
+        toby.module = pom68k::lle::HleTobyDeclRom;
+        toby.mode = pom68k::lle::Mode::Lle;
+        toby.why = pom68k::lle::Why::LleFirmware;
+        toby.firmware = "roms/toby/342-0008-a.bin";
+        view.devices = {adb, toby};
+        view.engine = 0;
+        pom68k::gui::GuiAbstractionState st;
+        st.showWindow = true;
+        auto draw = [&] { pom68k::gui::drawAbstractionWindow(st, view); };
+        ui.frame(draw);
+        ui.frame(draw);
+        ImRect r;
+        check(windowShown(pom68k::gui::kAbstractionWindowTitle, &r),
+              "Abstraction Levels is shown when the state says so");
+        check(ui.distinctColours(r) > 12, "the window is drawn, not blank");
+        const auto adbRow = pom68k::abstraction::resolve(
+            *pom68k::abstraction::find("adb-transceiver"), view);
+        check(adbRow.degraded && adbRow.hint.find("342s0440-b.bin") != std::string::npos,
+              "the ADB row is degraded and names the dump that raises it");
+        capture(ui, "abstraction");
+        dumpLabels("abstraction");
+        check(ui.find("All machines") && ui.click("All machines", draw) && st.allMachines,
+              "« All machines » widens the filter");
+        capture(ui, "abstraction-all");
+        check(ui.click("This machine", draw) && !st.allMachines,
+              "« This machine » narrows it back");
+        std::snprintf(st.search.data(), st.search.size(), "adb");
+        ui.frame(draw);
+        ui.frame(draw);
+        capture(ui, "abstraction-adb");
     }
 
     // ── Debugger ────────────────────────────────────────────────────
@@ -756,7 +802,8 @@ int main() {
                                  "src/GuiShell.cpp", "src/GuiMachineControls.cpp",
                                  "src/GuiDebuggerWindow.cpp", "src/GuiSessionMenu.cpp",
                                  "src/GuiTypingWindow.cpp", "src/GuiSerialWindow.cpp",
-                                 "src/GuiShellMenu.cpp",
+                                 "src/GuiShellMenu.cpp", "src/GuiAbstractionWindow.cpp",
+                                 "src/AbstractionCatalog.cpp",
                                  "src/AdbVia.cpp", "src/V8Memory.cpp", "src/Q605Memory.cpp",
                                  "src/Q630Memory.cpp", "src/RbvMemory.cpp", "src/Q700Memory.cpp",
                                  "src/VaspMemory.cpp", "src/SonoraMemory.cpp", "src/TobyDeclChoice.h"};
@@ -764,7 +811,8 @@ int main() {
             return rel.find("Window") != std::string::npos || rel.find("DiskBays") != std::string::npos ||
                    rel.find("GuiShell") != std::string::npos || rel.find("GuiMachineControls") != std::string::npos ||
                    rel.find("GuiDebugger") != std::string::npos ||
-                   rel.find("GuiSessionMenu") != std::string::npos;
+                   rel.find("GuiSessionMenu") != std::string::npos ||
+                   rel.find("AbstractionCatalog") != std::string::npos;
         };
         int missing = 0, scanned = 0;
         ui.frame([&] {

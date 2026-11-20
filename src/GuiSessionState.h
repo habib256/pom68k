@@ -8,6 +8,7 @@
 #pragma once
 
 #include "GuiStartupWindow.h"
+#include "GuiAbstractionWindow.h"
 
 #include "AtalkHub.h"
 #include "CdAudioSource.h"
@@ -156,5 +157,6 @@ struct GuiSessionState {
     GuiCpuPanelState cpu;
     GuiDiagnosticState diagnostics;
     pom68k::PeripheralHost peripherals;
+    pom68k::gui::GuiAbstractionState abstraction;
     pom68k::gui::GuiMachineControls machine;
 };

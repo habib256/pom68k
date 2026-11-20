@@ -657,6 +657,15 @@ int main() {
         check(clickMenuItem(ui, kMachineControlWindowTitle, draw) && !state.machine.showWindow, "« Dashboard » toggles the dashboard off");
         ui.frame(draw);
         check(!windowShown(kMachineControlWindowTitle), "the dashboard is gone");
+        check(ui.click("Windows", draw) &&
+                  clickMenuItem(ui, kAbstractionWindowTitle, draw) &&
+                  state.abstraction.showWindow,
+              "« Abstraction Levels » opens from the Windows menu");
+        ui.frame(draw);
+        check(windowShown(kAbstractionWindowTitle), "the abstraction window is shown");
+        capture(ui, "machine-abstraction");
+        state.abstraction.showWindow = false;
+        ui.frame(draw);
     }
 
     check(ui.click("Machine", draw) &&

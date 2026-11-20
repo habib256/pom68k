@@ -3282,6 +3282,34 @@ reports a substitute, which is what makes the stderr policy hold for a
 GUI-only user; it never re-opens after being closed, and never appears on a
 fully-LLE machine.
 
+### The "Abstraction Levels (LLE / HLE)" window (`src/GuiAbstractionWindow.*`)
+
+The master table of `docs/LLE_VS_HLE.md`, live: one row per subsystem
+(CPU cores, MMU/FPU/040 cache, board logic, SCC, storage, ADB and the
+microcontrollers, video, sound, host-side machinery) in that document's
+five classes — Pure LLE, LLE simplified, HLE replacement, HLE hack, Host
+convenience. The rows are data in `src/AbstractionCatalog.*` (no ImGui);
+`abstraction_catalog_test` checks that every file a row names exists, that
+every platform kind, `lle::Module` and `firmware::kManifest` entry has a
+row, and that the document's table lists the same ids, classes and
+sections. Edit the catalogue and the table together.
+
+What only the window can say is the class **running now**, and it takes it
+from the same sources as the rest of the shell, never from a second copy:
+a firmware row (Egret/Cuda, ADB transceiver, Toby declaration ROM, M50753,
+Pangola ROM) reads the device's report in the session's `lle::Registry` —
+present only when the machine built the part, degraded to its fallback
+class when it runs the substitute, with the dump path the device searched
+as the hint; the engine row reads the CPU binding (`GuiCpuPanelState`); the
+Mac II Slot Manager hack shows engaged only while the ADB fallback runs.
+« This machine » filters by the profile's platform kind
+(`MachineCatalog.h`); « All machines » dims what this one lacks. The window
+explains and never changes anything: a firmware choice is still the
+Peripherals window's. It is reached from **Peripherals → Abstraction
+levels…** and from Windows; `gui_windows_test` renders it headlessly
+(`gui_abstraction*.ppm`) and `gui_machine_window_test` opens it from the
+menu.
+
 ### The "AppleTalk / Ethernet" window (`src/NetworkWindow.*`)
 
 Out of `GuiShell.cpp` since 2026-09-13, when the DaynaPort selector took the

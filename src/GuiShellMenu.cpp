@@ -25,6 +25,7 @@
 
 #include "DiskBays.h"
 #include "DockLayout.h"
+#include "GuiAbstractionWindow.h"
 #include "GuiDisplay.h"
 #include "GuiEngineWindow.h"
 #include "GuiMachineControls.h"
@@ -219,6 +220,7 @@ void drawShellFrame(GuiSessionState& state, SnapMachine current) {
                 ImGui::TextDisabled("(POM68K_APPLETALK=0, no network card)");
             ImGui::MenuItem("Serial ports...", nullptr, &state_.serial.showWindow);
             peripheralMenuItem("LLE / HLE controllers...");
+            ImGui::MenuItem("Abstraction levels...", nullptr, &state_.abstraction.showWindow);
             ImGui::EndMenu();
         }
         drawCpuMenu(state_, speed, registry.requested() && registry.qualified());
@@ -230,6 +232,7 @@ void drawShellFrame(GuiSessionState& state, SnapMachine current) {
             ImGui::MenuItem(kNetworkWindowTitle, nullptr,
                             &state_.network.showWindow);
             peripheralMenuItem(kPeripheralWindowTitle);
+            ImGui::MenuItem(kAbstractionWindowTitle, nullptr, &state_.abstraction.showWindow);
             ImGui::MenuItem("Accelerated engine", nullptr, &state_.cpu.showJit,
                             bool(state_.cpu.setCpuEngine));
             ImGui::MenuItem(kSerialWindowTitle, nullptr, &state_.serial.showWindow);
@@ -258,6 +261,7 @@ void drawShellFrame(GuiSessionState& state, SnapMachine current) {
     drawAppleTalkWindow(state_.network);
     drawEngineWindow(state_.cpu);
     peripheralWindow(state_.peripherals);
+    drawAbstractionWindow(state_, current);
     drawStartupWindow(state_, current);
     if (state_.relaunch.showWindow) {
         state_.relaunch.showWindow = false;
