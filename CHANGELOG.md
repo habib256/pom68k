@@ -1569,6 +1569,12 @@ operation line, "SP – 4 → SP; An → (SP)", PDF p. 215) and the stopped PC.
 Gates: `moira_rules_test` `mullSameRegister` and `cas2SameCompareRegister`,
 68020 to 68040.
 
+Four more seeds, to see whether anything else was hiding: untraced, 150
+and 200 states per class (106 400 vectors on the 68030, 109 200 on the
+68040), then every class behind the lead-in under T1 and under T0 (15 200
+and 15 600 vectors per cell). Nothing but D12, D42 and the stopped PC, plus
+one D41 STOP.
+
 **Gates.** `tests/cpu_vectors`: 80 `trace=t0` vectors on the 68030 and 104
 on the 68040, then 64 loop vectors on each (1 128 and 576 in all; the
 streams pinned yesterday are byte prefixes of the new ones). The lead-in under T0 is `EXG D0,D0`: with NOP
@@ -1583,6 +1589,21 @@ mostly do not (0, 1 and 0 seeds on the 68030, 68040 and threaded 68020),
 because a block's closing branch usually runs through the interpreter's
 handler, which stages the trace by itself. The flag matters for a branch
 compiled inline.
+
+**Evidence, by pushed state.**
+
+| State | AArch64 | x86-64 (Rosetta) |
+|---|---|---|
+| `5b264588`, the (nineteenth) fixes | `unit\|jit\|cpu-vectors` green after two document contracts were fixed and rerun; `m030` 155 / 155 | `unit\|jit\|cpu-vectors` 287 / 287; `m040` 107 / 107 |
+| `7459613b`, this entry | `unit\|jit\|cpu-vectors` 288 / 288; `m040` 107 / 107; `m030` 155 / 155 | `unit\|jit\|cpu-vectors` 289 / 289; `m030` 155 / 155; `m040` 107 / 107 |
+
+No ROM gate soft-skipped. GitHub CI and the macOS workflow are green on
+both pushed states. An intermediate state (`0085876c`, `RTE_REPLAY`
+on every 68040 rerun) was red on `jit_asset_free_lockstep_test` on both
+hosts and never left the machine. Program fuzzer on that intermediate
+state, interpreter against translator, fresh seeds: 21 000 over `--t0only`,
+`--tracebit --vmrte`, `--vmrte` alone, `--tracebit --mmuprot --mmutt
+--mmupage` and `--tracebit --dcache`, 0 failures.
 
 <a id="2026-11-19-trace-against-the-oracle"></a>
 ## 2026-11-19 (nineteenth) — Trace had never met the oracle: the 68020/68030 frame was format $0, the 68040 ran one instruction too many

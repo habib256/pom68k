@@ -194,8 +194,9 @@ after the older families so their existing seed assignments stay stable.
 `opcells.py` complements the families where a uniform draw starves an
 instruction: `generate --set forms --trace t0|t1` runs fixed instruction
 forms behind a lead-in (the trace sweep of 2026-11-20), `generate --set
-classes` draws N states per small encoding class with random register
-fields, extension words and operands, and `report <dir>` tabulates a
+classes [--trace t0|t1]` draws N states per small encoding class with
+random register fields, extension words and operands, and `report <dir>`
+tabulates a
 runner's `--dump` per form. `fuzz030.py`/`fuzz040.py --trace t1|t0` set a
 trace bit behind a lead-in instruction, and `--trace-handler rte` turns the
 vector into a single-step loop.

@@ -16,9 +16,9 @@
 # --trace t0|t1 the form is the traced instruction (the oracle never traces
 # the first step after a load; fuzz030.py --trace).
 #
-# --set classes is the class-balanced sweep: one step, no trace, N states
-# for each small ENCODING CLASS with its register fields and extension
-# words drawn at random. A uniform random opcode is a MOVE two times in
+# --set classes is the class-balanced sweep: N states for each small
+# ENCODING CLASS with its register fields, extension words and operands
+# drawn at random — one step untraced, or behind the lead-in under --trace. A uniform random opcode is a MOVE two times in
 # three; LINK is 16 words of 65 536 and LINK A7 two of them, which is how
 # the 68030's LINK A7 (ruling D42) and the 68040's MULx.L Dn,Dm:Dm survived
 # every random corpus until 2026-11-20.
@@ -166,16 +166,21 @@ def generate(args) -> int:
     rng = random.Random(args.seed)
     vectors = []
     if args.set == "classes":
-        if args.trace != "none":
-            sys.exit("--set classes is an untraced, one-step sweep")
+        # Untraced: one step. Traced: the lead-in (EXG D0,D0) takes the
+        # step the oracle never traces, and the class member is the second.
+        traced = args.trace != "none"
+        bit = {"none": 0, "t0": 0x4000, "t1": 0x8000}[args.trace]
         table = classes(args.cpu)
         for name, base, mask, ext in table:
             for _ in range(args.n):
                 st = gen_state(rng, family="core", mmu="off")
-                st.sr = (st.sr & 0x3FFF) | 0x2000
+                st.sr = (st.sr & 0x3FFF) | 0x2000 | bit
                 st.a[7] = st.msp if st.sr & 0x1000 else st.isp
-                code = ([base | spread(rng, mask)] + [rng.getrandbits(16) for _ in range(ext)]
-                        + [0x4E71] * 6)
+                code = ([0xC140] if traced else []) + (
+                    [base | spread(rng, mask)] + [rng.getrandbits(16) for _ in range(ext)]
+                    + [0x4E71] * 6)
+                if traced:
+                    st.pc -= 2
                 ram = [(ad, b) for ad, b in st.ram if not st.pc <= ad < st.pc + 2 * len(code)]
                 # Operands: random bytes around every address register, or
                 # each memory form would read the zeroes of an empty RAM
@@ -185,11 +190,12 @@ def generate(args) -> int:
                 for k, w in enumerate(code):
                     ram += [(st.pc + 2 * k, w >> 8), (st.pc + 2 * k + 1, w & 0xFF)]
                 st.ram = ram
-                final, touched, cycles = fz.run_one(oracle, st, 1)
+                steps = 2 if traced else 1
+                final, touched, cycles = fz.run_one(oracle, st, steps)
                 if cycles < 0:
                     continue
-                vectors.append(sst.vector(f"op={name} #{len(vectors)} trace=none",
-                                          st, final, touched, cycles, 1))
+                vectors.append(sst.vector(f"op={name} #{len(vectors)} trace={args.trace}",
+                                          st, final, touched, cycles, steps))
         sst.save(args.out, vectors)
         print(f"{len(vectors)} vectors over {len(table)} classes → {args.out}")
         return 0
