@@ -30,7 +30,7 @@ cmake/Pom68kProfileGates.cmake           31
 cmake/Pom68kProtectedFloppyGates.cmake     9
 cmake/Pom68kSerialGates.cmake            9
 cmake/Pom68kStorageGates.cmake           27
-CMakeLists.txt                           639
+CMakeLists.txt                           649
 src/AfpServer.cpp                        1128
 src/GuiHostServices.cpp                  220
 src/GuiMachineRuntime.cpp                49
