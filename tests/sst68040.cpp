@@ -438,6 +438,10 @@ void setupVector(TestCpu& cpu, const Vector& v) {
             const uint32_t got = (i<7) ? cpu.getA(i) : cpu.getSP();
             if (got!=v.fin.a[i]) std::printf("         A%d got %08X want %08X (init %08X)\n", i, got, v.fin.a[i], v.initial.a[i]);
         }
+        // The inactive stack pointers: a faulting user-mode push shows in USP alone.
+        if (cpu.getUSP()!=v.fin.usp) std::printf("         USP got %08X want %08X (init %08X)\n", cpu.getUSP(), v.fin.usp, v.initial.usp);
+        if (cpu.getISP()!=v.fin.isp) std::printf("         ISP got %08X want %08X\n", cpu.getISP(), v.fin.isp);
+        if (cpu.getMSP()!=v.fin.msp) std::printf("         MSP got %08X want %08X\n", cpu.getMSP(), v.fin.msp);
         for (const RamCell& c : v.fin.ram) {
             const uint8_t got = cpu.mem[c.addr & 0xFFFFFF];
             if (got != c.val) std::printf("         RAM[%06X] got %02X want %02X\n", c.addr, got, c.val);

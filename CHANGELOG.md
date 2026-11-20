@@ -285,6 +285,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
+- **What does a push or a pop do when the stack page faults?** → [LINK and PEA end on their push, JSR and BSR restart with A7 intact — measured 2026-11-20 with the user stack on faulting pages](#2026-11-20-stack-fault-cells)
 - **Are the 68020 additions and system instructions swept per addressing mode, under the MMU?** → [`opcells.py --set ea [--mmu identity]`, since 2026-11-20; MOVE from SR's store and the 68030 CAS2 log](#2026-11-20-ea-cells-under-mmu)
 - **Do the oracle corpora pass through the JIT, not only the interpreter?** → [Every pinned corpus does since 2026-11-13; the first run found a host segfault at guest pc 0](#2026-11-13-jit-corpus-replay)
 - **Why does `agent_binary_test` not compare the shipped agent with this host's build?** → [Different Retro68/GCC, different code: it compares only builds of the reference toolchain, since 2026-11-14](#2026-11-14-agent-toolchain)
@@ -611,6 +612,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-20 (third) — The user stack on a faulting page: LINK and PEA stacked format $B, a faulting JSR or BSR left A7 four below, a 68040 BSR skipped its call](#2026-11-20-stack-fault-cells)
 - [2026-11-20 (second) — Addressing-mode cells under the MMU: MOVE from SR ended on no "last write", the 68030 CAS2 logged its extension long as two words](#2026-11-20-ea-cells-under-mmu)
 - [2026-11-20 — T0, trace on change of flow, exists: the bit was stored and did nothing](#2026-11-20-t0-change-of-flow)
 - [2026-11-19 (nineteenth) — Trace had never met the oracle: the 68020/68030 frame was format $0, the 68040 ran one instruction too many](#2026-11-19-trace-against-the-oracle)
@@ -1409,6 +1411,74 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-20-stack-fault-cells"></a>
+## 2026-11-20 (third) — The user stack on a faulting page: LINK and PEA stacked format $B, a faulting JSR or BSR left A7 four below, a 68040 BSR skipped its call
+
+Every vector so far ran on a stack the generator keeps mapped and writable,
+so no push or pop ever faulted. `opcells.py --user --stack data` puts the
+user stack on one of the data pages, whatever its kind; under `--mmu
+identity` PEA, LINK, JSR, BSR, RTD, RTR, MOVEM and the `-(A7)`/`(A7)+`
+forms then fault on their stack access, and the frame still goes to a
+sound supervisor stack (in supervisor mode the same fault is a double
+fault, and the oracle halts). The runners' `--dump` now prints USP, ISP and
+MSP: a faulting user-mode push shows in USP alone, and three BSR vectors
+failed with an empty dump before that.
+
+Four seeds (`classes` 6001 and 6201 at 30 and 100 states per class, `ea`
+6101 and 6301 at 12 and 25), 40 776 vectors on the 68030 and 40 260 on the
+68040. Each line below is one behaviour of the oracle the fork did not
+have; [D] WinUAE gencpu @ Hatari e77819f7 for all of them.
+
+| Instruction | Model | The oracle | The fork had |
+|---|---|---|---|
+| LINK | 68030, 68040 | the push is the last write: An and A7 final, next PC; short frame $A on the 68030 | format $B on the 68030, An and A7 as they entered on both |
+| PEA | 68030 | last write: frame $A, next PC, A7 stepped | format $B |
+| JSR | 68030 | restarts, A7 intact in the handler | A7 four below |
+| BSR.W, BSR.L | 68030 | restarts, A7 intact; the displacement is one entry of the access log | A7 four below, no entry |
+| BSR | 68040 | restarts: stacked PC is the BSR, A7 intact | the next PC and A7 four below |
+| RTD | 68030 | the displacement is logged before the pop | no entry |
+| NEG to memory | 68030 | pending store `(uN)0 − (uN)src`, unmasked | sign-extended result |
+| NEGX to memory | 68030 | `0 − sext(src) − X` | unmasked `0 − src − X` |
+| ASL to memory | 68030 | the word with the bit shifted out (17 bits) | the 16-bit result |
+
+These are not frame cosmetics. Run through a handler that lets the access
+through and returns (the round trip of the next entry's gate, on this
+morning's handlers): a 68030 JSR or BSR pushed its return address four
+bytes low and left A7 there; a 68030 LINK came back with A7 four low, An
+one long off and the old An never stored; a 68040 LINK came back at the
+next instruction with An as it entered and A7 moved by the push alone; a
+68040 BSR came back
+past the call — its push is not a "last write" (the earlier scan of
+WinUAE's 68040 table, recorded in `execMmu040BusError`, listed JSR and
+missed BSR), and the fork stacked the next PC. A system that pages its
+stacks in can reach these — A/UX, or Mac OS virtual memory on a stack it
+does not hold; no boot or application gate of this tree does.
+
+The three pending-store values came out of the same sets by chance (a
+store has to fault, and its operand has to sit where the two readings
+differ). NEGX had no vector of its own: 6 000 directed states —
+`NEG`/`NEGX (A0)` under the identity map, the operand at the sign boundary
+half of the time — gave 86 faulting vectors, 86 / 86 after the change. Ten
+read-modify-write classes per size were appended to `classes` (NEG, NEGX,
+NOT, CLR, ADDQ, SUBQ, ADDI, EORI, EOR, OR on `(An)`; appended, so earlier
+seeds keep their vectors) and pass 4 500 / 4 500 on both models under the
+identity map (seed 6401, `--only '_ind_[BWL]$'`, new).
+
+After the changes the four sets fail on D12 alone (the format-$2
+instruction address) and `LINK A7` (D42). Generated code runs the same
+vectors identically to the interpreter: `sst68030_jit` 15 200 + 14 200 +
+4 500 with 59 728 blocks compiled, `sst68040_jit` 15 600 + 13 500 + 4 500
+with 55 964.
+
+Evidence: `unit|jit|cpu-vectors` 288 / 288 on AArch64 and 289 / 289 on
+x86-64 under Rosetta; program fuzzer, 119 option sets of 1 500 fresh seeds
+weighted towards `--mmuprot` and `--vmrte` on the new binary, 0 failures.
+
+Gate: `moira_rules_test` `stackStoreFaults` — LINK and BSR.W on both
+models, PEA, JSR, RTD, NEG, NEGX and ASL on the 68030, each on the test
+board's /BERR with the user stack on the hole. On the handlers of this
+morning's push, 10 of its 10 checks fail. `POM68K_VENDOR.md` row 139.
 
 <a id="2026-11-20-ea-cells-under-mmu"></a>
 ## 2026-11-20 (second) — Addressing-mode cells under the MMU: MOVE from SR ended on no "last write", the 68030 CAS2 logged its extension long as two words

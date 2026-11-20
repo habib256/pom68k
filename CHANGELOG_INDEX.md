@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 855 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 856 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -9,7 +9,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | Subsystem | Entries |
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 114 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 158 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 159 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 37 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 32 |
@@ -301,6 +301,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-19 (thirteenth)** — [The IIfx earns its store inventory: the CACR flush retired on the last 68030 board](CHANGELOG.md#2026-11-19-thirteenth--the-iifx-earns-its-store-inventory-the-cacr-flush-retired-on-the-last-68030-board)
 - **2026-11-19 (twelfth)** — [`--lc040`: FPU code on the 68LC040 in the program fuzzer](CHANGELOG.md#2026-11-19-twelfth----lc040-fpu-code-on-the-68lc040-in-the-program-fuzzer)
 - **2026-11-20 (second)** — [Addressing-mode cells under the MMU: MOVE from SR ended on no "last write", the 68030 CAS2 logged its extension long as two words](CHANGELOG.md#2026-11-20-ea-cells-under-mmu)
+- **2026-11-20 (third)** — [The user stack on a faulting page: LINK and PEA stacked format $B, a faulting JSR or BSR left A7 four below, a 68040 BSR skipped its call](CHANGELOG.md#2026-11-20-stack-fault-cells)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E
 

@@ -199,7 +199,11 @@ random register fields, extension words and operands, `generate --set ea`
 draws them per (instruction, addressing mode) for the 68020 additions and
 the system instructions, with extension words kept inside their defined
 encodings (`--mmu identity` makes the members fault, `--user` runs them
-unprivileged), and `report <dir>` tabulates a runner's `--dump` per form.
+unprivileged, `--user --stack data` puts the user stack on a data page so
+that pushes and pops fault while the frame goes to a sound supervisor
+stack, `--only <regex>` keeps the matching classes), and `report <dir>`
+tabulates a runner's `--dump` per form. The runners' `--dump` prints USP,
+ISP and MSP when they differ: a faulting user-mode push shows nowhere else.
 A 100-state `ea` file is 1.5 GB: 25 states per class is the working size. `fuzz030.py`/`fuzz040.py --trace t1|t0` set a
 trace bit behind a lead-in instruction, and `--trace-handler rte` turns the
 vector into a single-step loop.

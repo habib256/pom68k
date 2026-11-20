@@ -243,8 +243,14 @@ Moira::execShiftEa(u16 opcode)
     looping<I>() ? noPrefetch<C>(4) : prefetch<C, POLL>();
     pomLastWrite030<C>();   // POM68K: the store below ends the instruction
     // [D] WinUAE gencpu memory shifts @ Hatari e77819f7: `uae_u16 val` —
-    // the word zero-extended in the 68030 write buffer.
-    writeM<C, M, S, MMU_RAWBUF>(ea, shift<C, I, S>(1, data));
+    // the word zero-extended in the 68030 write buffer. ASL alone shifts a
+    // `uae_u32`, so its buffer keeps the bit shifted out ("op=ASL_mem
+    // #9555", opcells.py --set classes --mmu identity --user --stack data).
+    u32 shifted = shift<C, I, S>(1, data);
+    if constexpr (C == Core::C68020 && (I == Instr::ASL || I == Instr::ASL_LOOP)) {
+        shifted = CLIP<S>(data) << 1;
+    }
+    writeM<C, M, S, MMU_RAWBUF>(ea, shifted);
 
     if constexpr (I == Instr::ROR || I == Instr::ROL) {
 
@@ -1626,7 +1632,13 @@ Moira::execBsr(u16 opcode)
     AVAILABILITY(S == Long ? Core::C68020 : Core::C68000)
 
     u32 oldpc = reg.pc;
+    // POM68K: on the 68030 the displacement is one entry of the access log,
+    // made below, when the oracle makes it; ircLong() would log its first
+    // word alone.
+    [[maybe_unused]] bool logSave = false;
+    if constexpr (C == Core::C68020) { logSave = mmuLogging; mmuLogging = false; }
     u32 disp = S == Byte ? (u8)opcode : S == Long ? ircLong<C>() : ircWord();
+    if constexpr (C == Core::C68020) mmuLogging = logSave;
 
     u32 newpc = U32_ADD(oldpc, SEXT<S>(disp));
     u32 retpc = U32_ADD(reg.pc, S == Long || S == Word ? 2 : 0);
@@ -1698,7 +1710,27 @@ Moira::execBsr(u16 opcode)
         }
 
         // Save return address on stack
-        push<C, Long, POLL>(retpc);
+        // [D] WinUAE gencpu i_BSR @ Hatari e77819f7 ("op=BSR_W #14225" on
+        // the 68030, "op=BSR_W #14284" and "op=BSR_L #14345" on the 68040;
+        // opcells.py --set classes --mmu identity --user --stack data). A
+        // faulting push restarts the BSR on both, with A7 intact: the store
+        // goes to A7-4 and A7 moves afterwards, as for JSR. The 68030 has
+        // logged the displacement by then; on the 68040
+        // execMmu040BusError excludes both from the last-write rule.
+        // Gate: moira_rules_test (stackStoreFaults).
+        bool pushed = false;
+        if constexpr (C == Core::C68020) {
+            if (cpuModel == Model::M68030) [[unlikely]] {
+                if constexpr (S == Word) mmuLogExtWord(u16(disp));
+                if constexpr (S == Long) mmuLogExtWord(disp);
+            }
+            if (cpuModel >= Model::M68EC040 || cpuModel == Model::M68030) {
+                write<C, AddrSpace::DATA, Long, POLL>(reg.sp - 4, retpc);
+                reg.sp -= 4;
+                pushed = true;
+            }
+        }
+        if (!pushed) push<C, Long, POLL>(retpc);
 
         // Jump to new address
         reg.pc = newpc;
@@ -3185,7 +3217,10 @@ Moira::execJsr(u16 opcode)
             // writes at A7-4 and only then decrements A7. The push is not a
             // marked last write, so a fault there restarts the JSR with A7
             // intact (mmu040Fault, bitfieldStoreRestarts040).
-            if (C == Core::C68020 && cpuModel >= Model::M68EC040) {
+            // The 68030 restarts too, and its handler sees A7 intact
+            // ("op=JSR_A7 #3369", opcells.py --set classes --mmu identity
+            // --user --stack data): the fork left it decremented.
+            if (C == Core::C68020 && (cpuModel >= Model::M68EC040 || cpuModel == Model::M68030)) {
                 write<C, AddrSpace::DATA, Long, POLL>(reg.sp - 4, reg.pc);
                 reg.sp -= 4;
             } else {
@@ -3305,11 +3340,26 @@ Moira::execLink(u16 opcode)
     // [D] WinUAE @ Hatari e77819f7 — its 68040 table agrees; its 68030
     //     table (cpuemu_32.c) reads the register first and pushes the entry
     //     value. Ruling D42, oracle/README.md.
-    push <C, Long>(readA(ax) - (ax == 7 ? 4 : 0));
+    if (pomStoreEndsInstruction<C>()) {
+        // [D] WinUAE gencpu i_LINK @ Hatari e77819f7 ("op=LINK_W #29" and
+        // the 68040's "op=LINK_L #34", opcells.py --set classes --mmu
+        // identity --user --stack data). On the 68030 and 68040 the push
+        // is LINK's last write: An and the stack pointer already hold
+        // their final values when it faults, the 68030 stacks the short
+        // frame $A and both stack the next PC. Gate: moira_rules_test
+        // (stackStoreFaults).
+        const u32 value = readA(ax) - (ax == 7 ? 4 : 0);
+        writeA(ax, sp);
+        reg.sp = U32_ADD(sp, disp);
+        pomLastWrite030<C>();       // the 68040 write path arms its own
+        write<C, AddrSpace::DATA, Long>(sp, value);
+    } else {
+        push <C, Long>(readA(ax) - (ax == 7 ? 4 : 0));
 
-    // Modify address register and stack pointer
-    writeA(ax, sp);
-    reg.sp = U32_ADD(reg.sp, disp);
+        // Modify address register and stack pointer
+        writeA(ax, sp);
+        reg.sp = U32_ADD(reg.sp, disp);
+    }
 
     prefetch<C>();
 
@@ -6107,11 +6157,29 @@ Moira::execNegEa(u16 opcode)
 
     readOp<C, M, S, STD_AE_FRAME>(dst, &ea, &data);
 
+    [[maybe_unused]] const u32 operand = data;
+    [[maybe_unused]] const bool x = reg.sr.x;
     data = logic<C, I, S>(data);
     looping<I>() ? noPrefetch<C>(2) : prefetch<C, POLL>();
 
     if constexpr (MOIRA_MIMIC_MUSASHI) {
         writeOp<C, M, S>(dst, ea, data);
+    } else if constexpr (I == Instr::NEG || I == Instr::NEG_LOOP) {
+        // [D] WinUAE gencpu flag_sub @ Hatari e77819f7: NEG stores
+        // `(uN)0 - (uN)src` as a uae_u32, so a faulting 68030 store stacks
+        // the unmasked difference as its pending write, as ADD and SUB do
+        // (execAddRgEa; addsub returns it). "op=NEG_postinc_B #803",
+        // opcells.py --set classes --mmu identity --user --stack data.
+        writeOp<C, M, S, REVERSE | MMU_RAWBUF>(dst, ea, data);
+    } else if constexpr (I == Instr::NEGX || I == Instr::NEGX_LOOP) {
+        // [D] WinUAE gencpu i_NEGX @ Hatari e77819f7: `0 - src - X` with src
+        // the sign-extended operand.
+        if constexpr (C == Core::C68020) {
+            const u32 raw = 0u - u32(SEXT<S>(operand)) - (x ? 1u : 0u);
+            writeOp<C, M, S, REVERSE | MMU_RAWBUF>(dst, ea, raw);
+        } else {
+            writeOp<C, M, S, REVERSE>(dst, ea, data);
+        }
     } else {
         writeOp<C, M, S, REVERSE>(dst, ea, data);
     }
@@ -6284,6 +6352,11 @@ Moira::execPea(u16 opcode)
         } else {
 
             POLL_IPL;
+            // [D] WinUAE gencpu i_PEA @ Hatari e77819f7 ("op=PEA.ixf
+            // #3408", opcells.py --set ea --mmu identity --user --stack
+            // data): the push is PEA's last write on the 68030 — short
+            // frame $A, next PC, A7 stepped.
+            pomLastWrite030<C>();
             push <C, Long> (ea);
             prefetch<C>();
         }
@@ -6299,12 +6372,14 @@ Moira::execPea(u16 opcode)
         } else {
 
             prefetch<C, POLL>();
+            pomLastWrite030<C>();   // POM68K: as the absolute modes above
             push <C, Long> (ea);
         }
 
     } else {
 
         prefetch<C, POLL>();
+        pomLastWrite030<C>();       // POM68K: as the absolute modes above
         push <C, Long>(ea);
     }
 
@@ -6353,6 +6428,13 @@ Moira::execRtd(u16 opcode)
         throw AddressError(makeFrame<AE_SET_RW|AE_SET_DF>(reg.sp));
     }
 
+    // [D] WinUAE gencpu i_RTD @ Hatari e77819f7 ("op=RTD #1793", opcells.py
+    // --set classes --mmu identity --user --stack data): the 68030 logs the
+    // displacement word before it pops, so a faulting pop stacks one
+    // completed entry.
+    if constexpr (C == Core::C68020) {
+        if (cpuModel == Model::M68030) [[unlikely]] mmuLogExtWord(u16(ircWord()));
+    }
     u32 newpc = readM<C, M, Long>(reg.sp);
     reg.sp += 4 + i16(ircWord());
 

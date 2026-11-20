@@ -3886,13 +3886,15 @@ Moira::execMmu040BusError()
     // unmarked; MOVEP is handled above and MOVEM by its latch, CAS2 reaches
     // no store fault (its reads are write-probed). A fault inside a JSR can
     // only be the push or a memory-indirect pointer: a fault on its target
-    // fetch is retaken by the next instruction (ruling D35).
+    // fetch is retaken by the next instruction (ruling D35). That scan
+    // missed BSR (op_6100/op_61ff: m68k_do_bsr after the checks), whose
+    // push restarts too ("op=BSR_W #14284", class cells of 2026-11-20).
     // Fresh-seed vector "040 random/ttvar seed=79012 #1850".
     // Gate: moira_rules_test (bitfieldStoreRestarts040).
     u32 framePc;
     if (mmu040LastWrite && (queue.ird & 0xFE00) != 0xF200 &&
         (queue.ird & 0xF1B8) != 0x0188 && (queue.ird & 0xF8C0) != 0xE8C0 &&
-        (queue.ird & 0xFFC0) != 0x4E80) {
+        (queue.ird & 0xFFC0) != 0x4E80 && (queue.ird & 0xFF00) != 0x6100) {
         framePc = mmu040LastWritePc;
         mmu040LastWrite = false;
     } else {

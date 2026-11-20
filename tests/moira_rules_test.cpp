@@ -3116,6 +3116,133 @@ void moveFromSrStoreIsLastWrite()
     }
 }
 
+void stackStoreFaults()
+{
+    // [D] WinUAE gencpu.c i_LINK, i_PEA, i_JSR, i_RTD, i_NEG, i_NEGX @ Hatari
+    // e77819f7 — class cells with the user stack on faulting pages
+    // (opcells.py --mmu identity --user --stack data, 2026-11-20). The fork
+    // stacked format $B for LINK and PEA and left An and A7 as they entered,
+    // left A7 decremented under a faulting JSR, logged no displacement for
+    // RTD and BSR, stacked NEG's pending byte sign-extended and ASL's
+    // without the bit shifted out; a 68040 BSR stacked the next PC.
+    for (auto model : {moira::Model::M68030, moira::Model::M68040}) {
+        const bool is040 = model == moira::Model::M68040;
+        const char* name = is040 ? "68040" : "68030";
+        auto user = [](TestCpu& c, uint16_t opcode, uint16_t ext, uint32_t usp) {
+            p32(c, 2 * 4, kHandler);
+            p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
+            stage(c, opcode, 0);
+            p16(c, kCode + 2, ext); c.setIRC(ext);
+            c.setSR(0x0000);
+            c.setUSP(usp); c.setSP(usp);
+            c.holeArmed = true;
+        };
+        {   // LINK A6,#-8: the push is the last write
+            TestCpu c(model);
+            user(c, 0x4e56, 0xfff8, kHole + 4);
+            c.setA(6, 0x12345678);
+            c.holeWritesOnly = true;
+            const bool contained = executeContained(c);
+            const uint32_t sp = c.getSP();
+            CHECK(contained && c.getPC0() == kHandler && c.holeTrips == 1 &&
+                  g16(c, sp + 6) == (is040 ? 0x7008 : 0xa008) && g32(c, sp + 2) == kCode + 4 &&
+                  c.getA(6) == kHole && c.getUSP() == kHole - 8 &&
+                  (is040 || g32(c, sp + 0x18) == 0x12345678),
+                  "%s LINK A6,#-8 push fault: format %04X, stacked PC %08X (want %08X), "
+                  "A6=%08X (want %08X), USP=%08X (want %08X), %u /BERR(s)", name,
+                  g16(c, sp + 6), g32(c, sp + 2), kCode + 4, c.getA(6), kHole, c.getUSP(),
+                  kHole - 8, c.holeTrips);
+        }
+        {   // BSR.W: restarts with A7 intact; the 68030 has logged the displacement
+            TestCpu c(model);
+            user(c, 0x6100, 0x0040, kHole + 4);
+            c.holeWritesOnly = true;
+            const bool contained = executeContained(c);
+            const uint32_t sp = c.getSP();
+            CHECK(contained && c.getPC0() == kHandler && c.holeTrips == 1 &&
+                  g16(c, sp + 6) == (is040 ? 0x7008 : 0xb008) && g32(c, sp + 2) == kCode &&
+                  c.getUSP() == kHole + 4 &&
+                  (is040 || (g32(c, sp + 0x58) == 0x0040 && c.mem[sp + 0x37] == 0x12)),
+                  "%s BSR.W push fault: format %04X, stacked PC %08X (want %08X), "
+                  "USP=%08X (want %08X), 68030 log %08X idx byte %02X (want 00000040, 12)",
+                  name, g16(c, sp + 6), g32(c, sp + 2), kCode, c.getUSP(), kHole + 4,
+                  g32(c, sp + 0x58), c.mem[sp + 0x37]);
+        }
+        if (is040) continue;
+        {   // ASL (A0): the pending word keeps the bit shifted out
+            TestCpu c(model);
+            p32(c, 2 * 4, kHandler);
+            p16(c, kHandler, kNop);
+            stage(c, 0xe1d0, 0);
+            p16(c, kHole, 0xc001);
+            c.setA(0, kHole);
+            c.holeArmed = true; c.holeWritesOnly = true;
+            const bool contained = executeContained(c);
+            const uint32_t sp = c.getSP();
+            CHECK(contained && c.getPC0() == kHandler && g16(c, sp + 6) == 0xa008 &&
+                  g32(c, sp + 0x18) == 0x00018002,
+                  "68030 ASL (A0) of $C001, store fault: format %04X (want A008), data "
+                  "output buffer %08X (want 00018002)", g16(c, sp + 6), g32(c, sp + 0x18));
+        }
+        {   // PEA (A0): last write, A7 stepped
+            TestCpu c(model);
+            user(c, 0x4850, kNop, kHole + 4);
+            c.setA(0, 0x00031234);
+            c.holeWritesOnly = true;
+            const bool contained = executeContained(c);
+            const uint32_t sp = c.getSP();
+            CHECK(contained && c.getPC0() == kHandler && g16(c, sp + 6) == 0xa008 &&
+                  g32(c, sp + 2) == kCode + 2 && c.getUSP() == kHole &&
+                  g32(c, sp + 0x18) == 0x00031234,
+                  "68030 PEA (A0) push fault: format %04X (want A008), stacked PC %08X "
+                  "(want %08X), USP=%08X (want %08X), pending %08X", g16(c, sp + 6),
+                  g32(c, sp + 2), kCode + 2, c.getUSP(), kHole, g32(c, sp + 0x18));
+        }
+        {   // JSR (A0): restarts, A7 intact in the handler
+            TestCpu c(model);
+            user(c, 0x4e90, kNop, kHole + 4);
+            c.setA(0, 0x3000);
+            c.holeWritesOnly = true;
+            const bool contained = executeContained(c);
+            const uint32_t sp = c.getSP();
+            CHECK(contained && c.getPC0() == kHandler && g16(c, sp + 6) == 0xb008 &&
+                  g32(c, sp + 2) == kCode && c.getUSP() == kHole + 4,
+                  "68030 JSR (A0) push fault: format %04X (want B008), stacked PC %08X "
+                  "(want %08X), USP=%08X (want %08X)", g16(c, sp + 6), g32(c, sp + 2),
+                  kCode, c.getUSP(), kHole + 4);
+        }
+        {   // RTD #8: the displacement is logged before the pop
+            TestCpu c(model);
+            user(c, 0x4e74, 0x0008, kHole);
+            const bool contained = executeContained(c);
+            const uint32_t sp = c.getSP();
+            CHECK(contained && c.getPC0() == kHandler && g16(c, sp + 6) == 0xb008 &&
+                  g32(c, sp + 0x58) == 0x0008 && c.mem[sp + 0x37] == 0x12 &&
+                  c.getUSP() == kHole,
+                  "68030 RTD #8 pop fault: format %04X (want B008), log %08X (want "
+                  "00000008), idx byte %02X (want 12), USP=%08X", g16(c, sp + 6),
+                  g32(c, sp + 0x58), c.mem[sp + 0x37], c.getUSP());
+        }
+        struct Neg { uint16_t opcode; uint8_t operand; uint32_t want; const char* what; };
+        for (const Neg& k : { Neg{ 0x4410, 0x81, 0xffffff7f, "NEG.B (A0) of $81" },
+                              Neg{ 0x4010, 0x80, 0x00000080, "NEGX.B (A0) of $80, X clear" } }) {
+            TestCpu c(model);
+            p32(c, 2 * 4, kHandler);
+            p16(c, kHandler, kNop);
+            stage(c, k.opcode, 0);
+            c.mem[kHole] = k.operand;
+            c.setA(0, kHole);
+            c.holeArmed = true; c.holeWritesOnly = true;
+            const bool contained = executeContained(c);
+            const uint32_t sp = c.getSP();
+            CHECK(contained && c.getPC0() == kHandler && g16(c, sp + 6) == 0xa008 &&
+                  g32(c, sp + 0x18) == k.want,
+                  "68030 %s, store fault: format %04X (want A008), data output buffer "
+                  "%08X (want %08X)", k.what, g16(c, sp + 6), g32(c, sp + 0x18), k.want);
+        }
+    }
+}
+
 int main(int argc, char** argv)
 {
     if (argc == 2 && std::string_view(argv[1]) == "--movem-restart") {
@@ -3186,6 +3313,7 @@ int main(int argc, char** argv)
     packUnpkFaultRestoresAn();
     moveFromSrStoreIsLastWrite();
     cas2ExtensionLog030();
+    stackStoreFaults();
 
     if (failures) {
         std::printf("[moira_rules_test] FAIL: %d check(s)\n", failures);
@@ -3198,6 +3326,6 @@ int main(int argc, char** argv)
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68030 MOVE to (xxx).L last write, 68EC030 plain-020 path with a 68030 "
-                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, the 68040 lock ending with TAS/CAS/CAS2, a memory-indirect pointer read outside the lock, BKPT without a data access, 68040 bit-field and JSR store faults restart, the SR-write refill as a fetch, no trace before a format-$7 rerun, PACK/UNPK -(An) faults on the 68030/68040, level 7 on a transition from the 68020 up, the billed 020-core interrupt sequence, the trace exception after the traced instruction, trace on change of flow, MULx.L into one register, CAS2 with one compare register, MOVE from SR/CCR ending on its store, the 68030 CAS2 extension long\n");
+                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, the 68040 lock ending with TAS/CAS/CAS2, a memory-indirect pointer read outside the lock, BKPT without a data access, 68040 bit-field and JSR store faults restart, the SR-write refill as a fetch, no trace before a format-$7 rerun, PACK/UNPK -(An) faults on the 68030/68040, level 7 on a transition from the 68020 up, the billed 020-core interrupt sequence, the trace exception after the traced instruction, trace on change of flow, MULx.L into one register, CAS2 with one compare register, MOVE from SR/CCR ending on its store, the 68030 CAS2 extension long, LINK/PEA/JSR/BSR/RTD stack faults and the pending store of NEG, NEGX and ASL\n");
     return 0;
 }

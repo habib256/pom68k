@@ -138,6 +138,14 @@ def classes(cpu: str) -> list[tuple[str, int, int, int]]:
         c("PFLUSH040", 0xF500, 0x1F); c("PTEST040", 0xF548, 0x27)
     else:
         c("CALLM", 0x06D0, 7, 1); c("RTM", 0x06C0, 0xF)
+    # Appended, so that the vectors of an earlier seed stay what they were.
+    for size, n in ((0, "B"), (1, "W"), (2, "L")):
+        c("NEGX_ind_" + n, 0x4010 | size << 6, 7); c("NOT_ind_" + n, 0x4610 | size << 6, 7)
+        c("NEG_ind_" + n, 0x4410 | size << 6, 7); c("CLR_ind_" + n, 0x4210 | size << 6, 7)
+        c("ADDQ_ind_" + n, 0x5010 | size << 6, 0x0E07); c("SUBQ_ind_" + n, 0x5110 | size << 6, 0x0E07)
+        c("ADDI_ind_" + n, 0x0610 | size << 6, 7, 2 if size == 2 else 1)
+        c("EORI_ind_" + n, 0x0A10 | size << 6, 7, 2 if size == 2 else 1)
+        c("EOR_ind_" + n, 0xB110 | size << 6, 0x0E07); c("OR_ind_" + n, 0x8110 | size << 6, 0x0E07)
     return out
 
 
@@ -296,6 +304,8 @@ def generate(args) -> int:
                     members.append((name, draw))
                 for kind in kinds:
                     members.append((f"{name}.{kind}", lambda d=draw, k=kind: d(kind=k)))
+        if args.only:
+            members = [m for m in members if re.search(args.only, m[0])]
         for name, member in members:
             for _ in range(args.n):
                 st = gen_state(rng, family="core", mmu=args.mmu)
@@ -393,6 +403,9 @@ def main() -> int:
                         "(identity: random page kinds, so the members fault)")
     g.add_argument("--user", action="store_true",
                    help="classes and ea: user mode, for the privilege violations")
+    g.add_argument("--only", default="",
+                   help="classes and ea: keep the classes whose name matches this regular "
+                        "expression (the others draw nothing, so seeds are not comparable)")
     g.add_argument("--stack", default="fixed", choices=["fixed", "data"],
                    help="with --user: data puts the user stack on a data page, so that "
                         "pushes and pops fault under --mmu identity")

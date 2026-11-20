@@ -54,9 +54,9 @@ pair):
 | | | how to re-measure |
 |---|---|---|
 | distinct `pom*` extension identifiers | **117** (65 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **573** | `grep -rn POM68K Moira/ \| wc -l` |
+| `POM68K`-marked lines | **576** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **17 of 27** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **138** | this file |
+| patch groups in the inventory below | **139** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h`, `MoiraState.h`, `MoiraMmu030Walk.h` | — |
 
 One hundred and sixteen patch groups, two of which (the JIT seam, row 22, and the ATC
@@ -308,6 +308,7 @@ gate in the last column of each row.
 | 136 | **68040 MULS.L/MULU.L write Dh before Dl** — `execMullMoira` wrote the 64-bit product Dl then Dh on every model; on the 68040 the order is reversed, which shows when both name one register (it keeps the low half there, the high half below the 68040) | `MoiraExec_cpp.h` | [D] WinUAE m68k_mull, "68040 is different"; the manuals call the result undefined | `moira_rules_test` (mullSameRegister) |
 | 137 | **CAS2 with one compare register keeps memory operand 1 below the 68040** — a failed CAS2 wrote Dc1 then Dc2 on every model; the 68020 and 68030 now write Dc2 then Dc1. The 68040 keeps the former order (ruling D44) | `MoiraExec_cpp.h` | [B] M68000PRM-1992 CAS2; [D] WinUAE i_CAS2, with "68040: register update order swapped" | `moira_rules_test` (cas2SameCompareRegister) |
 | 138 | **MOVE from SR and MOVE from CCR end on their store on the 68030 and 68040** — `execMoveSrEa` and `execMoveCcrEa` called `writeM` themselves; on those two models they now step `(An)+` first and store through `writeOp(n, ea, val)`, which carries the last-write mark (`pomStoreEndsInstruction`) | `MoiraExec_cpp.h`, `Moira.h` | a faulting store stacked format $B instead of $A on the 68030 and left `(An)+` unstepped on both; [D] WinUAE gencpu i_MVSR2, found by the addressing-mode cells under the MMU (`opcells.py --set ea --mmu identity`) | `moira_rules_test` (moveFromSrStoreIsLastWrite) |
+| 139 | **Stack-access faults on the 68030 and 68040: LINK, PEA, JSR, BSR, RTD; the pending store of NEG, NEGX and ASL** — LINK's push is its last write on both models (An and A7 final before it; `execLink`); PEA's push carries the 68030 last-write mark; a faulting JSR or BSR push restarts with A7 intact on the 68030 as on the 68040 (store at A7−4, then the decrement), and the 68040 excludes BSR from its last-write rule as it does JSR (`execMmu040BusError`); the 68030 logs the BSR displacement and the RTD displacement before the stack access; NEG and ASL to memory pass their unmasked result to the 68030 write buffer, NEGX `0 − sext(src) − X` | `MoiraExec_cpp.h`, `MoiraExecMMU_cpp.h` | format $B instead of $A for LINK and PEA with An/A7 as they entered; A7 four below under a faulting JSR/BSR; an access log one entry short for BSR.W and RTD; a 68040 BSR stacking the next PC, so that an RTE skipped the call; three data-output-buffer values. [D] WinUAE gencpu i_LINK, i_PEA, i_JSR, i_BSR, i_RTD, i_NEG, i_NEGX, i_ASLW; found by the class cells with the user stack on faulting pages (`opcells.py --mmu identity --user --stack data`) | `moira_rules_test` (stackStoreFaults) |
 
 Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54, 56, 59-75 and 79-86 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
 when nothing arms them); rows 48 and 55 are performance alone, with no architectural effect. Row 58 is evidence documentation only. The ten files carrying no `POM68K` marker at all —
