@@ -9,6 +9,11 @@
 
 namespace {
 constexpr uint32_t operand = 0x40000, code = 0x1000, handler = 0x3000;
+// The port width the host reports (dsack). With the 68020 i-cache compiled
+// in, Moira sizes the 68020's aligned longword accesses by it: the Mac II
+// reports a 32-bit port (src/Cpu020.h), the LC a 16-bit one (the default).
+// The matrix runs under both.
+bool gPort32 = false;
 class Cpu : public moira::Moira {
 public:
     std::vector<moira::u8> mem = std::vector<moira::u8>(1 << 20);
@@ -33,6 +38,9 @@ private:
     }
     moira::u16 read16(moira::u32 a) const override {
         observe(a, false); return word(a & 0xfffff);
+    }
+    moira::u8 dsack(moira::u32) const override {
+        return gPort32 ? moira::DSACK_32 : moira::DSACK_16;
     }
     void write8(moira::u32 a, moira::u8 v) const override {
         observe(a, true); const_cast<Cpu*>(this)->mem[a & 0xfffff] = v;
@@ -251,6 +259,7 @@ void nestedFaults(moira::Model model) {
 } // namespace
 
 int main() {
+    for (bool port32 : {false, true})
     for (auto model : {moira::Model::M68EC020, moira::Model::M68020})
         for (unsigned bytes : {1u, 2u, 4u})
             for (bool write : {false, true})
@@ -259,9 +268,11 @@ int main() {
                         for (bool restore : {false, true})
                             for (bool second : {false, true}) {
                                 if (second && bytes != 4) continue;
+                                gPort32 = port32;
                                 for (bool user : {false, true})
                                     run(model, bytes, write, mode, completed, restore, second, user);
                             }
+    gPort32 = false;
     for (auto model : {moira::Model::M68EC020, moira::Model::M68020}) {
         aliasAndReset(model, false); aliasAndReset(model, true);
         cpuSpace(model, false); cpuSpace(model, true);

@@ -522,6 +522,15 @@ Moira::syncCp(int cycles)
         return;
     }
 
+    // POM68K: kept as upstream wrote it, but its debt path (a balance below
+    // zero, the stall rule, minAccum) is now cold. It existed to spend
+    // upstream's -2 per cache hit; with the corrected fetch charges
+    // (readInstr: 0 per hit, +2 or +6 per bus cycle) every charge is
+    // non-negative, so the balance only holds an odd cycle back; the stall
+    // rule could still fire after four instructions charged below 2 in a
+    // row, which the cache-case tables give almost no instruction.
+    // Gate: icache020_test (a long warm run never borrows).
+
     // Max number of instructions that may execute without advancing the clock
     static constexpr int maxStalled = 4;
 

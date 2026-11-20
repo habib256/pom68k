@@ -110,9 +110,15 @@ template <Core C, Flags F = 0> u16 readInstr(u32 addr);
 // reports. Upstream does it unconditionally on the 68020 core; the fork
 // compiles it with the 68020 i-cache only (MoiraConfig.h), so that with the
 // cache off the host sees the access sequence it saw before a4c273b and
-// the hot path carries no dsack() call.
+// the hot path carries no dsack() call. With it compiled in, it is asked
+// of the 68020/EC020 only (pomSized020): the 68030 and 68040 have their own
+// bus layers, and an EC030 on the plain path keeps its plain accesses
+// whatever its host's dsack() says.
 template <Core C> static constexpr bool busSizing =
     C == Core::C68020 && MOIRA_EMULATE_ICACHE;
+bool pomSized020() const {
+    return cpuModel == Model::M68020 || cpuModel == Model::M68EC020;
+}
 
 // Writes an operand to memory (without or with address error checking)
 template <Core C, Mode M, Size S, Flags F = 0> void writeM(u32 addr, u32 val);

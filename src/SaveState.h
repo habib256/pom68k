@@ -322,7 +322,11 @@ inline constexpr char     kMagic[8]  = {'P','O','M','6','8','K','S','S'};
 // trapped single-precision FMOVE out rounds its 6888x frame operand with.
 // v33: the 68040 access-error frame latches that outlive an instruction —
 // the MOVE16 line buffer (PD0-PD3) and WB2A.
-inline constexpr u32      kVersion   = 37;
+// v38: Moira's 68020 instruction cache — its 64 lines, the fetch latch and
+// the cycle budget (MoiraState.h), carried since the cache is compiled into
+// POM68K's configuration (POM68K_VENDOR.md row 147). A v37 reader would
+// read the next chunk's bytes as cache lines.
+inline constexpr u32      kVersion   = 38;
 
 struct Header {
     u32 version     = kVersion;

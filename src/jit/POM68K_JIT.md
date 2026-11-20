@@ -101,7 +101,7 @@ engine being worth switching on. Ranked by measured gain (§ 3.4):
 |---|---|---|---|
 | 68040 | Quadra 605/610/650/700/800/900/950, Centris, Q630 | **×5.0** on a fixed budget (x64, § 3.4); ×2.68 end to end on `q605_boot_etalon` (2026-07-31, § 3.4) | an ATC walk per fetch, replaced by a bounds check |
 | 68030 | LC II family, Sonora, VASP, RBV, **IIx/IIcx/SE-30**, **IIfx**, Duo | **×1.21** portable baseline (LC II, fixed budget, threaded); `auto` now uses the separately gated native generator on both ISAs (a64 −5.3 %, x64 −12.6 % over `threaded` at the default budget) | same fetch win, plus native replay |
-| 68020 | Macintosh LC, **Mac II** | ×1.0-1.2 | no MMU to skip — only the map decode |
+| 68020 | Macintosh LC, **Mac II** | ×1.0 since 2026-11-20 (×1.0-1.2 before) | runs on the interpreter: Moira's 68020 i-cache owns every fetch (§ 2.1) |
 | 68000 | **128K, 512K, 512Ke, Plus, SE, SE FDHD, Classic** | ×1.03-1.08 | no MMU *and* the cycle accounting must be kept (§ 3.1) |
 
 The last two rows are the honest reason the 020/000 seams took until
@@ -191,6 +191,24 @@ Each one names the gate that would catch it breaking.
 | 8 | **A memory access has one host-neutral contract.** Count, order, EA commit, restart/LASTWRITE phase and 040 cache eligibility live in `Instr::memory`; A64 and x64 derive the same `MemoryProofPlan`. An undescribed form is an interpreter fallback, never an opcode-local guess. | `jit_backend_test` checks the decoder/planner; `jit_asset_free_lockstep_test` checks RMW/postincrement/stack/fault boundaries; `jit_copyback_{write,bsr,pair}_040_test` executes the cache protocols |
 | 9 | **An emitted opcode has one host-neutral meaning.** Family, ALU operation, width, direction, operands, condition and sub-operation live in `Instr::semantics`. A64/x64 select host instructions and admissible EAs; they do not own ISA dispatch decoders. | `jit_backend_test` checks representative overlaps and native coverage; `docs_test` rejects a backend-local line dispatch or ALU decoder |
 | 10 | **The 68k cost and EA-admission model is written once** (2026-08-28). Cycle columns, the CMPA surcharge, full-format prices and the `EaPlan` admission wrapper live in `JitCost.h` / `JitEaPlan.h`; a backend reads them and keeps only emission. A cost cell or admission predicate transcribed into `backends/` recreates the drift that made the two generators two projects. | `jit_backend_parity_test` sweeps both `canEmit` over the whole opcode space against a dated exception table; `docs_test` § 9 rejects a backend-local cost table, EA decode or D1F0 predicate |
+
+
+### 2.1 The 68020 with its instruction cache (2026-11-20)
+
+Since Moira's 68020 i-cache is compiled into POM68K's configuration
+(`MoiraConfig.h`, `extern/moira/POM68K_VENDOR.md` row 147), every fetch of a
+68020/EC020 is a cache lookup, a longword line fill on a miss and a clock
+charge (`readInstr`). Neither the fetch window nor a translated block models
+that, so the smallest design that keeps invariant 1 was taken: the window
+refuses those models (`Moira::pomJitFetch020`) and `Engine::executeUntil`
+hands them to `Moira::executeUntil` (`pomCacheOwnsFetch`). The opt-in JIT
+therefore no longer accelerates 68020 guests; their default engine was
+already the interpreter (invariant 3). The 68030 (IIx/IIcx/SE-30, LC II) and
+68040 machines are unaffected. `jit_program_fuzz_020_irq7_test`,
+`_irq7_blocks_test`, `_ext2_test` and `_trace_blocks_test`, and
+`jit_macii_boot_etalon` / `jit_lc_boot_etalon`, now compare the interpreter
+with itself; none of them requires a native or translated share. Modelling
+the cache in the engine is open work (`TODO.md`).
 
 ---
 

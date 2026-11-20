@@ -1,10 +1,9 @@
 // POM68K — 68020 on-chip instruction cache gate (upstream Moira's MoiraCache).
 // VERHILLE Arnaud — Copyright (C) 2026 — MIT (see LICENSE-MIT)
 //
-// POM68K builds Moira with MOIRA_EMULATE_ICACHE false, so nothing else in
-// the suite executes upstream's 68020 cache. This gate links
-// `moira_upstream_config` (MOIRA_EMULATE_ICACHE true, upstream's settings)
-// and runs small hand-assembled programs on a flat bus whose address decides
+// POM68K's configuration now has the cache too (inventory row 147); this
+// gate links `moira_upstream_config` (upstream's settings, cache on), so the
+// cache is held under the configuration upstream ships, and runs small hand-assembled programs on a flat bus whose address decides
 // the port width (dsack). Each check states where its expectation comes from:
 //
 //   [B] MC68020UM-1992 (tests/core_manuals.lock, which holds the reviewed
@@ -16,7 +15,8 @@
 //       (icache_compare, run on both cores), before the fork routed the
 //       expired DBcc's read through the cache (inventory row 152), which
 //       removes upstream's R16 at the DBcc's pc+2 and nothing else.
-//   [F] cycle totals: what both cores charge, not a measurement.
+//   [F] cycle totals: the fork's corrected model (inventory row 147), whose
+//       anchors are the manual's loops below, not a measurement.
 //       Settled by: a 68020 bus capture of these programs.
 //
 // The gate fails if the cache is compiled out or ignored: a hit must make
@@ -67,6 +67,8 @@ public:
         for (auto &line : iCache.cache) line.valid = false;
         iCache.latch.addr = 0xffffffff;
     }
+    // The cycle budget's balance (Moira::syncCp): below zero it is a debt.
+    int balance() const { return budget.accumulated; }
 
 private:
     void note(bool w, int s, u32 a, u32 v) const { bus.push_back({w, s, a, v, getClock()}); }
@@ -392,20 +394,85 @@ void checkModel(Model model)
     CHECK(sm.at2002 == 0x5481, "self-modifying: memory not patched ($%04X)", sm.at2002);
 
     // ── Cycle totals ─────────────────────────────────────────────────────
-    // [D] upstream ce28239 charges the same totals (traces identical,
-    // 2026-11-20). [F] for silicon: no capture. These move if the cache
-    // discount, the latch or the narrow-port penalty changes.
+    // The fork's corrected fetch charges (readInstr, inventory row 147): a
+    // hit or a latch word adds 0 to the cache-case tables, a bus cycle +2
+    // from a 32-bit port and +6 from a narrower one. Upstream ce28239
+    // charged 38/58/58/58/128/116/90/82/122/114 here, below the manual's
+    // cache case, by discounting every hit 2 more (checkManualLoops holds
+    // the [B] anchors). [F] for silicon: no capture of these programs.
     struct { const Trace *t; const char *n; i64 cycles; } totals[] = {
-        { &on, "loop-on", 38 }, { &off, "loop-off", 58 },
-        { &p16, "loop-port16", 58 }, { &p8, "loop-port8", 58 },
-        { &en, "enable", 128 }, { &fr, "freeze", 116 },
-        { &ce, "clear-entry", 90 }, { &ca, "clear-all", 82 },
-        { &ut, "user-tag", 122 },
-        { &sm, "self-modifying", 114 },
+        { &on, "loop-on", 100 }, { &off, "loop-off", 120 },
+        { &p16, "loop-port16", 120 }, { &p8, "loop-port8", 120 },
+        { &en, "enable", 260 }, { &fr, "freeze", 238 },
+        { &ce, "clear-entry", 190 }, { &ca, "clear-all", 172 },
+        { &ut, "user-tag", 240 },
+        { &sm, "self-modifying", 332 },
     };
     for (auto &x : totals)
         CHECK(x.t->cycles == x.cycles, "%s: %lld cycles, expected %lld", x.n,
               (long long)x.t->cycles, (long long)x.cycles);
+}
+
+// ── Manual loops: warm on the cache case, cache off towards the worst ──
+// Eight copies of one instruction and DBF D7,top, 200 iterations, from the
+// 32-bit port (the conditions of the MC68020UM-1992 §8.2 tables). These are
+// the loops of the 2026-11-20 finding on upstream ce28239, where a warm
+// loop was charged below the manual's best case (8 x NOP + DBF: 4.5 clocks
+// per iteration against best 19) because the tables are the cache case and
+// a hit was discounted 2 more (inventory row 147).
+// [B] § 8.2.16 NOP 2/2/3, § 8.2.6 MOVE Rn,(An) 3/4/5, § 8.2.15 DBcc count
+//     not expired 3/6/9 (best/cache/worst): per iteration
+//     8 x NOP + DBF 19/22/33, 8 x MOVE.L D0,(A0) + DBF 27/38/49, DBF 3/6/9.
+// Warm, every fetch hits: exactly the cache case. CACR = 0, every longword
+// is a bus cycle at +2: 32, 48 and 8, one clock under the worst case
+// (33, 49, 9; the manual's figures are per instruction, the fill serves
+// two words). [F] for silicon: no capture of these loops.
+struct LoopRun { double warm; long long cold; int minBalance; };
+
+LoopRun runLoop(Model model, u16 op, int n, u32 cacr)
+{
+    auto c = std::make_unique<TestCpu>();
+    c->setModel(model);
+    Asm a{*c, 0x1000};
+    a.moveLImmD0(cacr).w(0x4E7B).w(0x0002);      // MOVEC D0,CACR
+    a.w(0x41F9).l(0x20000);                      // LEA $20000,A0
+    a.w(0x3E3C).w(199);                          // MOVE.W #199,D7
+    a.nop().nop();
+    const u32 top = a.pc;
+    for (int i = 0; i < n; i++) a.w(op);
+    a.w(0x51CF); a.w(u16(top - a.pc));           // DBF D7,top
+    a.w(0x60FE);                                 // BRA.S *
+    c->put32(0, kStack); c->put32(4, 0x1000);
+    c->reset();
+    while (c->getPC() != top) c->execute();
+    long long start[200]; int it = 0, minBalance = c->balance();
+    while (it < 200) {
+        if (c->getPC() == top) start[it++] = c->getClock();
+        if (it == 200) break;
+        c->execute();
+        if (c->balance() < minBalance) minBalance = c->balance();
+    }
+    return { double(start[199] - start[99]) / 100.0, start[1] - start[0], minBalance };
+}
+
+void checkManualLoops(Model model)
+{
+    struct { const char *name; u16 op; int n; int cache; long long off; } loops[] = {
+        { "8 x NOP + DBF",          0x4E71, 8, 22, 32 },
+        { "8 x MOVE.L D0,(A0) + DBF", 0x2080, 8, 38, 48 },
+        { "DBF alone",              0x4E71, 0,  6, 8 },
+    };
+    for (auto &l : loops) {
+        const LoopRun on = runLoop(model, l.op, l.n, 1);
+        const LoopRun off = runLoop(model, l.op, l.n, 0);
+        CHECK(on.warm == double(l.cache), "%s: warm %.2f clocks per iteration, "
+              "manual cache case %d", l.name, on.warm, l.cache);
+        CHECK(off.warm == double(l.off), "%s: CACR=0 %.2f clocks per iteration, "
+              "expected %lld", l.name, off.warm, l.off);
+        // The budget never borrows: no balance below zero over 200 passes.
+        CHECK(on.minBalance >= 0 && off.minBalance >= 0, "%s: the cycle budget "
+              "went into debt (%d / %d)", l.name, on.minBalance, off.minBalance);
+    }
 }
 
 // ── Save state: lines, latch and cycle budget travel (MoiraState.h) ─────
@@ -507,6 +574,7 @@ int main(int argc, char **argv)
     for (auto [m, name] : models) {
         modelName = name;
         checkModel(m);
+        checkManualLoops(m);
         checkSaveState(m);
     }
     if (failures) {

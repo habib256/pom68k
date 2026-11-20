@@ -406,19 +406,22 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   `fullPrefetch` et `pomJitFetch000` : ce dernier réimplémente la séquence
   de `SYNC` sans hook par accès, donc la fenêtre et un arbitrage de bus par
   cycle (blitter, Shifter) s'excluraient.
-- [ ] **Activer le cache d'instructions 68020 de l'amont pour le Mac II et
-  le LC.** Le code est dans le fork depuis le rebasage du 2026-11-20
-  (`POM68K_VENDOR.md` rang 147), éteint par `MOIRA_EMULATE_ICACHE=false`.
-  Ce qui manque pour l'allumer : (1) le modèle de temps — l'amont retire
-  2 cycles par hit à des tables qui sont déjà la colonne « cache case » des
-  manuels (rang 129), et son budget (`maxStalled` 4, `minAccum` −454) est
-  de grade F ; il faut qu'un hit soit gratuit et qu'un miss coûte l'écart
-  entre les deux colonnes ; (2) la fenêtre de fetch du JIT
-  (`pomJitFetch020`, rang 55) contourne le cache, d'où le `#error` actuel ;
-  (3) la trame /BERR d'un cycle dimensionné par `dsack()` est de grade F ;
-  (4) les etalons `macii_*`, `maciifdhd_*` et `lc_boot_etalon` épinglent le
-  temps d'aujourd'hui et sont à re-fixer sous un arbitrage écrit.
-  *Bloqué pour le temps : un TimeDBRA d'un vrai Mac II ou LC.*
+- [ ] **Cache d'instructions 68020 : ce qui reste après son allumage.**
+  Allumé le 2026-11-20 pour le Mac II et le LC (`POM68K_VENDOR.md`
+  rang 147) : `MOIRA_EMULATE_ICACHE=true`, temps de fetch corrigé (un hit
+  ou le latch coûte 0 au-dessus des tables « cache case », un cycle de bus
+  +2 sur un port 32 bits, +6 sur un port plus étroit), boucles du manuel
+  retombées sur le cas « cache » à chaud et près du pire cas sans cache
+  (`icache020_test`), format de sauvegarde v38. Restent : (1) le JIT ne
+  modélise pas le cache — un 68020 tourne sur l'interpréteur même moteur
+  JIT allumé (`POM68K_JIT.md` § 2.1) ; le modéliser rendrait l'accélération
+  opt-in au Mac II et au LC ; (2) les grades F : le +6 d'un port étroit, le
+  DSACK par région de la GLUE (tout en 32 bits) et du V8 (16 bits), la
+  trame /BERR d'un remplissage de ligne ou d'un cycle dimensionné ;
+  (3) les autres lectures de programme brutes du 68020 (MOVE to SR/CCR,
+  TRAPV, JSR, saut de vecteur) restent à trancher contre §8.2.
+  *Bloqué pour le temps réel : un TimeDBRA d'un vrai Mac II ou LC, ou une
+  capture de bus.*
 - [ ] **Tenir le Runner de l'amont vert.** Depuis le 2026-11-20 le Runner
   non modifié de l'amont (Moira contre Musashi) passe sur le fork déposé
   dans son arbre, sous sa configuration (`POM68K_VENDOR.md` rang 148). Rien

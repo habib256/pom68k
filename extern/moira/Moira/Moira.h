@@ -970,6 +970,14 @@ public:
     // when the window cannot serve the address; the caller then takes the
     // ordinary path, which performs those same steps itself.
     template <bool P> bool pomJitFetch020(u32 addr, u16 &out) {
+        // With the 68020 i-cache compiled in (MoiraConfig.h) a fetch of the
+        // 68020/EC020 is a cache lookup, a line fill and a charge
+        // (readInstr): the window would bypass all three. It refuses, and
+        // jit::Engine does not translate for those models (JitEngine.cpp,
+        // cacheOwnsFetch). The EC030 on this path has no cache and keeps it.
+        if constexpr (MOIRA_EMULATE_ICACHE) {
+            if (cpuModel == Model::M68020 || cpuModel == Model::M68EC020) return false;
+        }
         const u8 *p;
         if (!pomJitFetch(addr, 2, p)) return false;
         if constexpr (P) pollIpl();
@@ -1158,6 +1166,12 @@ private:
 public:
     // Architectural post-PMOVE continuation, independent of acceleration.
     bool pomMmuPipeLive() const { return mmuPipeCnt > 0; }
+    // The 68020 i-cache serves this model's fetches (MoiraConfig.h): no
+    // fetch window and no translated block may stand in for readInstr.
+    bool pomCacheOwnsFetch() const {
+        return MOIRA_EMULATE_ICACHE &&
+               (cpuModel == Model::M68020 || cpuModel == Model::M68EC020);
+    }
 
 private:
 

@@ -171,7 +171,7 @@ foreach(cfg IN ITEMS upstream pom68k)
 endforeach()
 target_link_libraries(moira_upstream_config_test PRIVATE moira_upstream_config)
 target_link_libraries(moira_pom68k_config_test PRIVATE moira)
-# Upstream's 68020 i-cache, off in POM68K's configuration: exercised here only.
+# Upstream's 68020 i-cache under upstream's settings (on in POM68K's too).
 add_executable(icache020_test ${T}/icache020_test.cpp)
 target_link_libraries(icache020_test PRIVATE moira_upstream_config)
 add_test(NAME icache020_test COMMAND icache020_test)

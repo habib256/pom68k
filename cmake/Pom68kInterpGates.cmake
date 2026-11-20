@@ -52,8 +52,8 @@ endforeach()
 target_link_libraries(moira_upstream_config_test PRIVATE moira_upstream_config)
 target_link_libraries(moira_pom68k_config_test PRIVATE moira)
 set_tests_properties(moira_upstream_config_test PROPERTIES LABELS interp-only)
-# Upstream's 68020 i-cache (MOIRA_EMULATE_ICACHE), off in POM68K's own
-# configuration: this is the only gate that executes it.
+# Upstream's 68020 i-cache (MOIRA_EMULATE_ICACHE) under upstream's settings;
+# POM68K's own configuration has it on too (moira_state_test holds it there).
 add_executable(icache020_test tests/icache020_test.cpp)
 target_link_libraries(icache020_test PRIVATE moira_upstream_config)
 add_test(NAME icache020_test COMMAND icache020_test)

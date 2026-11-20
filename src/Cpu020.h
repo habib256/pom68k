@@ -60,6 +60,21 @@ private:
     int cacrFlushPolicy_ = -1;      // -1 = the board's own answer (didChangeCACR)
     moira::u16 read16OnReset(moira::u32 addr) const override;
     void didChangeCACR(moira::u32 value) override;
+    // The port width Moira's 68020 i-cache sizes its line fills and fetch
+    // charges by (MoiraDataflow readInstr, POM68K_VENDOR.md row 147): 32
+    // bits, the Mac II's 68020 data bus. A line fill is the default
+    // read32, two 16-bit calls; data longwords keep the fork's two-word
+    // transfer on a 32-bit port (MoiraDataflow read<>), so the board's
+    // access sequence for data is unchanged (berr020_test, DSACK_32).
+    // Asked of the 68020 only (Moira::pomSized020): the IIx/IIcx/SE-30
+    // 68030 of this wrapper has its own bus layer.
+    // [F] Unknown: no document in the tree grades the bus width, and the
+    // GLUE's DSACK per region (I/O devices are likely narrower) is not
+    // modelled: 32 bits everywhere, which matters only for the code
+    // fetch's charge.
+    // Settled by: the GLUE decode's DSACK lines from a bus capture or the
+    // Mac II schematics.
+    moira::u8 dsack(moira::u32) const override { return moira::DSACK_32; }
     // Inline: this is the tail of every sync() charge (MoiraCpu::sync).
     void catchUp() { if (clock >= periphDeadline_) [[unlikely]] flushTicks(); }
 

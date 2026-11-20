@@ -1336,6 +1336,11 @@ uint8_t* Engine::fillDtlb(uint32_t addr, int write) {
 void Engine::executeUntil(int64_t clockTarget) {
     if (!enabled_) { cpu_.executeUntil(clockTarget); return; }
 
+    // A 68020/EC020 whose fetches Moira's i-cache owns (POM68K_JIT.md § 2.1).
+    if (cpu_.pomCacheOwnsFetch()) [[unlikely]] {
+        disarmWindow(); cpu_.executeUntil(clockTarget); return;
+    }
+
     while (cpu_.getClock() < clockTarget) {
 
         // Anything Moira has flagged — a pending interrupt, tracing, STOP,

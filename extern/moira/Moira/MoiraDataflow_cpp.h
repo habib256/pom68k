@@ -879,7 +879,7 @@ Moira::read(u32 addr)
         // POM68K: compiled with the 68020 i-cache only (busSizing)
         if constexpr (busSizing<C>) {
 
-            if (portSize(dsack(addr & addrMask<C>())) == 1) {
+            if (pomSized020() && portSize(dsack(addr & addrMask<C>())) == 1) {
                 mmuAccAddr = addr; mmuAccSsw = 0x20;
                 mmuAccFc = readFC(); mmuAccWrite = false;
                 return read2x8<C,F>(addr & addrMask<C>());
@@ -902,16 +902,24 @@ Moira::read(u32 addr)
             mmuAccFc = readFC(); mmuAccWrite = false;
         }
 
-        // An aligned longword takes one bus cycle on a 32 bit port and four
-        // on an 8 bit port; everything else is the two-word transfer below.
+        // An aligned longword takes four bus cycles on an 8 bit port;
+        // everything else is the two-word transfer below.
         // POM68K: compiled with the 68020 i-cache only (busSizing). The
         // plain-020 RTE substitution covers the first cycle (above), not
         // the later bytes of a four-cycle transfer.
+        // POM68K: upstream also issues one read32 on a 32-bit port. The fork
+        // keeps the two-word transfer there: its /BERR record, format-$B
+        // fault address and RTE substitution (berr020_test, Mac OS slot
+        // probing) live in it, and the default read32 is those two word
+        // calls anyway. A 32-bit port thus changes only the instruction
+        // fetch (line fill and charge, readInstr). Gate: berr020_test
+        // (the whole matrix under DSACK_32).
         // [F] Unknown: the fault address and SSW size a /BERR on a sized
         // cycle stacks. Settled by: a dynamic-bus-sizing /BERR cell.
         if constexpr (busSizing<C>) {
 
-            if ((addr & 3) == 0 && portSize(dsack(addr & addrMask<C>())) != 2) {
+            if (pomSized020() && (addr & 3) == 0 &&
+                portSize(dsack(addr & addrMask<C>())) == 1) {
                 return readLongSplit<C,F>(addr & addrMask<C>());
             }
         }
@@ -985,7 +993,26 @@ Moira::readInstr(u32 addr)
             // Route read access through the instruction cache
             bool busAccess;
             u16 result = readInstructionCache(addr & addrMask<C>(), busAccess);
-            budget.cp += busAccess ? (portSize(dsack(addr & addrMask<C>())) == 4 ? 0 : 4) : -2;
+
+            // [B] MC68020UM-1992 §8.2: the CYCLES_68020 tables are the
+            // manual's cache case ("the instruction is in the cache but has
+            // no overlap", 0 instruction accesses). A fetch served without a
+            // bus cycle (a cache hit, or the latch's second word) therefore
+            // adds nothing. A fetch that makes a bus cycle moves the
+            // instruction towards the worst case: +2 from a 32-bit port,
+            // the manual's assumption (8 x NOP + DBF: cache 22, worst 33;
+            // 8 x MOVE.L D0,(A0) + DBF: 38 and 49; DBF alone: 6 and 9).
+            // POM68K: upstream added 0 / 4 per bus cycle and -2 per hit,
+            // which counted the cache twice: a warm loop came out below the
+            // manual's BEST case (8 x NOP + DBF at 4.5 clocks against 19),
+            // and its cycle budget had to borrow to keep the clock moving.
+            // Gate: icache020_test (manual loops, warm and cold).
+            // [F] Unknown: the +6 from a 16- or 8-bit port keeps upstream's
+            // 4-clock spacing between port widths, shifted with the anchor.
+            // Settled by: a bus capture of a 68020 on a 16-bit port.
+            if (busAccess) {
+                budget.cp += portSize(dsack(addr & addrMask<C>())) == 4 ? 2 : 6;
+            }
             return result;
         }
     }
@@ -1082,7 +1109,7 @@ Moira::write(u32 addr, u32 val)
         // POM68K: compiled with the 68020 i-cache only (busSizing)
         if constexpr (busSizing<C>) {
 
-            if (portSize(dsack(addr & addrMask<C>())) == 1) {
+            if (pomSized020() && portSize(dsack(addr & addrMask<C>())) == 1) {
                 mmuAccAddr = addr; mmuAccSsw = 0x20;
                 mmuAccFc = readFC(); mmuAccWrite = true;
                 write2x8<C,F>(addr & addrMask<C>(), val);
@@ -1106,11 +1133,13 @@ Moira::write(u32 addr, u32 val)
             mmuAccFc = readFC(); mmuAccWrite = true;
         }
 
-        // See read<>: one cycle on a 32 bit port, four on an 8 bit port
-        // POM68K: compiled with the 68020 i-cache only (busSizing)
+        // See read<>: four cycles on an 8 bit port
+        // POM68K: compiled with the 68020 i-cache only (busSizing); a 32-bit
+        // port keeps the two-word transfer, as in read<>
         if constexpr (busSizing<C>) {
 
-            if ((addr & 3) == 0 && portSize(dsack(addr & addrMask<C>())) != 2) {
+            if (pomSized020() && (addr & 3) == 0 &&
+                portSize(dsack(addr & addrMask<C>())) == 1) {
                 writeLongSplit<C,F>(addr & addrMask<C>(), val);
                 return;
             }

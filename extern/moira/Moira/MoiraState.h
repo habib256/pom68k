@@ -185,10 +185,11 @@ template<class Ar> void Moira::pomVisitState(Ar& ar)
     // and its latch decide whether the next fetches touch the bus, and the
     // cycle budget holds cycles charged but not yet synced (Moira::syncCp),
     // so all three are guest state. budget.cp is not: it is zeroed above
-    // and by the next instruction. Compiled only with the cache, so the
-    // payload of a build without it (POM68K's) is unchanged; a host that
-    // turns the cache on appends these fields and bumps its own state
-    // format version for them, as the versions noted above were bumped.
+    // and by the next instruction. Compiled only with the cache, which
+    // POM68K's configuration now has (MoiraConfig.h): its hosts carry these
+    // fields from save-state format v38 (src/SaveState.h). A build without
+    // the cache writes the shorter payload. Gate: moira_state_test
+    // (warmIcache020), icache020_test (upstream configuration).
     for (auto &line : iCache.cache) ar(line.data, line.tag, line.valid);
     ar(iCache.latch.addr, iCache.latch.data);
     ar(budget.accumulated, budget.stalled);

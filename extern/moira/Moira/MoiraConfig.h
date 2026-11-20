@@ -77,28 +77,19 @@
  *
  * Enable to improve accuracy, disable to gain speed.
  */
-// POM68K: off by default, overridable by the build like the settings above.
-// This core's 68020 cycle tables are the manual's "cache case" column
-// (POM68K_VENDOR.md row 129), so upstream's -2 per cache hit would count
-// the cache twice, and the Mac II/LC boot gates pin today's timing. With it
-// off, the core issues exactly the bus cycles and cycle counts it did
-// before the cache arrived: no lookup, no latch, no dynamic bus sizing
-// (dsack is never asked), no cycle budget (MoiraMacros.h, SYNC_CP).
-// Turning it on for the fork is an open item: the
-// tables and the per-hit discount have to be reconciled first. Upstream's
-// own configuration sets it to true.
-// When on, it applies to the 68020/EC020 only: the 68030/68040 keep their
-// own cache models (PomIcache, MoiraCache040.h) and the EC030 has none.
+// POM68K: on, as upstream ships it, and overridable by the build like the
+// settings above (#ifndef). It applies to the 68020/EC020 only: the
+// 68030/68040 keep their own cache models (PomIcache, MoiraCache040.h), the
+// EC030 has none, and dynamic bus sizing (busSizing) is asked of those two
+// models only. The fork corrects upstream's fetch timing (readInstr,
+// POM68K_VENDOR.md row 147): this core's 68020 tables are the manual's
+// "cache case" column (row 129), so a hit adds nothing and a bus cycle adds
+// the step towards the worst case. The JIT does not model the cache: with
+// it compiled in, a 68020/EC020 guest always runs through the interpreter
+// (pomJitFetch020 refuses, jit::Engine does not translate), which is the
+// default engine for that family anyway.
 #ifndef MOIRA_EMULATE_ICACHE
-#define MOIRA_EMULATE_ICACHE false
-#endif
-
-// POM68K: the 68020 i-cache reads instructions behind the JIT's fetch
-// window (pomJitFetch020, POM68K_VENDOR.md row 55), which would bypass it.
-// No configuration needs both; refuse the combination instead of letting
-// one of them be silently wrong.
-#if MOIRA_EMULATE_ICACHE && MOIRA_ENABLE_JIT
-#error "MOIRA_EMULATE_ICACHE requires MOIRA_ENABLE_JIT=0 (the JIT fetch window bypasses the 68020 i-cache)"
+#define MOIRA_EMULATE_ICACHE true
 #endif
 
 /* Set to true to enable the disassembler.

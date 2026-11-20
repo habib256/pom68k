@@ -23,6 +23,7 @@ public:
     using moira::Moira::mmuReplayPc; using moira::Moira::mmuReplayAd;
     std::vector<moira::u8> mem = std::vector<moira::u8>(1 << 20);
     mutable int holeReads = 0;
+    mutable long reads16 = 0;
     bool wordHole040 = false;
     moira::i64 irqClock = -1;
     explicit Cpu(moira::Model model, moira::FPUModel fpu = moira::FPUModel::NONE) {
@@ -48,6 +49,7 @@ private:
         return mem[a & 0xfffff];
     }
     moira::u16 read16(moira::u32 a) const override {
+        ++reads16;
         if (wordHole040 && a == kHole) { ++holeReads; const_cast<Cpu*>(this)->extBusError040(); }
         return word(a & 0xfffff);
     }
@@ -346,6 +348,36 @@ void invalidCacheLinesAreNotState() {
           "040 cache: loading an invalid slot clears target garbage");
 }
 }
+// The 68020 i-cache of POM68K's configuration (MoiraConfig.h, inventory row
+// 147): its lines, latch and cycle budget are guest state (save-state
+// format v38). Save in the middle of a warm loop, restore into a fresh CPU:
+// the restored one must make no bus read for the cached loop and end where
+// the uninterrupted one ends, clock included.
+void warmIcache020() {
+    if (!MOIRA_EMULATE_ICACHE) { check(false, "68020 i-cache compiled in"); return; }
+    for (auto model : {moira::Model::M68020, moira::Model::M68EC020}) {
+        Cpu direct(model);
+        direct.program(0x1000, {0x203c, 0x0000, 0x0001,   // MOVE.L #1,D0
+                                0x4e7b, 0x0002,           // MOVEC D0,CACR
+                                0x7e63,                   // MOVEQ #99,D7
+                                0x5281, 0x4e71,           // top: ADDQ.L #1,D1; NOP
+                                0x51cf, 0xfffa,           // DBF D7,top
+                                0x60fe});                 // BRA.S *
+        direct.start();
+        for (int i = 0; i < 120; ++i) direct.execute();
+        Cpu loaded(model);
+        restore(direct, loaded);
+        const long before = loaded.reads16;
+        const auto c0 = direct.getClock(), l0 = loaded.getClock();
+        for (int i = 0; i < 60; ++i) { direct.execute(); loaded.execute(); }
+        check(loaded.reads16 == before,
+              "68020: restored warm loop runs from the restored cache lines");
+        check(loaded.getClock() - l0 == direct.getClock() - c0 &&
+              save(direct) == save(loaded),
+              "68020: restored warm i-cache matches uninterrupted clock and state");
+    }
+}
+
 int main() {
     pending68882(); clearedDf030(); pipe030(); frame040(false); frame040(true);
     hostState();
@@ -356,6 +388,7 @@ int main() {
         for (unsigned disabled = 0; disabled < 3; ++disabled)
             cache040State(model, disabled);
     invalidCacheLinesAreNotState();
+    warmIcache020();
     std::printf("moira_state_test: %d failure(s)\n", failures);
     return failures ? 1 : 0;
 }

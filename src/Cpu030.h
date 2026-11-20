@@ -178,6 +178,13 @@ private:
     void checkCoprocessorBus(moira::u32 addr) const;
     moira::u8 read8(moira::u32 addr) const override;
     moira::u16 read16(moira::u32 addr) const override;
+    // The port width of Moira's 68020 i-cache (POM68K_VENDOR.md row 147),
+    // asked of the LC's as020 profile only (Moira::pomSized020): the V8
+    // data path is 16 bits (header above), so a line fill is two 16-bit
+    // reads and a fetch that makes them costs +6 instead of +2.
+    // [F] Unknown: a 68020 on a 16-bit V8 port per MAME's maclc reading,
+    // ungraded in this tree. Settled by: the LC schematics or a capture.
+    moira::u8 dsack(moira::u32) const override { return moira::DSACK_16; }
     void write8(moira::u32 addr, moira::u8 value) const override;
     void write16(moira::u32 addr, moira::u16 value) const override;
     friend pom68k::MoiraCpu<Cpu030, V8Memory>;

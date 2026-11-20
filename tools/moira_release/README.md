@@ -130,7 +130,7 @@ stage (`extern/moira/POM68K_VENDOR.md` § *Rebase onto upstream ce28239*):
 | Upstream | Change | In this fork |
 |---|---|---|
 | `4146111`, `20e6015`, `9ca9ca0`, `832052a`, `e05882a` | MSVC `constexpr`, one translation unit per core, de-templated disassembler, narrower tables, `version()`/`build()` | as upstream; the fork's non-templated definitions sit behind `MOIRA_MAIN_TU` (row 146) |
-| `a4c273b`, `426e4a3` | 68020 instruction cache, latch, bus sizing, cycle budget, `didLogInstruction` | as upstream when `MOIRA_EMULATE_ICACHE` is true, on the 68020/EC020; **false by default here** (row 147, and *Limits* below) |
+| `a4c273b`, `426e4a3` | 68020 instruction cache, latch, bus sizing, cycle budget, `didLogInstruction` | on the 68020/EC020, **true by default here as upstream**, with the fetch charges corrected (row 147, and *Limits* below) |
 | `eb9529c` | interrupt taken with M set, `isize` in `Guards` | as upstream (row 145) |
 | `f7844ac`, `f90fc50` | 68030 CACR mask, DIVU/DIVS prefetch timing | as upstream (rows 86, 40) |
 
@@ -160,14 +160,15 @@ existing `softfloat68k` target) and links it; SoftFloat's exports carry the
 prefix `pom68k_sf_`, so the library links next to Musashi's own copy.
 
 The five definitions select upstream's configuration, because the fork's
-`MoiraConfig.h` carries POM68K's, each under `#ifndef`:
+`MoiraConfig.h` carries POM68K's, each under `#ifndef` (`MOIRA_EMULATE_ICACHE`
+has the same value in both and is passed for clarity):
 
 | Definition | Fork default | Upstream's Runner |
 |---|---|---|
 | `MOIRA_PRECISE_TIMING` | `true` | `false` |
 | `MOIRA_EMULATE_ADDRESS_ERROR` | `true` | `false` |
 | `MOIRA_MIMIC_MUSASHI` | `false` | `true` |
-| `MOIRA_EMULATE_ICACHE` | `false` | `true` |
+| `MOIRA_EMULATE_ICACHE` | `true` | `true` |
 | `MOIRA_ENABLE_JIT` (fork only) | `1` | `0` |
 
 They must reach every translation unit that includes `Moira.h`, the
@@ -185,15 +186,24 @@ files, the fork's added headers or the definitions.
   software only inside POM68K's Macintosh boards, and nowhere else yet.
 - 68030/68040 cycle counts are the 68020 tables scaled by the host; they are
   not a calibrated 030/040 timing model.
-- Upstream's 68020 instruction cache is in the fork and switched off in
-  POM68K's configuration. This core's 68020 tables are the manuals'
-  cache-case column, so subtracting 2 per hit counts the cache twice, and
-  the budget constants (`maxStalled` 4, `minAccum` -454) are not derived
-  from a source. Turning it on for the Macintosh II and LC needs a timing
-  model in which a hit is free and a miss costs the difference between the
-  two columns. `MOIRA_EMULATE_ICACHE` also refuses `MOIRA_ENABLE_JIT`: the
-  JIT's fetch window would bypass the cache. `icache020_test` holds the
-  cache's behaviour as upstream wrote it.
+- Upstream's 68020 instruction cache is on in both configurations, with
+  one deliberate difference from upstream: the fetch timing. This core's
+  68020 tables are the manual's cache-case column, so the fork charges a
+  fetch served by the cache or the latch 0 (upstream: −2) and a fetch that
+  makes a bus cycle +2 from a 32-bit port (upstream: 0) or +6 from a
+  narrower one (upstream: +4). Measured on a 32-bit port, per iteration,
+  for 8 × NOP + DBF, 8 × MOVE.L D0,(A0) + DBF and DBF alone: warm
+  22 / 38 / 6, the manual's cache case (upstream: 4.5 / 18 / 2, below the
+  manual's best case of 19 / 27 / 3); cache disabled 32 / 48 / 8, against
+  the manual's worst case 33 / 49 / 9 (upstream: 12 / 28 / 4). The +6 is
+  graded F. Upstream's cycle budget is kept; with non-negative charges its
+  debt path no longer runs. A second difference: on a 32-bit port an
+  aligned data longword stays two 16-bit calls instead of one
+  `read32`/`write32`, because the fork's /BERR and RTE-retry machinery for
+  the plain 68020 lives in that path (`berr020_test` runs under both port
+  widths). The JIT does not model the cache, so a 68020
+  guest runs on the interpreter even with the JIT enabled.
+  `icache020_test` holds the cache and the timing anchors.
 - Open rulings with the oracle (D25–D29 and others) are listed by name in
   the `.known` files; each listed vector fails the gate if it starts to pass.
   Several need a capture from real silicon to be settled.

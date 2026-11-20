@@ -170,7 +170,14 @@ int main()
         p32(c, c.getSP(), 0x20000015);          // frame with OPT=001
         const auto badFrame = cycles();
         CHECK(c.getPC0() == 0x3000, "bad RTM frame did not take format error");
-        CHECK(okCallm > 0 && badDescriptor == okCallm && noHardware == okCallm,
+        // Since the 68020 i-cache is on (inventory row 147) each path also
+        // pays its own instruction fetches: +6 per longword bus cycle on
+        // this host's default 16-bit port. The normal exit resumes at the
+        // module's entry $2202, the second word of a line, and fills two
+        // lines ($2200 for the opcode, $2204 for the next word); the format
+        // error resumes at the aligned handler $3000, whose one fill serves
+        // both words. Hence one fill, 6 clocks, between them.
+        CHECK(okCallm > 0 && badDescriptor + 6 == okCallm && noHardware == badDescriptor,
               "CALLM format error %lld/%lld cycles, completion %lld",
               (long long)badDescriptor, (long long)noHardware, (long long)okCallm);
         CHECK(okRtm > 0 && badFrame == okRtm, "RTM format error %lld cycles, completion %lld",
