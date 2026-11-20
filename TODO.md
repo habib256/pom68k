@@ -303,7 +303,7 @@ macOS) vit dans le `TODO.md` de NeoST.
 Un cœur ne déménage qu'avec sa preuve. Aujourd'hui les gates sans
 Macintosh existent (`sst68000`/`030`/`040`, `fpu_sanity`, `fpu040_test`,
 `cache040_test`, `berr030_test`, `callm_rtm_test`, `moira_rules_test`,
-`jit_asset_free_lockstep_test`). Un corpus public est épinglé et exécuté
+`fault_transparency_test`, `jit_asset_free_lockstep_test`). Un corpus public est épinglé et exécuté
 en CI ; les grands corpus sont
 épinglés dans `tests/sst_corpora.lock` et restent des assets optionnels.
 Plusieurs rangs de l'inventaire ne tiennent encore que par un boot.
@@ -438,6 +438,24 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   vrai 68030 (TAS sur page protégée, DF effacé par le gestionnaire). Le
   020/EC020 garde sa reprise propre (`berr020_test`). Garder `berr030_test`
   et les boots.
+- [ ] **Transparence des fautes : les angles morts du gate.**
+  `fault_transparency_test` (2026-11-20) faute chaque cycle de 1 023
+  instructions, laisse le gestionnaire faire RTE (après les write-backs du
+  cadre sur 68040) et compare à l'exécution sans faute. Hors champ :
+  (1) le store d'un champ de bits sur 68040 — le cadre empile le PC de
+  l'instruction (redémarrage, comme l'oracle) *et* un WB3 valide : un
+  gestionnaire qui termine WB3 puis revient fait basculer BFCHG deux fois.
+  [F] : ce que fait un vrai 68040 (WB3 invalide, ou PC suivant) ; (2) les
+  stores de CAS et CAS2 sur 68040, hors d'atteinte d'une faute de page
+  (écriture sondée à la lecture) ; (3) un MOVEM qui charge son propre
+  registre de base ou d'index avant qu'une lecture suivante faute (le
+  manuel du 68040 ne donne l'EA empilée qu'aux modes indexés, ruling D34) ;
+  (4) le 68020 nu, dont les cycles sont terminés par logiciel
+  (`berr020_test`) ; (5) les opérandes décimaux condensés du FPU.
+- [ ] **Confirmer RTR sur un vrai 68030 (D45).** Le cœur ne déplace A7
+  qu'après les deux dépilements, contre l'oracle dont la reprise dépile
+  deux octets trop loin (`oracle/README.md`, `disputes/NOTES.md`). [F] : A7
+  vu par le gestionnaire quand l'adresse de retour faute.
 - [ ] **T0 : les restes après l'implémentation du 2026-11-20.** La trace sur
   changement de flux suit l'oracle (`CHANGELOG` 2026-11-20). Restes :
   (1) un FBcc pris vers une cible impaire sous T0, 68030 : l'oracle prend la

@@ -6762,8 +6762,9 @@ Moira::execRte(u16 opcode)
                     // 1011 | Vector offset
                     (void)pop<C, Word>();
 
-                    // Internal register
-                    (void)pop<C, Word>();
+                    // Internal register: state[1], whose two low bits say
+                    // which extended EAs were complete (DISP0, DISP1).
+                    [[maybe_unused]] const u16 state1 = (u16)pop<C, Word>();
 
                     // Special status register
                     [[maybe_unused]] u16 ssw = (u16)pop<C, Word>();
@@ -6860,6 +6861,9 @@ Moira::execRte(u16 opcode)
                             const int done = (version >> 4) & 0xF;
                             mmuReplayDone = u8(done < 9 ? done : 9);
                             for (int k = 0; k < 9; k++) mmuReplayAd[k] = log[k];
+                            // The tenth slot, which no log entry reaches
+                            // (computeEAdisp030).
+                            mmuReplayAd[9] = state1 & 3;
                             mmuReplayPc = newpc;
                             mmuReplayArmed = mmuReplayDone > 0;
                             if (mmuReplayArmed) flags |= State::RTE_REPLAY;
@@ -7085,10 +7089,33 @@ Moira::execRtr(u16 opcode)
 
         newccr = (u16)readM<C, M, Word>(reg.sp);
 
-        reg.sp += 2;
+        bool popsTogether = false;
+        if constexpr (C == Core::C68020) popsTogether = pomStoreEndsInstruction<C>();
+        if (popsTogether) {
+            // [D] WinUAE cpuemu_31.c op_4e77 @ Hatari e77819f7 ("op=RTR
+            // #3620", opcells.py --set classes --mmu identity --edge --user
+            // --stack data): on the 68040 A7 moves once both pops are done,
+            // so a fault on the return address restarts RTR with A7 intact.
+            // The fork had stepped it over the CCR word, and the rerun
+            // popped two bytes further.
+            // [B] MC68030UM-1989 §8.2.1 — an RTE from a format-$B frame
+            // continues the faulted instruction. The 68030 gets the same
+            // order for that reason, against the oracle: its 68030 RTR
+            // (cpuemu_32.c op_4e77_32) steps A7 between the pops and arms no
+            // fixup, so its own continuation takes the logged CCR, steps A7
+            // again and reads the return address two bytes too far. Ruling
+            // D45, oracle/README.md.
+            // [F] What a 68030 handler sees in A7 at that point.
+            // Settled by: RTR with its return address on a non-resident page,
+            // on a real 68030. Gate: moira_rules_test (stackFaultRoundTrip).
+            newpc = read<C, AddrSpace::DATA, Long>(U32_ADD(reg.sp, 2));
+            reg.sp += 6;
+        } else {
+            reg.sp += 2;
 
-        newpc = read<C, AddrSpace::DATA, Long>(reg.sp);
-        reg.sp += 4;
+            newpc = read<C, AddrSpace::DATA, Long>(reg.sp);
+            reg.sp += 4;
+        }
     }
 
     setCCR((u8)newccr);
@@ -7541,12 +7568,23 @@ Moira::execUnlk(u16 opcode)
         throw AddressError(makeFrame<AE_DATA|AE_INC_PC|AE_SET_DF|AE_SET_RW>(readA(an)));
     }
 
-    // Move address register to stack pointer
-    reg.sp = readA(an);
-
-    // Update address register
     u32 ea, data;
-    readOp<C, Mode::AI, Long, AE_DATA|AE_INC_PC|POLL>(7, &ea, &data);
+    if (pomStoreEndsInstruction<C>()) {
+        // [D] WinUAE gencpu i_UNLK @ Hatari e77819f7 ("op=UNLK #93" on the
+        // 68040, "op=UNLK #68" on the 68030; opcells.py --set classes --mmu
+        // identity --user --stack data): the old frame pointer is read
+        // through An, and A7 moves once the read is done. A faulting read
+        // restarts UNLK with A7 intact; the fork had copied An into A7
+        // first. Gate: moira_rules_test (stackStoreFaults).
+        readOp<C, Mode::AI, Long, AE_DATA|AE_INC_PC|POLL>(an, &ea, &data);
+        reg.sp = ea;
+    } else {
+        // Move address register to stack pointer
+        reg.sp = readA(an);
+
+        // Update address register
+        readOp<C, Mode::AI, Long, AE_DATA|AE_INC_PC|POLL>(7, &ea, &data);
+    }
     writeA(an, data);
 
     if (an != 7) reg.sp += 4;
@@ -7591,7 +7629,23 @@ Moira::execUnpkPd(u16 opcode)
     int ay = ____xxx_________(opcode);
 
     u32 ea, data;
-    readOp<C, M, Byte>(ax, &ea, &data);
+    bool sourceRead = false;
+    if constexpr (C == Core::C68020) {
+        if (cpuModel == Model::M68030 && !MOIRA_MIMIC_MUSASHI) [[unlikely]] {
+            // [D] WinUAE gencpu.c i_UNPK @ Hatari e77819f7 ("op=UNPK_M #708",
+            // opcells.py --set classes --trace t1 --mmu identity --user
+            // --stack data): gencpu gives UNPK no size, so the source
+            // register's restart fixup is encoded as a long, as PACK's is
+            // (execPackPd). A faulting source read stacked the byte
+            // encoding. Gate: moira_rules_test (stackStoreFaults).
+            mmuArmFixup<Long>(ax, true);
+            reg.a[ax] -= ax == 7 ? 2 : 1;
+            ea = readA(ax);
+            data = read<C, AddrSpace::DATA, Byte>(ea);
+            sourceRead = true;
+        }
+    }
+    if (!sourceRead) readOp<C, M, Byte>(ax, &ea, &data);
 
     u16 adj = (u16)readI<C, Word>();
     u32 dst = ((data << 4 & 0x0F00) | (data & 0x000F)) + adj;

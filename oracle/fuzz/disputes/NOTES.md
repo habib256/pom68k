@@ -1226,3 +1226,19 @@ the 68020 and 68030. Its 68040 table writes Dc1 then Dc2 on purpose
 68040 keeps that order: it was the fork's behaviour already, and the note
 is the same author's as `m68k_mull`'s "68040 is different", which no manual
 contradicts. A real 68040 settles it.
+
+**D45 — RTR on the 68030 with its return address faulting (2026-11-20).**
+`opcells.py generate --set classes --mmu identity --edge --user --stack
+data` puts the user stack two bytes from a page boundary, so RTR's CCR word
+and return address sit on two pages. The oracle's 68030 RTR
+(`cpuemu_32.c op_4e77_32`) reads the word, adds 2 to A7, reads the long,
+adds 4; with the second read faulting the handler sees A7 + 2 — 40 of 82
+directed vectors (USP = a page boundary − 2 under the identity map, every
+vector that took a bus error). No fixup is armed, so after the RTE its
+continuation takes the logged CCR, adds 2 again and reads the return
+address at A7 + 4 (a reading of the generated code, not a measurement).
+The fork had the same order, and its rerun did exactly that:
+`moira_rules_test` `stackFaultRoundTrip` came back with PC $30000000 for
+$00003000 and A7 two bytes high. It now moves A7 after both pops, as the
+oracle's 68040 table does; those 40 vectors differ from the oracle in USP
+alone. A real 68030 settles what the handler sees.

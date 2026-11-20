@@ -309,6 +309,13 @@ def generate(args) -> int:
         for name, member in members:
             for _ in range(args.n):
                 st = gen_state(rng, family="core", mmu=args.mmu)
+                if args.edge:
+                    # Every address register a few bytes below a page
+                    # boundary, so that word, long and bit-field operands
+                    # straddle two pages of independent kinds.
+                    page = 0x8000 if args.cpu == "030" else 0x1000
+                    for r in range(7):
+                        st.a[r] = (st.a[r] & ~(page - 1)) + page - rng.randrange(1, 7)
                 if args.user:
                     st.sr = (st.sr & 0x0FFF) | bit
                     if args.stack == "data":
@@ -316,6 +323,11 @@ def generate(args) -> int:
                         # pushes and pops fault, and the frame still goes to
                         # a sound supervisor stack.
                         st.usp = st.a[rng.randrange(7)] & ~1
+                        if args.edge:
+                            # Two bytes either side of the boundary: a long
+                            # pop or a long push straddles it.
+                            page = 0x8000 if args.cpu == "030" else 0x1000
+                            st.usp = (st.usp & ~(page - 1)) + page + rng.choice((-2, 2))
                     st.a[7] = st.usp
                 else:
                     st.sr = (st.sr & 0x3FFF) | 0x2000 | bit
@@ -403,6 +415,9 @@ def main() -> int:
                         "(identity: random page kinds, so the members fault)")
     g.add_argument("--user", action="store_true",
                    help="classes and ea: user mode, for the privilege violations")
+    g.add_argument("--edge", action="store_true",
+                   help="classes and ea: address registers 1 to 6 bytes below a page "
+                        "boundary (32 KB on the 68030, 4 KB on the 68040), for split accesses")
     g.add_argument("--only", default="",
                    help="classes and ea: keep the classes whose name matches this regular "
                         "expression (the others draw nothing, so seeds are not comparable)")

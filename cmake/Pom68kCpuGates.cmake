@@ -20,7 +20,7 @@ foreach(cpu_gate IN ITEMS
     fpu_context_test    # independent arithmetic state under nested/parallel CPUs
     callm_rtm_test      # 68020 module protocol
     berr020_test        # 020/EC020 software-completed format-$B cycles
-    moira_rules_test    # hardware-rule cells outside random corpora
+    moira_rules_test fault_transparency_test # rule cells; each cycle faulted, RTE, same state
     moira_state_test    # instruction-boundary PMMU/FPU continuations
     mmu040_atc_test)    # multi-instruction I/D and FC2 translations
     add_executable(${cpu_gate} tests/${cpu_gate}.cpp)

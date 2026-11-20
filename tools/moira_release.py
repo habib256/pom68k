@@ -75,6 +75,7 @@ EXPORT = [
     "tests/berr020_test.cpp",
     "tests/berr030_test.cpp",
     "tests/moira_rules_test.cpp",
+    "tests/fault_transparency_test.cpp",
     "tests/moira_state_test.cpp",
     "tests/mmu040_atc_test.cpp",
     "tests/moira_interp_test.cpp",

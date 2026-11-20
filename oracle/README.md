@@ -91,6 +91,7 @@ eager writes. `cache040_test` supplies their host-bus witnesses.
 | **D39** | 68040: an A-line, illegal or CHK instruction on a page's last word before a non-resident page reports the ATC access error | Takes the instruction's own exception (`gencpu.c` @ Hatari e77819f7 fetches the next opcode only at the next instruction) | MC68040UM-1993 §3.5 names exactly this case; `moira_rules_test` (`deferredPrefetchFault`) holds it on both models | primary-manual ruling; the `pagend` cells of `tests/cpu_vectors` leave the three opcodes out, no corpus exception |
 | **D41** | STOP that begins with T0 set is traced, whatever SR value it loads, and does not stop | Not traced when the loaded SR changes none of T1, T0, S, M and the mask: `MakeFromSR_x` returns before its `oldt0` test (`newcpu.c` @ Hatari e77819f7), and the processor stops | MC68030UM-1989 §8.1.7 (status register manipulations are traced in this mode) and MC68040UM-1993 §8.2.6 (STOP is in the list; a traced STOP "never enters the stopped condition"); the oracle's exception is a shortcut for an unchanged SR, not a rule | STOP #$6700 under SR = $6700 on a real 68030 or 68040 |
 | **D42** | `LINK A7` pushes the decremented A7 on every model | The 68030 table (`cpuemu_32.c`, both sizes) pushes the undecremented A7; the 68040 table (`cpuemu_31.c`) the decremented one | M68000PRM-1992, LINK (PDF p. 215): "SP – 4 → SP; An → (SP); SP → An; SP + dn → SP", the register stored after the stack pointer moved, for the whole family; the 68000 measured by SingleStepTests/680x0; the oracle's own 68040 table. 24 targeted vectors of 2026-11-20, in no pinned corpus | `LINK A7` on a real 68030 |
+| **D45** | 68030 RTR moves A7 once both pops are done: a fault on the return address leaves A7 at its entry value | Steps A7 over the CCR word before the second pop and arms no fixup (`cpuemu_32.c op_4e77_32`): the handler sees A7 + 2, and the oracle's own continuation after RTE takes the logged CCR, steps A7 again and reads the return address two bytes too far | MC68030UM-1989 §8.2.1: an RTE from a format-$B frame continues the faulted instruction; the oracle's order cannot. `moira_rules_test` (`stackFaultRoundTrip`) holds the round trip against a run that never faulted. The oracle's 68040 table leaves A7 intact | RTR with its return address on a non-resident page, on a real 68030: A7 in the handler |
 
 D23b — FRESTORE of a 68040 frame accepted by a 68882 — left this table on
 2026-11-07: the acceptance was WinUAE's permissive setting, not the
@@ -201,7 +202,9 @@ the system instructions, with extension words kept inside their defined
 encodings (`--mmu identity` makes the members fault, `--user` runs them
 unprivileged, `--user --stack data` puts the user stack on a data page so
 that pushes and pops fault while the frame goes to a sound supervisor
-stack, `--only <regex>` keeps the matching classes), and `report <dir>`
+stack, `--edge` puts the address registers a few bytes below a page
+boundary for split accesses, `--only <regex>` keeps the matching classes),
+and `report <dir>`
 tabulates a runner's `--dump` per form. The runners' `--dump` prints USP,
 ISP and MSP when they differ: a faulting user-mode push shows nowhere else.
 A 100-state `ea` file is 1.5 GB: 25 states per class is the working size. `fuzz030.py`/`fuzz040.py --trace t1|t0` set a

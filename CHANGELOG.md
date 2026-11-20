@@ -285,6 +285,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
+- **Does a bus fault followed by a bare RTE leave the state of a run that never faulted?** → [`fault_transparency_test`, since 2026-11-20: every cycle of 1 023 instructions; the 68030 continuation lost count across an extended EA](#2026-11-20-fault-transparency)
 - **What does a push or a pop do when the stack page faults?** → [LINK and PEA end on their push, JSR and BSR restart with A7 intact — measured 2026-11-20 with the user stack on faulting pages](#2026-11-20-stack-fault-cells)
 - **Are the 68020 additions and system instructions swept per addressing mode, under the MMU?** → [`opcells.py --set ea [--mmu identity]`, since 2026-11-20; MOVE from SR's store and the 68030 CAS2 log](#2026-11-20-ea-cells-under-mmu)
 - **Do the oracle corpora pass through the JIT, not only the interpreter?** → [Every pinned corpus does since 2026-11-13; the first run found a host segfault at guest pc 0](#2026-11-13-jit-corpus-replay)
@@ -612,6 +613,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-20 (fourth) — Fault, RTE, same state: a gate for what a fault frame is for, and the 68030 continuation it broke on](#2026-11-20-fault-transparency)
 - [2026-11-20 (third) — The user stack on a faulting page: LINK and PEA stacked format $B, a faulting JSR or BSR left A7 four below, a 68040 BSR skipped its call](#2026-11-20-stack-fault-cells)
 - [2026-11-20 (second) — Addressing-mode cells under the MMU: MOVE from SR ended on no "last write", the 68030 CAS2 logged its extension long as two words](#2026-11-20-ea-cells-under-mmu)
 - [2026-11-20 — T0, trace on change of flow, exists: the bit was stored and did nothing](#2026-11-20-t0-change-of-flow)
@@ -1411,6 +1413,127 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-20-fault-transparency"></a>
+## 2026-11-20 (fourth) — Fault, RTE, same state: a gate for what a fault frame is for, and the 68030 continuation it broke on
+
+The oracle vectors of this morning judge the frame a fault stacks. Nothing
+judged what the frame is for: that a handler which lets the access through
+and returns leaves the state of a run that never faulted. Two gates now do.
+
+**`moira_rules_test` `stackFaultRoundTrip`** takes the stack cases of the
+previous entry through the fault and a bare RTE on the 68030 and 68040 and
+compares PC, USP, A6 and the stacked cell with a fault-free run. On this
+morning's handlers (`f7abaa8a`) it is what showed that the frame
+differences were guest-visible (previous entry).
+
+**`fault_transparency_test`** (new executable, bare Moira) does it for 1 023
+generated instructions: MOVE across the memory modes in three sizes,
+the arithmetic, logic, shift, bit, bit-field, BCD, multiply and divide
+instructions over each memory mode — `(An)`, `(An)+`, `-(An)`, `d16(An)`,
+`d8(An,Dn)`, `([An])`, `([An],od)` — MOVEM, MOVEP, CAS, CAS2, PACK, UNPK,
+the stack instructions, and the coprocessor (FMOVE and FADD in six operand
+formats, FTST, FMOVEM, the control registers; a 68882 on the 68030). Each runs once while the board records its
+bus cycles (operands, extension words, prefetch, the first words of a call
+target); then each recorded cycle in turn is answered with /BERR, once,
+and the handler is a bare RTE. Integer and FP registers, CCR, PC and the
+data region are compared. 6 877 faulted cycles on the 68030. On the 68040
+the handler first performs the pending write-backs of the format-$7 frame
+(WB2 and WB3 with their V bit set), as a 68040 access-error handler must
+([B] MC68040UM-1993 §8.4.6.5): 6 809 cycles, the stores of CAS, CAS2 and
+the bit-field instructions left out (below).
+
+| State of the core | 68030 cycles that differ | 68040 |
+|---|---:|---:|
+| `f7abaa8a`, this morning | 598 | 12 |
+| `e69c37d8`, the previous entry | 572 | 2 |
+| this entry | 0 | 0 |
+
+**570 of them were one defect in the continuation added on 2026-11-19
+(sixteenth).** An extended EA — `([An])`, `([An],od)`, and the brief index
+word — logs its extension words and its pointer read, then rewinds the
+log (`computeEAdisp030`, the oracle's `mmu030_idx = oldidx`), so that the
+operand accesses reuse those positions. The replay of a frame's log kept
+its own count. After a fault on the pointer read, the rerun replayed the
+extension word as the first access that followed: `MOVE.B ([A3]),(A2)`
+stored $51, the low byte of its extension word $0151; `MOVE.B
+(A1),([A3])` dropped its store as "already made". The oracle carries two
+things the fork lacked: `mmu030_idx_done = oldidx` at the end of the EA,
+and the `state[1]` DISP0/DISP1 bits of the frame, by which a completed EA
+is taken from the frame instead of redone. Now: an EA the frame marks
+complete is recomputed with the replay off (its pointer is read again on
+the bus — the one difference left with the oracle's shortcut), an
+incomplete one replays and then ends the replay at its own start. The two
+bits travel in the tenth slot of `mmuReplayAd`, which no log entry reaches
+and the save state already carries: no format change. Every gate of the
+tree was green with the defect in: none takes a bus fault on a
+memory-indirect pointer and returns from it.
+
+**The other 28** on the 68030 are the LINK, PEA, JSR and BSR cases of the
+previous entry and RTR; the 68040's 12 are BSR, LINK and RTR. What the oracle vectors added meanwhile:
+
+- **UNLK** (68030, 68040): the fork copied An into A7 and then read the old
+  frame pointer; a faulting read left A7 = An in the handler. The oracle
+  reads through An first. 3 and 7 of 400 targeted states.
+- **RTR** on the 68040: A7 moves once both pops are done (oracle). The fork
+  stepped it over the CCR word; with the return address on the next page
+  and faulting, the rerun popped two bytes further.
+- **RTR on the 68030, ruling D45, against the oracle.** Its 68030 table
+  steps A7 between the pops and arms no fixup, so the handler sees A7 + 2
+  (40 of 82 directed vectors) and its own continuation reads the return
+  address two bytes too far (a reading of `cpuemu_32.c op_4e77_32`). The
+  fork did the same: the round trip came back with PC $30000000 for
+  $00003000. It now pops both before A7 moves, as the 68040 does —
+  [B] MC68030UM-1989 §8.2.1, the continuation has to work; [F] what a
+  real handler sees in A7. `oracle/README.md`, `disputes/NOTES.md`.
+- **UNPK `-(Ax),-(Ay)`** on the 68030: the source register's restart fixup
+  is encoded as a long, as PACK's (gencpu gives neither a size).
+
+`opcells.py --edge` (new) puts every address register 1 to 6 bytes below a
+page boundary — 32 KB on the 68030, 4 KB on the 68040 — and, with `--user
+--stack data`, the user stack two bytes either side of one. Split operand
+accesses were already right: `classes` seed 7101 (4 550 and 4 650 vectors)
+and `ea` seed 7201 (11 355 and 10 800) fail on D12 and the stopped PC
+alone. The stack at a boundary gave the two RTR lines above.
+
+Left out, in `TODO.md`: a MOVEM that loads its own base or index register
+before a later read faults (6 cycles differed on both models, with a list
+drawn at random); and on the 68040 the stores of CAS, CAS2 and the
+bit-field instructions (53 cycles). CAS and CAS2 probe the write when
+they read, so a store fault is not a page-fault case. A bit-field store
+fault is one question the frame leaves open: it stacks the instruction's
+own PC (a restart, the 2026-11-14 oracle vector) together with a valid WB3,
+and a handler that completes WB3 and returns makes BFCHG toggle twice.
+The fork stacks what the oracle stacks; nothing at hand says what a 68040
+does.
+
+Evidence in a worktree while the ROM tiers of the previous entry ran:
+`berr030_test`, `berr020_test`, `moira_state_test`, `callm_rtm_test`,
+`sst68030 --strict-ram` 3 046 / 3 082 with its 36 known divergences, the
+pinned `cpu_vectors` (1 128 and 576); class vectors with the user stack on
+faulting pages, seed 6901 at 120 states per class (21 840 and 22 320), and
+the `ea` set behind the lead-in under T1 (seed 7001): D12 and `LINK A7`
+alone. On the final core, three more seeds: `classes --edge --user --stack
+data` 7501 (18 200 and 18 600), `ea` with the same options 7601 (11 360 and
+10 800) and `ea --mmu tt --edge` 7701 (11 353 and 10 800). They gave D12,
+D42, one more enabled-but-invalid TC (the artifact of the second entry),
+and one new line: SUBX to memory stacks its pending store from
+sign-extended operands, as NEGX does — taken up in the next entry.
+
+**Tiers, by state.**
+
+| State | AArch64 | x86-64 (Rosetta) |
+|---|---|---|
+| `e69c37d8`, the previous entry | `unit\|jit\|cpu-vectors` 288 / 288; `m040` 107 / 107 | `unit\|jit\|cpu-vectors` 289 / 289; `m030` 155 / 155 |
+| this entry | `unit\|jit\|cpu-vectors` 289 / 289 | `unit\|jit\|cpu-vectors` 290 / 290 |
+
+On AArch64 the first run of this entry's tier was 288 / 289:
+`file_size_budget_test` refused a 110th line in `cmake/Pom68kCpuGates.cmake`
+(ceiling 109). The registration went onto an existing line and the gate was
+rerun. No ROM gate soft-skipped. Program fuzzer on this entry's binary,
+interpreter against translator, 112 option sets of 1 500 fresh seeds
+weighted towards `--mmuprot` and `--vmrte`: 0 failures. `STATUS.md`
+regenerated on both hosts for the new gate (union 649).
 
 <a id="2026-11-20-stack-fault-cells"></a>
 ## 2026-11-20 (third) — The user stack on a faulting page: LINK and PEA stacked format $B, a faulting JSR or BSR left A7 four below, a 68040 BSR skipped its call

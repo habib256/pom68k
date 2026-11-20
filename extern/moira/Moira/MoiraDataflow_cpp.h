@@ -315,12 +315,32 @@ Moira::computeEAdisp030(u32 base)
     const int oldIdx = mmuIdx, oldDone = mmuIdxDone;
     const u32 pcBefore = reg.pc;
 
+    // RTE $B continuation (Moira.h, mmuReplayArmed). The entries this EA
+    // makes in the access log are rewound below, so the frame's log holds
+    // them only if the fault fell inside this very computation.
+    // [D] WinUAE cpummu030.c get_disp_ea_020_mmu030 @ Hatari e77819f7: an
+    //     EA the frame marks complete (state[1] DISP0/DISP1) is taken from
+    //     mmu030_disp_store without an access; one it does not is redone
+    //     from the log, and `mmu030_idx_done = oldidx` ends the replay there.
+    // POM68K: a complete EA is recomputed with the replay off instead of
+    // read back from the frame (its pointer is read again on the bus);
+    // an incomplete one replays, then stops the replay. Before 2026-11-20
+    // neither was done: after a fault on the pointer of ([An]), the access
+    // that followed was served the extension word, or a store was dropped
+    // as "already made". Gate: fault_transparency_test.
+    const bool replaying = mmuReplayActive;
+    const bool complete = replaying && (mmuReplayAd[9] & (1u << idx));
+    if (complete) mmuReplayActive = false;
+
     u32 result;
     if (ircWord() & 0x100) {
         result = computeEAfull<C, M, S, F>(base);
     } else {
         result = computeEAbrief<C, M, S, F>(base);
     }
+
+    if (complete) mmuReplayActive = true;
+    else if (replaying && int(mmuReplayDone) > oldDone) mmuReplayDone = u8(oldDone);
 
     mmuIdx = oldIdx;                    // [D] @ Hatari e77819f7: WinUAE: mmu030_idx = oldidx
     mmuIdxDone = oldDone;

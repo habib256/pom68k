@@ -3168,7 +3168,35 @@ void stackStoreFaults()
                   name, g16(c, sp + 6), g32(c, sp + 2), kCode, c.getUSP(), kHole + 4,
                   g32(c, sp + 0x58), c.mem[sp + 0x37]);
         }
+        {   // UNLK A6 with A6 on the hole: restarts, A7 intact
+            TestCpu c(model);
+            user(c, 0x4e5e, kNop, 0x00030000);
+            c.setA(6, kHole);
+            const bool contained = executeContained(c);
+            const uint32_t sp = c.getSP();
+            CHECK(contained && c.getPC0() == kHandler && c.holeTrips == 1 &&
+                  g32(c, sp + 2) == kCode && c.getUSP() == 0x00030000 && c.getA(6) == kHole,
+                  "%s UNLK A6 pop fault: stacked PC %08X (want %08X), USP=%08X (want "
+                  "00030000), A6=%08X (want %08X)", name, g32(c, sp + 2), kCode,
+                  c.getUSP(), c.getA(6), kHole);
+        }
         if (is040) continue;
+        {   // UNPK -(A3),-(A2): the source fixup is encoded as a long
+            TestCpu c(model);
+            p32(c, 2 * 4, kHandler);
+            p16(c, kHandler, kNop);
+            stage(c, 0x858b, 0);                    // UNPK -(A3),-(A2),#$0000
+            p16(c, kCode + 2, 0x0000); c.setIRC(0x0000);
+            c.setA(3, kHole + 1); c.setA(2, 0x30002);
+            c.holeArmed = true;
+            const bool contained = executeContained(c);
+            const uint32_t sp = c.getSP();
+            CHECK(contained && c.getPC0() == kHandler && g16(c, sp + 6) == 0xb008 &&
+                  c.mem[sp + 0x36] == 0x73 && c.getA(3) == kHole - 3,
+                  "68030 UNPK -(A3),-(A2) source fault: format %04X (want B008), fixup "
+                  "byte %02X (want 73), A3=%08X in the handler (want %08X)",
+                  g16(c, sp + 6), c.mem[sp + 0x36], c.getA(3), kHole - 3);
+        }
         {   // ASL (A0): the pending word keeps the bit shifted out
             TestCpu c(model);
             p32(c, 2 * 4, kHandler);
@@ -3239,6 +3267,65 @@ void stackStoreFaults()
                   g32(c, sp + 0x18) == k.want,
                   "68030 %s, store fault: format %04X (want A008), data output buffer "
                   "%08X (want %08X)", k.what, g16(c, sp + 6), g32(c, sp + 0x18), k.want);
+        }
+    }
+}
+
+void stackFaultRoundTrip()
+{
+    // What the frames of stackStoreFaults are for: a handler that lets the
+    // access through and returns leaves the state of a run that never
+    // faulted. The 68040 LINK is the exception by design — its push is a
+    // pending write-back the handler must perform itself
+    // ([B] MC68040UM-1993 §8.4.6), so its memory cell is not compared.
+    struct Case { uint16_t opcode, ext; uint32_t usp, a6; bool readFault, storeIsWriteBack;
+                  const char* what; };
+    static const Case cases[] = {
+        { 0x4e56, 0xfff8, kHole + 4, 0x12345678, false, true,  "LINK A6,#-8" },
+        { 0x4850, kNop,   kHole + 4, 0x12345678, false, false, "PEA (A0)" },
+        { 0x4e90, kNop,   kHole + 4, 0x12345678, false, false, "JSR (A0)" },
+        { 0x6100, 0x0040, kHole + 4, 0x12345678, false, false, "BSR.W" },
+        { 0x4e5e, kNop,   0x00030000, kHole,     true,  false, "UNLK A6" },
+        { 0x4e74, 0x0008, kHole,     0x12345678, true,  false, "RTD #8" },
+        { 0x4e77, kNop,   kHole - 2, 0x12345678, true,  false, "RTR, the return address faulting" },
+    };
+    for (auto model : {moira::Model::M68030, moira::Model::M68040}) {
+        const bool is040 = model == moira::Model::M68040;
+        for (const Case& k : cases) {
+            uint32_t pc[2] {}, usp[2] {}, a6[2] {}, cell[2] {};
+            unsigned trips = 0;
+            for (int faulting = 0; faulting < 2; faulting++) {
+                TestCpu c(model);
+                p32(c, 2 * 4, kHandler);
+                p16(c, kHandler, 0x4e73);           // RTE
+                p16(c, 0x3000, kNop); p16(c, 0x3002, kNop);
+                p16(c, kCode + 0x42, kNop); p16(c, kCode + 0x44, kNop);
+                p32(c, kHole, 0x00003000);          // what UNLK and RTD pop
+                stage(c, k.opcode, 0);
+                p16(c, kCode + 2, k.ext); c.setIRC(k.ext);
+                c.setA(0, 0x3000); c.setA(6, k.a6);
+                c.setSR(0x0000);
+                c.setUSP(k.usp); c.setSP(k.usp);
+                c.holeArmed = faulting != 0; c.holeWritesOnly = !k.readFault;
+                bool contained = executeContained(c);
+                if (faulting) {
+                    trips = c.holeTrips;
+                    c.holeArmed = false;
+                    for (int i = 0; i < 3 && contained && (c.getSR() & 0x2000); i++)
+                        contained = executeContained(c);
+                    // A restarted instruction is back at its own address.
+                    if (contained && c.getPC0() == kCode) contained = executeContained(c);
+                }
+                pc[faulting] = contained ? c.getPC0() : 0xffffffff;
+                usp[faulting] = c.getUSP(); a6[faulting] = c.getA(6);
+                cell[faulting] = g32(c, kHole);
+            }
+            const bool cellOk = cell[0] == cell[1] || (is040 && k.storeIsWriteBack);
+            CHECK(trips == 1 && pc[0] == pc[1] && usp[0] == usp[1] && a6[0] == a6[1] && cellOk,
+                  "%s %s through a fault and an RTE: %u /BERR(s) (want 1), PC0 %08X (want "
+                  "%08X), USP %08X (want %08X), A6 %08X (want %08X), cell %08X (want %08X)",
+                  is040 ? "68040" : "68030", k.what, trips, pc[1], pc[0], usp[1], usp[0],
+                  a6[1], a6[0], cell[1], cell[0]);
         }
     }
 }
@@ -3314,6 +3401,7 @@ int main(int argc, char** argv)
     moveFromSrStoreIsLastWrite();
     cas2ExtensionLog030();
     stackStoreFaults();
+    stackFaultRoundTrip();
 
     if (failures) {
         std::printf("[moira_rules_test] FAIL: %d check(s)\n", failures);
@@ -3326,6 +3414,6 @@ int main(int argc, char** argv)
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68030 MOVE to (xxx).L last write, 68EC030 plain-020 path with a 68030 "
-                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, the 68040 lock ending with TAS/CAS/CAS2, a memory-indirect pointer read outside the lock, BKPT without a data access, 68040 bit-field and JSR store faults restart, the SR-write refill as a fetch, no trace before a format-$7 rerun, PACK/UNPK -(An) faults on the 68030/68040, level 7 on a transition from the 68020 up, the billed 020-core interrupt sequence, the trace exception after the traced instruction, trace on change of flow, MULx.L into one register, CAS2 with one compare register, MOVE from SR/CCR ending on its store, the 68030 CAS2 extension long, LINK/PEA/JSR/BSR/RTD stack faults and the pending store of NEG, NEGX and ASL\n");
+                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, the 68040 lock ending with TAS/CAS/CAS2, a memory-indirect pointer read outside the lock, BKPT without a data access, 68040 bit-field and JSR store faults restart, the SR-write refill as a fetch, no trace before a format-$7 rerun, PACK/UNPK -(An) faults on the 68030/68040, level 7 on a transition from the 68020 up, the billed 020-core interrupt sequence, the trace exception after the traced instruction, trace on change of flow, MULx.L into one register, CAS2 with one compare register, MOVE from SR/CCR ending on its store, the 68030 CAS2 extension long, LINK/UNLK/PEA/JSR/BSR/RTD stack faults, the UNPK source fixup and the pending store of NEG, NEGX and ASL\n");
     return 0;
 }
