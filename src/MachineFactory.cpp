@@ -12,6 +12,7 @@
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <mutex>
 #include <utility>
 #if defined(__linux__)
 #include <unistd.h>
@@ -88,12 +89,27 @@ std::string MachineFactory::findPath(const std::string& relative) {
     return {};
 }
 
+namespace {
+// One cache for the process; the GUI thread reads it every frame the
+// Machine menu is open and forgets it after an install, start-up reads it
+// once. The walk itself runs outside the lock.
+std::mutex gSignatureMutex;
+std::map<std::string, std::string> gSignatureCache;
+} // namespace
+
+void MachineFactory::forgetRomSignatures() {
+    const std::lock_guard<std::mutex> lock(gSignatureMutex);
+    gSignatureCache.clear();
+}
+
 std::string
 MachineFactory::findRomBySignature(const std::string& signature, bool refresh) {
     namespace fs = std::filesystem;
-    static std::map<std::string, std::string> cache;
-    if (const auto found = cache.find(signature); !refresh && found != cache.end())
-        return found->second;
+    if (!refresh) {
+        const std::lock_guard<std::mutex> lock(gSignatureMutex);
+        if (const auto found = gSignatureCache.find(signature); found != gSignatureCache.end())
+            return found->second;
+    }
 
     std::string wanted = signature;
     for (char& ch : wanted) ch = char(std::toupper(static_cast<unsigned char>(ch)));
@@ -117,7 +133,8 @@ MachineFactory::findRomBySignature(const std::string& signature, bool refresh) {
         }
         if (!result.empty()) break;
     }
-    cache[signature] = result;
+    const std::lock_guard<std::mutex> lock(gSignatureMutex);
+    gSignatureCache[signature] = result;
     return result;
 }
 
