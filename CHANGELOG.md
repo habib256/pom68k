@@ -616,6 +616,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-20 (seventh) — The release for Dirk Hoffmann, cut on his master and accepted by his Runner](#2026-11-20-release-on-upstream-master)
 - [2026-11-20 (sixth) — The Moira fork is rebased onto upstream's master, and upstream's own Runner passes on it](#2026-11-20-rebase-on-upstream)
 - [2026-11-20 (fifth) — A write to SR or CCR at a page end took the bus error of its own refill; an RTE whose frame faults reran from a moved A7; ADDX and SUBX's pending store](#2026-11-20-addx-subx-buffer)
 - [2026-11-20 (fourth) — Fault, RTE, same state: a gate for what a fault frame is for, and the 68030 continuation it broke on](#2026-11-20-fault-transparency)
@@ -1419,6 +1420,45 @@ Newest first.
 
 ---
 
+<a id="2026-11-20-release-on-upstream-master"></a>
+## 2026-11-20 (seventh) — The release for Dirk Hoffmann, cut on his master and accepted by his Runner
+
+`moira-pom68k-20261120-98579c84.tar.gz` (158 files, sha256
+`3a3204a62ea9c2cf7132e9fc1fb4590915dd7db1bf89a94c898ab1acb2b231c9`) is cut
+from `98579c84` with `patches/moira-vs-upstream.patch` as one `git am`
+commit on upstream `ce28239` (+14 952 −651 lines, 21 files). It replaces
+the 2026-11-17 cut, which was based on a commit eleven behind upstream.
+
+What was executed on the archive, not on the tree it came from:
+
+- `tools/moira_release.py --verify --sst-root tests/data`: the extracted
+  tree built alone (GCC 15.2, Release, x86-64) and ran `unit|jit|corpus`,
+  90 / 90, no `SKIP` in `LastTest.log`. The count was 44 on 2026-11-17:
+  the program fuzzer (41 gates), `fault_transparency_test`,
+  `icache020_test`, `softfloat_symbols_test` and the two configuration
+  cells of 2026-11-17 (`moira_upstream_config_test`,
+  `moira_pom68k_config_test`) joined.
+- Two cuts of the same commit gave the same sha256.
+- Upstream's side, following the archive's README to the letter: a clone
+  of upstream at `ce28239`, `git am` of the archive's patch, the archive's
+  `extern/softfloat` copied beside `Moira/`, upstream's root CMakeLists with
+  its five settings, and the unmodified `testRunner`: thirteen passes
+  PASSED, exit 0 (seed 2349). That run used the cut of `c6d4e6d5`; the two
+  archives differ in `POM68K_VENDOR.md`, the README, `RELEASE.txt` and the
+  manifest, and the body of the patch is identical.
+
+CI: `c6d4e6d5` was red on `file_size_budget_test` alone (203 / 204) —
+`CLAUDE.md` four lines over its ceiling, the size check having been run
+before the last edit of that file and not after. `bade466a` fixes it and is
+green on Linux and macOS; it also gives `fault_transparency_test` the
+sanitizer timeout whose absence made the nightly of `c5d54c28` red (Timeout
+at 600 s under GCC ASan/UBSan, 44 s uninstrumented). The macOS job, AArch64
+with Clang, was green on all three commits: the first AArch64 evidence for
+the rebased tree, at the asset-free tier only.
+
+Not verified: the ROM tiers on AArch64; a Windows or MSVC build of the
+rebased core; upstream's Xcode project.
+
 <a id="2026-11-20-rebase-on-upstream"></a>
 ## 2026-11-20 (sixth) — The Moira fork is rebased onto upstream's master, and upstream's own Runner passes on it
 
@@ -1517,7 +1557,7 @@ warning):
 |---|---|
 | `unit\|jit\|cpu-vectors`, `ctest -j12` | 291 / 292 in 1 172 s. The red is `jit_program_fuzz_030_sys_test`, Timeout at 300 s: it compares a 16 MB bus after every slice, and twelve such gates at once saturate memory bandwidth. Alone it passes in 19.5 s |
 | `etalon`, `ctest -j12` | 330 / 330 in 6 606 s. Nine gates soft-skipped for want of floppy images on this host (`plus_moof_*`, `*_oids_moof_etalon`, `moof_media_state_etalon`, `lcii_floppy144_etalon`, `maciifdhd_moof_boot_etalon`, `maciifdhd_floppy_boot_etalon`): they prove nothing here. 27 gates of 68020 machines executed (Mac II, Mac II System 7, 8•24, LC, IIx, IIcx, SE/30, II FDHD, the JIT ones) |
-| standalone release, `unit\|jit` and `corpus` | 74 / 74 and 14 / 14 at each rebase stage; the final cut is verified in the next entry |
+| standalone release, `unit\|jit` and `corpus` | 74 / 74 and 14 / 14 at each rebase stage; the final cut is verified in the [seventh entry](#2026-11-20-release-on-upstream-master) |
 
 Two more soft-skips in the first tier: `machfs` is not installed here, and
 one Oids floppy gate. Both tiers are recorded in `STATUS.md`.

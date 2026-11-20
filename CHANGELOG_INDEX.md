@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 859 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 860 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -17,7 +17,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 27 |
 | [Save states](#save-states) | 11 |
 | [Machine bring-ups](#machine-bring-ups) | 101 |
-| [Build, packaging and release](#build-packaging-and-release) | 25 |
+| [Build, packaging and release](#build-packaging-and-release) | 26 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 44 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
 | [Cross-cutting](#cross-cutting) | 178 |
@@ -681,6 +681,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-10 (second)** — [An interpreter build omits the acceleration seam without forking CPU execution](CHANGELOG.md#2026-11-10-moira-interp-build)
 - **2026-11-12 (seventh)** — [NeoST's reset timing and the Portable slicing fix are on `main`; the slicing gate found 80 unseeded bytes in the CPU state; the Linux CI was red on a compile error](CHANGELOG.md#2026-11-12-neost-port-merged)
 - **2026-11-14 (third)** — [`agent_binary_test` compares the shipped agent only with a build of the same toolchain](CHANGELOG.md#2026-11-14-agent-toolchain)
+- **2026-11-20 (seventh)** — [The release for Dirk Hoffmann, cut on his master and accepted by his Runner](CHANGELOG.md#2026-11-20-release-on-upstream-master)
 
 ## Tests, gates and measurement
 
