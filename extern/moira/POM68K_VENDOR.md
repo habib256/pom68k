@@ -17,6 +17,10 @@ towards upstream had quietly expired while the file still read as if a rebase
 were the plan.
 
 What forced it, measured on this tree rather than remembered (re-measured
+2026-11-20 with rows 145–150 (the M-stack interrupt frame, and the rebase
+onto upstream ce28239: its translation-unit split, its 68020 i-cache taken
+switched off, Musashi's behaviour restored under `MOIRA_MIMIC_MUSASHI`, CALLM/RTM
+format-error cycles, SoftFloat linked by `Moira/CMakeLists.txt`); before that
 2026-11-17 with row 115 (group-2 instruction address); before that
 2026-11-16 with row 114 (packed-zero host shift guard); before that
 with row 113 (external-FPU format-2 returns); before that
@@ -54,12 +58,12 @@ pair):
 | | | how to re-measure |
 |---|---|---|
 | distinct `pom*` extension identifiers | **118** (65 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **579** | `grep -rn POM68K Moira/ \| wc -l` |
-| source files carrying a marker | **17 of 27** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **144** | this file |
+| `POM68K`-marked lines | **617** | `grep -rn POM68K Moira/ \| wc -l` |
+| source files carrying a marker | **20 of 33** | `grep -rln POM68K Moira/ \| wc -l` |
+| patch groups in the inventory below | **150** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h`, `MoiraState.h`, `MoiraMmu030Walk.h` | — |
 
-One hundred and sixteen patch groups, two of which (the JIT seam, row 22, and the ATC
+One hundred and fifty patch groups, two of which (the JIT seam, row 22, and the ATC
 performance work, row 16) are not patches over upstream's design but a second
 consumer of it. A re-sync is no longer a merge with conflicts; it is a port.
 
@@ -94,6 +98,47 @@ general discomfort of being forked.
 
 The "Before re-syncing from upstream" note further down is now the exception
 path, not the plan.
+
+### Rebase onto upstream ce28239 (2026-11-20)
+
+Decided by the author while a release was being prepared for Dirk Hoffmann:
+a fork based on a commit three months behind his master gave him a diff that
+undid his own recent work, and ignored his 68020 instruction cache. The fork
+is still a fork under the contract above; what moved is its base.
+
+Each of the ten upstream commits after `1efd694` was taken as its own commit,
+in order, on a branch that ends in a merge of upstream `ce28239`, with the
+fork's tiers run at each stage — the contract's "cherry-picked deliberately",
+applied ten times, not a merge of two trees:
+
+| Upstream | Change | How it landed here |
+|---|---|---|
+| `4146111` | `constexpr` on tests of template flags (MSVC) | taken; where the fork had rewritten the line, the fork's line with the keyword |
+| `20e6015`, `9ca9ca0`, `832052a` | one translation unit per core, de-templated disassembler, narrower tables, cleanups | taken (row 146) |
+| `e05882a` | `Moira::version()`, `Moira::build()` | taken |
+| `f7844ac` | 68030 CACR mask $3313 | already here (row 86) |
+| `a4c273b` | 68020 instruction cache, latch, bus sizing | taken, off in the POM68K configuration (row 147) |
+| `426e4a3` | 68020 cycle budget, DoubleFault rethrow, `didLogInstruction` | budget and hook taken (row 147); the fork keeps its own double-fault halt and its own JSR |
+| `eb9529c` | `isize` in `Guards`; interrupt with M set; raw vector number | taken; the M-stack frame is row 145, the vector number was row 15 |
+| `f90fc50` | DIVU/DIVS prefetch timing | already here through NeoST (row 40) |
+
+`git diff ce28239 -- Moira` against upstream is now exactly what the fork
+adds: +14 833 −641 lines in 20 files on the day of the rebase, and a release
+carries it as one `git am` commit that applies to upstream's master
+(`tools/moira_release.py --upstream`).
+
+Proof that the POM68K configuration did not move, at each of the two stages
+(structure, then cache): the standalone `unit` and `jit` tiers 74/74, the
+`corpus` tier 14/14 with the 1 000 058 68000 vectors checked for bus order
+and timing, and no gate slower by more than 1 %. The one intended change of
+behaviour in the range is row 145. The record of the day, with the Runner
+census behind row 148, is `CHANGELOG.md` 2026-11-20.
+
+What the rebase did not do: enable the 68020 cache for the Macintosh II and
+LC (row 147 says why). Upstream's own acceptance test does pass: with the
+fork dropped into upstream's tree and built by upstream's CMake under
+upstream's settings, its unmodified Runner prints PASSED for every model
+(row 148; `tools/moira_release/README.md` § *In upstream's tree*).
 
 ## How to read this file
 
@@ -314,6 +359,12 @@ gate in the last column of each row.
 | 142 | **ADDX and SUBX to memory stack their pending store from sign-extended operands on the 68030** — `execAddxEa` passes `sext(dst) ± sext(src) ± X` to the write buffer (`MMU_RAWBUF`) on the 68020 core, as rows 84 and 139 do for ADD/SUB, NEG and NEGX | `MoiraExec_cpp.h` | a faulting store stacked the sign-extended result: `$A1 − $7D − 1` gave `$00000023` where the oracle stacks `$FFFFFF23`. [D] WinUAE gencpu i_ADDX/i_SUBX, `uae_u32 newv` over `uae_s8`/`uae_s16` operands; two of 3 000 targeted vectors | `moira_rules_test` (stackStoreFaults) |
 | 143 | **An RTE whose frame read faults leaves A7 on the frame** — the 68020-core frame loop of `execRte` records where each frame starts and, when a pop throws, restores A7 before the fault propagates | `MoiraExec_cpp.h` | A7 had moved past the words already read: the fault frame was stacked over them and the rerun of the RTE popped from the moved pointer (PC $30000000 for $00003000 with the PC long faulting; 68030 and 68040, formats $0 and $2). [B] MC68030UM-1989 §8.2.1, MC68040UM-1993 §8.4.6 | `fault_transparency_test` |
 | 144 | **The refill after an SR or CCR write is a deferred prefetch on the 68030 and 68040** — `pomRefillRead` replaces the explicit read of the second refill word in `execMoveToSr`, `execMoveToCcr` and `execAndisr` (ANDI/ORI/EORI to SR): the bus cycle stays below the 68030, and is dropped on the 68030 and 68040, where `prefetch` defers a fault until the word is used | `Moira.h`, `MoiraExec_cpp.h` | with the instruction in the last four bytes of a page and the next page invalid, the fork took a bus error inside the SR write (199 and 198 of 200 directed vectors); the handler's RTE then reran MOVE to SR with the SR it had already loaded — a privilege violation after a drop to user mode. [B] MC68030UM-1989 §8.1.2; [D] WinUAE makes no access there | `moira_rules_test` (refillPrefetchFaultIsDeferred), `fault_transparency_test` |
+| 145 | **An interrupt taken with SR.M set stacks its throwaway frame on the interrupt stack** — the 68020-core `execInterrupt` writes the format-$0 (or $9) frame on the master stack, then clears M (`setMasterMode(false)`) and writes the format-$1 frame on the interrupt stack with the SR copy's S bit set; the same change as upstream Moira eb9529c (2026-09-15), whose other half, the raw vector number, is row 15 | `MoiraExceptions_cpp.h` | both frames went on the master stack and M stayed set: the handler ran on the master stack with SR $3300 instead of the interrupt stack with $2300, and the throwaway copy lacked S when M was set in user mode. [B] MC68020UM-1992 §6.1.9, MC68030UM-1989 §8.1.9; [D] WinUAE Exception_normal, Exception_mmu030 @ e77819f7 | `moira_rules_test` (masterStackInterrupt, 68020/030/040) |
+| 146 | **The fork follows upstream's translation-unit split** — the instruction handlers are instantiated in `MoiraCore68000.cpp`, `MoiraCore68010.cpp` and `MoiraCore68020.cpp` through `MoiraCore_cpp.h` (upstream 20e6015), which gains the fork's includes (`MoiraMmu030Walk.h`, SoftFloat inside `extern "C"`); the fork's 75 non-templated definitions in `MoiraExecMMU_cpp.h` (52) and `MoiraExecFPU_cpp.h` (23) sit behind `#ifdef MOIRA_MAIN_TU`, function by function, while the six `MOIRA_HOT_INLINE` members stay visible in every unit; `setFC<M>()` moves to `MoiraDataflow_cpp.h` with the fork's body | `MoiraCore_cpp.h`, `MoiraExecMMU_cpp.h`, `MoiraExecFPU_cpp.h`, `MoiraDataflow_cpp.h`, `Moira.cpp` | part of the 2026-11-20 rebase onto upstream ce28239 (§ *Rebase onto upstream ce28239*). One unit held 8 906 functions and took 2.1 GB and 2 min 24 s to compile; the largest of the four now takes 0.8 GB and 59 s. The unnamed-namespace exception types of the 68040 cache (`Cache040ReadFillBusError`, `Cache040PushBusError`) are thrown and caught in guarded functions only, so both ends stay in `Moira.cpp` | the whole `unit`, `jit` and `corpus` tiers on the split tree (74 + 14 gates, 1 000 058 68000 vectors with bus order and timing); no gate slower by more than 1 % (CHANGELOG 2026-11-20) |
+| 147 | **Upstream's 68020 instruction cache, bus sizing and cycle budget are taken, and off in the POM68K configuration** — `MOIRA_EMULATE_ICACHE` defaults to false here (`#ifndef`, upstream: true) and refuses `MOIRA_ENABLE_JIT` at compile time (the fetch window of row 55 would bypass the cache); `busSizing<C>` ties upstream's `dsack()`-sized `read<>`/`write<>` splits to the same switch; `readInstr` uses the cache on the 68020/EC020 only (the 68030 and 68040 keep `PomIcache` and `MoiraCache040.h`; the EC030 fetches from the bus); `SYNC_CP` is `syncCp` with the cache and plain `sync` without, and `syncCp` forwards models above the 68020 to `sync`; `read32`/`write32` have defaults made of two 16-bit calls, so no host changes; `fullPrefetch` and the plain-68020 JSR flush the latch under the switch; `pomVisitState` carries the lines, the latch and the budget when the switch is on | `MoiraConfig.h`, `MoiraDataflow.h`, `MoiraDataflow_cpp.h`, `MoiraMacros.h`, `Moira.h`, `Moira.cpp`, `MoiraExec_cpp.h`, `MoiraState.h`, `MoiraCache_cpp.h` | upstream a4c273b and 426e4a3. Off here because this core's 68020 tables are the manuals' cache-case column (row 129): upstream subtracts 2 per hit from them, and its budget (`maxStalled` 4, `minAccum` −454) is grade F; the Macintosh II and LC boot gates pin today's timing. Enabling it is open work (`TODO.md` § Moteur). With the switch off the host sees the access sequence and the cycle counts of before | switch off: the `unit`, `jit` and `corpus` tiers unchanged. Switch on: `icache020_test` under upstream's settings; on 2026-11-20 eleven hand-assembled programs gave access-and-clock traces identical to upstream ce28239 (1 302 lines) |
+| 148 | **Under `MOIRA_MIMIC_MUSASHI` the fork's rulings yield to Musashi, and upstream's Runner passes** — the reserved I/IS = 100 dereferences (`computeEAfull`); CHK sets N from Dn before its trap (`execChk`); a zero divide stacks the next PC (`execException`); ASR beyond the operand width keeps C and X (`shift`); the 68000 stores the high word of a long first in ADD/SUB/ADDI/SUBI/ADDQ/SUBQ to memory; a failed CAS or CAS2 makes no terminal write on the 68040; MOVEM to −(An) with An in the list stores the initial value, and MOVE and MOVEM to −(An) store the low word of a long first, on the 68030 and 68040 paths as on the plain 68020 path; CALLM and RTM run upstream's original bodies (operands consumed, no module call); the 64 FBcc words with predicate bit 5 are not registered; a 68030 or 68040 with TC.E and every TT/TTR enable clear writes through the plain 68020 `write<>` instead of its bus layer, so a misaligned word or long is not split | `MoiraDataflow_cpp.h`, `MoiraExec_cpp.h`, `MoiraExceptions_cpp.h`, `MoiraALU_cpp.h`, `MoiraInit_cpp.h` | upstream's Runner compares Moira with Musashi under that setting — registers, cycles, the ordered list of writes, disassembly — and stopped at the first 68000 instruction: where the fork's evidence (SingleStepTests, WinUAE, the manuals) had replaced upstream's Musashi-compatible behaviour, it had not kept that behaviour for the setting whose name asks for it. A census of the Runner's reports (2026-11-20, three seeds, 15.9 M cases each, 2.7 % failing in eleven classes) drove the list. Every branch is `if constexpr` or a constant-folded test: POM68K, which builds with the setting false, compiles the same code as before. The untranslated-write rule is the one departure of substance: with translation on, the bus layers still split | upstream's unmodified `testRunner` at ce28239 with the fork dropped in: every pass PASSED on four seeds (CHANGELOG 2026-11-20); the rulings themselves stay held by `sst68000`, `sst68030`, `sst68040`, `callm_rtm_test` and `moira_rules_test` |
+| 149 | **CALLM and RTM charge their format-error exits** — the two format-error returns of `execCallm` bill the instruction's completion count through the same `charge()` as its normal end, and the two of `execRtm` bill 19 | `MoiraExec_cpp.h` | on the 68020 core the clock advances only through `CYCLES_68020`, and these four exits returned before reaching it: a CALLM or RTM that took a format error cost zero cycles, in every configuration. Found by upstream's Runner, which showed 0 elapsed cycles (2026-11-20). [B] MC68020UM-1992 §8.2.16 gives the completion counts and no format-error timing, so the charge is [F] | `callm_rtm_test` (formatErrorCycles): 0 against 64 and 0 against 19 on the old core |
+| 150 | **`Moira/CMakeLists.txt` links SoftFloat** — when no `softfloat68k` target exists it builds one from `MOIRA_SOFTFLOAT_DIR` (default `../softfloat`) and links it; the library's 80 exports carry the `pom68k_sf_` prefix (`extern/softfloat/softfloat-prefix.h`) | `CMakeLists.txt` (and `extern/softfloat/`) | upstream's own build of the core, the one its Runner uses, could not link the fork: Moira.cpp needs SoftFloat, which that file did not know, and Musashi bundles a SoftFloat-2a with the same 20 function names. POM68K's root CMake builds the core itself and never reads this file | `softfloat_symbols_test`; the fork dropped into upstream ce28239 builds `testRunner` with upstream's root CMakeLists (CHANGELOG 2026-11-20) |
 
 Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54, 56, 59-75 and 79-86 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
 when nothing arms them); rows 48 and 55 are performance alone, with no architectural effect. Row 58 is evidence documentation only. The ten files carrying no `POM68K` marker at all —

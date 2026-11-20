@@ -40,6 +40,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"A re-sync [with upstream Moira] is no longer a merge with conflicts; it is a port" (2026-08-09) and "the fork changed too much of upstream's design to merge back" (release README, 2026-11-17) — the port was done in one session, and the fork is now based on upstream's master** → [The Moira fork is rebased onto upstream's master](#2026-11-20-rebase-on-upstream)
+
 - **"On the 68040 an exception drops the staged trace, and so does an RTE into a format-$7 frame" (2026-11-19 (nineteenth)) — the RTE case is deferred, not dropped** → [T0 and the single-step loop](#2026-11-20-t0-change-of-flow)
 
 - **"On the 68040 a staged trace does not preempt: the next instruction runs first" (Q2, July) — fitted to one-step vectors, where WinUAE never traces the first step after a load** → [Trace against the oracle](#2026-11-19-trace-against-the-oracle)
@@ -285,6 +287,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
+- **Does upstream Moira's own test runner pass on the fork, and what is the fork's base?** → [Unmodified `testRunner` at upstream `ce28239`, thirteen passes, four seeds, 2026-11-20; `MOIRA_MIMIC_MUSASHI` restores Musashi's behaviour where the fork's rulings depart](#2026-11-20-rebase-on-upstream)
 - **Does a bus fault followed by a bare RTE leave the state of a run that never faulted?** → [`fault_transparency_test`, since 2026-11-20: every cycle of 1 023 instructions; the 68030 continuation lost count across an extended EA](#2026-11-20-fault-transparency)
 - **What does a push or a pop do when the stack page faults?** → [LINK and PEA end on their push, JSR and BSR restart with A7 intact — measured 2026-11-20 with the user stack on faulting pages](#2026-11-20-stack-fault-cells)
 - **Are the 68020 additions and system instructions swept per addressing mode, under the MMU?** → [`opcells.py --set ea [--mmu identity]`, since 2026-11-20; MOVE from SR's store and the 68030 CAS2 log](#2026-11-20-ea-cells-under-mmu)
@@ -613,6 +616,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-20 (sixth) — The Moira fork is rebased onto upstream's master, and upstream's own Runner passes on it](#2026-11-20-rebase-on-upstream)
 - [2026-11-20 (fifth) — A write to SR or CCR at a page end took the bus error of its own refill; an RTE whose frame faults reran from a moved A7; ADDX and SUBX's pending store](#2026-11-20-addx-subx-buffer)
 - [2026-11-20 (fourth) — Fault, RTE, same state: a gate for what a fault frame is for, and the 68030 continuation it broke on](#2026-11-20-fault-transparency)
 - [2026-11-20 (third) — The user stack on a faulting page: LINK and PEA stacked format $B, a faulting JSR or BSR left A7 four below, a 68040 BSR skipped its call](#2026-11-20-stack-fault-cells)
@@ -1414,6 +1418,112 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-20-rebase-on-upstream"></a>
+## 2026-11-20 (sixth) — The Moira fork is rebased onto upstream's master, and upstream's own Runner passes on it
+
+A release for Dirk Hoffmann was being recut from the 2026-11-17 one when
+the author set the criterion that changed the job: the result has to be
+usable by him, by his own means, not green by ours. Measured against that,
+the fork as it stood failed three ways. A diff against a commit eleven
+behind his master undid his recent work. Dropped into his tree, the core
+compiled and did not link (Moira.cpp needs SoftFloat, which his
+`Moira/CMakeLists.txt` did not know, and Musashi bundles a SoftFloat-2a
+with the same 20 function names). And his acceptance test, `testRunner`
+(Moira against Musashi on random instructions), stopped at the first 68000
+instruction it ran.
+
+**The rebase.** Each of the ten upstream commits after `1efd694` was taken
+as its own commit, in order, on a branch ending in a merge of upstream
+`ce28239`; `extern/moira/POM68K_VENDOR.md` § *Rebase onto upstream ce28239*
+has the table. Two stages, each proved before the next:
+
+- *Structure* (`4146111`, `20e6015`, `9ca9ca0`, `832052a`, `e05882a`): one
+  translation unit per core, de-templated disassembler, narrower tables.
+  The fork's 75 non-templated definitions in the MMU and FPU files went
+  behind `MOIRA_MAIN_TU` one by one (row 146). Standalone `unit|jit`
+  74 / 74 and `corpus` 14 / 14 (sst68000 1 000 058 / 1 000 058, bus order
+  and timing); medians of three on sst68000/68030/68040, `cache040_test`
+  and the program fuzzer within 1 % of the single-unit build,
+  `cache040_test` 10 % faster. The largest unit takes 0.8 GB and 59 s at
+  `-O3` where the one unit took 2.1 GB and 2 min 24 s.
+- *The 68020 instruction cache* (`a4c273b`, `426e4a3`, `eb9529c`): taken as
+  upstream wrote it and switched off in POM68K's configuration (row 147).
+  An evaluation first read it as "not for this release": this core's 68020
+  tables are the manuals' cache-case column (row 129), so upstream's −2 per
+  hit counts the cache twice, and its budget constants are not derived
+  from a source. The author overruled the conclusion, not the finding — the
+  work is too important to leave out — and both now stand: the code is in,
+  `MOIRA_EMULATE_ICACHE` is false here, and turning it on for the
+  Macintosh II and LC is open in `TODO.md`. Same two tiers green; eleven
+  hand-assembled programs gave access-and-clock traces identical to
+  upstream `ce28239` with the cache on (1 302 lines), and
+  `icache020_test` now holds that behaviour, failing on four deliberately
+  broken cores (E ignored, C not flushing, cache compiled out, lines not
+  saved).
+
+`git diff ce28239 -- Moira` is now exactly what the fork adds, and
+`tools/moira_release.py --upstream` writes it as one `git am` commit that
+applies to upstream's master.
+
+**Upstream's Runner.** Unmodified upstream passes it. The fork failed
+2.6 to 2.8 % of the 15.9 M CPU cases on three seeds, in eleven classes
+(the census and its instrumentation are kept outside the tree). All were
+of one kind: a place where the fork follows SingleStepTests, WinUAE or a
+manual and had dropped the Musashi-compatible behaviour upstream kept for
+`MOIRA_MIMIC_MUSASHI`. Row 148 restores it under that setting — 68000
+long-store order, ASR, zero-divide PC, CHK's N, I/IS = 100, the CAS
+terminal write, MOVE and MOVEM to −(An), CALLM/RTM as upstream's original
+bodies, FBcc's sixth predicate bit, and untranslated 68030/68040 writes
+through the plain 68020 path. POM68K builds with the setting false and
+compiles what it compiled before. With the fork applied to upstream
+`ce28239` by `git am`, SoftFloat beside it, upstream's root CMakeLists and
+upstream's five settings, the unmodified Runner prints PASSED for all
+thirteen passes and exits 0, on seeds 2349, 1, 7 and 2026. The Runner's
+MMU and FPU passes compare disassembly only: the fork's PMMU, FPU and
+68040 execution stay judged by our corpora.
+
+**What the exercise found that is not about Musashi.**
+
+- An interrupt taken with SR.M set stacked its throwaway frame on the
+  master stack and left M set; from user mode with M set, the RTE popped
+  garbage. Upstream had fixed it in `eb9529c`. [B] MC68020UM-1992 §6.1.9,
+  MC68030UM-1989 §8.1.9. Row 145, `moira_rules_test`
+  (masterStackInterrupt): 15 checks fail on the old core.
+- A CALLM or RTM that took a format error cost zero cycles: on the 68020
+  core the clock advances only through `CYCLES_68020`, and four exits
+  returned before it. The Runner showed 0 elapsed cycles. Row 149,
+  `callm_rtm_test` (formatErrorCycles): 0 against 64 and 0 against 19.
+- The vendored SoftFloat exports every symbol under the prefix
+  `pom68k_sf_` and `Moira/CMakeLists.txt` links it (row 150,
+  `softfloat_symbols_test`).
+- The release tool exported `fault_transparency_test` without building it
+  and did not carry the program fuzzer. `--check` now refuses an exported
+  gate source no release CMake file names, and an inventory row that
+  `UPSTREAM_GUIDE.md` does not sort.
+
+**Retraction.** The 2026-08-09 decision recorded in `POM68K_VENDOR.md`
+§ *Status* said a re-sync was "no longer a merge with conflicts; it is a
+port", and the 2026-11-17 release README that the fork "changed too much of
+upstream's design to merge back". The port was done today in one session.
+The fork is still a fork under the same contract; its base is upstream's
+master.
+
+**Tiers on this state** (x86-64, GCC 15.2, `RelWithDebInfo`, LTO and
+`-march=native`; the worktree before its commit; 66 min to build, no
+warning):
+
+| Tier | Result |
+|---|---|
+| `unit\|jit\|cpu-vectors`, `ctest -j12` | 291 / 292 in 1 172 s. The red is `jit_program_fuzz_030_sys_test`, Timeout at 300 s: it compares a 16 MB bus after every slice, and twelve such gates at once saturate memory bandwidth. Alone it passes in 19.5 s |
+| `etalon`, `ctest -j12` | 330 / 330 in 6 606 s. Nine gates soft-skipped for want of floppy images on this host (`plus_moof_*`, `*_oids_moof_etalon`, `moof_media_state_etalon`, `lcii_floppy144_etalon`, `maciifdhd_moof_boot_etalon`, `maciifdhd_floppy_boot_etalon`): they prove nothing here. 27 gates of 68020 machines executed (Mac II, Mac II System 7, 8•24, LC, IIx, IIcx, SE/30, II FDHD, the JIT ones) |
+| standalone release, `unit\|jit` and `corpus` | 74 / 74 and 14 / 14 at each rebase stage; the final cut is verified in the next entry |
+
+Two more soft-skips in the first tier: `machfs` is not installed here, and
+one Oids floppy gate. Both tiers are recorded in `STATUS.md`.
+
+Not done: the Xcode project of upstream (no macOS host in this session);
+an AArch64 run of this state; the 68020 cache for the Macintosh II and LC.
 
 <a id="2026-11-20-addx-subx-buffer"></a>
 ## 2026-11-20 (fifth) — A write to SR or CCR at a page end took the bus error of its own refill; an RTE whose frame faults reran from a moved A7; ADDX and SUBX's pending store

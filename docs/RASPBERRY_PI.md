@@ -193,6 +193,14 @@ translation unit: `Moira.cpp` under `-fprofile-generate` took **13 of the
 object blocked behind it. `-j` buys nothing there, and a Pi is several times
 slower. A full `--pgo` run on a Pi 4 is an afternoon, not a coffee break.
 
+Both figures above, the 1.2 GB per job and the 13 minutes, were measured
+when the whole core was one translation unit. Since 2026-11-20 it is four
+(`Moira.cpp` and one `MoiraCore680x0.cpp` per core, as upstream Moira does):
+on the same x86-64 desktop at `-O3` the largest takes 0.8 GB and 59 s where
+the single unit took 2.1 GB and 2 min 24 s. Neither the instrumented pass
+nor a Pi build has been re-measured since; the script still budgets for
+the old shape, which is the cautious side.
+
 Training is long too — seven gates × two engines. Narrow it:
 
 ```bash

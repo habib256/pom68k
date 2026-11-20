@@ -635,8 +635,9 @@ SFC/DFC = 7 and through CALLM/RTM's own hooks (§ 2.7, which bypass the bus).
 `extern/softfloat` (`softfloat.c`, `softfloat_decimal.c`, `softfloat_fpsp.c`,
 headers), built as the separate static C library `softfloat68k`
 (`extern/softfloat/CMakeLists.txt`); `moira` links it PUBLIC
-(root `CMakeLists.txt`). `Moira.cpp` includes `softfloat.h` and
-`softfloat-specialize.h` inside `extern "C"`. `MoiraTypes.h` `FpuExtended`
+(root `CMakeLists.txt`). `Moira.cpp` and `MoiraCore_cpp.h` include
+`softfloat.h` and `softfloat-specialize.h` inside `extern "C"`; the
+library's exports carry the prefix `pom68k_sf_` (`softfloat-prefix.h`). `MoiraTypes.h` `FpuExtended`
 mirrors `floatx80` bit for bit so `Moira.h` does not include the C header.
 
 Arithmetic context ownership: each `Moira` owns an opaque `float_status`
@@ -1082,9 +1083,11 @@ includes inside `src/jit` resolve within that directory or to `Moira.h`.
 
 Minimal file set:
 
-- `extern/moira/Moira/` — all 26 source files (`Moira.cpp` and `MoiraDebugger.cpp`
-  are the only translation units; the rest are headers, including the
-  `_cpp.h` inclusions, `MoiraCache040.h`, `MoiraState.h`, `MoiraConfig.h`) and
+- `extern/moira/Moira/` — all 33 source files (`Moira.cpp`,
+  `MoiraCore68000.cpp`, `MoiraCore68010.cpp`, `MoiraCore68020.cpp` and
+  `MoiraDebugger.cpp` are the translation units; the rest are headers,
+  including the `_cpp.h` inclusions, `MoiraCache040.h`, `MoiraState.h`,
+  `MoiraConfig.h`) and
   `extern/moira/Moira/LICENSE`.
 - `extern/softfloat/` — `softfloat.c`, `softfloat_decimal.c`,
   `softfloat_fpsp.c`, `softfloat.h`, `softfloat-macros.h`,

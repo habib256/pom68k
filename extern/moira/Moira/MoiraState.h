@@ -39,7 +39,7 @@ template<class Ar> void Moira::pomVisitState(Ar& ar)
     // The level-7 transition latch (Moira.h, nmiLatch). Format v35.
     ar(nmiLatch);
 
-    // cp is a per-instruction EA penalty, reset by AVAILABILITY on C68020.
+    // budget.cp is a per-instruction EA penalty, reset by AVAILABILITY on C68020.
     // It is not maintained by the JIT. Leaving it out keeps snapshots
     // independent of engine (POM68K format v9; q605_savestate_etalon).
     // The debugger's request bits in `flags` are host state, not guest
@@ -156,7 +156,7 @@ template<class Ar> void Moira::pomVisitState(Ar& ar)
     }
 
     if constexpr (Ar::loading) {
-        cp = 0;                  // not carried; the next instruction
+        budget.cp = 0;           // not carried; the next instruction
                                  // would zero it anyway (see above)
         // Drop derived translations and native mappings. The architectural
         // 040 caches are restored from their payload below, after the old
@@ -179,6 +179,20 @@ template<class Ar> void Moira::pomVisitState(Ar& ar)
         pomCache040I.visit(ar);
         pomCache040D.visit(ar);
     }
+
+#if MOIRA_EMULATE_ICACHE
+    // POM68K: the 68020 i-cache of upstream Moira (MoiraCache.h). Its lines
+    // and its latch decide whether the next fetches touch the bus, and the
+    // cycle budget holds cycles charged but not yet synced (Moira::syncCp),
+    // so all three are guest state. budget.cp is not: it is zeroed above
+    // and by the next instruction. Compiled only with the cache, so the
+    // payload of a build without it (POM68K's) is unchanged; a host that
+    // turns the cache on appends these fields and bumps its own state
+    // format version for them, as the versions noted above were bumped.
+    for (auto &line : iCache.cache) ar(line.data, line.tag, line.valid);
+    ar(iCache.latch.addr, iCache.latch.data);
+    ar(budget.accumulated, budget.stalled);
+#endif
 }
 
 } // namespace moira

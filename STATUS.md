@@ -17,21 +17,21 @@ carry `tools/gate_execution_census.py`'s executed/soft-skipped pair: quote the
 pair, never the green total alone — a soft-skipped gate exited 0 and proved
 nothing about the behaviour it names.
 
-## Union across hosts — 649 gates
+## Union across hosts — 651 gates
 
 | `ctest -L` | selects |
 |---|---|
-| `cpu-vectors` | 7 |
+| `cpu-vectors` | 8 |
 | `etalon` | 330 |
 | `etalon-core` | 16 |
 | `gui` | 3 |
-| `interp-only` | 8 |
+| `interp-only` | 9 |
 | `jit` | 123 |
 | `jit-fast` | 8 |
 | `m030` | 155 |
 | `m040` | 107 |
 | `smoke` | 9 |
-| `unit` | 270 |
+| `unit` | 272 |
 | `wasm` | 46 |
 
 `-L` is a regex over each label: `jit` also selects `jit-fast`, `etalon`
@@ -40,51 +40,51 @@ scheduling slots are per-host manifest facts and live in the sections below.
 
 ## Registered on aarch64
 
-644 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
+646 gates registered; 5 union gates cannot register here: `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`.
 
 | dimension | value | gates |
 |---|---|---|
-| assets | none | 203 |
+| assets | none | 205 |
 | assets | optional | 39 |
 | assets | required | 402 |
 | host | a64 | 4 |
-| host | any | 634 |
+| host | any | 636 |
 | host | native | 6 |
-| scope | component | 174 |
+| scope | component | 176 |
 | scope | engine | 89 |
 | scope | profile | 376 |
 | scope | repository | 5 |
-| tier | daily | 203 |
+| tier | daily | 205 |
 | tier | full | 425 |
 | tier | platform | 16 |
-| slots_src | assumed | 524 |
+| slots_src | assumed | 526 |
 | slots_src | measured | 120 |
 
-Scheduling cost if every gate ran at once: 879 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 881 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## Registered on x86_64
 
-645 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
+647 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
 
 | dimension | value | gates |
 |---|---|---|
-| assets | none | 202 |
+| assets | none | 204 |
 | assets | optional | 39 |
 | assets | required | 404 |
-| host | any | 634 |
+| host | any | 636 |
 | host | native | 6 |
 | host | x64 | 5 |
-| scope | component | 174 |
+| scope | component | 176 |
 | scope | engine | 90 |
 | scope | profile | 376 |
 | scope | repository | 5 |
-| tier | daily | 202 |
+| tier | daily | 204 |
 | tier | full | 427 |
 | tier | platform | 16 |
-| slots_src | assumed | 532 |
+| slots_src | assumed | 534 |
 | slots_src | measured | 113 |
 
-Scheduling cost if every gate ran at once: 1004 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 1006 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## PRODUCT_LLE on aarch64
 
@@ -246,3 +246,5 @@ overwrites it, including a one-gate `ctest -R`.
 | Nov 14 22:24 +04 | x86_64 | default | 51 | 51 | 0 | 0 | Same change: sst*, jit_sst*, cpu_vectors*, savestate*, moira_* -j8, 51/51; census 51 executed / 0 soft-skipped |
 | Nov 16 20:41 +04 | aarch64 | default | 145 | 145 | 0 | 0 | m030: 145 executed, no soft-skip; original 3c70ba38 linked profile binaries (before later inspection/FPU changes) |
 | Nov 17 08:13 +04 | aarch64 | default | 159 | 159 | 0 | 0 | 45bb774 baseline before D12: complete rebuilt asset-none tier; 159 executed, no soft-skip, 433.12 s; authorized GUI/PTY/loopback access |
+| Nov 20 19:24 +04 | x86_64 | default | 292 | 289 | 2 | 1 | rebase onto upstream Moira ce28239 (worktree, before commit): ctest -L 'unit\|jit\|cpu-vectors' -j12, 291/292 in 1172 s; the red is jit_program_fuzz_030_sys_test Timeout at 300 s under load, 19.5 s and green alone |
+| Nov 20 19:44 +04 | x86_64 | default | 330 | 321 | 9 | 0 | same tree: ctest -L etalon -j12, 330/330 in 6606 s; nine floppy-media gates soft-skipped (no .moof/.img images on this host), 27 gates of 68020 machines executed |

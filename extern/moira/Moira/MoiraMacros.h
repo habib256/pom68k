@@ -14,6 +14,17 @@
 #endif
 #define fatalError      assert(false); unreachable
 
+// POM68K: the cycle budget (syncCp) exists to spend the fractional discounts
+// of the 68020 i-cache. Without the cache the charge stays sync(c + cp),
+// exactly as before 426e4a3: syncCp holds back odd cycles and borrows after
+// four stalled instructions, which would move the timing of every model on
+// the 68020 core.
+#if MOIRA_EMULATE_ICACHE
+#define SYNC_CP(c)      syncCp(c)
+#else
+#define SYNC_CP(c)      sync(c)
+#endif
+
 #if MOIRA_PRECISE_TIMING == true
 
 #define SYNC(x)         { if constexpr (C != Core::C68020) sync(x); }
@@ -22,7 +33,7 @@
 
 #define CYCLES_68000(c) { }
 #define CYCLES_68010(c) { }
-#define CYCLES_68020(c) { if constexpr (C == Core::C68020) sync((c) + cp); }
+#define CYCLES_68020(c) { if constexpr (C == Core::C68020) SYNC_CP((c) + budget.cp); }
 
 #else
 
@@ -32,7 +43,7 @@
 
 #define CYCLES_68000(c) { if constexpr (C == Core::C68000) sync(c); }
 #define CYCLES_68010(c) { if constexpr (C == Core::C68010) sync(c); }
-#define CYCLES_68020(c) { if constexpr (C == Core::C68020) sync((c) + cp); }
+#define CYCLES_68020(c) { if constexpr (C == Core::C68020) SYNC_CP((c) + budget.cp); }
 
 #endif
 

@@ -5,6 +5,10 @@
 // Published under the terms of the MIT License
 // -----------------------------------------------------------------------------
 
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 bool
 Moira::isValidExtMMU(Instr I, Mode M, u16 op, u32 ext) const
 {
@@ -72,14 +76,17 @@ Moira::isValidExtMMU(Instr I, Mode M, u16 op, u32 ext) const
 
                     if ((ext & 0x300) == 0) {
                         if (preg() != 0) {
-                            if (M == Mode::PI || M == Mode::PD || M == Mode::IM || M == Mode::IP) return false;
+                            if (M == Mode::PI || M == Mode::PD || M == Mode::IM || M == Mode::IP) { return false;
+                            }
                         }
                     }
 
                     // Check register field (binutils accepts all M68851 registers)
                     if ((ext & 0x100) == 0) {
                         if (preg() != 0) {
-                            if (M == Mode::DN || M == Mode::AN) return false;
+                            if (M == Mode::DN || M == Mode::AN) {
+                                return false;
+                            }
                         }
                     }
                     return true;
@@ -111,6 +118,7 @@ Moira::isValidExtMMU(Instr I, Mode M, u16 op, u32 ext) const
     }
 }
 
+#endif
 
 // [B] MC68030UM-1989 §9.8: MMU instruction overview; decode from oracle below.
 // [F] Retired Musashi comparison: local patched revision unavailable.
@@ -150,6 +158,10 @@ Moira::isValidExtMMU(Instr I, Mode M, u16 op, u32 ext) const
 // Raw physical bus accesses used by the table walk. Both oracles read the
 // translation tree in physical space; the bus translation layer is a
 // later slice, so these stay untranslated.
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 u32
 Moira::mmuRead32(u32 addr) const
 {
@@ -165,6 +177,8 @@ Moira::mmuWrite32(u32 addr, u32 val) const
     write16(addr + 2, u16(val));
 }
 
+#endif
+
 // [F] Retired Musashi comparison: local patched revision unavailable.
 // Settled by: a replay with a pinned replacement oracle.
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
@@ -172,6 +186,10 @@ Moira::mmuWrite32(u32 addr, u32 val) const
 // mmu_op30_helper_get_fc: bits 4-3 select the source — 10 immediate,
 // 01 Dn, 00 SFC/DFC on bit 0 alone (so 00010 reads SFC!), 11 undecodable
 // (returns false -> Line-F). Arbitrated vs Musashi's fallback-to-0.
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 bool
 Moira::mmuFCFromModes(u16 modes, int &fc) const
 {
@@ -185,10 +203,16 @@ Moira::mmuFCFromModes(u16 modes, int &fc) const
     }
 }
 
+#endif
+
 // [B] MC68030UM-1989 §9.3 and §9.7.3: transparent translation.
 // Transparent translation match (MC68030UM-1989 § 9.3, TTx format § 9.7.3):
 // enabled (E, bit 15), address base/mask on A31-A24, FC base/mask, R/W(M).
 // On a match the MMUSR T bit is set (§ 9.7.4).
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 bool
 Moira::mmuMatchTT(u32 tt, u32 addr, int fc, int rw, u16 &sr) const
 {
@@ -209,6 +233,8 @@ Moira::mmuMatchTT(u32 tt, u32 addr, int fc, int rw, u16 &sr) const
     return true;
 }
 
+#endif
+
 // [B] MC68030UM-1989 §9.2, §9.4, §9.5.2 and §8.4: translation architecture.
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 //
@@ -228,6 +254,10 @@ Moira::mmuMatchTT(u32 tt, u32 addr, int fc, int rw, u16 &sr) const
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Instruction-stream word fetch (WinUAE x_prefetch / mmu030_get_iword):
 // translated when TC.E is set, never logged, never split.
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 u16
 Moira::mmuFetchWord(u32 addr)
 {
@@ -274,9 +304,15 @@ Moira::mmuFetchWord(u32 addr)
     return read16(addr & addrMask<Core::C68020>());
 }
 
+#endif
+
 // POM68K O6: pipe capture — called by the PMOVE handlers with the OLD
 // TC/CRP/SRP still in force. Faults during capture (next code page not
 // mapped under the old view) just shorten the pipe.
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 void
 Moira::mmuCapturePipe()
 {
@@ -292,9 +328,15 @@ Moira::mmuCapturePipe()
     }
 }
 
+#endif
+
 // POM68K: deferred prefetch fault (Moira.h § ircPoison). mmuPageFault's latches
 // describe the fault being raised; a lookahead that does not raise must
 // leave them, and the locked-RMW and RTE flags it clears, as they were.
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 u16
 Moira::mmuLookaheadWord(u32 addr)
 {
@@ -316,6 +358,8 @@ Moira::mmuLookaheadWord(u32 addr)
         return 0;
     }
 }
+
+#endif
 
 template <Core C> u16
 Moira::mmu040LookaheadWord(u32 addr)
@@ -347,6 +391,10 @@ Moira::mmu040LookaheadWord(u32 addr)
 // instruction that did not use its lookahead (a one-word branch at a
 // page's end, then generated code that never passes the instruction-start
 // reset) names another address and is simply dropped.
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 void
 Moira::ircRefetch()
 {
@@ -372,9 +420,15 @@ Moira::ircRefetch()
     }
 }
 
+#endif
+
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Logs the value of a completed instruction-level access
 // (ACCESS_EXIT_GET/PUT in WinUAE cpummu030.h)
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 void
 Moira::mmuLogExtWord(u32 value)
 {
@@ -385,6 +439,8 @@ Moira::mmuLogExtWord(u32 value)
         pomMmuBumpIdxDone();
     }
 }
+
+#endif
 
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Arms a pending (An)+/-(An) fixup (WinUAE mmufixup[] + mmu030fixupreg
@@ -534,6 +590,10 @@ Moira::mmuExecuteStart()
 // Transparent translation match for bus accesses — OK-match only, wrong
 // r/w direction falls through to normal translation (WinUAE
 // mmu030_match_ttr_access / mmu030_match_lrmw_ttr_access)
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 bool
 Moira::mmuMatchTTAccess(u32 addr, u8 fc, bool write) const
 {
@@ -559,6 +619,8 @@ Moira::mmuMatchTTAccess(u32 addr, u8 fc, bool write) const
     return false;
 }
 
+#endif
+
 // [B] MC68030UM-1989 §9.5.4: table-search descriptor updates.
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Bus-level translation-table search — WinUAE mmu030_table_search with
@@ -566,6 +628,10 @@ Moira::mmuMatchTTAccess(u32 addr, u8 fc, bool write) const
 // termination, indirection, U on every traversed descriptor and U+M on
 // the page descriptor (§ 9.5.4, skipped on supervisor violation).
 // Returns MMUSR-style status bits; pageAddr/ci describe the page.
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 u16
 Moira::mmuBusWalk(u32 addr, u8 fc, bool write, u32 &pageAddr, bool &ci)
 {
@@ -592,8 +658,14 @@ Moira::mmuBusWalk(u32 addr, u8 fc, bool write, u32 &pageAddr, bool &ci)
     return status;
 }
 
+#endif
+
 // [D] WinUAE mmu030_table_search @ Hatari e77819f7: PTEST uses the
 // ordinary search, but never changes history/ATC and stops at its level.
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 u16
 Moira::mmuProbeWalk(u32 addr, u8 fc, bool write, int limit,
                      u32 &descriptorAddress) const
@@ -614,9 +686,15 @@ Moira::mmuProbeWalk(u32 addr, u8 fc, bool write, int limit,
     return u16((status & 0xFFF0) | count);
 }
 
+#endif
+
 // [B] MC68030UM-1989 §§9.5.2–9.5.4 and §9.8 (PTEST).
 // One walk owns descriptor sizes, early/indirect termination and bounds.
 // limit == 0 maintains history for a bus access; PTEST supplies 1–7.
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 void
 Moira::mmuTableWalkBody(u32 addr, u8 fc, bool write, int limit,
                         u32 &pageAddr, bool &ci, u16 &status,
@@ -627,6 +705,8 @@ Moira::mmuTableWalkBody(u32 addr, u8 fc, bool write, int limit,
         [this](u32 a, u32 value) { mmuWrite32(a, value); },
         pageAddr, ci, status, descrAddr, descrNum);
 }
+
+#endif
 
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Pseudo-LRU history maintenance (WinUAE mmu030_atc_handle_history_bit)
@@ -694,6 +774,10 @@ Moira::mmuAtcLookup(u32 addr, u8 fc, bool write)
 
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Table search + ATC entry creation (tail of WinUAE mmu030_table_search)
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 void
 Moira::mmuAtcFill(u32 addr, u8 fc, bool write)
 {
@@ -726,9 +810,15 @@ Moira::mmuAtcFill(u32 addr, u8 fc, bool write)
     e.writeProtect = (status & 0x0800) != 0;
 }
 
+#endif
+
 // [B] MC68030UM-1989 §9.8: PFLUSH.
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // ATC flushes (§ 9.8 PFLUSH variants; WinUAE mmu030_flush_atc_*)
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 void
 Moira::mmuAtcFlushAll()
 {
@@ -762,6 +852,8 @@ Moira::mmuAtcFlushPageFc(u32 addr, u32 fcBase, u32 fcMask)
         if (e.valid && (fcBase & fcMask) == (e.fc & fcMask) && e.logical == addr)
             e.valid = false;
 }
+
+#endif
 
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Logical → physical for one bus (sub-)access; faults on invalid /
@@ -810,6 +902,10 @@ Moira::mmuTranslateAccess(u32 addr, u8 fc, bool write, u32 sswFlags)
 // Fault capture + throw (WinUAE mmu030_page_fault): SSW per § 8.2.1
 // (oracle-arbitrated encodings, incl. the double DF bit), pending-fixup
 // application, data buffer and MOVEM/EA state snapshots for the frame.
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 void
 Moira::mmuPageFault(u32 addr, bool read, u32 sswFlags, u8 fc)
 {
@@ -862,10 +958,16 @@ Moira::mmuPageFault(u32 addr, bool read, u32 sswFlags, u8 fc)
     throw MmuBusError{};
 }
 
+#endif
+
 // POM68K O6: external /BERR — replays the recorded in-flight sub-access
 // into the translation-fault machinery. The MmuBusError unwinds through
 // mmuRead/mmuWrite/mmuFetchWord into the per-instruction handler, which
 // stacks the same $A/$B frame a real bus error at that point would.
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 void
 Moira::extBusError()
 {
@@ -879,7 +981,13 @@ Moira::extBusError()
     mmuPageFault(mmuAccAddr, !mmuAccWrite, mmuAccSsw, mmuAccFc);
 }
 
+#endif
+
 // POM68K: the 68000/68010 twin — see the declaration in Moira.h.
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 void
 Moira::extBusError000(u32 addr, bool write)
 {
@@ -897,6 +1005,8 @@ Moira::extBusError000(u32 addr, bool write)
 
     throw BusError(frame);
 }
+
+#endif
 
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Translated read with 68030 bus splitting (WinUAE mmu030_get_* +
@@ -1846,6 +1956,10 @@ Moira::execPTest40(u16 opcode)
 // restores the walk-per-access baseline for differential checks.
 // -----------------------------------------------------------------------------
 
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 void
 Moira::mmu040AtcFlushAll()
 {
@@ -1887,7 +2001,13 @@ Moira::mmu040AtcFlushPage(u32 addr, bool nonGlobalOnly, bool super, int space)
     if (space != 0) flush(mmu040AtcD);
 }
 
+#endif
+
 #if MOIRA_ENABLE_JIT
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 bool
 Moira::pomJitAtcBacked040(u32 addr, bool data, bool super) const
 {
@@ -1895,9 +2015,15 @@ Moira::pomJitAtcBacked040(u32 addr, bool data, bool super) const
            !mmu040MatchTTR(addr, super, data);
 }
 
+#endif
+
 // POM68K: exact native accesses are speculative until the instruction owns
 // their result. Keep their ATC mutations and debits atomic with that commit;
 // a refused native attempt must not choose the following access's victim.
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 void
 Moira::pomJitAtcReplayBegin040(PomJitAtcReplay040& replay, u32 addr,
                               bool data, unsigned access) noexcept
@@ -1982,6 +2108,12 @@ Moira::pomJitAtcReplayAbort040(PomJitAtcReplay040& replay) noexcept
 }
 
 #endif
+
+#endif
+
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
 
 int
 Moira::mmu040AtcLookup(bool data, u32 addr, bool write, bool super)
@@ -2080,6 +2212,8 @@ Moira::mmu040AtcFill(bool data, u32 addr, u32 status, bool super)
     last[0] = last[1] = i8(i);
 }
 
+#endif
+
 template <Core C> bool
 Moira::mmu040InstrStart()
 {
@@ -2153,6 +2287,10 @@ Moira::mmu040InstrStart()
 }
 
 #if MOIRA_ENABLE_JIT
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 void
 Moira::pomInterpArm(u32 pc)
 {
@@ -2563,6 +2701,8 @@ Moira::pomJitLayout() const
     return l;
 }
 
+#endif
+
 // The access half of the JIT data path, for both MMU generations. These
 // perform the REAL access through the SAME entry point the interpreter uses
 // for that model, and convert the one thing a JIT frame cannot survive — a
@@ -2580,6 +2720,10 @@ Moira::pomJitLayout() const
 //     alternate space; that is Kind::Unsafe and cannot appear inside a
 //     block, but a stale non-zero fcSource would silently translate this
 //     access in the wrong space, so it is refused rather than assumed.
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 bool
 Moira::pomJitReadData(u32 addr, int bytes, u32 &out) noexcept
 {
@@ -2646,10 +2790,16 @@ Moira::pomJitWriteData(u32 addr, int bytes, u32 val) noexcept
     }
 }
 
+#endif
+
 // A native JSR/JMP target read (execJsr/execJmp eventually publish the first
 // target word in ircWord()). The 030 keeps its explicit mode-5 path; the 040
 // uses the same read<PROG> funnel as the interpreted instruction, including
 // ITT/ATC/cache/fault behaviour.
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 bool
 Moira::pomJitReadProg(u32 addr, u16 &out) noexcept
 {
@@ -2675,6 +2825,8 @@ Moira::pomJitReadProg(u32 addr, u16 &out) noexcept
     }
 }
 
+#endif
+
 // Complete the non-restartable half of a native 68040 JSR.
 // Generated code may compute the EA (and, for a future full-format
 // admission, perform its pointer read) while the instruction is pristine.
@@ -2682,6 +2834,10 @@ Moira::pomJitReadProg(u32 addr, u16 &out) noexcept
 // that the push and I-cache state stand exactly where the interpreter leaves
 // them. A target fetch fault is not processed here: the JSR has retired and
 // the next instruction start takes it (execJsr).
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 bool
 Moira::pomJitJsr040(u32 instructionPc, u32 returnAddress, u32 target,
                     u16 opcode) noexcept
@@ -2742,6 +2898,8 @@ Moira::pomJitJsr040(u32 instructionPc, u32 returnAddress, u32 target,
 
 #endif
 
+#endif
+
 int
 Moira::mmu040MatchTTR(u32 addr, bool super, bool data, u32 *cm) const
 {
@@ -2761,6 +2919,10 @@ Moira::mmu040MatchTTR(u32 addr, bool super, bool data, u32 *cm) const
     if (cm && e) *cm = e >> 2;
     return e & 3;
 }
+
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
 
 void
 Moira::mmu040TtrRebuild(Mmu040TtrTable &tab, u32 ttr0, u32 ttr1) const
@@ -2824,6 +2986,15 @@ Moira::pomCache040Touch(bool data, u32 pa, bool write, int cm, int szCode)
         pomCache040Cm = Cache040::CM_NC;
 }
 
+#endif
+
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
+// POM68K: these probe types are thrown by extBusError040() and caught by the
+// cache fill/push paths, all of which are compiled into the main translation
+// unit only. Keeping the unnamed namespace there gives them a single identity.
 namespace {
 // POM68K: cache-bus probes defer frame construction until the controller
 // can distinguish a fill abort from a physical push and its pending store.
@@ -3197,6 +3368,8 @@ Moira::pomCacheOp040(u16 opcode)
         pomJitMapMoved();
     }
 }
+
+#endif
 
 template <Core C> u32
 Moira::mmu040Walk(u32 addr, bool super, bool write)
@@ -3818,6 +3991,10 @@ Moira::mmu040PutMove16(u32 addr)
     SYNC(8);
 }
 
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 void
 Moira::extBusError040()
 {
@@ -3843,6 +4020,8 @@ Moira::extBusError040()
     mmu040Fault<Core::C68020>(mmu040AccAddr, mmu040AccVal, fc,
                               mmu040AccWrite, mmu040AccSz, false);
 }
+
+#endif
 
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Bus-fault exception processing: WinUAE m68k_run_mmu040 CATCH (restart:

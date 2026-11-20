@@ -5,6 +5,10 @@
 // Published under the terms of the MIT License
 // -----------------------------------------------------------------------------
 
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 bool
 Moira::isValidExtFPU(Instr I, Mode M, u16 op, u32 ext) const
 {
@@ -117,6 +121,7 @@ Moira::isValidExtFPU(Instr I, Mode M, u16 op, u32 ext) const
     }
 }
 
+#endif
 
 // [B] MC68881UM-1989 §2 and §7.5.4.3: programmer model and interrupt protocol.
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
@@ -198,6 +203,10 @@ static inline void fpuFromIntV(FpuExtended &v, i32 val)
 {
     v = fpuFromFx80(int32_to_floatx80(val));
 }
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 void Moira::fpuToSingleV(FpuExtended &v, u32 w)
 {
     v = fpuFromFx80(float32_to_floatx80_allowunnormal(w, fpuFloatStatus.get()));
@@ -216,11 +225,17 @@ void Moira::fpuFromDoubleV(const FpuExtended &v, u32 *w1, u32 *w2)
     *w1 = u32(f >> 32);
     *w2 = u32(f);
 }
+
+#endif
 static inline void fpuToExtendedV(FpuExtended &v, u32 w1, u32 w2, u32 w3)
 {
     v.high = u16(w1 >> 16);
     v.low = (u64(w2) << 32) | w3;
 }
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 void Moira::fpuFromExtendedV(const FpuExtended &v, u32 *w1, u32 *w2, u32 *w3)
 {
     floatx80 f = floatx80_to_floatx80(fpuToFx80(v), fpuFloatStatus.get());
@@ -238,8 +253,14 @@ i64 Moira::fpuToIntV(const FpuExtended &v, int size)
     }
 }
 
+#endif
+
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Packed decimal (P) input — WinUAE fp_to_pack (fpp_softfloat.c:629-687)
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 void Moira::fpuToPackedV(FpuExtended &v, const u32 wrd[3])
 {
     if (((wrd[0] >> 16) & 0x7fff) == 0x7fff) {
@@ -276,9 +297,15 @@ void Moira::fpuToPackedV(FpuExtended &v, const u32 wrd[3])
     v = fpuFromFx80(floatdecimal_to_floatx80(f, fpuFloatStatus.get()));
 }
 
+#endif
+
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // Packed decimal (P) output with k-factor — WinUAE fp_from_pack
 // (fpp_softfloat.c:690-751)
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 void Moira::fpuFromPackedV(const FpuExtended &v, u32 wrd[3], int kfactor)
 {
     i32 kf = kfactor;
@@ -339,6 +366,8 @@ void Moira::fpuFromPackedV(const FpuExtended &v, u32 wrd[3], int kfactor)
         wrd[2] = u32(packFrac);
     }
 }
+
+#endif
 
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // The 6888x predicate table (WinUAE fpp.c:2078-2096, condition_table_6888x,
@@ -504,8 +533,8 @@ static inline int fpuForcedPrecision040(u16 ext)
 //                         Table 8-8 (FSAVE/FRESTORE, MC68882, cache case).
 //
 // The EA-calculation cycles ride on Moira's integer mechanism unchanged:
-// computeEA<C68020> accumulates the per-mode penalty into `cp` and
-// CYCLES_68020(c) syncs (c) + cp (MoiraMacros.h:25, MoiraDataflow_cpp.h:262)
+// computeEA<C68020> accumulates the per-mode penalty into `budget.cp` and
+// CYCLES_68020(c) syncs (c) + budget.cp (MoiraMacros.h:25, MoiraDataflow_cpp.h:262)
 // — identical to how the integer exec functions charge EAs; the 68000/68010
 // paths are untouched (CYCLES_68020 compiles out for them).
 //
@@ -611,6 +640,10 @@ static u16 fpuVectorFor(u32 exception)
 // FPU state maintenance
 //
 
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 void
 Moira::fpuResetState()
 {
@@ -687,6 +720,8 @@ Moira::fpuCompleteBusy(bool wait)
     fpu.state = 1;
 }
 
+#endif
+
 template <Core C> void
 Moira::fpuRunBusy(int cycles, u16 opcode, u16 ext)
 {
@@ -711,6 +746,10 @@ Moira::fpuRunBusy(int cycles, u16 opcode, u16 ext)
     }
     fpuCompleteBusy(false);
 }
+
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
 
 void
 Moira::fpuSetMode()
@@ -839,6 +878,8 @@ Moira::fpuNormalize(FpuExtended &v)
     }
 }
 
+#endif
+
 static bool
 fpuNeedsDatatype040(const FpuExtended &v)
 {
@@ -868,6 +909,10 @@ fpuTag040(const FpuExtended &v, int size)
     if (floatx80_is_infinity(f)) return 2;
     return 0;
 }
+
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
 
 bool
 Moira::fpuCheckArithException(
@@ -1038,6 +1083,8 @@ Moira::fpuCheckArithException(
     return false;   // maskable on the 6888x — never aborts the update here
 }
 
+#endif
+
 template <Core C> void
 Moira::execFpuException(u16 vector, bool pre)
 {
@@ -1071,6 +1118,10 @@ Moira::execFpuException(u16 vector, bool pre)
     jumpToVector<C>(vector);
 }
 
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 void
 Moira::fpuArmFixup(int n)
 {
@@ -1093,6 +1144,8 @@ Moira::fpuArmFixup(int n)
     mmuFixupReg[slot] = u8(n | 0x40 | 0x80);
     mmuFixupVal[slot] = reg.a[n];
 }
+
+#endif
 
 template <Core C> void
 Moira::execFpuIllegalOpmode040()
@@ -1354,6 +1407,10 @@ Moira::fpuCondEval(u16 cond)
     return result ? 1 : 0;
 }
 
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 bool
 Moira::fpuGetConstant(FpuExtended &v, int cr)
 {
@@ -1599,6 +1656,8 @@ Moira::fpuArithmetic(const FpuExtended &srcM, FpuExtended &dstM, u16 ext)
     dstM = fpuFromFx80(dst);
     return true;
 }
+
+#endif
 
 
 //
@@ -3058,7 +3117,7 @@ Moira::execFGeneric(u16 opcode)
         fpu.busyIa = reg.pc0;
         prefetch<C, POLL>();
         const int cycles = fpuCk882Op[ext & 0x3f] +
-            ((ext & 0x4000) ? fpuCk882Fmt[___xxx__________(ext)] : 0) + cp;
+            ((ext & 0x4000) ? fpuCk882Fmt[___xxx__________(ext)] : 0) + budget.cp;
         fpuRunBusy<C>(cycles, opcode, ext);
         FINALIZE
         return;
@@ -3068,7 +3127,7 @@ Moira::execFGeneric(u16 opcode)
 
     // [B] MC68881UM-1989 Table 8-3: base costs; format approximation above.
     // Table 8-3: opmode base (FPn-to-FPm) + per-format spread for
-    // memory/Dn/#imm sources; EA cycles arrive via cp (see table header)
+    // memory/Dn/#imm sources; EA cycles arrive via budget.cp (see table header)
     CYCLES_68020(fpuCk882Op[ext & 0x3f] +
                  ((ext & 0x4000) ? fpuCk882Fmt[___xxx__________(ext)] : 0))
 

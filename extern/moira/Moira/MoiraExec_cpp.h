@@ -8,7 +8,7 @@
 #define AVAILABILITY(core) \
 if constexpr ((core) == Core::C68010) { static_assert(C != Core::C68000); } \
 if constexpr ((core) == Core::C68020) { static_assert(C != Core::C68000 && C != Core::C68010); } \
-if constexpr (C == Core::C68020) { cp = 0; mmuPreparePlain020(opcode); } \
+if constexpr (C == Core::C68020) { budget.cp = 0; mmuPreparePlain020(opcode); } \
 if constexpr (MOIRA_WILL_EXECUTE) willExecute(__func__, I, M, S, opcode);
 
 #define FINALIZE \
@@ -457,7 +457,11 @@ Moira::execAddRgEa(u16 opcode)
     // [D] WinUAE gencpu flag_add/flag_sub @ Hatari e77819f7: the stored
     // value is `uae_u32 newv = (uN)dst ± (uN)src`, so a faulting 68030 store
     // stacks the unmasked 32-bit result (addsub returns it) as wb3_data.
-    writeM<C, M, S, (C == Core::C68000 ? REVERSE : 0) | MMU_RAWBUF>(ea, result);
+    // [D] Musashi @ 1efd694 (Runner/Musashi of upstream Moira), run by its Runner:
+    //     the high word is stored first. POM68K: so it is under
+    //     MOIRA_MIMIC_MUSASHI, here and in execAddiEa / execAddqEa; that
+    //     Runner compares the order of writes.
+    writeM<C, M, S, (C == Core::C68000 && !MOIRA_MIMIC_MUSASHI ? REVERSE : 0) | MMU_RAWBUF>(ea, result);
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -500,13 +504,13 @@ Moira::execAdda(u16 opcode)
         POLL_IPL;
         if constexpr (S == Word || isRegMode(M) || isImmMode(M)) SYNC(2);
         if (looping<I>()) {
-            if (M == Mode::DN && S == Long) noPrefetch<C>(6);
-            else if (M == Mode::AI && S == Long) noPrefetch<C>(6);
-            else if (M == Mode::AI && S != Long) noPrefetch<C>(4);
-            else if (M == Mode::PI && S == Long) noPrefetch<C>(6);
-            else if (M == Mode::PI && S != Long) noPrefetch<C>(4);
-            else if (M == Mode::PD && S == Long) noPrefetch<C>(6);
-            else if (M == Mode::PD && S != Long) noPrefetch<C>(4);
+            if constexpr (M == Mode::DN && S == Long) noPrefetch<C>(6);
+            else if constexpr (M == Mode::AI && S == Long) noPrefetch<C>(6);
+            else if constexpr (M == Mode::AI && S != Long) noPrefetch<C>(4);
+            else if constexpr (M == Mode::PI && S == Long) noPrefetch<C>(6);
+            else if constexpr (M == Mode::PI && S != Long) noPrefetch<C>(4);
+            else if constexpr (M == Mode::PD && S == Long) noPrefetch<C>(6);
+            else if constexpr (M == Mode::PD && S != Long) noPrefetch<C>(4);
             else noPrefetch<C>();
         } else {
             prefetch<C>();
@@ -580,7 +584,7 @@ Moira::execAddiEa(u16 opcode)
 
     // POM68K: low word first on the 68000 (see execAddRgEa). MMU_RAWBUF:
     // the unmasked result is the 68030 write buffer (see execAddRgEa).
-    writeOp<C, M, S, POLL | (C == Core::C68000 ? REVERSE : 0) | MMU_RAWBUF>(dst, ea, result);
+    writeOp<C, M, S, POLL | (C == Core::C68000 && !MOIRA_MIMIC_MUSASHI ? REVERSE : 0) | MMU_RAWBUF>(dst, ea, result);
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -659,7 +663,7 @@ Moira::execAddqEa(u16 opcode)
 
     // POM68K: low word first on the 68000 (see execAddRgEa). MMU_RAWBUF:
     // the unmasked result is the 68030 write buffer (see execAddRgEa).
-    writeOp<C, M, S, (C == Core::C68000 ? REVERSE : 0) | MMU_RAWBUF>(dst, ea, result);
+    writeOp<C, M, S, (C == Core::C68000 && !MOIRA_MIMIC_MUSASHI ? REVERSE : 0) | MMU_RAWBUF>(dst, ea, result);
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -1658,7 +1662,7 @@ Moira::execBsr(u16 opcode)
 
     SYNC(2);
 
-    if (C == Core::C68000) {
+    if constexpr (C == Core::C68000) {
 
         // Check for address errors
         if (misaligned<C>(reg.sp)) {
@@ -1765,6 +1769,33 @@ Moira::execCallm(u16 opcode)
     AVAILABILITY(Core::C68020)
 
     int dst = ( _____________xxx(opcode) );
+
+    // [D] Musashi @ 1efd694 (Runner/Musashi of upstream Moira), run by its Runner:
+    //     CALLM does nothing but consume its operands. POM68K: under
+    //     MOIRA_MIMIC_MUSASHI this is upstream Moira's body, unchanged; the
+    //     module call below is what the fork executes otherwise (row 25).
+    if constexpr (MOIRA_MIMIC_MUSASHI) {
+
+        u32 ea, data;
+
+        readOp<C, M, Byte>(dst, &ea, &data);
+        readExt<C>();
+        prefetch<C, POLL>();
+
+        //           00  10  20        00  10  20        00  10  20
+        //           .b  .b  .b        .w  .w  .w        .l  .l  .l
+        CYCLES_AI   ( 0,  0,  0,        0,  0,  0,        0,  0, 64)
+        CYCLES_DI   ( 0,  0,  0,        0,  0,  0,        0,  0, 65)
+        CYCLES_IX   ( 0,  0,  0,        0,  0,  0,        0,  0, 67)
+        CYCLES_AW   ( 0,  0,  0,        0,  0,  0,        0,  0, 64)
+        CYCLES_AL   ( 0,  0,  0,        0,  0,  0,        0,  0, 64)
+        CYCLES_DIPC ( 0,  0,  0,        0,  0,  0,        0,  0, 65)
+        CYCLES_IXPC ( 0,  0,  0,        0,  0,  0,        0,  0, 67)
+
+        FINALIZE
+        return;
+    }
+
     const u16 argWord = u16(readI<C, Word>());
     const u32 ea = computeEA<C, M, Long>(dst);
 
@@ -1775,11 +1806,35 @@ Moira::execCallm(u16 opcode)
     const u32 moduleData = read<C, AddrSpace::DATA, Long>(ea + 8);
     const u16 entryWord = u16(read<C, AddrSpace::DATA, Word>(entry));
 
+    // CALLM's charge by EA mode: 64/65/67, the figures upstream Moira has.
+    // [D] Musashi @ 1efd694 (Runner/Musashi of upstream Moira): their origin.
+    // [B] MC68020UM-1992 §8.2.16 lists 30 (2/0/6) for type $00 in the cache
+    //     case, plus the fetch of the immediate address: the figures above
+    //     are not the manual's.
+    // [F] The format-error exits below are charged the same count; the
+    //     manual gives no format-error timing for CALLM or RTM, and before
+    //     2026-11-20 these exits charged nothing: the instruction took zero
+    //     cycles. Settled by: a bus capture of CALLM with an invalid
+    //     descriptor.
+    // Gate: callm_rtm_test (formatErrorCycles).
+    auto charge = [&]() {
+        //           00  10  20        00  10  20        00  10  20
+        //           .b  .b  .b        .w  .w  .w        .l  .l  .l
+        CYCLES_AI   ( 0,  0,  0,        0,  0,  0,        0,  0, 64)
+        CYCLES_DI   ( 0,  0,  0,        0,  0,  0,        0,  0, 65)
+        CYCLES_IX   ( 0,  0,  0,        0,  0,  0,        0,  0, 67)
+        CYCLES_AW   ( 0,  0,  0,        0,  0,  0,        0,  0, 64)
+        CYCLES_AL   ( 0,  0,  0,        0,  0,  0,        0,  0, 64)
+        CYCLES_DIPC ( 0,  0,  0,        0,  0,  0,        0,  0, 65)
+        CYCLES_IXPC ( 0,  0,  0,        0,  0,  0,        0,  0, 67)
+    };
+
     const u8 opt = u8(control >> 29);
     const u8 type = u8(control >> 24) & 0x1f;
     if ((argWord & 0xff00) || (opt != 0 && opt != 4) || type > 1 ||
         (control & 0xffff) || (entryWord & 0x0fff)) {
         execException<C>(M68kException::FORMAT_ERROR);
+        charge();
         FINALIZE
         return;
     }
@@ -1807,6 +1862,7 @@ Moira::execCallm(u16 opcode)
             readModuleCpuSpace8(0x10004, accessStatus);
         if (!ok || accessStatus == 0 || accessStatus > 7) {
             execException<C>(M68kException::FORMAT_ERROR);
+            charge();
             FINALIZE
             return;
         }
@@ -1838,15 +1894,7 @@ Moira::execCallm(u16 opcode)
     reg.pc = entry + 2;
     fullPrefetch<C, POLL | FLOW>();
 
-    //           00  10  20        00  10  20        00  10  20
-    //           .b  .b  .b        .w  .w  .w        .l  .l  .l
-    CYCLES_AI   ( 0,  0,  0,        0,  0,  0,        0,  0, 64)
-    CYCLES_DI   ( 0,  0,  0,        0,  0,  0,        0,  0, 65)
-    CYCLES_IX   ( 0,  0,  0,        0,  0,  0,        0,  0, 67)
-    CYCLES_AW   ( 0,  0,  0,        0,  0,  0,        0,  0, 64)
-    CYCLES_AL   ( 0,  0,  0,        0,  0,  0,        0,  0, 64)
-    CYCLES_DIPC ( 0,  0,  0,        0,  0,  0,        0,  0, 65)
-    CYCLES_IXPC ( 0,  0,  0,        0,  0,  0,        0,  0, 67)
+    charge();
 
     FINALIZE
 }
@@ -1888,7 +1936,9 @@ Moira::execCas(u16 opcode)
         // the terminal write precedes Dc's update and is a final store.
         // POM68K: keep the normal write path, including /BERR and WB3.
         if constexpr (C == Core::C68020) {
-            if (cpuModel >= Model::M68EC040) [[unlikely]] writeM<C, M, S>(ea, data);
+            // [D] Musashi @ 1efd694 (Runner/Musashi of upstream Moira), run by its Runner:
+            //     no terminal write. POM68K: none under MOIRA_MIMIC_MUSASHI.
+            if (cpuModel >= Model::M68EC040 && !MOIRA_MIMIC_MUSASHI) [[unlikely]] writeM<C, M, S>(ea, data);
         }
         writeD(dc, CLEAR<S>(compare) | data);
 
@@ -2016,7 +2066,9 @@ Moira::execCas2(u16 opcode)
     // silicon capture. Settled by: a real 040 terminal-write /BERR trace.
     // POM68K: preserve the captured EA/data before compare registers change.
     if constexpr (C == Core::C68020) {
-        if (cpuModel >= Model::M68EC040) [[unlikely]] writeM<C, M, S>(ea2, data2);
+        // [D] Musashi @ 1efd694 (Runner/Musashi of upstream Moira), run by its Runner:
+        //     no terminal write. POM68K: none under MOIRA_MIMIC_MUSASHI.
+        if (cpuModel >= Model::M68EC040 && !MOIRA_MIMIC_MUSASHI) [[unlikely]] writeM<C, M, S>(ea2, data2);
     }
 
     if (MOIRA_MIMIC_MUSASHI) {
@@ -2087,7 +2139,7 @@ Moira::execChk(u16 opcode)
     } catch (const AddressError &) {
 
         // Rectify the stack frame
-        if (C == Core::C68000) {
+        if constexpr (C == Core::C68000) {
 
             throw AddressError(makeFrame<STD_AE_FRAME>(ea));
 
@@ -2190,6 +2242,11 @@ Moira::execChk(u16 opcode)
                 SYNC_68010(4);
                 break;
         }
+        // [D] Musashi @ 1efd694 (Runner/Musashi of upstream Moira), run by its Runner:
+        //     N is set from Dn before this trap, as upstream had it on every
+        //     model before the rulings above. POM68K: restored under
+        //     MOIRA_MIMIC_MUSASHI.
+        if (MOIRA_MIMIC_MUSASHI) reg.sr.n = NBIT<S>(dy);
         execException<C>(M68kException::CHK);
 
 
@@ -2486,7 +2543,7 @@ Moira::execCmp(u16 opcode)
     u32 ea, data;
     readOp<C, M, S, STD_AE_FRAME>(src, &ea, &data);
 
-    if (C == Core::C68000) {
+    if constexpr (C == Core::C68000) {
 
         cmp<C, S>(data, readD<S>(dst));
         prefetch<C, POLL>();
@@ -2634,7 +2691,7 @@ Moira::execCmpm(u16 opcode)
 
     u32 ea1, ea2, data1, data2;
 
-    if (C == Core::C68000) {
+    if constexpr (C == Core::C68000) {
 
         // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
         // POM68K: no AE_INC_PC — data faults stack getPC()-2 uniformly
@@ -3186,19 +3243,19 @@ Moira::execJsr(u16 opcode)
             // Check for address errors
             if (misaligned<C>(ea) && misaligned<C>(reg.sp)) {
 
-                if (M == Mode::AI) {
+                if constexpr (M == Mode::AI) {
 
                     queue.irc = (u16)read<C, AddrSpace::PROG, Word>(ea & ~1);
                     throw AddressError(makeFrame<AE_SET_IF|AE_SET_RW>(ea));
                 }
 
-                if (isAbsMode(M)) {
+                else if (isAbsMode(M)) {
 
                     auto frame = makeFrame<AE_SET_IF|AE_SET_RW>(ea);
                     frame.pc -= 4;
                     throw AddressError(frame);
                 }
-                if (isDspMode(M)) {
+                else if (isDspMode(M)) {
 
                     throw AddressError(makeFrame<AE_DEC_PC|AE_SET_IF|AE_SET_RW>(ea));
 
@@ -3272,7 +3329,14 @@ Moira::execJsr(u16 opcode)
                     break;
                 }
             }
-            queue.irc = (u16)read<C, AddrSpace::PROG, Word>(ea);
+            // POM68K: upstream 426e4a3 reloads through fullPrefetch, which
+            // flushes the 68020 i-cache latch and fetches the target through
+            // the cache; the fork keeps its explicit reload (fullPrefetch
+            // would also open the JIT fetch window, which this read has
+            // never used) and does those two things here. Without the cache
+            // both compile to the read it always was.
+            if constexpr (MOIRA_EMULATE_ICACHE) flushInstructionLatch();
+            queue.irc = readInstr<C>(ea);
             prefetch<C>();
             break;
     }
@@ -3768,7 +3832,11 @@ Moira::execMove4(u16 opcode)
             mmuLastWritePc = reg.pc;
             mmu040LastWrite = true;             // POM68K Q3 (040 frames)
             mmu040LastWritePc = reg.pc;
-            writeM<C, Mode::PD, S>(ea, data);
+            // [D] Musashi @ 1efd694 (Runner/Musashi of upstream Moira), run by its Runner:
+            //     low word first, as the path below does on every model.
+            //     POM68K: asked for under MOIRA_MIMIC_MUSASHI; the bus
+            //     layers ignore it when they translate.
+            writeM<C, Mode::PD, S, MOIRA_MIMIC_MUSASHI ? REVERSE : 0>(ea, data);
             mmu040LastWrite = false;
 
             //           00  10  20        00  10  20        00  10  20
@@ -4503,9 +4571,13 @@ Moira::execMovemRgEa(u16 opcode)
             // (M68000PRM-1992 MOVEM; WinUAE stores initial - S regardless of
             // the register's position in the list) — not the running EA
             // that upstream's per-iteration writeA produced.
+            // [D] Musashi @ 1efd694 (Runner/Musashi of upstream Moira), run by its Runner:
+            //     the initial value is stored, low word of a long first.
+            //     POM68K: so it is under MOIRA_MIMIC_MUSASHI on the 68030
+            //     and 68040 paths below, as the plain 68020 path already did.
             if (mmu030) {
 
-                u32 value = (i == dst + 8) ? U32_SUB(initial, S) : reg.r[i];
+                u32 value = (i == dst + 8 && !MOIRA_MIMIC_MUSASHI) ? U32_SUB(initial, S) : reg.r[i];
                 mmuDataBuffer = value;
                 if (cnt == total - 1) {         // [D] @ Hatari e77819f7: last write (gencpu)
                     writeA(dst, ea);
@@ -4513,15 +4585,15 @@ Moira::execMovemRgEa(u16 opcode)
                     mmuState[1] &= u16(~0x4000);
                     mmuLastWritePc = reg.pc;
                 }
-                writeM<C, M, S>(ea, value);
+                writeM<C, M, S, MOIRA_MIMIC_MUSASHI ? REVERSE : 0>(ea, value);
 
             } else if (m040) {
 
                 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
                 // POM68K Q3: no mid-loop An update; base-in-list stores
                 // initial - S (WinUAE `areg - predec`, An untouched)
-                u32 value = (i == dst + 8) ? U32_SUB(initial, S) : reg.r[i];
-                writeM<C, M, S>(ea, value);
+                u32 value = (i == dst + 8 && !MOIRA_MIMIC_MUSASHI) ? U32_SUB(initial, S) : reg.r[i];
+                writeM<C, M, S, MOIRA_MIMIC_MUSASHI ? REVERSE : 0>(ea, value);
 
             } else {
 
@@ -4727,15 +4799,21 @@ Moira::execMoves(u16 opcode)
         updateAn<M, S>(dst);
 
         // Take care of some special cases
-        if (M == Mode::PI && src == (dst | 0x8)) {
+        if constexpr (M == Mode::PI) {
 
-            // MOVES An,(An)+
-            value += dst == 7 ? (S == Long ? 4 : 2) : S;
+            if (src == (dst | 0x8)) {
+
+                // MOVES An,(An)+
+                value += dst == 7 ? (S == Long ? 4 : 2) : S;
+            }
         }
-        if (M == Mode::PD && src == (dst | 0x8)) {
+        if constexpr (M == Mode::PD) {
 
-            // MOVES An,-(An)
-            value -= dst == 7 ? (S == Long ? 4 : 2) : S;
+            if (src == (dst | 0x8)) {
+
+                // MOVES An,-(An)
+                value -= dst == 7 ? (S == Long ? 4 : 2) : S;
+            }
         }
 
         if constexpr (M == Mode::AI) SYNC(6);
@@ -4813,7 +4891,7 @@ Moira::execMoves(u16 opcode)
             // Switch back to the old FC pin values
             fcSource = 0;
 
-            if (S == Long && (cpuModel == Model::M68020 || cpuModel == Model::M68EC020)) cp += 2;
+            if (S == Long && (cpuModel == Model::M68020 || cpuModel == Model::M68EC020)) budget.cp += 2;
         }
 
     } else {                    // Ea -> Rg
@@ -4884,7 +4962,7 @@ Moira::execMoves(u16 opcode)
         // Switch back to the old FC pin values
         fcSource = 0;
 
-        if (cpuModel == Model::M68020 || cpuModel == Model::M68EC020) cp += 2;
+        if (cpuModel == Model::M68020 || cpuModel == Model::M68EC020) budget.cp += 2;
     }
 
     prefetch<C, POLL>();
@@ -4931,9 +5009,9 @@ Moira::execMoveCcrEa(u16 opcode)
 
     int dst = _____________xxx(opcode);
 
-    if (M == Mode::AI) SYNC(2);
-    if (M == Mode::PI) SYNC(4);
-    if (M == Mode::PD) SYNC(2);
+    if constexpr (M == Mode::AI) SYNC(2);
+    if constexpr (M == Mode::PI) SYNC(4);
+    if constexpr (M == Mode::PD) SYNC(2);
 
     auto val = getCCR();
 
@@ -5051,7 +5129,7 @@ Moira::execMoveSrEa(u16 opcode)
 
         int dst = _____________xxx(opcode);
 
-    if (C == Core::C68000) {
+    if constexpr (C == Core::C68000) {
 
         u32 ea, data;
         readOp<C, M, S, STD_AE_FRAME>(dst, &ea, &data);
@@ -5061,9 +5139,9 @@ Moira::execMoveSrEa(u16 opcode)
 
     } else {
 
-        if (M == Mode::AI) SYNC(2);
-        if (M == Mode::PI) SYNC(4);
-        if (M == Mode::PD) SYNC(2);
+        if constexpr (M == Mode::AI) SYNC(2);
+        if constexpr (M == Mode::PI) SYNC(4);
+        if constexpr (M == Mode::PD) SYNC(2);
 
         auto val = getSR();
         u32 ea = computeEA<C, M, S>(dst);
@@ -5239,7 +5317,7 @@ Moira::execMulsMoira(u16 opcode)
 
     readOp<C, M, Word, STD_AE_FRAME>(src, &ea, &data);
 
-    if (C == Core::C68000) {
+    if constexpr (C == Core::C68000) {
 
         prefetch<C, POLL>();
         result = muls<C>(data, readD<Word>(dst));
@@ -5314,7 +5392,7 @@ Moira::execMuluMoira(u16 opcode)
 
     readOp<C, M, Word, STD_AE_FRAME>(src, &ea, &data);
 
-    if (C == Core::C68000) {
+    if constexpr (C == Core::C68000) {
 
         prefetch<C, POLL>();
         result = mulu<C>(data, readD<Word>(dst));
@@ -5539,7 +5617,7 @@ Moira::execDivsMoira(u16 opcode, bool *divByZero)
     try { readOp<C, M, Word>(src, &ea, &divisor); } catch (AddressError &exc) {
 
         // Rectify the stack frame
-        if (C == Core::C68000) {
+        if constexpr (C == Core::C68000) {
 
             exc.stackFrame = makeFrame<STD_AE_FRAME>(ea);
 
@@ -5717,7 +5795,7 @@ Moira::execDivuMoira(u16 opcode, bool *divByZero)
     try { readOp<C, M, Word>(src, &ea, &divisor); } catch (AddressError &exc) {
 
         // Rectify the stack frame
-        if (C == Core::C68000) {
+        if constexpr (C == Core::C68000) {
 
             exc.stackFrame = makeFrame<STD_AE_FRAME>(ea);
             throw exc;
@@ -6108,9 +6186,9 @@ Moira::execNbcdEa(u16 opcode)
     readOp<C, M, Byte>(reg, &ea, &data);
 
     if (looping<I>()) {
-        if (M == Mode::AI) noPrefetch<C>(4);
-        else if (M == Mode::PI) noPrefetch<C>(4);
-        else if (M == Mode::PD) noPrefetch<C>(4);
+        if constexpr (M == Mode::AI) noPrefetch<C>(4);
+        else if constexpr (M == Mode::PI) noPrefetch<C>(4);
+        else if constexpr (M == Mode::PD) noPrefetch<C>(4);
         else noPrefetch<C>(2);
     } else {
         prefetch<C, POLL>();
@@ -6331,7 +6409,7 @@ Moira::execPea(u16 opcode)
 
         U32_DEC(reg.sp, S);
 
-        if (C == Core::C68000) {
+        if constexpr (C == Core::C68000) {
 
             if (isAbsMode(M)) {
                 throw AddressError(makeFrame<AE_WRITE|AE_DATA>(reg.sp));
@@ -6357,7 +6435,7 @@ Moira::execPea(u16 opcode)
 
     if (isAbsMode(M)) {
 
-        if (C == Core::C68000) {
+        if constexpr (C == Core::C68000) {
 
             push <C, Long> (ea);
             prefetch<C, POLL>();
@@ -6376,7 +6454,7 @@ Moira::execPea(u16 opcode)
 
     } else if (isIdxMode(M)) {
 
-        if (C == Core::C68000) {
+        if constexpr (C == Core::C68000) {
 
             POLL_IPL;
             prefetch<C>();
@@ -7046,6 +7124,19 @@ Moira::execRtm(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // [D] Musashi @ 1efd694 (Runner/Musashi of upstream Moira), run by its Runner:
+    //     RTM does nothing. POM68K: under MOIRA_MIMIC_MUSASHI this is
+    //     upstream Moira's body, unchanged (row 25 otherwise).
+    if constexpr (MOIRA_MIMIC_MUSASHI) {
+
+        fullPrefetch<C, POLL>();
+
+        CYCLES_68020(19)
+
+        FINALIZE
+        return;
+    }
+
     const int moduleReg = opcode & 15;
     const u32 frame = reg.sp;
 
@@ -7058,9 +7149,16 @@ Moira::execRtm(u16 opcode)
 
     const u8 opt = u8(control >> 29);
     const u8 type = u8(control >> 24) & 0x1f;
+    // [B] MC68020UM-1992 §8.2.16 — RTM type $00, cache case: 19 (4/0/0).
+    // [F] RTM's format-error exits are charged that completion count; the
+    //     manual gives no format-error timing, and before 2026-11-20 they
+    //     charged nothing. Settled by: a bus capture of RTM with an invalid
+    //     frame.
+    // Gate: callm_rtm_test (formatErrorCycles).
     if ((opt != 0 && opt != 4) || type > 1 || (control & 0x0000ff00) ||
         (argControl & 0xffffff00)) {
         execException<C>(M68kException::FORMAT_ERROR);
+        CYCLES_68020(19)
         FINALIZE
         return;
     }
@@ -7074,6 +7172,7 @@ Moira::execRtm(u16 opcode)
             readModuleCpuSpace8(0x10004, accessStatus);
         if (!ok || accessStatus == 0 || accessStatus > 7) {
             execException<C>(M68kException::FORMAT_ERROR);
+            CYCLES_68020(19)
             FINALIZE
             return;
         }
@@ -7408,7 +7507,7 @@ Moira::execTasEa(u16 opcode)
 
     u32 ea, data;
 
-    if (C == Core::C68000) {
+    if constexpr (C == Core::C68000) {
 
         // POM68K (ported from NeoST ce1cc52): /RMC forbids a bus grant
         // between the read and the write. Release the lock as well if
@@ -7496,7 +7595,7 @@ Moira::execTrapv(u16 opcode)
 
     if (reg.sr.v) {
 
-        if (C == Core::C68000) {
+        if constexpr (C == Core::C68000) {
             (void)read<C, AddrSpace::PROG, Word>(reg.pc + 2);
         } else {
             (void)read<C, AddrSpace::PROG, Word>(reg.pc + 2);

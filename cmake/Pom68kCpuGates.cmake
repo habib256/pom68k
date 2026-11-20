@@ -7,6 +7,15 @@ add_executable(softfloat_primitives_test tests/softfloat_primitives_test.c)
 target_link_libraries(softfloat_primitives_test PRIVATE softfloat68k)
 add_test(NAME softfloat_primitives_test COMMAND softfloat_primitives_test)
 set_tests_properties(softfloat_primitives_test PROPERTIES LABELS cpu-vectors)
+# The library's exports all carry the private prefix of softfloat-prefix.h,
+# so it links next to another SoftFloat-2a (upstream Moira's runner, Musashi).
+find_program(POM68K_NM NAMES nm llvm-nm)
+if(POM68K_NM AND NOT MSVC)
+    add_test(NAME softfloat_symbols_test
+             COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/softfloat_symbols_test.py
+                     --nm ${POM68K_NM} --lib $<TARGET_FILE:softfloat68k>)
+    set_tests_properties(softfloat_symbols_test PROPERTIES LABELS cpu-vectors)
+endif()
 
 if(NOT EMSCRIPTEN)
     find_package(Threads REQUIRED)

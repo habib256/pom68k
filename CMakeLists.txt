@@ -309,7 +309,13 @@ set(MOIRA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/extern/moira/Moira)
 if(NOT EXISTS "${MOIRA_DIR}/Moira.cpp")
     message(FATAL_ERROR "Moira not found in ${MOIRA_DIR} — restore extern/moira from git.")
 endif()
-add_library(moira STATIC ${MOIRA_DIR}/Moira.cpp ${MOIRA_DIR}/MoiraDebugger.cpp)
+# One translation unit per core since the fork follows upstream's 20e6015:
+# the handler templates are instantiated in MoiraCore680x0.cpp, everything
+# non-templated in Moira.cpp. Every library built from Moira lists them all.
+set(MOIRA_SOURCES ${MOIRA_DIR}/Moira.cpp ${MOIRA_DIR}/MoiraCore68000.cpp
+    ${MOIRA_DIR}/MoiraCore68010.cpp ${MOIRA_DIR}/MoiraCore68020.cpp
+    ${MOIRA_DIR}/MoiraDebugger.cpp)
+add_library(moira STATIC ${MOIRA_SOURCES})
 # SYSTEM: our own TUs include Moira.h, and 756 of the 798 warnings the first
 # -Wall -Wextra pass produced came from its inlines. The fork is edited
 # deliberately, patch group by patch group (extern/moira/POM68K_VENDOR.md);

@@ -576,7 +576,7 @@ Moira::execAddressError(StackFrame frame, int delay)
     if (misaligned<C>(reg.sp)) throw DoubleFault();
 
     // Write stack frame
-    if (C == Core::C68000) {
+    if constexpr (C == Core::C68000) {
         writeStackFrameAEBE<C>(frame);
     } else {
         writeStackFrame1000<C>(frame, status, frame.pc, reg.pc0, 3, frame.addr);
@@ -613,7 +613,7 @@ Moira::execBusError(StackFrame frame, int delay)
     if (misaligned<C>(reg.sp)) throw DoubleFault();
 
     // Write stack frame
-    if (C == Core::C68000) {
+    if constexpr (C == Core::C68000) {
         writeStackFrameAEBE<C>(frame);
     } else {
         writeStackFrame1000<C>(frame, status, frame.pc, reg.pc0, 2, frame.addr);
@@ -627,6 +627,10 @@ Moira::execBusError(StackFrame frame, int delay)
     didExecute(M68kException::BUS_ERROR, 2);
 }
 
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 void
 Moira::execException(M68kException exc, int nr)
 {
@@ -637,6 +641,8 @@ Moira::execException(M68kException exc, int nr)
         default:            execException<Core::C68020>(exc, nr); break;
     }
 }
+
+#endif
 
 template <Core C> void
 Moira::execException(M68kException exc, int nr)
@@ -704,7 +710,7 @@ Moira::execException(M68kException exc, int nr)
             SYNC(4);
 
             // Write stack frame
-            if (C == Core::C68010 || C == Core::C68020) {
+            if constexpr (C == Core::C68010 || C == Core::C68020) {
                 writeStackFrame0000<C>(status, reg.pc0, vector);
             } else {
                 writeStackFrame0000<C>(status, reg.pc - 2, vector);
@@ -758,7 +764,10 @@ Moira::execException(M68kException exc, int nr)
             C == Core::C68020 ?
             writeStackFrame0010<C>(status, reg.pc, reg.pc0, vector) :
             writeStackFrame0000<C>(status,
-                exc == M68kException::DIVIDE_BY_ZERO ? reg.pc0 : reg.pc,
+                // [D] Musashi @ 1efd694 (Runner/Musashi of upstream Moira), run by its Runner:
+                //     a zero divide stacks the next PC. POM68K: so it does
+                //     under MOIRA_MIMIC_MUSASHI, which that Runner uses.
+                (exc == M68kException::DIVIDE_BY_ZERO && !MOIRA_MIMIC_MUSASHI) ? reg.pc0 : reg.pc,
                 vector);
 
             // Branch to exception handler
@@ -848,6 +857,10 @@ Moira::execException(M68kException exc, int nr)
     didExecute(exc, vector);
 }
 
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 void
 Moira::execInterrupt(u8 level)
 {
@@ -860,6 +873,8 @@ Moira::execInterrupt(u8 level)
             execInterrupt<Core::C68020>(level);
     }
 }
+
+#endif
 
 template <Core C> void
 Moira::execInterrupt(u8 level)
@@ -962,7 +977,28 @@ Moira::execInterrupt(u8 level)
                 const bool masterStack = reg.sr.m;
                 if (masterStack) {
 
-                    writeStackFrame0001<C>(status, reg.pc, queue.ird);
+                    // POM68K (2026-11-20): the frame above went on the
+                    // master stack; clear M first, so the throwaway lands
+                    // on the interrupt stack, and stack the SR with S set.
+                    // Until then both frames went on the master stack and
+                    // M stayed set (as upstream Moira had it before eb9529c).
+                    // [B] MC68020UM-1992 §6.1.9 — "the processor clears the
+                    //     M bit and creates a throwaway exception stack frame
+                    //     on top of the interrupt stack [...] exactly the
+                    //     same as that placed on the master stack except
+                    //     that the S bit is set [...] The resulting status
+                    //     register [...] has the S bit set and the M bit
+                    //     cleared."
+                    // [B] MC68030UM-1989 §8.1.9 — the same text.
+                    // [D] WinUAE @ Hatari e77819f7 — newcpu.c
+                    //     Exception_normal and Exception_mmu030
+                    //     (`regs.m && interrupt`): the same, below the 68060.
+                    // [F] The 68040 takes this path on the two manuals
+                    //     above; the interrupt section of its own manual
+                    //     was not re-read. Settled by: that section.
+                    // Gate: moira_rules_test (masterStackInterrupt).
+                    setMasterMode(false);
+                    writeStackFrame0001<C>(status | 0x2000, reg.pc, queue.ird);
                 }
                 // POM68K: the interrupt sequence is billed like the other
                 // exceptions of this core (TRAP #n: CYCLES_68020(20)) —

@@ -192,16 +192,12 @@ diff -ruN <neost>/extern/moira/Moira extern/moira/Moira    # this fork vs NeoST
 
 The sparse checkout leaves out upstream's `Cputester/` (~713 MB).
 `tools/moira_release.py --upstream moira-upstream` writes the first diff
-into a release as `patches/moira-vs-upstream.patch`, after checking that the
-checkout is at the pin.
+into a release as `patches/moira-vs-upstream.patch`, a `git am` commit on
+the base named below.
 
-Re-checked on 2026-11-10: the pin is still reachable from upstream `master`
-(`ce28239`, eleven commits later). Their status in this fork:
-
-| Upstream | Change | Here |
-|---|---|---|
-| `f90fc50` | DIVU/DIVS prefetch timing | ported through NeoST (`POM68K_VENDOR.md` row 40) |
-| `426e4a3` | DoubleFault rethrow; 68020 cycle budget; `didLogInstruction` | the rethrow defect was already fixed by NeoST's guarded `processException`; the rest is not taken |
-| `f7844ac` | 68030 CACR mask $3313 | taken (row 86, `moira_rules_test`) |
-| `a4c273b` | 68020 instruction cache (vAmiga) | not taken: it changes 68020 cycle counts the Mac II boot gates pin |
-| `20e6015`, `eb9529c`, `4146111`, `e05882a`, `832052a`, `9ca9ca0` | footprint, `isize` in `Guards`, MSVC `constexpr`, `version()`/`build()`, cleanups | not taken |
+Since 2026-11-20 this fork is based on upstream `master` at
+`ce28239b0507ebfe1bf2ad2b9c9252dc2f2cc031` (2026-09-23), eleven commits after
+that origin: each was taken in turn, and `POM68K_VENDOR.md` § *Rebase onto
+upstream ce28239* has the table. The first diff above is therefore taken
+against `ce28239`; `1efd694` remains the commit NeoST and the fork's history
+start from.

@@ -1576,7 +1576,7 @@ forms still replay. § 8 lists the admitted transactions and their refusals.
 > 030 branch (data-space fc, write-protect and owed-M-bit refusals,
 > `MoiraExecMMU_cpp.h:2413-2488`) and `pomJitReadData`/`pomJitWriteData`
 > reach `mmuRead`/`mmuWrite` on an 030 instead of `mmu040Read`/`Write`
-> (`MoiraExecMMU_cpp.h:2580-2602`, `MoiraExecMMU_cpp.h:2528-2550`). `jit_lockstep_030_test` gives the family the
+> (`MoiraExecMMU_cpp.h:2728-2750`, `MoiraExecMMU_cpp.h:2528-2550`). `jit_lockstep_030_test` gives the family the
 > differential coverage it lacked. The emitters' side of the 030 contract
 > is lockstep-proved since 2026-08-18 — generated 030 code is reachable by
 > an explicit `POM68K_JIT_BACKEND=x64|a64`, no unsafe override — and since

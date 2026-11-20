@@ -35,7 +35,11 @@ add_subdirectory(extern/softfloat)
 # ─── Moira ─────────────────────────────────────────────────────────────
 set(MOIRA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/extern/moira/Moira)
 function(moira_pom68k_core target enable_jit)
-    add_library(${target} STATIC ${MOIRA_DIR}/Moira.cpp ${MOIRA_DIR}/MoiraDebugger.cpp)
+    # One translation unit per core (upstream 20e6015): the handler templates
+    # are instantiated in MoiraCore680x0.cpp, the rest in Moira.cpp.
+    add_library(${target} STATIC ${MOIRA_DIR}/Moira.cpp ${MOIRA_DIR}/MoiraCore68000.cpp
+        ${MOIRA_DIR}/MoiraCore68010.cpp ${MOIRA_DIR}/MoiraCore68020.cpp
+        ${MOIRA_DIR}/MoiraDebugger.cpp)
     target_compile_definitions(${target} PUBLIC MOIRA_ENABLE_JIT=${enable_jit})
     target_include_directories(${target} SYSTEM PUBLIC ${MOIRA_DIR})
     target_link_libraries(${target} PUBLIC softfloat68k)
@@ -116,6 +120,15 @@ add_executable(softfloat_primitives_test ${T}/softfloat_primitives_test.c)
 target_link_libraries(softfloat_primitives_test PRIVATE softfloat68k)
 add_test(NAME softfloat_primitives_test COMMAND softfloat_primitives_test)
 set_tests_properties(softfloat_primitives_test PROPERTIES LABELS unit)
+# The library's exports all carry the private prefix of softfloat-prefix.h,
+# so it links next to another SoftFloat-2a (Musashi's, in upstream's Runner).
+find_program(MOIRA_POM68K_NM NAMES nm llvm-nm)
+if(MOIRA_POM68K_NM AND Python3_FOUND AND NOT MSVC)
+    add_test(NAME softfloat_symbols_test
+        COMMAND ${Python3_EXECUTABLE} ${T}/softfloat_symbols_test.py
+            --nm ${MOIRA_POM68K_NM} --lib $<TARGET_FILE:softfloat68k>)
+    set_tests_properties(softfloat_symbols_test PROPERTIES LABELS unit)
+endif()
 
 foreach(gate IN ITEMS
     cache040_test       # 040 cache data, policy, physical management, snooping
@@ -126,6 +139,7 @@ foreach(gate IN ITEMS
     berr020_test        # 020/EC020 software-completed format-$B cycles
     berr030_test        # 030 bus errors through the MMU bus layer
     moira_rules_test    # hardware-rule cells outside random corpora
+    fault_transparency_test # each bus cycle faulted, RTE, same final state
     moira_state_test    # instruction-boundary PMMU/FPU continuations
     mmu040_atc_test)    # multi-instruction I/D and FC2 translations
     add_executable(${gate} ${T}/${gate}.cpp)
@@ -144,11 +158,12 @@ foreach(proof IN ITEMS berr020_test berr030_test fpu_sanity fpu040_test
     set_tests_properties(moira_interp_${proof} PROPERTIES LABELS "unit;interp-only")
 endforeach()
 target_link_libraries(moira_interp_fpu_context_test PRIVATE ${MOIRA_POM68K_THREADS})
-# The same sources under upstream Moira's three differing settings, the ones
+# The same sources under upstream Moira's differing settings (its 68020 i-cache on), the ones
 # its own Runner (against Musashi) uses; the cell runs under both configurations.
 moira_pom68k_core(moira_upstream_config 0)
 target_compile_definitions(moira_upstream_config PUBLIC
-    MOIRA_PRECISE_TIMING=false MOIRA_EMULATE_ADDRESS_ERROR=false MOIRA_MIMIC_MUSASHI=true)
+    MOIRA_PRECISE_TIMING=false MOIRA_EMULATE_ADDRESS_ERROR=false MOIRA_MIMIC_MUSASHI=true
+    MOIRA_EMULATE_ICACHE=true)
 foreach(cfg IN ITEMS upstream pom68k)
     add_executable(moira_${cfg}_config_test ${T}/moira_upstream_config_test.cpp)
     add_test(NAME moira_${cfg}_config_test COMMAND moira_${cfg}_config_test)
@@ -156,6 +171,11 @@ foreach(cfg IN ITEMS upstream pom68k)
 endforeach()
 target_link_libraries(moira_upstream_config_test PRIVATE moira_upstream_config)
 target_link_libraries(moira_pom68k_config_test PRIVATE moira)
+# Upstream's 68020 i-cache, off in POM68K's configuration: exercised here only.
+add_executable(icache020_test ${T}/icache020_test.cpp)
+target_link_libraries(icache020_test PRIVATE moira_upstream_config)
+add_test(NAME icache020_test COMMAND icache020_test)
+set_tests_properties(icache020_test PROPERTIES LABELS unit)
 add_executable(moira_interp_full ${T}/moira_interp_test.cpp)
 target_link_libraries(moira_interp_full PRIVATE moira)
 add_executable(moira_interp_bare ${T}/moira_interp_test.cpp)
@@ -344,3 +364,16 @@ add_executable(jit_backend_parity_test ${T}/jit_backend_parity_test.cpp ${_parit
 target_link_libraries(jit_backend_parity_test PRIVATE moira_jit)
 add_test(NAME jit_backend_parity_test COMMAND jit_backend_parity_test)
 set_tests_properties(jit_backend_parity_test PROPERTIES LABELS jit)
+
+# ─── Program fuzzer: interpreter against translator ────────────────────
+# Random multi-instruction programs on a flat bus, every model 68000-68040,
+# blocks, links, self-modifying stores, timed interrupts, MMU faults and
+# save states (tests/jit_program_fuzz.cpp). The registrations are POM68K's
+# own file, included unchanged; `pom68k_core` is the parent's library name
+# for what this release calls `moira_jit`. The fuzzer names a crash site
+# through sigaction, so it is a POSIX host gate.
+if(NOT WIN32 AND NOT EMSCRIPTEN)
+    add_library(pom68k_core ALIAS moira_jit)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Pom68kJitFuzzGates.cmake)
+    target_include_directories(jit_program_fuzz PRIVATE ${T})
+endif()

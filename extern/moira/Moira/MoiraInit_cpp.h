@@ -7,18 +7,14 @@
 
 // Assembles an instruction handler name
 #define EXEC_HANDLER(func,C,I,M,S) &Moira::exec##func<C,I,M,S>
-#define DASM_HANDLER(func,I,M,S) &Moira::dasm##func<I,M,S>
+#define DASM_HANDLER(func,I,M,S) &Moira::dasm##func
 
 // Registers an instruction handler
-#if MOIRA_ENABLE_DASM == true
+#if MOIRA_ENABLE_DASM
 #define REGISTER_DASM(id,name,I,M,S) if (regDasm) dasm[id] = DASM_HANDLER(name,I,M,S);
+#define REGISTER_INFO(id,name,I,M,S) if (regDasm) info[id] = InstrInfo {I,M,S};
 #else
 #define REGISTER_DASM(id,name,I,M,S) { }
-#endif
-
-#if MOIRA_BUILD_INSTR_INFO_TABLE == true
-#define REGISTER_INFO(id,name,I,M,S) info[id] = InstrInfo {I,M,S};
-#else
 #define REGISTER_INFO(id,name,I,M,S) { }
 #endif
 
@@ -90,57 +86,57 @@ for (int i = 0; i < 8; i++) ________XXXXXXXX((op) | i << 9, I, M, S, f, func); }
 
 #define __________MMMXXX(op,I,m,S,f,func) { \
 for (int j = 0; j < 8; j++) { \
-if ((m) & 0b100000000000) func((op) | 0 << 3 | j, f, I,  (Mode)0, S); \
-if ((m) & 0b010000000000) func((op) | 1 << 3 | j, f, I,  (Mode)1, S); \
-if ((m) & 0b001000000000) func((op) | 2 << 3 | j, f, I,  (Mode)2, S); \
-if ((m) & 0b000100000000) func((op) | 3 << 3 | j, f, I,  (Mode)3, S); \
-if ((m) & 0b000010000000) func((op) | 4 << 3 | j, f, I,  (Mode)4, S); \
-if ((m) & 0b000001000000) func((op) | 5 << 3 | j, f, I,  (Mode)5, S); \
-if ((m) & 0b000000100000) func((op) | 6 << 3 | j, f, I,  (Mode)6, S); \
+if constexpr ((m) & 0b100000000000) func((op) | 0 << 3 | j, f, I,  (Mode)0, S); \
+if constexpr ((m) & 0b010000000000) func((op) | 1 << 3 | j, f, I,  (Mode)1, S); \
+if constexpr ((m) & 0b001000000000) func((op) | 2 << 3 | j, f, I,  (Mode)2, S); \
+if constexpr ((m) & 0b000100000000) func((op) | 3 << 3 | j, f, I,  (Mode)3, S); \
+if constexpr ((m) & 0b000010000000) func((op) | 4 << 3 | j, f, I,  (Mode)4, S); \
+if constexpr ((m) & 0b000001000000) func((op) | 5 << 3 | j, f, I,  (Mode)5, S); \
+if constexpr ((m) & 0b000000100000) func((op) | 6 << 3 | j, f, I,  (Mode)6, S); \
 } \
-if ((m) & 0b000000010000) func((op) | 7 << 3 | 0, f, I,  (Mode)7, S); \
-if ((m) & 0b000000001000) func((op) | 7 << 3 | 1, f, I,  (Mode)8, S); \
-if ((m) & 0b000000000100) func((op) | 7 << 3 | 2, f, I,  (Mode)9, S); \
-if ((m) & 0b000000000010) func((op) | 7 << 3 | 3, f, I, (Mode)10, S); \
-if ((m) & 0b000000000001) func((op) | 7 << 3 | 4, f, I, (Mode)11, S); }
+if constexpr ((m) & 0b000000010000) func((op) | 7 << 3 | 0, f, I,  (Mode)7, S); \
+if constexpr ((m) & 0b000000001000) func((op) | 7 << 3 | 1, f, I,  (Mode)8, S); \
+if constexpr ((m) & 0b000000000100) func((op) | 7 << 3 | 2, f, I,  (Mode)9, S); \
+if constexpr ((m) & 0b000000000010) func((op) | 7 << 3 | 3, f, I, (Mode)10, S); \
+if constexpr ((m) & 0b000000000001) func((op) | 7 << 3 | 4, f, I, (Mode)11, S); }
 
 #define ____XXX___MMMXXX(op,I,m,S,f,func) { \
 for (int i = 0; i < 8; i++) __________MMMXXX((op) | i << 9, I, m, S, f, func) }
 
 #define ____XXX_SS___XXX(op,I,M,s,f,func) { \
-if ((s) & 0b100) ____XXX______XXX((op) | 2 << 6, I, M, Long, f, func); \
-if ((s) & 0b010) ____XXX______XXX((op) | 1 << 6, I, M, Word, f, func); \
-if ((s) & 0b001) ____XXX______XXX((op) | 0 << 6, I, M, Byte, f, func); }
+if constexpr ((s) & 0b100) ____XXX______XXX((op) | 2 << 6, I, M, Long, f, func); \
+if constexpr ((s) & 0b010) ____XXX______XXX((op) | 1 << 6, I, M, Word, f, func); \
+if constexpr ((s) & 0b001) ____XXX______XXX((op) | 0 << 6, I, M, Byte, f, func); }
 
 #define ________SSMMMXXX(op,I,m,s,f,func) { \
-if ((s) & 0b100) __________MMMXXX((op) | 2 << 6, I, m, Long, f, func); \
-if ((s) & 0b010) __________MMMXXX((op) | 1 << 6, I, m, Word, f, func); \
-if ((s) & 0b001) __________MMMXXX((op) | 0 << 6, I, m, Byte, f, func); }
+if constexpr ((s) & 0b100) __________MMMXXX((op) | 2 << 6, I, m, Long, f, func); \
+if constexpr ((s) & 0b010) __________MMMXXX((op) | 1 << 6, I, m, Word, f, func); \
+if constexpr ((s) & 0b001) __________MMMXXX((op) | 0 << 6, I, m, Byte, f, func); }
 
 #define ____XXX_SSMMMXXX(op,I,m,s,f,func) { \
-if ((s) & 0b100) ____XXX___MMMXXX((op) | 2 << 6, I, m, Long, f, func); \
-if ((s) & 0b010) ____XXX___MMMXXX((op) | 1 << 6, I, m, Word, f, func); \
-if ((s) & 0b001) ____XXX___MMMXXX((op) | 0 << 6, I, m, Byte, f, func); }
+if constexpr ((s) & 0b100) ____XXX___MMMXXX((op) | 2 << 6, I, m, Long, f, func); \
+if constexpr ((s) & 0b010) ____XXX___MMMXXX((op) | 1 << 6, I, m, Word, f, func); \
+if constexpr ((s) & 0b001) ____XXX___MMMXXX((op) | 0 << 6, I, m, Byte, f, func); }
 
 #define ____XXXS__MMMXXX(op,I,m,s,f,func) { \
-if ((s) & 0b100) ____XXX___MMMXXX((op) | 1 << 8, I, m, Long, f, func); \
-if ((s) & 0b010) ____XXX___MMMXXX((op) | 0 << 8, I, m, Word, f, func); \
-if ((s) & 0b001) assert(false); }
+if constexpr ((s) & 0b100) ____XXX___MMMXXX((op) | 1 << 8, I, m, Long, f, func); \
+if constexpr ((s) & 0b010) ____XXX___MMMXXX((op) | 0 << 8, I, m, Word, f, func); \
+if constexpr ((s) & 0b001) assert(false); }
 
 #define _____SS___MMMXXX(op,I,m,s,f,func) { \
-if ((s) & 0b100) __________MMMXXX((op) | 2 << 9, I, m, Long, f, func); \
-if ((s) & 0b010) __________MMMXXX((op) | 3 << 9, I, m, Word, f, func); \
-if ((s) & 0b001) __________MMMXXX((op) | 1 << 9, I, m, Byte, f, func); }
+if constexpr ((s) & 0b100) __________MMMXXX((op) | 2 << 9, I, m, Long, f, func); \
+if constexpr ((s) & 0b010) __________MMMXXX((op) | 3 << 9, I, m, Word, f, func); \
+if constexpr ((s) & 0b001) __________MMMXXX((op) | 1 << 9, I, m, Byte, f, func); }
 
 #define __SS______MMMXXX(op,I,m,s,f,func) { \
-if ((s) & 0b100) __________MMMXXX((op) | 2 << 12, I, m, Long, f, func); \
-if ((s) & 0b010) __________MMMXXX((op) | 3 << 12, I, m, Word, f, func); \
-if ((s) & 0b001) __________MMMXXX((op) | 1 << 12, I, m, Byte, f, func); }
+if constexpr ((s) & 0b100) __________MMMXXX((op) | 2 << 12, I, m, Long, f, func); \
+if constexpr ((s) & 0b010) __________MMMXXX((op) | 3 << 12, I, m, Word, f, func); \
+if constexpr ((s) & 0b001) __________MMMXXX((op) | 1 << 12, I, m, Byte, f, func); }
 
 #define __SSXXX___MMMXXX(op,I,m,s,f,func) { \
-if ((s) & 0b100) ____XXX___MMMXXX((op) | 2 << 12, I, m, Long, f, func); \
-if ((s) & 0b010) ____XXX___MMMXXX((op) | 3 << 12, I, m, Word, f, func); \
-if ((s) & 0b001) ____XXX___MMMXXX((op) | 1 << 12, I, m, Byte, f, func); }
+if constexpr ((s) & 0b100) ____XXX___MMMXXX((op) | 2 << 12, I, m, Long, f, func); \
+if constexpr ((s) & 0b010) ____XXX___MMMXXX((op) | 3 << 12, I, m, Word, f, func); \
+if constexpr ((s) & 0b001) ____XXX___MMMXXX((op) | 1 << 12, I, m, Byte, f, func); }
 
 
 static constexpr u16
@@ -152,6 +148,10 @@ parse(const char *s, int sum = 0)
     *s == '0' ? parse(s + 1, sum << 1) :
     *s == '1' ? parse(s + 1, (sum << 1) + 1) : (u16)sum;
 }
+
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
 
 void
 Moira::createJumpTable(Model cpuModel, Model dasmModel)
@@ -185,10 +185,14 @@ Moira::createJumpTable(Model cpuModel, Model dasmModel)
     }
 }
 
+#endif
+
+// Registers the instruction handlers for a subset of the instruction set
+// (prologue ... AND)
 template <Core C> void
-Moira::createJumpTable(Model model, bool regDasm)
+Moira::createJumpTable1([[maybe_unused]] Model model, bool regDasm)
 {
-    u16 opcode;
+    [[maybe_unused]] u16 opcode;
 
     //
     // Start with clean tables
@@ -317,7 +321,13 @@ Moira::createJumpTable(Model model, bool regDasm)
     opcode = parse("1101 ---1 --00 1---");
     ____XXX_SS___XXX(opcode, Instr::ADDX, Mode::PD, Byte | Word | Long, AddxEa, CIMS)
     ____XXX_SS___XXX(opcode, Instr::ADDX, Mode::PD, Byte | Word | Long, AddxEa, CIMSloop)
-
+}
+// Registers the instruction handlers for a subset of the instruction set
+// (AND ... BKPT (68010+))
+template <Core C> void
+Moira::createJumpTable2([[maybe_unused]] Model model, bool regDasm)
+{
+    [[maybe_unused]] u16 opcode;
 
     // AND
     //
@@ -569,7 +579,13 @@ Moira::createJumpTable(Model model, bool regDasm)
     opcode = parse("0000 1000 10-- ----");
     __________MMMXXX(opcode, Instr::BCLR, 0b100000000000, Byte, BitImDy, CIMS)
     __________MMMXXX(opcode, Instr::BCLR, 0b001111111000, Byte, BitImEa, CIMS)
-
+}
+// Registers the instruction handlers for a subset of the instruction set
+// (BKPT (68010+) ... CLR)
+template <Core C> void
+Moira::createJumpTable3(Model model, bool regDasm)
+{
+    [[maybe_unused]] u16 opcode;
 
     // BKPT (68010+)
     //
@@ -741,7 +757,13 @@ Moira::createJumpTable(Model model, bool regDasm)
         opcode = parse("0000 0100 11-- ----");
         __________MMMXXX(opcode, Instr::CHK2, 0b001001111110, Long, ChkCmp2, CIMS)
     }
-
+}
+// Registers the instruction handlers for a subset of the instruction set
+// (CLR ... EOR)
+template <Core C> void
+Moira::createJumpTable4([[maybe_unused]] Model model, bool regDasm)
+{
+    [[maybe_unused]] u16 opcode;
 
     // CLR
     //
@@ -885,7 +907,13 @@ Moira::createJumpTable(Model model, bool regDasm)
         opcode = parse("0100 1100 01-- ----");
         __________MMMXXX(opcode, Instr::DIVL, 0b101111111111, Long, Divl, CIMS)
     }
-
+}
+// Registers the instruction handlers for a subset of the instruction set
+// (EOR ... LINK)
+template <Core C> void
+Moira::createJumpTable5([[maybe_unused]] Model model, bool regDasm)
+{
+    [[maybe_unused]] u16 opcode;
 
     // EOR
     //
@@ -974,7 +1002,13 @@ Moira::createJumpTable(Model model, bool regDasm)
         opcode = parse("0100 1001 --00 0---");
         _____________XXX(opcode | 3 << 6, Instr::EXTB, Mode::DN, Long, Extb, CIMS)
     }
-
+}
+// Registers the instruction handlers for a subset of the instruction set
+// (LINK ... MOVEC)
+template <Core C> void
+Moira::createJumpTable6([[maybe_unused]] Model model, bool regDasm)
+{
+    [[maybe_unused]] u16 opcode;
 
     // LINK
     //
@@ -1144,7 +1178,13 @@ Moira::createJumpTable(Model model, bool regDasm)
 
     ____XXX___MMMXXX(opcode | 0 << 12, Instr::MOVEA, 0b111111111111, Long, Movea, CIMS)
     ____XXX___MMMXXX(opcode | 1 << 12, Instr::MOVEA, 0b111111111111, Word, Movea, CIMS)
-
+}
+// Registers the instruction handlers for a subset of the instruction set
+// (MOVEC ... MOVE from SR)
+template <Core C> void
+Moira::createJumpTable7([[maybe_unused]] Model model, bool regDasm)
+{
+    [[maybe_unused]] u16 opcode;
 
     // MOVEC
     //
@@ -1259,7 +1299,13 @@ Moira::createJumpTable(Model model, bool regDasm)
 
     opcode = parse("0100 0100 11-- ----");
     __________MMMXXX(opcode, Instr::MOVETCCR, 0b101111111111, Word, MoveToCcr, CIMS)
-
+}
+// Registers the instruction handlers for a subset of the instruction set
+// (MOVE from SR ... OR)
+template <Core C> void
+Moira::createJumpTable8([[maybe_unused]] Model model, bool regDasm)
+{
+    [[maybe_unused]] u16 opcode;
 
     // MOVE from SR
     //
@@ -1374,7 +1420,13 @@ Moira::createJumpTable(Model model, bool regDasm)
 
     opcode = parse("0100 1110 0111 0001");
     ________________(opcode, Instr::NOP, Mode::IP, Long, Nop, CIMS)
-
+}
+// Registers the instruction handlers for a subset of the instruction set
+// (OR ... RESET)
+template <Core C> void
+Moira::createJumpTable9([[maybe_unused]] Model model, bool regDasm)
+{
+    [[maybe_unused]] u16 opcode;
 
     // OR
     //
@@ -1520,7 +1572,13 @@ Moira::createJumpTable(Model model, bool regDasm)
 
     opcode = parse("0100 1000 01-- ----");
     __________MMMXXX(opcode, Instr::PEA, 0b001001111110, Long, Pea, CIMS)
-
+}
+// Registers the instruction handlers for a subset of the instruction set
+// (RESET ... Scc)
+template <Core C> void
+Moira::createJumpTable10(Model model, bool regDasm)
+{
+    [[maybe_unused]] u16 opcode;
 
     // RESET
     //
@@ -1599,7 +1657,13 @@ Moira::createJumpTable(Model model, bool regDasm)
     opcode = parse("1000 ---1 0000 1---");
     ____XXX______XXX(opcode, Instr::SBCD, Mode::PD, Byte, AbcdEa, CIMS)
     ____XXX______XXX(opcode, Instr::SBCD, Mode::PD, Byte, AbcdEa, CIMSloop)
-
+}
+// Registers the instruction handlers for a subset of the instruction set
+// (Scc ... TAS)
+template <Core C> void
+Moira::createJumpTable11([[maybe_unused]] Model model, bool regDasm)
+{
+    [[maybe_unused]] u16 opcode;
 
     // Scc
     //
@@ -1752,7 +1816,13 @@ Moira::createJumpTable(Model model, bool regDasm)
 
     opcode = parse("0100 1000 0100 0---");
     _____________XXX(opcode, Instr::SWAP, Mode::DN, Word, Swap, CIMS)
-
+}
+// Registers the instruction handlers for a subset of the instruction set
+// (TAS ... end)
+template <Core C> void
+Moira::createJumpTable12(Model model, bool regDasm)
+{
+    [[maybe_unused]] u16 opcode;
 
     // TAS
     //
@@ -2042,11 +2112,17 @@ Moira::createJumpTable(Model model, bool regDasm)
         // does the same). With no FPU on a 68040 they take the format $4
         // exception like any FBcc; with an FPU the handler evaluates the
         // low five bits (see execFBcc).
-        opcode = parse("1111 0010 101- ----");
-        ___________XXXXX(opcode, Instr::FBcc, Mode::IP, Word, FBcc, CIMS)
+        // [D] Musashi @ 1efd694 (Runner/Musashi of upstream Moira), run by its Runner:
+        //     with binutils as the disassembly reference, these 64 words
+        //     are data. POM68K: not registered under MOIRA_MIMIC_MUSASHI.
+        if (!MOIRA_MIMIC_MUSASHI) {
 
-        opcode = parse("1111 0010 111- ----");
-        ___________XXXXX(opcode, Instr::FBcc, Mode::IP, Long, FBcc, CIMS)
+            opcode = parse("1111 0010 101- ----");
+            ___________XXXXX(opcode, Instr::FBcc, Mode::IP, Word, FBcc, CIMS)
+
+            opcode = parse("1111 0010 111- ----");
+            ___________XXXXX(opcode, Instr::FBcc, Mode::IP, Long, FBcc, CIMS)
+        }
 
         opcode = parse("1111 0010 00-- ----");
         __________XXXXXX(opcode, Instr::cpGEN, Mode::IP, Unsized, FGen, CIMS)
@@ -2071,4 +2147,22 @@ Moira::createJumpTable(Model model, bool regDasm)
     }
 
     }
+}
+
+// Registers all instruction handlers
+template <Core C> void
+Moira::createJumpTable(Model model, bool regDasm)
+{
+    createJumpTable1<C>(model, regDasm);
+    createJumpTable2<C>(model, regDasm);
+    createJumpTable3<C>(model, regDasm);
+    createJumpTable4<C>(model, regDasm);
+    createJumpTable5<C>(model, regDasm);
+    createJumpTable6<C>(model, regDasm);
+    createJumpTable7<C>(model, regDasm);
+    createJumpTable8<C>(model, regDasm);
+    createJumpTable9<C>(model, regDasm);
+    createJumpTable10<C>(model, regDasm);
+    createJumpTable11<C>(model, regDasm);
+    createJumpTable12<C>(model, regDasm);
 }

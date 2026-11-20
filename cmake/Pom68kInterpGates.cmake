@@ -1,5 +1,5 @@
 # Same Moira sources, separate ABI: no acceleration storage or hot-path probes.
-add_library(moira_interp STATIC ${MOIRA_DIR}/Moira.cpp ${MOIRA_DIR}/MoiraDebugger.cpp)
+add_library(moira_interp STATIC ${MOIRA_SOURCES})
 target_compile_definitions(moira_interp PUBLIC MOIRA_ENABLE_JIT=0)
 target_include_directories(moira_interp SYSTEM PUBLIC ${MOIRA_DIR})
 target_link_libraries(moira_interp PUBLIC softfloat68k)
@@ -30,11 +30,12 @@ add_test(NAME moira_interp_test COMMAND ${CMAKE_COMMAND}
     "-DEMULATOR=${CMAKE_CROSSCOMPILING_EMULATOR}"
     -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/moira_interp_compare.cmake)
 set_tests_properties(moira_interp_test PROPERTIES LABELS interp-only TIMEOUT 60)
-# The same sources under upstream Moira's three differing settings, the ones
+# The same sources under upstream Moira's differing settings (its 68020 i-cache on), the ones
 # its own Runner (against Musashi) uses; the cell runs under both configurations.
-add_library(moira_upstream_config STATIC ${MOIRA_DIR}/Moira.cpp ${MOIRA_DIR}/MoiraDebugger.cpp)
+add_library(moira_upstream_config STATIC ${MOIRA_SOURCES})
 target_compile_definitions(moira_upstream_config PUBLIC MOIRA_ENABLE_JIT=0
-    MOIRA_PRECISE_TIMING=false MOIRA_EMULATE_ADDRESS_ERROR=false MOIRA_MIMIC_MUSASHI=true)
+    MOIRA_PRECISE_TIMING=false MOIRA_EMULATE_ADDRESS_ERROR=false MOIRA_MIMIC_MUSASHI=true
+    MOIRA_EMULATE_ICACHE=true)
 target_include_directories(moira_upstream_config SYSTEM PUBLIC ${MOIRA_DIR})
 target_link_libraries(moira_upstream_config PUBLIC softfloat68k)
 if(NOT MSVC)
@@ -51,3 +52,9 @@ endforeach()
 target_link_libraries(moira_upstream_config_test PRIVATE moira_upstream_config)
 target_link_libraries(moira_pom68k_config_test PRIVATE moira)
 set_tests_properties(moira_upstream_config_test PROPERTIES LABELS interp-only)
+# Upstream's 68020 i-cache (MOIRA_EMULATE_ICACHE), off in POM68K's own
+# configuration: this is the only gate that executes it.
+add_executable(icache020_test tests/icache020_test.cpp)
+target_link_libraries(icache020_test PRIVATE moira_upstream_config)
+add_test(NAME icache020_test COMMAND icache020_test)
+set_tests_properties(icache020_test PROPERTIES LABELS interp-only)

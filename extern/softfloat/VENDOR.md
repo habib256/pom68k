@@ -57,6 +57,14 @@ lib target `softfloat68k`).
    subtraction. `softfloat_primitives_test` holds 1,040 wide shifts and five
    exact integer conversions, including the signed minimum. The original
    oracle copy remains unchanged.
+6. `softfloat-prefix.h` (new), included first by `softfloat.h` — every one
+   of the library's 80 external symbols is renamed with the prefix
+   `pom68k_sf_` (`floatx80_add` → `pom68k_sf_floatx80_add`). SoftFloat-2a's
+   names are the same in every emulator that vendors it; upstream Moira's
+   test runner links Musashi, which bundles its own copy, and the link
+   failed on 20 duplicate definitions. No line of arithmetic changes.
+   `softfloat_symbols_test` fails when the library exports a symbol the
+   header does not rename.
 
 ## Trim list
 

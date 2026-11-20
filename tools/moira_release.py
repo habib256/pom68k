@@ -6,19 +6,22 @@ core (`extern/moira/Moira`), the 80-bit softfloat behind its FPU, the JIT
 (`src/jit`), six header-only host adapters the JIT gates use, and every gate
 that links no Macintosh. Each exported file keeps its POM68K path and bytes,
 so `MANIFEST.sha256` can be checked against any POM68K checkout of the same
-commit and every path the documents cite still resolves. Only four files are
-release-specific: the root `CMakeLists.txt`, `README.md` and `LICENSES.md`
-(templates under `tools/moira_release/`) and the generated `RELEASE.txt`.
+commit and every path the documents cite still resolves. Only five files are
+release-specific: the root `CMakeLists.txt`, `README.md`, `LICENSES.md` and
+`UPSTREAM_GUIDE.md` (templates under `tools/moira_release/`) and the generated
+`RELEASE.txt`.
 
     tools/moira_release.py --check              # closure of the worktree
     tools/moira_release.py --out DIR            # tarball of HEAD (clean)
     tools/moira_release.py --out DIR --upstream CLONE --verify
 
 `--check` is what `moira_release_test` runs: every listed path exists and is
-tracked, and every quoted `#include` of every exported source resolves inside
-the export — the property that makes the release build without POM68K.
-`--upstream` takes a checkout of github.com/dirkwhoffmann/Moira at the fork's
-recorded origin (UPSTREAM_PIN) and adds `patches/moira-vs-upstream.patch`.
+tracked, every quoted `#include` of every exported source resolves inside
+the export — the property that makes the release build without POM68K — and
+every exported gate source is named by the release's CMake files.
+`--upstream` takes a clone of github.com/dirkwhoffmann/Moira holding the fork's
+recorded base (UPSTREAM_PIN) and adds `patches/moira-vs-upstream.patch`, a
+`git am` mailbox that recreates the fork's Moira/ as one commit on that base.
 `--verify` configures, builds and runs the `unit` and `jit` labels of the
 extracted release in a scratch directory, and fails on any soft-skip there.
 """
@@ -39,10 +42,11 @@ sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATES = "tools/moira_release"
 
-# github.com/dirkwhoffmann/Moira commit the fork started from; recovered from
-# NeoST's submodule gitlink on 2026-08-28 (NeoST NEOST_VENDOR.md § Pin
-# d'origine) and recorded in extern/moira/NEOST_VENDOR.md.
-UPSTREAM_PIN = "1efd69467ca13b27b2fb40febd5cb31dbecdea5f"
+# github.com/dirkwhoffmann/Moira commit the fork is based on: upstream's master
+# of 2026-09-23, onto which the fork was rebased on 2026-11-20
+# (extern/moira/POM68K_VENDOR.md § Rebase onto upstream ce28239). The fork
+# started from 1efd6946 (NeoST's submodule gitlink, NEOST_VENDOR.md).
+UPSTREAM_PIN = "ce28239b0507ebfe1bf2ad2b9c9252dc2f2cc031"
 
 # What ships. Directories are taken whole (tracked files only).
 EXPORT = [
@@ -66,12 +70,14 @@ EXPORT = [
     "src/StartupValuePolicy.h",
     # Gates that link Moira (or Moira + JIT) and nothing else.
     "tests/softfloat_primitives_test.c",
+    "tests/softfloat_symbols_test.py",
     "tests/cache040_test.cpp",
     "tests/fpu_sanity.cpp",
     "tests/fpu040_test.cpp",
     "tests/fpu_context_test.cpp",
     "tests/callm_rtm_test.cpp",
     "tests/moira_upstream_config_test.cpp",
+    "tests/icache020_test.cpp",
     "tests/berr020_test.cpp",
     "tests/berr030_test.cpp",
     "tests/moira_rules_test.cpp",
@@ -87,6 +93,9 @@ EXPORT = [
     "tests/jit_restart_write_030_test.cpp",
     "tests/jit_store_guard_a64_test.cpp",
     "tests/jit_backend_parity_test.cpp",
+    "tests/jit_program_fuzz.cpp",
+    # Its ~45 registrations, included as they are by the release CMakeLists.
+    "cmake/Pom68kJitFuzzGates.cmake",
     "tests/JitTestConfig.h",
     "tests/PortableEnv.h",
     # Differential corpora: harnesses, ruling lists, locks, the owned corpus.
@@ -123,6 +132,7 @@ TEMPLATE_FILES = [
     (f"{TEMPLATES}/CMakeLists.txt", "CMakeLists.txt"),
     (f"{TEMPLATES}/README.md", "README.md"),
     (f"{TEMPLATES}/LICENSES.md", "LICENSES.md"),
+    (f"{TEMPLATES}/UPSTREAM_GUIDE.md", "UPSTREAM_GUIDE.md"),
 ]
 # The GPL text, for extern/softfloat alone (GPL-2.0-or-later files).
 LICENSE_COPY = ("LICENSE", "LICENSE-GPL-3.0")
@@ -130,6 +140,7 @@ LICENSE_COPY = ("LICENSE", "LICENSE-GPL-3.0")
 INCLUDE_DIRS = ["extern/moira/Moira", "extern/softfloat", "src", "tests"]
 SOURCE_SUFFIXES = {".c", ".cpp", ".h", ".hpp", ".inl"}
 INCLUDE_RE = re.compile(r'^\s*#\s*include\s+"([^"]+)"', re.M)
+GATE_SUFFIXES = {".c", ".cpp"}
 
 
 def git(*args, binary=False):
@@ -185,29 +196,106 @@ def include_closure(files):
     return missing
 
 
-def upstream_patch(upstream, files, mtime):
-    """Unified diff of extern/moira/Moira against upstream's Moira/.
+def unregistered_gates(files):
+    """Every exported gate source must be built by the release.
 
-    diff writes each file's mtime into its header: both trees are stamped with
-    the commit time and rendered in UTC, so the patch is byte-reproducible."""
-    head = subprocess.run(["git", "-C", str(upstream), "rev-parse", "HEAD"],
-                          capture_output=True, text=True)
-    if head.returncode != 0 or head.stdout.strip() != UPSTREAM_PIN:
-        raise SystemExit(f"moira_release: {upstream} is not a Moira checkout at {UPSTREAM_PIN}")
+    A source under tests/ that no release CMake file names would ship
+    without running (fault_transparency_test did, from 2026-11-19 until the
+    2026-11-20 cut). The release CMakeLists and every exported cmake/ file
+    are searched for the source's stem."""
+    cmake = "".join(data.decode("utf-8", "replace") for name, (data, _) in files.items()
+                    if name == "CMakeLists.txt" or name.startswith("cmake/"))
+    return [name for name in sorted(files)
+            if name.startswith("tests/") and Path(name).suffix in GATE_SUFFIXES
+            and not re.search(rf"\b{re.escape(Path(name).stem)}\b", cmake)]
+
+
+def guide_coverage(files):
+    """UPSTREAM_GUIDE.md sorts every inventory row, each exactly once.
+
+    The guide tells upstream which patch groups concern stock Moira; a row
+    added to POM68K_VENDOR.md without being sorted there would ship unseen.
+    Section A names rows as `**Row N`; sections B, C and D list them in the
+    second cell of a table row."""
+    inventory = files["extern/moira/POM68K_VENDOR.md"][0].decode("utf-8", "replace")
+    table = inventory.split("## Inventory of local patches", 1)[1].split("\n## ", 1)[0]
+    rows = {int(n) for n in re.findall(r"^\| (\d+) \|", table, re.M)}
+    found = {}
+    guide = files["UPSTREAM_GUIDE.md"][0].decode("utf-8", "replace")
+    for section in re.split(r"^## ", guide, flags=re.M):
+        name = section[:1]
+        if section[1:2] != " " or name not in "ABCD":
+            continue
+        cited = [int(n) for n in re.findall(r"^\*\*Row (\d+)\b", section, re.M)]
+        if name != "A":
+            for line in section.splitlines():
+                cells = [c.strip() for c in line.strip("|").split("|")]
+                if line.startswith("|") and len(cells) > 1 and re.fullmatch(r"[\d, ]+", cells[1]):
+                    cited += [int(n) for n in re.findall(r"\d+", cells[1])]
+        for n in cited:
+            found.setdefault(n, []).append(name)
+    problems = [f"row {n}: not sorted in UPSTREAM_GUIDE.md" for n in sorted(rows - set(found))]
+    problems += [f"row {n}: sorted {len(v)} times ({', '.join(v)})"
+                 for n, v in sorted(found.items()) if len(v) > 1]
+    problems += [f"row {n}: in the guide, not in the inventory" for n in sorted(set(found) - rows)]
+    return problems
+
+
+def upstream_patch(upstream, files, mtime, source):
+    """The fork's Moira/ as one git commit on top of upstream's UPSTREAM_PIN.
+
+    The result is a `git am` mailbox with full blob ids: in a clone of
+    upstream, `git checkout -b pom68k UPSTREAM_PIN && git am -3 <patch>`
+    recreates the fork's tree as a branch whose parent is an ancestor of
+    upstream's master, so git can merge, diff or cherry-pick it three-way.
+    The objects are written to a scratch object directory that borrows the
+    clone's through alternates: the clone itself is not modified. Author,
+    dates and tree are fixed by the POM68K commit, so the mailbox is
+    byte-reproducible."""
+    def run(args, env=None, data=None):
+        out = subprocess.run(["git", "-C", str(upstream), *args], capture_output=True,
+                             env=env, input=data)
+        if out.returncode != 0:
+            raise SystemExit(f"moira_release: git {' '.join(args)}: {out.stderr.decode()}")
+        return out.stdout
+    head = subprocess.run(["git", "-C", str(upstream), "rev-parse", "--verify", "-q",
+                           UPSTREAM_PIN + "^{commit}"], capture_output=True, text=True)
+    if head.returncode != 0:
+        raise SystemExit(f"moira_release: {upstream} is not a Moira clone holding {UPSTREAM_PIN}")
+    objects = Path(run(["rev-parse", "--git-common-dir"]).decode().strip())
+    if not objects.is_absolute():
+        objects = Path(upstream) / objects
     with tempfile.TemporaryDirectory(prefix="moira-release-") as work:
-        fork = Path(work) / "b" / "Moira"
-        fork.mkdir(parents=True)
-        for name, (data, _) in files.items():
-            if name.startswith("extern/moira/Moira/"):
-                (fork / name[len("extern/moira/Moira/"):]).write_bytes(data)
-        shutil.copytree(Path(upstream) / "Moira", Path(work) / "a" / "Moira")
-        for f in Path(work).rglob("*"):
-            os.utime(f, (mtime, mtime))
-        diff = subprocess.run(["diff", "-ruN", "a/Moira", "b/Moira"], cwd=work,
-                              capture_output=True, env={**os.environ, "TZ": "UTC"})
-    if diff.returncode not in (0, 1):
-        raise SystemExit(diff.stderr.decode())
-    return diff.stdout
+        (Path(work) / "objects").mkdir()
+        who, mail = source
+        when = f"{mtime} +0000"
+        env = {**os.environ, "TZ": "UTC",
+               "GIT_INDEX_FILE": str(Path(work) / "index"),
+               "GIT_OBJECT_DIRECTORY": str(Path(work) / "objects"),
+               "GIT_ALTERNATE_OBJECT_DIRECTORIES": str(objects / "objects"),
+               "GIT_AUTHOR_NAME": who, "GIT_AUTHOR_EMAIL": mail, "GIT_AUTHOR_DATE": when,
+               "GIT_COMMITTER_NAME": who, "GIT_COMMITTER_EMAIL": mail,
+               "GIT_COMMITTER_DATE": when}
+        # Upstream's tree without its Moira/, then the fork's Moira/.
+        entries = [line for line in run(["ls-tree", "-r", UPSTREAM_PIN]).decode().splitlines()
+                   if not line.split("\t", 1)[1].startswith("Moira/")]
+        for name in sorted(files):
+            if not name.startswith("extern/moira/Moira/"):
+                continue
+            data, executable = files[name]
+            blob = run(["hash-object", "-w", "--stdin"], env, data).decode().strip()
+            mode = "100755" if executable else "100644"
+            entries.append(f"{mode} {blob}\tMoira/{name[len('extern/moira/Moira/'):]}")
+        run(["update-index", "--add", "--index-info"], env, ("\n".join(entries) + "\n").encode())
+        tree = run(["write-tree"], env).decode().strip()
+        message = ("Moira: the POM68K fork\n\n"
+                   "The whole of POM68K's extern/moira/Moira as one commit on the upstream\n"
+                   f"commit the fork is based on ({UPSTREAM_PIN[:7]}). POM68K_VENDOR.md\n"
+                   "inventories the patch groups it contains; UPSTREAM_GUIDE.md sorts them\n"
+                   "by what stock Moira could take.\n")
+        commit = run(["commit-tree", tree, "-p", UPSTREAM_PIN], env, message.encode()).decode().strip()
+        return run(["format-patch", "-1", "--stdout", "--full-index", "--binary",
+                    "--no-signature", "--no-stat", "--zero-commit", commit], env)
 
 
 def release_note(name, commit, date, files, patch):
@@ -278,7 +366,7 @@ def main():
     ap.add_argument("--check", action="store_true", help="closure check of the worktree only")
     ap.add_argument("--rev", default="HEAD", help="commit to export (default HEAD)")
     ap.add_argument("--out", type=Path, help="directory receiving the tarball")
-    ap.add_argument("--upstream", type=Path, help="upstream Moira checkout at UPSTREAM_PIN")
+    ap.add_argument("--upstream", type=Path, help="upstream Moira clone holding UPSTREAM_PIN")
     ap.add_argument("--verify", action="store_true", help="build and test the extracted release")
     ap.add_argument("--sst-root", type=Path, help="external corpora for --verify")
     ap.add_argument("--allow-dirty", action="store_true",
@@ -291,6 +379,14 @@ def main():
         missing = include_closure(files)
         if missing:
             print("moira_release: includes that leave the export:\n  " + "\n  ".join(missing))
+            return 1
+        unbuilt = unregistered_gates(files)
+        if unbuilt:
+            print("moira_release: exported gates the release never builds:\n  " + "\n  ".join(unbuilt))
+            return 1
+        unsorted = guide_coverage(files)
+        if unsorted:
+            print("moira_release: inventory rows and UPSTREAM_GUIDE.md disagree:\n  " + "\n  ".join(unsorted))
             return 1
         print(f"moira_release: {len(files)} files, include closure complete")
         return 0
@@ -305,11 +401,19 @@ def main():
     missing = include_closure(files)
     if missing:
         raise SystemExit("moira_release: includes leave the export:\n  " + "\n  ".join(missing))
+    unbuilt = unregistered_gates(files)
+    if unbuilt:
+        raise SystemExit("moira_release: exported gates the release never builds:\n  " + "\n  ".join(unbuilt))
+    unsorted = guide_coverage(files)
+    if unsorted:
+        raise SystemExit("moira_release: inventory rows and UPSTREAM_GUIDE.md disagree:\n  " + "\n  ".join(unsorted))
     stamp = int(git("show", "-s", "--format=%ct", rev))
     date = git("show", "-s", "--format=%cs", rev).strip()
     name = f"moira-pom68k-{date.replace('-', '')}-{rev[:8]}"
 
-    patch = upstream_patch(args.upstream, files, stamp) if args.upstream else None
+    source = (git("show", "-s", "--format=%an", rev).strip(),
+              git("show", "-s", "--format=%ae", rev).strip())
+    patch = upstream_patch(args.upstream, files, stamp, source) if args.upstream else None
     if patch is not None:
         files["patches/moira-vs-upstream.patch"] = (patch, False)
     files["RELEASE.txt"] = (release_note(name, rev, date, files, patch), False)

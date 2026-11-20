@@ -2290,6 +2290,68 @@ void interruptSequenceBilled()
     }
 }
 
+void masterStackInterrupt()
+{
+    // POM68K_VENDOR.md row 145. An interrupt taken with SR.M set stacks its
+    // format-$0 frame on the master stack, clears M, and stacks a format-$1
+    // throwaway frame on the interrupt stack; the handler runs on the
+    // interrupt stack, and its RTE pops the throwaway, whose SR puts M back,
+    // then the master frame.
+    // [B] MC68020UM-1992 §6.1.9 / MC68030UM-1989 §8.1.9 — "If the M bit of
+    //     the status register is set, the processor clears the M bit and
+    //     creates a throwaway exception stack frame on top of the interrupt
+    //     stack [...] The copy of the status register saved on the throwaway
+    //     frame is exactly the same as that placed on the master stack
+    //     except that the S bit is set in the version placed on the
+    //     interrupt stack. [...] The resulting status register (after
+    //     exception processing) has the S bit set and the M bit cleared."
+    // Until 2026-11-20 both frames went on the master stack and M stayed
+    // set. Taken from supervisor ($3000) and from user mode with M set
+    // ($1000), where the two SR copies differ by S.
+    constexpr uint32_t kIsp = 0x6000, kMsp = 0x8000, kUsp = 0x4000;
+    for (moira::Model m : { moira::Model::M68020, moira::Model::M68030,
+                            moira::Model::M68040 }) {
+        for (uint16_t sr : { uint16_t(0x3000), uint16_t(0x1000) }) {
+            TestCpu c(m);
+            p32(c, 27 * 4, kHandler);                   // level-3 autovector
+            p16(c, kHandler, 0x4e73);                   // RTE
+            p16(c, kHandler + 2, kNop);
+            stage(c, kNop, 0);
+            for (int i = 1; i < 16; i++) p16(c, kCode + 2 * i, kNop);
+            c.setSR(sr);                                // mask 0
+            c.setISP(kIsp); c.setMSP(kMsp); c.setUSP(kUsp);
+            for (int i = 0; i < 3; i++) c.execute();    // past the SR-write delay
+            c.setIPL(3);
+            for (int i = 0; i < 6 && c.getPC0() != kHandler; i++) c.execute();
+            const uint32_t mf = kMsp - 8, tf = kIsp - 8;
+            const uint32_t ret = g32(c, mf + 2);
+            CHECK(c.getPC0() == kHandler && c.getSR() == 0x2300 && c.getSP() == tf &&
+                  c.getISP() == tf && c.getMSP() == mf && c.getUSP() == kUsp,
+                  "model %d SR=%04X: interrupt with M set: PC0=%08X SR=%04X A7=%08X "
+                  "ISP=%08X MSP=%08X USP=%08X (want %08X, 2300, A7=ISP=%08X, "
+                  "MSP=%08X, USP=%08X)", int(m), sr, c.getPC0(), c.getSR(), c.getSP(),
+                  c.getISP(), c.getMSP(), c.getUSP(), kHandler, tf, mf, kUsp);
+            CHECK(g16(c, mf) == sr && ret > kCode && ret < kCode + 32 &&
+                  g16(c, mf + 6) == 27 * 4 &&
+                  g16(c, tf) == (sr | 0x2000) && g32(c, tf + 2) == ret &&
+                  g16(c, tf + 6) == (0x1000 | 27 * 4),
+                  "model %d SR=%04X: master frame SR=%04X PC=%08X fmt/vec=%04X, "
+                  "interrupt-stack frame SR=%04X PC=%08X fmt/vec=%04X (want %04X, "
+                  "a PC in the NOPs, 006C; %04X, the same PC, 106C)", int(m), sr,
+                  g16(c, mf), ret, g16(c, mf + 6), g16(c, tf), g32(c, tf + 2),
+                  g16(c, tf + 6), sr, sr | 0x2000);
+            c.setIPL(0);
+            const bool contained = executeContained(c); // RTE: $1 then $0
+            CHECK(contained && c.getPC0() == ret && c.getSR() == sr &&
+                  c.getISP() == kIsp && c.getMSP() == kMsp && c.getUSP() == kUsp,
+                  "model %d SR=%04X: RTE through the throwaway frame: PC0=%08X SR=%04X "
+                  "ISP=%08X MSP=%08X USP=%08X (want %08X, %04X, %08X, %08X, %08X)",
+                  int(m), sr, c.getPC0(), c.getSR(), c.getISP(), c.getMSP(),
+                  c.getUSP(), ret, sr, kIsp, kMsp, kUsp);
+        }
+    }
+}
+
 void movesReleasesAlternateFc()
 {
     // POM68K_VENDOR.md row 37: MOVES puts SFC or DFC on the function-code
@@ -3432,6 +3494,7 @@ int main(int argc, char** argv)
     irqDelayAfterMaskLowering();
     level7TransitionSensitive();
     interruptSequenceBilled();
+    masterStackInterrupt();
     movesReleasesAlternateFc();
     watchpointsUnderMmu();
     externalBusError020();
@@ -3466,6 +3529,6 @@ int main(int argc, char** argv)
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68030 MOVE to (xxx).L last write, 68EC030 plain-020 path with a 68030 "
-                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, the 68040 lock ending with TAS/CAS/CAS2, a memory-indirect pointer read outside the lock, BKPT without a data access, 68040 bit-field and JSR store faults restart, the SR-write refill as a fetch, no trace before a format-$7 rerun, PACK/UNPK -(An) faults on the 68030/68040, level 7 on a transition from the 68020 up, the billed 020-core interrupt sequence, the trace exception after the traced instruction, trace on change of flow, MULx.L into one register, CAS2 with one compare register, MOVE from SR/CCR ending on its store, the 68030 CAS2 extension long, LINK/UNLK/PEA/JSR/BSR/RTD stack faults, the UNPK source fixup and the pending store of NEG, NEGX, ADDX, SUBX and ASL, the deferred refill fault after an SR or CCR write\n");
+                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, the 68040 lock ending with TAS/CAS/CAS2, a memory-indirect pointer read outside the lock, BKPT without a data access, 68040 bit-field and JSR store faults restart, the SR-write refill as a fetch, no trace before a format-$7 rerun, PACK/UNPK -(An) faults on the 68030/68040, level 7 on a transition from the 68020 up, the billed 020-core interrupt sequence, the throwaway frame of an interrupt taken with M set, the trace exception after the traced instruction, trace on change of flow, MULx.L into one register, CAS2 with one compare register, MOVE from SR/CCR ending on its store, the 68030 CAS2 extension long, LINK/UNLK/PEA/JSR/BSR/RTD stack faults, the UNPK source fixup and the pending store of NEG, NEGX, ADDX, SUBX and ASL, the deferred refill fault after an SR or CCR write\n");
     return 0;
 }

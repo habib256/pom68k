@@ -152,10 +152,35 @@ int main()
     CHECK(c.getPC0() == 0x3000 && c.getD(2) == 0x11223344,
           "absent type01 hardware did not take format error cleanly");
 
+    // formatErrorCycles: a format-error exit advances the clock by the
+    // instruction's own completion count ([F], execCallm/execRtm); until
+    // 2026-11-20 it advanced it by nothing.
+    {
+        auto cycles = [&c]() { const auto t = c.getClock(); c.execute(); return c.getClock() - t; };
+        prepare(c, 0x00000000, 0x2000);
+        const auto okCallm = cycles();
+        const auto okRtm = cycles();
+        prepare(c, 0x20000000, 0x2000);         // unsupported OPT=001
+        const auto badDescriptor = cycles();
+        prepare(c, 0x015a0000, 0x2000);
+        c.cpuSpacePresent = false;              // type $01, no hardware
+        const auto noHardware = cycles();
+        prepare(c, 0x00000000, 0x2000);
+        c.execute();
+        p32(c, c.getSP(), 0x20000015);          // frame with OPT=001
+        const auto badFrame = cycles();
+        CHECK(c.getPC0() == 0x3000, "bad RTM frame did not take format error");
+        CHECK(okCallm > 0 && badDescriptor == okCallm && noHardware == okCallm,
+              "CALLM format error %lld/%lld cycles, completion %lld",
+              (long long)badDescriptor, (long long)noHardware, (long long)okCallm);
+        CHECK(okRtm > 0 && badFrame == okRtm, "RTM format error %lld cycles, completion %lld",
+              (long long)badFrame, (long long)okRtm);
+    }
+
     if (failures) {
         std::printf("[callm_rtm_test] FAIL: %d check(s)\n", failures);
         return 1;
     }
-    std::printf("[callm_rtm_test] OK: type00 + type01 stack/access-control paths\n");
+    std::printf("[callm_rtm_test] OK: type00 + type01 stack/access-control paths, format-error cycles\n");
     return 0;
 }

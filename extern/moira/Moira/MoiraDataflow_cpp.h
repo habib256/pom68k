@@ -5,6 +5,73 @@
 // Published under the terms of the MIT License
 // -----------------------------------------------------------------------------
 
+/* Register accessors and the address bus mask.
+ *
+ * These live here rather than in Moira.cpp so that they stay visible to the
+ * per-core translation units, which need to inline them into the instruction
+ * handlers. addrMask is evaluated on every memory access.
+ */
+template <Core C> u32
+Moira::addrMask() const
+{
+    if constexpr (C == Core::C68020) {
+
+        return cpuModel == Model::M68EC020 ? 0x00FFFFFF : 0xFFFFFFFF;
+
+    } else {
+
+        return 0x00FFFFFF;
+    }
+}
+
+template <Size S> u32
+Moira::readD(int n) const
+{
+    return CLIP<S>(reg.d[n]);
+}
+
+template <Size S> u32
+Moira::readA(int n) const
+{
+    return CLIP<S>(reg.a[n]);
+}
+
+template <Size S> u32
+Moira::readR(int n) const
+{
+    return CLIP<S>(reg.r[n]);
+}
+
+template <Size S> void
+Moira::writeD(int n, u32 v)
+{
+    reg.d[n] = WRITE<S>(reg.d[n], v);
+}
+
+template <Size S> void
+Moira::writeA(int n, u32 v)
+{
+    reg.a[n] = WRITE<S>(reg.a[n], v);
+}
+
+template <Size S> void
+Moira::writeR(int n, u32 v)
+{
+    reg.r[n] = WRITE<S>(reg.r[n], v);
+}
+
+template <Mode M> void
+Moira::setFC()
+{
+    if constexpr (MOIRA_EMULATE_FC) {
+        
+        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
+        // POM68K: operand accesses always drive FC=data — SingleStepTests
+        // address-error frames want FC=101 even for PC-relative reads
+        fcl = FC::USER_DATA;
+    }
+}
+
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // POM68K O4 slice 3: SKIP_LAST_RD advances the PC without refilling the
 // queue; on the 68030 the consumed word must still enter the access log
@@ -59,7 +126,7 @@ Moira::computeEA(u32 n) {
         }
         case 4:  // -(An)
         {
-            if ((F & IMPL_DEC) == 0) SYNC(2);
+            if constexpr ((F & IMPL_DEC) == 0) SYNC(2);
             result = readA(n) - ((n == 7 && S == Byte) ? 2 : S);
 
             // POM68K O4 slice 3: see case 3
@@ -77,7 +144,7 @@ Moira::computeEA(u32 n) {
             i16  d = (i16)ircWord();
 
             result = U32_ADD(an, d);
-            if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { skipExt<C>(); }
+            if constexpr ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { skipExt<C>(); }
             break;
         }
         case 6: // (d,An,Xi)
@@ -107,7 +174,7 @@ Moira::computeEA(u32 n) {
                 result = U32_ADD3(an, d, ((ircWord() & 0x800) ? xi : SEXT<Word>(xi)));
 
                 SYNC(2);
-                if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { skipExt<C>(); }
+                if constexpr ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { skipExt<C>(); }
             }
             break;
         }
@@ -116,7 +183,7 @@ Moira::computeEA(u32 n) {
             result = (i16)ircWord();
             pomSetRB<C>(queue.irc);  // POM68K: 68010-only (Moira.h pomSetRB)
 
-            if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { skipExt<C>(); }
+            if constexpr ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { skipExt<C>(); }
             break;
         }
         case 8: // ABS.L
@@ -140,7 +207,7 @@ Moira::computeEA(u32 n) {
             result = ircLong<C>();
             pomSetRB<C>(queue.irc);  // POM68K: 68010-only (Moira.h pomSetRB)
 
-            if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { skipExt<C>(); }
+            if constexpr ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { skipExt<C>(); }
             break;
         }
         case 9: // (d,PC)
@@ -148,7 +215,7 @@ Moira::computeEA(u32 n) {
             i16  d = (i16)ircWord();
 
             result = U32_ADD(reg.pc, d);
-            if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { skipExt<C>(); }
+            if constexpr ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { skipExt<C>(); }
             break;
         }
         case 10: // (d,PC,Xi)
@@ -174,7 +241,7 @@ Moira::computeEA(u32 n) {
 
                 result = U32_ADD3(reg.pc, d, ((ircWord() & 0x800) ? xi : SEXT<Word>(xi)));
                 SYNC(2);
-                if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { skipExt<C>(); }
+                if constexpr ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { skipExt<C>(); }
             }
             break;
         }
@@ -211,7 +278,7 @@ Moira::computeEAbrief(u32 an)
     result = U32_ADD3(an, i8(disp), xn);
 
     SYNC(2);
-    if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { skipExt<C>(); }
+    if constexpr ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { skipExt<C>(); }
 
     return result;
 }
@@ -251,7 +318,7 @@ Moira::computeEAfull(u32 an)
     if constexpr (C == Core::C68020 && (F & MMU_NOFIXUP) &&
                   (M == Mode::IX || M == Mode::IXPC)) {
         if (cpuModel >= Model::M68EC040 && mmu040MovemArmed) {
-            cp += penaltyCycles<C, M, S>(ext);
+            budget.cp += penaltyCycles<C, M, S>(ext);
             return mmu040MovemEa;
         }
     }
@@ -271,7 +338,10 @@ Moira::computeEAfull(u32 an)
     // the reserved encoding I/IS = 100 computes base + bd + Xn without a
     // memory fetch (WinUAE get_disp_ea_020: `if (dp & 0x3) base =
     // get_long(base)`). Upstream dereferenced on 100 like Musashi did.
-    if ((iis & 0b011) == 0) {
+    // [D] Musashi @ 1efd694 (Runner/Musashi of upstream Moira), run by its Runner:
+    //     the reserved 100 dereferences. POM68K: so it does under
+    //     MOIRA_MIMIC_MUSASHI, the configuration that Runner uses.
+    if ((iis & 0b011) == 0 && !(MOIRA_MIMIC_MUSASHI && iis == 0b100)) {
         result = an + bd + xn;
     } else {
         // [D] WinUAE cpuemu_31.c op_0af0 (CAS) @ Hatari e77819f7: the
@@ -296,7 +366,7 @@ Moira::computeEAfull(u32 an)
     }
 
     // Add the number of extra cycles consumed in this addressing mode
-    cp += penaltyCycles<C, M, S>(ext);
+    budget.cp += penaltyCycles<C, M, S>(ext);
 
     return result;
 }
@@ -480,6 +550,10 @@ Moira::writeOp(int n, u32 ea, u32 val)
     }
 }
 
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 void
 Moira::updateAn(Mode M, Size S, int n)
 {
@@ -517,6 +591,8 @@ Moira::undoAnPD(Mode M, Size S, int n)
 {
     if ((int)M == 4) U32_INC(reg.a[n], (n == 7 && S == Byte) ? 2 : S);
 }
+
+#endif
 
 template <Mode M, Size S> void
 Moira::updateAn(int n)
@@ -563,6 +639,165 @@ Moira::readM(u32 addr)
     // POM68K: operand reads always use the DATA space — SingleStepTests
     // address-error frames carry FC=101 even for PC-relative operands
     return read<C, AddrSpace::DATA, S, F>(addr);
+}
+
+template <Core C, Flags F> u32
+Moira::read2x16(u32 lo, u32 hi)
+{
+    u32 result = read16(lo) << 16;
+    SYNC(4);
+    if constexpr (F & POLL) POLL_IPL;
+    result |= read16(hi);
+    SYNC(2);
+    return result;
+}
+
+template <Core C, Flags F> void
+Moira::write2x16(u32 lo, u32 hi, u32 valHi, u32 valLo)
+{
+    if constexpr (F & REVERSE) {
+
+        write16(hi, u16(valLo));
+        SYNC(4);
+        if constexpr (F & POLL) POLL_IPL;
+        write16(lo, u16(valHi));
+        SYNC(2);
+
+    } else {
+
+        write16(lo, u16(valHi));
+        SYNC(4);
+        if constexpr (F & POLL) POLL_IPL;
+        write16(hi, u16(valLo));
+        SYNC(2);
+    }
+}
+
+template <Core C, Flags F> u32
+Moira::read2x8(u32 addr)
+{
+    u32 result = u32(read8(addr)) << 8;
+    SYNC(4);
+    if constexpr (F & POLL) POLL_IPL;
+    result |= u32(read8(addr + 1));
+    SYNC(2);
+    return result;
+}
+
+template <Core C, Flags F> void
+Moira::write2x8(u32 addr, u32 val)
+{
+    if constexpr (F & REVERSE) {
+
+        write8(addr + 1, u8(val));
+        SYNC(4);
+        if constexpr (F & POLL) POLL_IPL;
+        write8(addr, u8(val >> 8));
+        SYNC(2);
+
+    } else {
+
+        write8(addr, u8(val >> 8));
+        SYNC(4);
+        if constexpr (F & POLL) POLL_IPL;
+        write8(addr + 1, u8(val));
+        SYNC(2);
+    }
+}
+
+template <Core C, Flags F> u32
+Moira::read4x8(u32 addr)
+{
+    u32 result = u32(read8(addr)) << 24;
+    SYNC(4);
+    result |= u32(read8(addr + 1)) << 16;
+    SYNC(4);
+    result |= u32(read8(addr + 2)) << 8;
+    SYNC(4);
+    if constexpr (F & POLL) POLL_IPL;
+    result |= u32(read8(addr + 3));
+    SYNC(2);
+    return result;
+}
+
+template <Core C, Flags F> void
+Moira::write4x8(u32 addr, u32 val)
+{
+    if constexpr (F & REVERSE) {
+
+        write8(addr + 3, u8(val));
+        SYNC(4);
+        write8(addr + 2, u8(val >> 8));
+        SYNC(4);
+        write8(addr + 1, u8(val >> 16));
+        SYNC(4);
+        if constexpr (F & POLL) POLL_IPL;
+        write8(addr, u8(val >> 24));
+        SYNC(2);
+
+    } else {
+
+        write8(addr, u8(val >> 24));
+        SYNC(4);
+        write8(addr + 1, u8(val >> 16));
+        SYNC(4);
+        write8(addr + 2, u8(val >> 8));
+        SYNC(4);
+        if constexpr (F & POLL) POLL_IPL;
+        write8(addr + 3, u8(val));
+        SYNC(2);
+    }
+}
+
+template <Core C, Flags F> u32
+Moira::readLongSplit(u32 addr)
+{
+    /* The addressed port decides how the transfer is carried out. A 32 bit
+     * port delivers the longword in a single bus cycle, a 16 bit port needs
+     * two and an 8 bit port four (see dsack).
+     */
+    switch (portSize(dsack(addr))) {
+
+        case 4:
+        {
+            u32 result = read32(addr);
+            if constexpr (F & POLL) POLL_IPL;
+            SYNC(2);
+            return result;
+        }
+        case 2:
+
+            return read2x16<C,F>(addr, addr + 2);
+
+        default:
+
+            return read4x8<C,F>(addr);
+    }
+}
+
+template <Core C, Flags F> void
+Moira::writeLongSplit(u32 addr, u32 val)
+{
+    // See readLongSplit(): the port width decides how the transfer is split
+    switch (portSize(dsack(addr))) {
+
+        case 4:
+
+            write32(addr, val);
+            if constexpr (F & POLL) POLL_IPL;
+            SYNC(2);
+            return;
+
+        case 2:
+
+            write2x16<C,F>(addr, addr + 2, val >> 16, val & 0xFFFF);
+            return;
+
+        default:
+
+            write4x8<C,F>(addr, val);
+            return;
+    }
 }
 
 template <Core C, AddrSpace AS, Size S, Flags F> u32
@@ -629,7 +864,7 @@ Moira::read(u32 addr)
 
     if constexpr (S == Byte) {
 
-        if (F & POLL) POLL_IPL;
+        if constexpr (F & POLL) POLL_IPL;
         if constexpr (kPlain020) {
             mmuAccAddr = addr; mmuAccSsw = 0x10;
             mmuAccFc = readFC(); mmuAccWrite = false;
@@ -640,7 +875,18 @@ Moira::read(u32 addr)
 
     if constexpr (S == Word) {
 
-        if (F & POLL) POLL_IPL;
+        // An 8 bit port needs a second bus cycle to deliver a word
+        // POM68K: compiled with the 68020 i-cache only (busSizing)
+        if constexpr (busSizing<C>) {
+
+            if (portSize(dsack(addr & addrMask<C>())) == 1) {
+                mmuAccAddr = addr; mmuAccSsw = 0x20;
+                mmuAccFc = readFC(); mmuAccWrite = false;
+                return read2x8<C,F>(addr & addrMask<C>());
+            }
+        }
+
+        if constexpr (F & POLL) POLL_IPL;
         if constexpr (kPlain020) {
             mmuAccAddr = addr; mmuAccSsw = 0x20;
             mmuAccFc = readFC(); mmuAccWrite = false;
@@ -655,13 +901,28 @@ Moira::read(u32 addr)
             mmuAccAddr = addr; mmuAccSsw = 0x00;
             mmuAccFc = readFC(); mmuAccWrite = false;
         }
-        if (F & REVERSE) {
+
+        // An aligned longword takes one bus cycle on a 32 bit port and four
+        // on an 8 bit port; everything else is the two-word transfer below.
+        // POM68K: compiled with the 68020 i-cache only (busSizing). The
+        // plain-020 RTE substitution covers the first cycle (above), not
+        // the later bytes of a four-cycle transfer.
+        // [F] Unknown: the fault address and SSW size a /BERR on a sized
+        // cycle stacks. Settled by: a dynamic-bus-sizing /BERR cell.
+        if constexpr (busSizing<C>) {
+
+            if ((addr & 3) == 0 && portSize(dsack(addr & addrMask<C>())) != 2) {
+                return readLongSplit<C,F>(addr & addrMask<C>());
+            }
+        }
+
+        if constexpr (F & REVERSE) {
 
             // POM68K: low word first — the read twin of write<>'s REVERSE.
             if constexpr (kPlain020) mmuAccAddr = addr + 2;
             result = read16((addr + 2) & addrMask<C>());
             SYNC(4);
-            if (F & POLL) POLL_IPL;
+            if constexpr (F & POLL) POLL_IPL;
             if constexpr (kPlain020) { mmuAccAddr = addr; mmuAccSsw = 0x20; }
             if constexpr (kPlain020 && AS == AddrSpace::DATA) {
                 if (mmuSubstitutePlain020(addr, false))
@@ -674,7 +935,7 @@ Moira::read(u32 addr)
 
             result = read16(addr & addrMask<C>()) << 16;
             SYNC(4);
-            if (F & POLL) POLL_IPL;
+            if constexpr (F & POLL) POLL_IPL;
             if constexpr (kPlain020) { mmuAccAddr = addr + 2; mmuAccSsw = 0x20; }
             if constexpr (kPlain020 && AS == AddrSpace::DATA) {
                 if (mmuSubstitutePlain020(addr + 2, false))
@@ -686,6 +947,50 @@ Moira::read(u32 addr)
     }
 
     return result;
+}
+
+template <Core C, Flags F> u16
+Moira::readInstr(u32 addr)
+{
+    // POM68K: the cache serves the 68020/EC020 only. The 68030 and 68040
+    // never get here (prefetch, fullPrefetch and readExt return into their
+    // own fetch paths first) and keep their own cache models; the EC030,
+    // which this fork runs on the plain path, fetches from the bus as before
+    // (its cache geometry is not the 68020's). Every other fetch is the
+    // plain PROG read, exactly as before the cache arrived.
+    if constexpr (C == Core::C68020 && MOIRA_EMULATE_ICACHE) {
+
+        if (cpuModel == Model::M68020 || cpuModel == Model::M68EC020) {
+
+            // Update function code pins
+            setFC(FC::USER_PROG);
+            SYNC(2);
+
+            // Check if a watchpoint has been reached (POM68K: masked to the
+            // bus as in read<>, and reported through the same delegate)
+            if ((flags & State::CHECK_WP) &&
+                debugger.watchpointMatches(addr & addrMask<C>(), Word)) {
+                pomDidReachWatchpoint(addr & addrMask<C>(), Word, false, true);
+            }
+
+            if constexpr (F & POLL) POLL_IPL;
+
+            // POM68K: a /BERR raised by the fill stacks this word's address
+            // (row 21). [F] Unknown: which of a line fill's cycles the
+            // silicon reports. Settled by: a fetch /BERR cell on a cached
+            // 68020.
+            mmuAccAddr = addr; mmuAccSsw = 0x20;
+            mmuAccFc = readFC(); mmuAccWrite = false;
+
+            // Route read access through the instruction cache
+            bool busAccess;
+            u16 result = readInstructionCache(addr & addrMask<C>(), busAccess);
+            budget.cp += busAccess ? (portSize(dsack(addr & addrMask<C>())) == 4 ? 0 : 4) : -2;
+            return result;
+        }
+    }
+
+    return (u16)read<C, AddrSpace::PROG, Word, F>(addr);
 }
 
 template <Core C, Mode M, Size S, Flags F> void
@@ -707,12 +1012,24 @@ Moira::write(u32 addr, u32 val)
     // POM68K O4 slice 3: 68030 bus-level address translation (see read;
     // slice 4: taken for M68030 even with TC.E off — logging/splitting)
     if constexpr (C == Core::C68020) {
-        if (cpuModel == Model::M68030) [[unlikely]] {
+        // [D] Musashi @ 1efd694 (Runner/Musashi of upstream Moira), run by its Runner:
+        //     a misaligned word or long is written as whole words, and the
+        //     words of a predecremented long low word first. POM68K: under
+        //     MOIRA_MIMIC_MUSASHI a 68030 or 68040 that translates nothing
+        //     (TC.E and every TT/TTR enable clear) writes through the plain
+        //     68020 path below, which does that; with translation on, and
+        //     in every other configuration, the bus layers split a
+        //     misaligned access into byte and word cycles in address order.
+        const bool plainWrite = MOIRA_MIMIC_MUSASHI &&
+            (cpuModel == Model::M68030
+             ? !((reg.tc & 0x80000000) || ((reg.tt0 | reg.tt1) & 0x8000))
+             : !((reg.tc040 | reg.itt0 | reg.itt1 | reg.dtt0 | reg.dtt1) & 0x8000));
+        if (cpuModel == Model::M68030 && !plainWrite) [[unlikely]] {
             mmuWrite<C, S, F>(addr, val);
             return;
         }
         // POM68K Q3: 68040 bus translation (see read)
-        if (cpuModel >= Model::M68EC040) [[unlikely]] {
+        if (cpuModel >= Model::M68EC040 && !plainWrite) [[unlikely]] {
             mmu040Write<C, S>(addr, val, AS == AddrSpace::DATA);
             return;
         }
@@ -750,7 +1067,7 @@ Moira::write(u32 addr, u32 val)
 
     if constexpr (S == Byte) {
 
-        if (F & POLL) POLL_IPL;
+        if constexpr (F & POLL) POLL_IPL;
         if constexpr (kPlain020) {
             mmuAccAddr = addr; mmuAccSsw = 0x10;
             mmuAccFc = readFC(); mmuAccWrite = true;
@@ -761,7 +1078,19 @@ Moira::write(u32 addr, u32 val)
 
     if constexpr (S == Word) {
 
-        if (F & POLL) POLL_IPL;
+        // An 8 bit port needs a second bus cycle to accept a word
+        // POM68K: compiled with the 68020 i-cache only (busSizing)
+        if constexpr (busSizing<C>) {
+
+            if (portSize(dsack(addr & addrMask<C>())) == 1) {
+                mmuAccAddr = addr; mmuAccSsw = 0x20;
+                mmuAccFc = readFC(); mmuAccWrite = true;
+                write2x8<C,F>(addr & addrMask<C>(), val);
+                return;
+            }
+        }
+
+        if constexpr (F & POLL) POLL_IPL;
         if constexpr (kPlain020) {
             mmuAccAddr = addr; mmuAccSsw = 0x20;
             mmuAccFc = readFC(); mmuAccWrite = true;
@@ -776,12 +1105,23 @@ Moira::write(u32 addr, u32 val)
             mmuAccAddr = addr; mmuAccSsw = 0x00;
             mmuAccFc = readFC(); mmuAccWrite = true;
         }
-        if (F & REVERSE) {
+
+        // See read<>: one cycle on a 32 bit port, four on an 8 bit port
+        // POM68K: compiled with the 68020 i-cache only (busSizing)
+        if constexpr (busSizing<C>) {
+
+            if ((addr & 3) == 0 && portSize(dsack(addr & addrMask<C>())) != 2) {
+                writeLongSplit<C,F>(addr & addrMask<C>(), val);
+                return;
+            }
+        }
+
+        if constexpr (F & REVERSE) {
 
             if constexpr (kPlain020) mmuAccAddr = addr + 2;
             write16((addr + 2) & addrMask<C>(), u16(val & 0xFFFF));
             SYNC(4);
-            if (F & POLL) POLL_IPL;
+            if constexpr (F & POLL) POLL_IPL;
             if constexpr (kPlain020) { mmuAccAddr = addr; mmuAccSsw = 0x20; }
             if constexpr (kPlain020 && AS == AddrSpace::DATA) {
                 mmuDataBuffer = u16(val >> 16);
@@ -794,7 +1134,7 @@ Moira::write(u32 addr, u32 val)
 
             write16(addr & addrMask<C>(), u16(val >> 16));
             SYNC(4);
-            if (F & POLL) POLL_IPL;
+            if constexpr (F & POLL) POLL_IPL;
             if constexpr (kPlain020) { mmuAccAddr = addr + 2; mmuAccSsw = 0x20; }
             if constexpr (kPlain020 && AS == AddrSpace::DATA) {
                 mmuDataBuffer = u16(val);
@@ -973,7 +1313,7 @@ Moira::prefetch()
     }
 #endif
 
-    queue.irc = (u16)read<C, AddrSpace::PROG, Word, F>(reg.pc + 2);
+    queue.irc = readInstr<C, F>(reg.pc + 2);
     pomSetRB<C>(queue.irc);  // POM68K: 68010-only
 }
 
@@ -997,6 +1337,10 @@ Moira::fullPrefetch()
 
     assert(!misaligned<C>(reg.pc));
 
+    // POM68K: the cache functions live in Moira.cpp; without the cache the
+    // per-core TUs must not pay a call to an empty function on every jump.
+    if constexpr (MOIRA_EMULATE_ICACHE) flushInstructionLatch();
+
 #if MOIRA_ENABLE_JIT
     if constexpr (C == Core::C68020) {           // POM68K instruction window
         if (u16 w; pomJitFetch020<false>(reg.pc, w)) {
@@ -1014,7 +1358,7 @@ Moira::fullPrefetch()
         }
     }
 #endif
-    queue.irc = (u16)read<C, AddrSpace::PROG, Word>(reg.pc);
+    queue.irc = readInstr<C>(reg.pc);
     if (delay) SYNC(delay);
     prefetch<C, F>();
 }
@@ -1096,7 +1440,7 @@ Moira::readExt()
         }
     }
 #endif
-    queue.irc = (u16)read<C, AddrSpace::PROG, Word>(reg.pc);
+    queue.irc = readInstr<C>(reg.pc);
 }
 
 template <Core C, Size S> u32
@@ -1149,7 +1493,7 @@ Moira::jumpToVector(int nr)
             
             throw DoubleFault();
             
-        } else if (C == Core::C68000) {
+        } else if constexpr (C == Core::C68000) {
 
             throw AddressError(makeFrame<F|AE_PROG>(reg.pc, vectorAddr));
 
@@ -1210,6 +1554,10 @@ Moira::jumpToVector(int nr)
     didJumpToVector(nr, reg.pc);
 }
 
+// The following definitions are not templated. They are compiled into the
+// main translation unit only (see MoiraCore_cpp.h).
+#ifdef MOIRA_MAIN_TU
+
 int
 Moira::baseDispWords(u16 ext) const
 {
@@ -1231,6 +1579,8 @@ Moira::outerDispWords(u16 ext) const
 
     return outer_disp ? (outer_disp_long ? 2 : 1) : 0;
 }
+
+#endif
 
 template <Core C, Mode M, Size S> int
 Moira::penaltyCycles(u16 ext) const

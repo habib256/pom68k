@@ -19,6 +19,15 @@ struct float_status;
 
 namespace moira {
 
+namespace Version {
+
+inline constexpr int major = 5;
+inline constexpr int minor = 0;
+inline constexpr int patch = 0;
+inline constexpr int beta  = 1;
+
+}
+
 class Moira {
     
     friend class Debugger;
@@ -81,7 +90,13 @@ protected:
     
     // Prefetch queue for fetching instructions
     PrefetchQueue queue {};
-    
+
+    // Instruction cache (68020 only)
+    InstructionCache iCache {};
+
+    // Speed trackers (68020 only)
+    CycleBudget budget {};
+
     // Interrupt mode
     IrqMode irqMode {IrqMode::AUTO};
     
@@ -164,10 +179,7 @@ protected:
     
     // Remembers the vector number of the most recent exception
     int exception {};
-    
-    // Cycle penalty (for 68020+ extended addressing modes)
-    int cp {};
-    
+
     // Controls exact timing of instructions running in loop mode (68010 only)
     int loopModeDelay {2};
     
@@ -210,8 +222,14 @@ private:
     // Jump table holding the loop mode instruction handlers (68010 only)
     ExecPtr *loop = nullptr;
     
-    // Jump table holding the disassembler handlers
-    typedef void (Moira::*DasmPtr)(StrWriter&, u32&, u16) const;
+    /* Jump table holding the disassembler handlers.
+     *
+     * Since the handlers are not templated, the instruction, addressing mode
+     * and size attributes that used to be template arguments are passed in at
+     * call time. They are read from the InstrInfo table, which is built
+     * alongside this one.
+     */
+    typedef void (Moira::*DasmPtr)(StrWriter&, u32&, u16, Instr, Mode, Size) const;
     DasmPtr *dasm = nullptr;
     
     // Table holding instruction information
@@ -230,6 +248,12 @@ public:
     //  Destroys the Moira instance
     virtual ~Moira();
     
+    // Returns a version string for this release
+    static std::string version();
+
+    // Returns a build number string for this release
+    static std::string build();
+    
 protected:
     
     // Creates or updates the jump tables for execution and disassembly
@@ -238,8 +262,27 @@ protected:
     
 private:
     
-    // Core routine for creating jump tables
+    /* Core routines for creating jump tables
+     *
+     * Jump table creation is deliberately split into several parts.
+     * As a single function it expands into several hundred kilobytes of
+     * straight-line code per core, which drives the compiler's memory
+     * consumption far beyond what some environments provide.
+     */
+    
     template <Core C> void createJumpTable(Model model, bool registerDasm);
+    template <Core C> void createJumpTable1(Model model, bool registerDasm);
+    template <Core C> void createJumpTable2(Model model, bool registerDasm);
+    template <Core C> void createJumpTable3(Model model, bool registerDasm);
+    template <Core C> void createJumpTable4(Model model, bool registerDasm);
+    template <Core C> void createJumpTable5(Model model, bool registerDasm);
+    template <Core C> void createJumpTable6(Model model, bool registerDasm);
+    template <Core C> void createJumpTable7(Model model, bool registerDasm);
+    template <Core C> void createJumpTable8(Model model, bool registerDasm);
+    template <Core C> void createJumpTable9(Model model, bool registerDasm);
+    template <Core C> void createJumpTable10(Model model, bool registerDasm);
+    template <Core C> void createJumpTable11(Model model, bool registerDasm);
+    template <Core C> void createJumpTable12(Model model, bool registerDasm);
     
     
     //
@@ -1186,7 +1229,26 @@ public:
     // Returns instruction metadata for a given opcode
     InstrInfo getInstrInfo(u16 op) const;
 
-    
+    //
+    // Advancing the clock
+    //
+
+protected:
+
+    /* Advances the clock by the cycle count computed for a 68020 instruction.
+     *
+     * Instruction fetches that hit the cache are modelled as a discount (see
+     * readInstructionWord), so the total can drop to zero or below, while the
+     * environment can only be stepped in whole bus cycles. The time is
+     * therefore accumulated and spent as soon as it amounts to at least one
+     * bus cycle, which keeps the discount fully effective. Should that not
+     * happen for CpStallMax instructions in a row, one bus cycle is borrowed:
+     * the environment is stepped from here alone, so without it the emulation
+     * would make no progress and its main loop would never terminate.
+     */
+    void syncCp(int cycles);
+
+
     //
     // Interfacing with other components
     //
@@ -1229,17 +1291,34 @@ protected:
     // Reads a value from memory
     virtual u8 read8(u32 addr) const = 0;
     virtual u16 read16(u32 addr) const = 0;
-    
+    // POM68K: not pure. The fork's hosts implement the 8/16-bit calls only;
+    // read32/write32 are reached only through dynamic bus sizing (a 32-bit
+    // port reported by dsack), which is compiled with MOIRA_EMULATE_ICACHE
+    // alone (MoiraDataflow.h, busSizing). The defaults compose the two word
+    // cycles in the order read<>/write<> issue them without bus sizing.
+    virtual u32 read32(u32 addr) const {
+        u32 hi = read16(addr);
+        return hi << 16 | read16(addr + 2);
+    }
+
     // Reads a 16-bit value from memory during the reset routine
     virtual u16 read16OnReset(u32 addr) const { return read16(addr); }
-    
+
     // Reads a 16-bit value from memory for disassembly purposes
     virtual u16 read16Dasm(u32 addr) const { return read16(addr); }
-    
+
     // Writes a value into memory
     virtual void write8(u32 addr, u8 val) const = 0;
     virtual void write16(u32 addr, u16 val) const = 0;
-    
+    // POM68K: not pure — see read32
+    virtual void write32(u32 addr, u32 val) const {
+        write16(addr, u16(val >> 16));
+        write16(addr + 2, u16(val));
+    }
+
+    // Returns the DSACK bits for the addressed device (68020)
+    virtual u8 dsack(u32 addr) const { return DSACK_16; }
+
     // Provides the interrupt vector for a given interrupt level in USER mode
     virtual u16 readIrqUserVector(u8 level) const { return 0; }
 
@@ -1436,7 +1515,10 @@ protected:
     
     // Called when a software trap is hit
     virtual void didReachSoftwareTrap(u32 addr) { }
-    
+
+    // Called after an instruction has been appended to the log buffer
+    virtual void didLogInstruction(const Registers &reg) { }
+
 #else
     
     // Advances the internal clock by the specified number of cycles
@@ -1447,17 +1529,22 @@ protected:
     // Reads a value from memory
     u8 read8(u32 addr) const;
     u16 read16(u32 addr) const;
-    
+    u32 read32(u32 addr) const;
+
     // Reads a 16-bit value from memory during the reset routine
     u16 read16OnReset(u32 addr) const;
-    
+
     // Reads a 16-bit value from memory for disassembly purposes
     u16 read16Dasm(u32 addr) const;
-    
+
     // Writes a value into memory
     void write8(u32 addr, u8 val) const;
     void write16(u32 addr, u16 val) const;
-    
+    void write32(u32 addr, u32 val) const;
+
+    // Returns the DSACK bits for the addressed device (68020)
+    u8 dsack(u32 addr) const;
+
     // Provides the interrupt vector for a given interrupt level in USER mode
     u16 readIrqUserVector(u8 level) const;
 
@@ -1531,6 +1618,9 @@ protected:
     
     // Called when a software trap is hit
     void didReachSoftwareTrap(u32 addr);
+
+    // Called after an instruction has been appended to the log buffer
+    void didLogInstruction(const Registers &reg);
     
 #endif
     
@@ -2882,6 +2972,7 @@ private:
     
 #include "MoiraInit.h"
 #include "MoiraALU.h"
+#include "MoiraCache.h"
 #include "MoiraDataflow.h"
 #include "MoiraExceptions.h"
 #include "MoiraDasm.h"
@@ -2891,6 +2982,16 @@ private:
     // Gates: fpu_context_test, moira_state_test.
     std::unique_ptr<::float_status> fpuFloatStatus;
 };
+
+/* The jump table builders are the only place where the instruction handler
+ * templates are instantiated. Keeping each core in a translation unit of its
+ * own splits the instantiation work three ways and keeps the compiler's peak
+ * memory usage within bounds. The definitions live in MoiraCore680x0.cpp.
+ */
+extern template void Moira::createJumpTable<Core::C68000>(Model, bool);
+extern template void Moira::createJumpTable<Core::C68010>(Model, bool);
+extern template void Moira::createJumpTable<Core::C68020>(Model, bool);
+
 
 }
 

@@ -406,16 +406,32 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   `fullPrefetch` et `pomJitFetch000` : ce dernier réimplémente la séquence
   de `SYNC` sans hook par accès, donc la fenêtre et un arbitrage de bus par
   cycle (blitter, Shifter) s'excluraient.
-- [ ] **Évaluer le cache d'instructions 68020 de l'amont (`a4c273b`).**
-  Seul commit amont postérieur au pin qui change un comportement et que le
-  fork n'a pas (`NEOST_VENDOR.md` § *Upstream origin*) : un i-cache 68020
-  repris de vAmiga, avec un budget de cycles fractionnaire (`426e4a3`). Il
-  déplace les cycles 68020 que tiennent les boots Mac II ; à mesurer contre
-  le modèle actuel avant de le prendre ou de le refuser par écrit.
+- [ ] **Activer le cache d'instructions 68020 de l'amont pour le Mac II et
+  le LC.** Le code est dans le fork depuis le rebasage du 2026-11-20
+  (`POM68K_VENDOR.md` rang 147), éteint par `MOIRA_EMULATE_ICACHE=false`.
+  Ce qui manque pour l'allumer : (1) le modèle de temps — l'amont retire
+  2 cycles par hit à des tables qui sont déjà la colonne « cache case » des
+  manuels (rang 129), et son budget (`maxStalled` 4, `minAccum` −454) est
+  de grade F ; il faut qu'un hit soit gratuit et qu'un miss coûte l'écart
+  entre les deux colonnes ; (2) la fenêtre de fetch du JIT
+  (`pomJitFetch020`, rang 55) contourne le cache, d'où le `#error` actuel ;
+  (3) la trame /BERR d'un cycle dimensionné par `dsack()` est de grade F ;
+  (4) les etalons `macii_*`, `maciifdhd_*` et `lc_boot_etalon` épinglent le
+  temps d'aujourd'hui et sont à re-fixer sous un arbitrage écrit.
+  *Bloqué pour le temps : un TimeDBRA d'un vrai Mac II ou LC.*
+- [ ] **Tenir le Runner de l'amont vert.** Depuis le 2026-11-20 le Runner
+  non modifié de l'amont (Moira contre Musashi) passe sur le fork déposé
+  dans son arbre, sous sa configuration (`POM68K_VENDOR.md` rang 148). Rien
+  ne le rejoue ici : c'est un contrôle manuel avant chaque release
+  (`tools/moira_release/README.md` § *In upstream's tree*). À automatiser
+  si l'amont devient une dépendance de CI acceptable (clone + Musashi).
+  Sous `MOIRA_MIMIC_MUSASHI`, un 68030/68040 sans traduction écrit par le
+  chemin 68020 ; les passes MMU et FPU du Runner ne comparent que le
+  désassemblage.
 - [ ] **Rafraîchir le texte NeoST de `extern/moira/NEOST_VENDOR.md`.**
   Notre copie garde le texte de NeoST du 2026-07-11 ; la sienne a doublé
-  depuis. Le pin amont, la recette du diff à trois voies et l'état des
-  onze commits amont postérieurs y sont notés depuis le 2026-11-10
+  depuis. Le pin amont, la recette du diff à trois voies et la base actuelle
+  (`ce28239`, rebasage du 2026-11-20) y sont notés
   (§ *Upstream origin and the three-way diff*) ; reste à reprendre ses
   sections postérieures, ou à renvoyer vers elles.
 

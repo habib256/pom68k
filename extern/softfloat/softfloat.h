@@ -84,6 +84,8 @@ this code that are retained.
 #ifndef SOFTFLOAT_H
 #define SOFTFLOAT_H
 
+#include "softfloat-prefix.h" /* POM68K: private symbol names, see that file */
+
 #include <stdbool.h>
 
 #if defined(CONFIG_SOLARIS) && defined(CONFIG_NEEDS_LIBSUNMATH)
