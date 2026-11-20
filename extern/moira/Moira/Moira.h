@@ -2460,6 +2460,22 @@ private:
         else
             return false;
     }
+    // POM68K: the second word of the pipe refill that follows a write to SR
+    // or CCR (MOVE to SR, MOVE to CCR, ANDI/ORI/EORI to SR). Below the 68030
+    // it is the bus cycle upstream models. On the 68030 and 68040 it is a
+    // prefetch like any other: its fault waits for the word to be used.
+    // [B] MC68030UM-1989 §8.1.2 — a bus error on a prefetch is deferred
+    //     until the faulted word is needed.
+    // [D] WinUAE @ Hatari e77819f7 makes no access there: 199 and 198
+    //     directed vectors with the instruction in a page's last four
+    //     bytes and the next page invalid (2026-11-20). The fork read the
+    //     word for real and took the bus error inside the SR write; a
+    //     handler's RTE then reran MOVE to SR with the SR it had loaded.
+    // Gate: moira_rules_test (refillPrefetchFaultIsDeferred).
+    template <Core C> MOIRA_HOT_INLINE void pomRefillRead() {
+        if (!pomStoreEndsInstruction<C>())
+            (void)read<C, AddrSpace::PROG, Word>(reg.pc + 2);
+    }
     MOIRA_HOT_INLINE int  mmuAtcLookup(u32 addr, u8 fc, bool write);
     void mmuAtcFill(u32 addr, u8 fc, bool write);
     MOIRA_HOT_INLINE void mmuAtcTouch(int i);

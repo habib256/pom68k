@@ -450,8 +450,24 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   (écriture sondée à la lecture) ; (3) un MOVEM qui charge son propre
   registre de base ou d'index avant qu'une lecture suivante faute (le
   manuel du 68040 ne donne l'EA empilée qu'aux modes indexés, ruling D34) ;
-  (4) le 68020 nu, dont les cycles sont terminés par logiciel
-  (`berr020_test`) ; (5) les opérandes décimaux condensés du FPU.
+  (4) les opérandes décimaux condensés du FPU.
+- [ ] **TRAPV pris en fin de page sur 68030.** `opcells.py generate --set
+  classes --pagend --seed 8101` : avec V armé et la page suivante absente,
+  le cœur prend la faute de bus de son second mot de remplissage (lecture
+  explicite dans `execTrapv`), l'oracle le trap (10 vecteurs). Même remède
+  que `pomRefillRead`, pour le 68030 seulement : sur 68040 le ruling D39
+  donne la faute d'accès aux instructions de ce genre.
+- [ ] **Rendre le 68020 nu transparent à une faute suivie d'un RTE nu.**
+  Le même balayage sur le modèle 68020 (hors gate) : 680 cycles fautés sur
+  5 824 ne retrouvent pas l'état sans faute — 409 dans le flux
+  d'instructions (un préfetch fauté après un `(An)+` rejoue
+  l'incrément), 271 sur les données (une écriture fautée d'`ADD Dn,(An)`
+  revient avec un CCR recalculé). Le 68EC030, qui suit le chemin du 020 nu,
+  en a 1 700. Le cœur n'y modélise que les cycles terminés par logiciel
+  (`berr020_test`, le protocole de sondage des slots de Mac OS) ; un vrai
+  68020 rejoue le cycle quand DF, RB ou RC est resté armé ([B]
+  MC68020UM-1992 §6.2). Aucun gate de boot n'en dépend. Ajouter la ligne
+  68020 à `fault_transparency_test` une fois la reprise écrite.
 - [ ] **Confirmer RTR sur un vrai 68030 (D45).** Le cœur ne déplace A7
   qu'après les deux dépilements, contre l'oracle dont la reprise dépile
   deux octets trop loin (`oracle/README.md`, `disputes/NOTES.md`). [F] : A7

@@ -21,7 +21,9 @@
 // Scope. 68030: read and write cycles, a bare RTE. 68040: the same, with
 // the handler completing the frame's pending write-backs before its RTE, as
 // a 68040 access-error handler must (run() below); the stores of CAS, CAS2
-// and the bit-field instructions are left out (see main()).
+// and the bit-field instructions are left out (see main()). MOVES, MOVE
+// from SR, FSAVE, FRESTORE, RTE and the 68030's PMOVE run in supervisor
+// mode on the swept stack, where the fault frame itself lands.
 // The plain 68020 completes its cycles in software
 // (berr020_test) and is not swept here. The 68030 runs with a 68882, the
 // 68040 with its own FPU; FP registers and FPCR/FPSR/FPIAR are compared. A long operand is two word cycles
@@ -106,6 +108,9 @@ struct Inst {
     std::vector<uint16_t> words;
     bool a0IsCode = false;      // JSR through A0
     bool only030 = false;
+    bool super = false;         // privileged: runs in supervisor mode, on the swept stack
+    int cell = -1;              // a word preset where A1 points (and a zero word after it)
+    std::vector<uint16_t> stack;    // words preset at the stack pointer (an RTE frame)
     std::string name;
 };
 
@@ -143,6 +148,8 @@ Final run(moira::Model model, const Inst& in, uint32_t seed, const Cycle* hole,
     p32(c, kUserStack, kTarget); p32(c, kUserStack + 2, kTarget);
     p32(c, a[3], kPointee);
     p32(c, a[6], kData + 0xA000);
+    if (in.cell >= 0) p32(c, a[1], uint32_t(in.cell) << 16);
+    for (size_t i = 0; i < in.stack.size(); i++) p16(c, kUserStack + 2 * uint32_t(i), in.stack[i]);
 
     if (model == moira::Model::M68030) c.setFPUModel(moira::FPUModel::M68882);
     c.reset();
@@ -159,8 +166,16 @@ Final run(moira::Model model, const Inst& in, uint32_t seed, const Cycle* hole,
     c.setD(7, rnd(s) & 0x3e);                  // the index register of mode 6
     for (int i = 0; i < 7; i++) c.setA(i, a[i]);
     if (in.a0IsCode) c.setA(0, kTarget);
-    c.setSR(uint16_t(rnd(s) & 0x1f));
-    c.setUSP(kUserStack); c.setSP(kUserStack);
+    c.setSFC(5); c.setDFC(5);
+    if (in.super) {
+        // The interrupt stack is the swept one: the fault frame lands below
+        // the instruction's own stack data and is left there by the RTE.
+        c.setSR(uint16_t(0x2700 | (rnd(s) & 0x1f)));
+        c.setSP(kUserStack);
+    } else {
+        c.setSR(uint16_t(rnd(s) & 0x1f));
+        c.setUSP(kUserStack); c.setSP(kUserStack);
+    }
 
     if (hole) { c.hole = *hole; c.armed = true; }
     c.record = cyclesOut != nullptr;
@@ -171,8 +186,8 @@ Final run(moira::Model model, const Inst& in, uint32_t seed, const Cycle* hole,
     c.record = false;
     bool writtenBack = false;
     for (int i = 0; i < 8 && !f.wedged; i++) {
-        if (c.getSR() & 0x2000) {
-            if (c.getPC0() != kHandler) { f.trapped = true; break; }
+        if (c.getPC0() - kTrap < 16) { f.trapped = true; break; }
+        if (c.getPC0() == kHandler) {
             if (model >= moira::Model::M68EC040 && !writtenBack) {
                 // What a 68040 access-error handler does before its RTE:
                 // the pending write-backs of the format-$7 frame.
@@ -208,7 +223,7 @@ Final run(moira::Model model, const Inst& in, uint32_t seed, const Cycle* hole,
             break;
         }
     }
-    if (c.getSR() & 0x2000) f.trapped = true;
+    if (c.getPC0() - kTrap < 16 || c.getPC0() == kHandler) f.trapped = true;
     for (int i = 0; i < 8; i++) f.d[i] = c.getD(i);
     for (int i = 0; i < 7; i++) f.a[i] = c.getA(i);
     f.usp = c.getUSP(); f.pc = c.getPC0(); f.ccr = uint16_t(c.getSR() & 0xff);
@@ -216,6 +231,11 @@ Final run(moira::Model model, const Inst& in, uint32_t seed, const Cycle* hole,
     f.fpcr = c.getFPCR(); f.fpsr = c.getFPSR(); f.fpiar = c.getFPIAR();
     f.trips = c.trips;
     f.data.assign(c.mem.begin() + kData, c.mem.begin() + kData + kDataSize);
+    if (in.super) {
+        // What lies below the final stack pointer is spent frames.
+        const uint32_t sp = c.getSR() & 0x2000 ? c.getSP() : c.getISP();
+        for (uint32_t a = kUserStack - 0x400; a < sp && a < kData + kDataSize; a++) f.data[a - kData] = 0;
+    }
     if (cyclesOut) *cyclesOut = c.cycles;
     return f;
 }
@@ -383,6 +403,33 @@ void build()
         addEa("FMOVEM.L ea,FPCR/FPSR/FPIAR", 0xf200, { 0x9c00 }, ea(m, 1));
         addEa("FMOVEM.L FPCR/FPSR/FPIAR,ea", 0xf200, { 0xbc00 }, ea(m, 1));
     }
+    // Privileged instructions, in supervisor mode.
+    const size_t firstSuper = list.size();
+    for (int m : modes) {
+        for (int size = 0; size < 3; size++) {
+            addEa("MOVES Rn,ea", uint16_t(0x0e00 | size << 6), { 0x1800 }, ea(m, 1));
+            addEa("MOVES ea,Rn", uint16_t(0x0e00 | size << 6), { 0x1000 }, ea(m, 1));
+        }
+        addEa("MOVE SR,ea", 0x40c0, {}, ea(m, 1));
+        if (m != 3 && m != 4) addEa("FSAVE ea", 0xf300, {}, ea(m, 1));
+    }
+    add("FSAVE -(A1)", { 0xf321 });
+    for (const uint16_t tail : { uint16_t(0x4200), uint16_t(0x4e00), uint16_t(0x4a00),
+                                 uint16_t(0x0a00), uint16_t(0x6200) })
+        add("PMOVE reg,(A1)", { 0xf011, tail }, false, true);
+    add("PMOVE (A1),TT0", { 0xf011, 0x0800 }, false, true); list.back().cell = 0;
+    add("FRESTORE (A1)", { 0xf351 }); list.back().cell = 0;
+    add("FRESTORE (A1)+", { 0xf359 }); list.back().cell = 0;
+    add("MOVE (A1),SR, staying supervisor", { 0x46d1 }); list.back().cell = 0x2715;
+    // RTE reading its own frame: the fault frame must not land on it.
+    add("RTE format 0, to supervisor", { 0x4e73 });
+    list.back().stack = { 0x2711, uint16_t(kTarget >> 16), uint16_t(kTarget), 0x0000 };
+    add("RTE format 0, to user mode", { 0x4e73 });
+    list.back().stack = { 0x0011, uint16_t(kTarget >> 16), uint16_t(kTarget), 0x0000 };
+    add("RTE format 2", { 0x4e73 });
+    list.back().stack = { 0x2700, uint16_t(kTarget >> 16), uint16_t(kTarget), 0x2018, 0x0000, 0x1000 };
+    add("MOVE (A1),SR, to user mode", { 0x46d1 }); list.back().cell = 0x0012;
+    for (size_t i = firstSuper; i < list.size(); i++) list[i].super = true;
     add("ABCD -(A1),-(A2)", { 0xc509 });
     add("SBCD -(A1),-(A2)", { 0x8509 });
     add("PACK -(A1),-(A2)", { 0x8549, uint16_t(rnd(gen)) });
@@ -437,6 +484,7 @@ int main(int argc, char** argv)
         for (size_t n = 0; n < list.size(); n++) {
             if (only >= 0 && long(n) != only) continue;
             const Inst& in = list[n];
+            if (in.only030 && r.is040) continue;
             std::vector<Cycle> cycles;
             const Final want = run(r.model, in, uint32_t(n), nullptr, &cycles);
             if (want.trapped || want.wedged) { skipped++; continue; }   // a divide by zero, a CHK

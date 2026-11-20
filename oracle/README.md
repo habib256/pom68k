@@ -203,7 +203,9 @@ encodings (`--mmu identity` makes the members fault, `--user` runs them
 unprivileged, `--user --stack data` puts the user stack on a data page so
 that pushes and pops fault while the frame goes to a sound supervisor
 stack, `--edge` puts the address registers a few bytes below a page
-boundary for split accesses, `--only <regex>` keeps the matching classes),
+boundary for split accesses, `--pagend` puts the member itself against the
+end of a page whose successor is invalid, `--only <regex>` keeps the
+matching classes),
 and `report <dir>`
 tabulates a runner's `--dump` per form. The runners' `--dump` prints USP,
 ISP and MSP when they differ: a faulting user-mode push shows nowhere else.

@@ -745,6 +745,7 @@ Moira::execAddxEa(u16 opcode)
         throw exc;
     }
 
+    [[maybe_unused]] const u32 xBefore = reg.sr.x ? 1 : 0;
     u32 result = addsub<C, I, S>(data1, data2);
 
     if constexpr (S == Long && C == Core::C68000 && !MOIRA_MIMIC_MUSASHI) {
@@ -762,7 +763,19 @@ Moira::execAddxEa(u16 opcode)
 
         looping<I>() ? noPrefetch<C>(S == Long ? 0 : 2) : prefetch<C>();
         pomLastWrite030<C>();   // POM68K: the store below ends the instruction
-        writeM<C, M, S>(ea2, result);
+        if constexpr (C == Core::C68020) {
+            // [D] WinUAE gencpu i_ADDX/i_SUBX @ Hatari e77819f7: `uae_u32
+            // newv = dst ± src ± X` over the sign-extended operands, so a
+            // faulting 68030 store stacks that 32-bit value as its pending
+            // write ("op=SUBX_M_B #967", opcells.py --set classes --mmu
+            // identity --only ADDX|SUBX, seed 7801: $A1 − $7D − 1 stacks
+            // $FFFFFF23). Gate: moira_rules_test (stackStoreFaults).
+            const u32 a = u32(SEXT<S>(data2)), b = u32(SEXT<S>(data1));
+            const bool sub = I == Instr::SUBX || I == Instr::SUBX_LOOP;
+            writeM<C, M, S, MMU_RAWBUF>(ea2, sub ? a - b - xBefore : a + b + xBefore);
+        } else {
+            writeM<C, M, S>(ea2, result);
+        }
     }
 
     //           00  10  20        00  10  20        00  10  20
@@ -986,7 +999,7 @@ Moira::execAndisr(u16 opcode)
         // instruction's page. [D] WinUAE @ Hatari e77819f7 (no data access
         // there); "040 random/tt seed=79011 #1749", fresh-seed sweep
         // 2026-11-14. Gate: moira_rules_test (srWriteRefillIsAFetch).
-        (void)read<C, AddrSpace::PROG, Word>(reg.pc + 2);
+        pomRefillRead<C>();
         prefetch<C, POLL>();
     } else {
         (void)read<C, AddrSpace::DATA, Word>(reg.pc + 2);
@@ -4987,7 +5000,7 @@ Moira::execMoveToCcr(u16 opcode)
         // -> 363 b, like MOVE to SR.
         fullPrefetch<C, POLL>();
     } else {
-        (void)read<C, AddrSpace::PROG, Word>(reg.pc + 2);
+        pomRefillRead<C>();
         prefetch<C, POLL>();
     }
 
@@ -5125,7 +5138,7 @@ Moira::execMoveToSr(u16 opcode)
         // FC (tests/data/sst68000/MOVEtoSR.json, every non-exception vector).
         fullPrefetch<C, POLL>();
     } else {
-        (void)read<C, AddrSpace::PROG, Word>(reg.pc + 2);
+        pomRefillRead<C>();
         prefetch<C, POLL>();
     }
 
@@ -6589,8 +6602,21 @@ Moira::execRte(u16 opcode)
         }
         case Core::C68020:
         {
+            // POM68K: a frame is popped word by word below. If one of those
+            // reads faults, A7 goes back to the frame's first word before
+            // the fault is taken: the new frame must not land on the words
+            // already read, and the rerun of this RTE must find its own
+            // frame. Before 2026-11-20 it reran from the moved A7 (PC
+            // $30000000 for $00003000 with the PC long faulting).
+            // [B] MC68030UM-1989 §8.2.1 — a faulted instruction is continued
+            //     after the handler's RTE.
+            // [B] MC68040UM-1993 §8.4.6 — and restarted on the 68040.
+            // Gate: fault_transparency_test (RTE formats $0 and $2).
+            u32 frameSp = reg.sp;
+            try {
             while (1) {
 
+                frameSp = reg.sp;
                 fword = (u16)read<C, AddrSpace::DATA, Word>(reg.sp + 6);
                 u16 format = u16(fword >> 12);
 
@@ -6877,6 +6903,10 @@ Moira::execRte(u16 opcode)
                     CYCLES_68020(4)
                     return;
                 }
+            }
+            } catch (...) {
+                reg.sp = frameSp;
+                throw;
             }
             break;
         }

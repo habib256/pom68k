@@ -308,7 +308,8 @@ def generate(args) -> int:
             members = [m for m in members if re.search(args.only, m[0])]
         for name, member in members:
             for _ in range(args.n):
-                st = gen_state(rng, family="core", mmu=args.mmu)
+                st = gen_state(rng, family="pagend" if args.pagend else "core",
+                               mmu="identity" if args.pagend else args.mmu)
                 if args.edge:
                     # Every address register a few bytes below a page
                     # boundary, so that word, long and bit-field operands
@@ -333,6 +334,12 @@ def generate(args) -> int:
                     st.sr = (st.sr & 0x3FFF) | 0x2000 | bit
                     st.a[7] = st.msp if st.sr & 0x1000 else st.isp
                 code = ([0xC140] if traced else []) + member() + [0x4E71] * 6
+                if args.pagend:
+                    # The member's last word is the page's last: the next
+                    # page is invalid, and only the prefetch reaches it.
+                    page = 0x8000 if args.cpu == "030" else 0x1000
+                    code = code[:-6]
+                    st.pc = (st.pc | (page - 1)) + 1 - 2 * len(code) + (2 if traced else 0)
                 if traced:
                     st.pc -= 2
                 ram = [(ad, b) for ad, b in st.ram if not st.pc <= ad < st.pc + 2 * len(code)]
@@ -418,6 +425,9 @@ def main() -> int:
     g.add_argument("--edge", action="store_true",
                    help="classes and ea: address registers 1 to 6 bytes below a page "
                         "boundary (32 KB on the 68030, 4 KB on the 68040), for split accesses")
+    g.add_argument("--pagend", action="store_true",
+                   help="classes and ea: the member against the end of a page whose successor "
+                        "is invalid (identity map); a fault it takes on its prefetch is a defect")
     g.add_argument("--only", default="",
                    help="classes and ea: keep the classes whose name matches this regular "
                         "expression (the others draw nothing, so seeds are not comparable)")

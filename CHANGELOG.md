@@ -613,6 +613,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-20 (fifth) — A write to SR or CCR at a page end took the bus error of its own refill; an RTE whose frame faults reran from a moved A7; ADDX and SUBX's pending store](#2026-11-20-addx-subx-buffer)
 - [2026-11-20 (fourth) — Fault, RTE, same state: a gate for what a fault frame is for, and the 68030 continuation it broke on](#2026-11-20-fault-transparency)
 - [2026-11-20 (third) — The user stack on a faulting page: LINK and PEA stacked format $B, a faulting JSR or BSR left A7 four below, a 68040 BSR skipped its call](#2026-11-20-stack-fault-cells)
 - [2026-11-20 (second) — Addressing-mode cells under the MMU: MOVE from SR ended on no "last write", the 68030 CAS2 logged its extension long as two words](#2026-11-20-ea-cells-under-mmu)
@@ -1413,6 +1414,95 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-20-addx-subx-buffer"></a>
+## 2026-11-20 (fifth) — A write to SR or CCR at a page end took the bus error of its own refill; an RTE whose frame faults reran from a moved A7; ADDX and SUBX's pending store
+
+The last seed of the previous entry gave one more data-output-buffer line.
+`SUBX.B -(Ay),-(Ax)` with $A1 − $7D − 1 and its store faulting: the oracle
+stacks $FFFFFF23 in the short frame, the fork $00000023. WinUAE computes
+`uae_u32 newv = dst - src - X` over `uae_s8`/`uae_s16` operands, so the
+buffer holds the difference of the sign-extended values; ADDX likewise
+with the sum ($7F + $01 stacks $00000080, where the sign-extended result
+is $FFFFFF80). `execAddxEa` now passes that value to the write buffer on
+the 68020 core, as ADD, SUB, NEG and NEGX do. 3 000 targeted vectors per
+model (`--only '^(ADDX|SUBX)_M_[BWL]$'`, seed 7801, identity map): 2 998
+before, 3 000 after on the 68030; the 68040, which has no such buffer,
+3 000 both times. ADDX had no failing vector among them, so 9 000 directed
+states — operands at the sign boundaries, `-(A1),-(A0)` under the identity
+map — gave 207 that take a bus error: 191 / 207 before (7 ADDX and 9 SUBX
+stores differ), 207 / 207 after. Gate: two more lines of
+`moira_rules_test` `stackStoreFaults`, both failing on the previous
+handler. `POM68K_VENDOR.md` row 142.
+
+**Privileged instructions join the gate.** MOVES in both directions and
+three sizes, MOVE from SR, FSAVE, FRESTORE, the 68030's PMOVE to memory
+and RTE run in supervisor mode with the interrupt stack in the swept
+region, so the fault frame lands under the instruction's own stack data:
+`fault_transparency_test` is now 1 091 instructions and 7 308 faulted
+cycles on the 68030, 1 085 and 7 207 on the 68040. It found two more:
+
+- **RTE whose own frame faults** (68030 and 68040, formats $0 and $2, 8
+  cycles on each model). RTE moves A7 pop by pop. A fault on the PC or the
+  format word stacked the new frame over the words already read and reran
+  RTE from the moved A7: PC $30000000 for $00003000. The frame loop of
+  `execRte` now puts A7 back on the frame's first word before the fault
+  propagates — a `try`/`catch` around the loop, inert when nothing faults.
+  `POM68K_VENDOR.md` row 143.
+- **A write to SR or CCR took the bus error of its own refill.** In the
+  gate it was one cycle per model: MOVE to SR dropping to user mode, the
+  word after the next opcode faulting, and the rerun started at the MOVE
+  with the user-mode SR — a privilege violation where the instruction had
+  completed. Against the oracle it is wider. MOVE to SR, MOVE to CCR and
+  ANDI/ORI/EORI to SR read the second word of the pipe refill for real
+  (upstream's bus cycle, kept from the 68010 model), so with the
+  instruction in the last four bytes of a page and the next page invalid
+  the fork took a bus error where the oracle makes no access: 199 of 200
+  directed vectors of the five forms on the 68030 and 198 on the 68040;
+  the 360 vectors of the control forms — DBcc, CHK, TRAPV, NOP, MOVEQ, TST,
+  ADDQ — pass. [B] MC68030UM-1989 §8.1.2: a prefetch fault waits for the word to
+  be used. `pomRefillRead` keeps the cycle below the 68030 and drops it on
+  the 68030 and 68040, where `prefetch` already defers. 560 / 560 on both
+  models after; a second set of 400 MOVE to SR vectors went from 20 to 400
+  (68030) and 17 to 400 (68040). Gate: `moira_rules_test`
+  `refillPrefetchFaultIsDeferred`, 10 checks, all failing before.
+  `POM68K_VENDOR.md` row 144.
+
+**`opcells.py --pagend`** (new) turns that case into a sweep: every class
+member against the end of a page whose successor is invalid, so that only
+its prefetch reaches the bad page. `classes` seed 8101 (2 730 and 2 790
+vectors) and `ea` seed 8201 (3 405 and 3 240) on the final core: D12, the
+stopped PC, on the 68040 the instructions ruling D39 gives the access
+error to (A-line, illegal, CHK, CHK2, MOVEC with no such register, TRAPV),
+three PMOVE vectors where the oracle marks a descriptor used after the
+flush (the pipe carry of `TODO.md`), and one line left open: a 68030 TRAPV
+that traps takes the bus error of its second refill word instead (10
+vectors) — the same explicit read, in `execTrapv`.
+
+**The plain 68020, measured.** `fault_transparency_test` with a 68020 row
+added by hand: 680 of 5 824 faulted cycles do not come back to the
+fault-free state — 409 in the instruction stream (a faulted prefetch after
+an `(An)+` reruns the increment), 271 on data (the faulted store of `ADD
+Dn,(An)` returns with a CCR computed twice). The 68EC030, which follows
+the plain-020 path, has 1 700. The fork models there the cycles a handler
+completes in software (`berr020_test`: Mac OS's slot-probe protocol),
+not the rerun a 68020 performs when DF, RB or RC is still set. No boot
+gate depends on it. Not in the gate, and open in `TODO.md`.
+
+**Tiers.** The ROM tiers of the previous entry's state (`6cc075f7`)
+finished meanwhile: `m030` 155 / 155 on AArch64 and `m040` 107 / 107 on
+x86-64 under Rosetta — with the two of the entry before, every family on
+both hosts for this morning's first three pushes. On this entry's state:
+
+| Host | `unit\|jit\|cpu-vectors` |
+|---|---|
+| AArch64 | 289 / 289 |
+| x86-64 (Rosetta) | 289 of 290 passed and none failed when this was pushed; the rest still running |
+
+No ROM gate soft-skipped. Program fuzzer on this entry's binary, 66 option
+sets of 1 500 fresh seeds weighted towards `--mmuprot` and `--vmrte`: 0
+failures. The AArch64 `m030` ROM tier on this state was started after the
+push (the refill change runs on every MOVE to SR of a 68030 boot).
 
 <a id="2026-11-20-fault-transparency"></a>
 ## 2026-11-20 (fourth) — Fault, RTE, same state: a gate for what a fault frame is for, and the 68030 continuation it broke on

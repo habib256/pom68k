@@ -3251,6 +3251,23 @@ void stackStoreFaults()
                   "00000008), idx byte %02X (want 12), USP=%08X", g16(c, sp + 6),
                   g32(c, sp + 0x58), c.mem[sp + 0x37], c.getUSP());
         }
+        struct Ext { uint16_t opcode; uint8_t dst, src, ccr; uint32_t want; const char* what; };
+        for (const Ext& k : { Ext{ 0x9109, 0xa1, 0x7d, 0x10, 0xffffff23, "SUBX.B -(A1),-(A0): $A1 - $7D - X" },
+                              Ext{ 0xd109, 0x7f, 0x01, 0x00, 0x00000080, "ADDX.B -(A1),-(A0): $7F + $01" } }) {
+            TestCpu c(model);
+            p32(c, 2 * 4, kHandler);
+            p16(c, kHandler, kNop);
+            stage(c, k.opcode, k.ccr);
+            c.mem[kHole] = k.dst; c.mem[0x30000] = k.src;
+            c.setA(0, kHole + 1); c.setA(1, 0x30001);
+            c.holeArmed = true; c.holeWritesOnly = true;
+            const bool contained = executeContained(c);
+            const uint32_t sp = c.getSP();
+            CHECK(contained && c.getPC0() == kHandler && g16(c, sp + 6) == 0xa008 &&
+                  g32(c, sp + 0x18) == k.want,
+                  "68030 %s, store fault: format %04X (want A008), data output buffer "
+                  "%08X (want %08X)", k.what, g16(c, sp + 6), g32(c, sp + 0x18), k.want);
+        }
         struct Neg { uint16_t opcode; uint8_t operand; uint32_t want; const char* what; };
         for (const Neg& k : { Neg{ 0x4410, 0x81, 0xffffff7f, "NEG.B (A0) of $81" },
                               Neg{ 0x4010, 0x80, 0x00000080, "NEGX.B (A0) of $80, X clear" } }) {
@@ -3330,6 +3347,40 @@ void stackFaultRoundTrip()
     }
 }
 
+void refillPrefetchFaultIsDeferred()
+{
+    // [B] MC68030UM-1989 §8.1.2 — a bus error on a prefetch waits until the
+    //     word is needed.
+    // [D] WinUAE @ Hatari e77819f7 — no access after an SR or CCR write:
+    //     directed vectors of 2026-11-20, the instruction in the last four
+    //     bytes of a page and the next page invalid (40 of 40 per form
+    //     differed). The fork read the second refill word for real and
+    //     took the bus error inside the instruction.
+    struct Case { uint16_t opcode; int words; uint16_t ext; const char* what; };
+    static const Case cases[] = {
+        { 0x46c0, 1, 0,      "MOVE D0,SR" },   { 0x44c0, 1, 0,      "MOVE D0,CCR" },
+        { 0x027c, 2, 0xffff, "ANDI #$FFFF,SR" }, { 0x007c, 2, 0x0000, "ORI #0,SR" },
+        { 0x0a7c, 2, 0x0000, "EORI #0,SR" },
+    };
+    for (auto model : {moira::Model::M68030, moira::Model::M68040}) {
+        for (const Case& k : cases) {
+            TestCpu c(model);
+            p32(c, 2 * 4, kHandler);
+            p16(c, kHandler, kNop);
+            stage(c, k.opcode, 0);
+            if (k.words == 2) { p16(c, kCode + 2, k.ext); c.setIRC(k.ext); }
+            c.setD(0, 0x2715);
+            const uint32_t next = kCode + 2 * uint32_t(k.words);
+            c.holeArmed = true; c.holeAt = next + 2;    // the word after the next opcode
+            const bool contained = executeContained(c);
+            CHECK(contained && c.getPC0() == next && c.faults == 0,
+                  "%s %s with the second refill word on a /BERR hole: PC0=%08X (want %08X), "
+                  "%d fault(s) taken (want 0)", model == moira::Model::M68040 ? "68040" : "68030",
+                  k.what, c.getPC0(), next, c.faults);
+        }
+    }
+}
+
 int main(int argc, char** argv)
 {
     if (argc == 2 && std::string_view(argv[1]) == "--movem-restart") {
@@ -3402,6 +3453,7 @@ int main(int argc, char** argv)
     cas2ExtensionLog030();
     stackStoreFaults();
     stackFaultRoundTrip();
+    refillPrefetchFaultIsDeferred();
 
     if (failures) {
         std::printf("[moira_rules_test] FAIL: %d check(s)\n", failures);
@@ -3414,6 +3466,6 @@ int main(int argc, char** argv)
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68030 MOVE to (xxx).L last write, 68EC030 plain-020 path with a 68030 "
-                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, the 68040 lock ending with TAS/CAS/CAS2, a memory-indirect pointer read outside the lock, BKPT without a data access, 68040 bit-field and JSR store faults restart, the SR-write refill as a fetch, no trace before a format-$7 rerun, PACK/UNPK -(An) faults on the 68030/68040, level 7 on a transition from the 68020 up, the billed 020-core interrupt sequence, the trace exception after the traced instruction, trace on change of flow, MULx.L into one register, CAS2 with one compare register, MOVE from SR/CCR ending on its store, the 68030 CAS2 extension long, LINK/UNLK/PEA/JSR/BSR/RTD stack faults, the UNPK source fixup and the pending store of NEG, NEGX and ASL\n");
+                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, the 68040 lock ending with TAS/CAS/CAS2, a memory-indirect pointer read outside the lock, BKPT without a data access, 68040 bit-field and JSR store faults restart, the SR-write refill as a fetch, no trace before a format-$7 rerun, PACK/UNPK -(An) faults on the 68030/68040, level 7 on a transition from the 68020 up, the billed 020-core interrupt sequence, the trace exception after the traced instruction, trace on change of flow, MULx.L into one register, CAS2 with one compare register, MOVE from SR/CCR ending on its store, the 68030 CAS2 extension long, LINK/UNLK/PEA/JSR/BSR/RTD stack faults, the UNPK source fixup and the pending store of NEG, NEGX, ADDX, SUBX and ASL, the deferred refill fault after an SR or CCR write\n");
     return 0;
 }
