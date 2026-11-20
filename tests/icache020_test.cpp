@@ -182,6 +182,23 @@ void selfModifying(TestCpu &c, std::vector<u32> &m)
     a.setCacr(1).jsr(0x2000).jsr(0x2000).setCacr(1 | 8).jsr(0x2000).end();
 }
 
+// The raw program reads of the 68020 core: the refill after an SR or CCR
+// write (MOVE to SR, ORI to CCR), TRAPV's pc+2 and the vector jump's first
+// fetch. Phases: call 1 (fills) | call 2 (all cached).
+void refills(TestCpu &c, std::vector<u32> &m)
+{
+    c.put32(7 * 4, 0x2080);                      // TRAPV vector (line index 32)
+    c.put16(0x2080, 0x4E73);                     // RTE
+    Asm s{c, 0x2040};                            // lines 16-20, clear of the caller's
+    s.moveqD0(2);                                // $2040
+    s.w(0x46FC).w(0x2700);                       // $2042 MOVE #$2700,SR
+    s.w(0x003C).w(0x0002);                       // $2046 ORI #2,CCR (V)
+    s.w(0x4E76);                                 // $204A TRAPV
+    s.dbraD0(0x2042).rts();                      // $204C DBRA, $2050 RTS
+    Asm a{c, 0x1000, &m};
+    a.setCacr(1).jsr(0x2040).jsr(0x2040).end();
+}
+
 const Program kPrograms[] = {
     { "loop-on",        loopOn,        0x01000 },
     { "loop-off",       loopOff,       0x01000 },
@@ -193,6 +210,7 @@ const Program kPrograms[] = {
     { "clear-all",      clearAll,      0x01000 },
     { "user-tag",       userTag,       0x01000 },
     { "self-modifying", selfModifying, 0x01000 },
+    { "refills",        refills,       0x01000 },
 };
 
 std::vector<u32> boot(TestCpu &c, Model model, const Program &p)
@@ -392,6 +410,19 @@ void checkModel(Model model)
           "self-modifying: D1 after calls %X/%X/%X, expected 4/8/10",
           d1AfterCall[0], d1AfterCall[1], sm.d1);
     CHECK(sm.at2002 == 0x5481, "self-modifying: memory not patched ($%04X)", sm.at2002);
+
+    // ── Raw program reads go through the cache ──────────────────────────
+    // [B] § 8.2.7 MOVE EA,SR 8(0/0/0) and ORI to CCR 12(0/0/0), § 8.2.17
+    // TRAPV (Trap) 25(1/0/5) and the exception's handler fetch, cache case:
+    // no instruction access when the code is cached. Upstream ce28239 read
+    // the refill word, TRAPV's pc+2 and the handler's first word straight
+    // from the bus (inventory row 154). Second call: no read of the
+    // subroutine or the handler at all.
+    const Trace rf = execute(model, prog("refills"));
+    const auto rf1 = rf.phase(1);
+    CHECK(reads(rf1, 0x2040, 0x2054) == 0 && reads(rf1, 0x2080, 0x2084) == 0,
+          "refills: second call %d reads of the cached code, %d of the cached "
+          "handler, expected 0", reads(rf1, 0x2040, 0x2054), reads(rf1, 0x2080, 0x2084));
 
     // ── Cycle totals ─────────────────────────────────────────────────────
     // The fork's corrected fetch charges (readInstr, inventory row 147): a

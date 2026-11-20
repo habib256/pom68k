@@ -418,8 +418,10 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   opt-in au Mac II et au LC ; (2) les grades F : le +6 d'un port étroit, le
   DSACK par région de la GLUE (tout en 32 bits) et du V8 (16 bits), la
   trame /BERR d'un remplissage de ligne ou d'un cycle dimensionné ;
-  (3) les autres lectures de programme brutes du 68020 (MOVE to SR/CCR,
-  TRAPV, JSR, saut de vecteur) restent à trancher contre §8.2.
+  (3) la charge de remplissage du premier fetch d'un handler
+  d'interruption se perd (`budget.cp` est remis à zéro par l'instruction
+  suivante ; MOVE to SR, TRAPV et le saut de vecteur passent par le cache
+  depuis le rang 154).
   *Bloqué pour le temps réel : un TimeDBRA d'un vrai Mac II ou LC, ou une
   capture de bus.*
 - [ ] **Tenir le Runner de l'amont vert.** Depuis le 2026-11-20 le Runner

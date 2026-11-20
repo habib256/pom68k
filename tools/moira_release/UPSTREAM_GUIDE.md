@@ -336,6 +336,20 @@ by −1 unguarded: SIGFPE on an x86-64 host.
 - Config/Runner: the Musashi half is reachable by the Runner's random
   operands only by chance; the 32/32 Musashi result (V clear) is kept.
 
+**Row 154 — the other raw 68020 program reads.** The refill word after
+an SR or CCR write, TRAPV's pc+2 and the vector jump's first fetch are read
+from the bus past the cache, as the DBcc word of row 152 was.
+- Models: 68020, 68EC020 with `MOIRA_EMULATE_ICACHE`.
+- Where: `pomRefillRead` (the fork's name for upstream's explicit read in
+  `execMoveToSr`, `execMoveToCcr`, `execAndisr`), `execTrapv`,
+  `jumpToVector`; helper `pomProgWord`.
+- Evidence: [B] MC68020UM-1992 §8.2.7, §8.2.16, §8.2.17 (cache case, no
+  instruction access). Read from upstream's code at ce28239; not run there.
+- Gate: `icache020_test (refills)`.
+- Upstream: still present.
+- Config/Runner: the Runner compares writes, not reads; the fill charge
+  moves the clock, which the Runner does not compare under the cache.
+
 One more item sits inside a row filed under C:
 
 - Row 55 drops `assert(S == Word)` from `divlsMoira`; row 153 above covers

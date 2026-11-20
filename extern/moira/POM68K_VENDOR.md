@@ -57,13 +57,13 @@ pair):
 
 | | | how to re-measure |
 |---|---|---|
-| distinct `pom*` extension identifiers | **120** (65 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **622** | `grep -rn POM68K Moira/ \| wc -l` |
+| distinct `pom*` extension identifiers | **121** (65 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
+| `POM68K`-marked lines | **625** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **20 of 33** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **153** | this file |
+| patch groups in the inventory below | **154** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h`, `MoiraState.h`, `MoiraMmu030Walk.h` | — |
 
-One hundred and fifty-three patch groups, two of which (the JIT seam, row 22, and the ATC
+One hundred and fifty-four patch groups, two of which (the JIT seam, row 22, and the ATC
 performance work, row 16) are not patches over upstream's design but a second
 consumer of it. A re-sync is no longer a merge with conflicts; it is a port.
 
@@ -369,6 +369,7 @@ gate in the last column of each row.
 | 151 | **MOVES releases SFC/DFC after an address error or a host /BERR** — `execMoves` clears `fcSource` when the `<ea>,Rn` read throws an `AddressError` or a `BusError`, and when the `Rn,<ea>` write throws a `BusError` (its address-error path already did); the frame is built at the throw and keeps the alternate FC | `MoiraExec_cpp.h` | after an address error on the read, every later access (the 29-word stacking, the vector fetch, the handler) reported SFC until the next MOVES or a reset. Reproduced on unmodified upstream ce28239 on 2026-11-20 (68010, `MOIRA_EMULATE_ADDRESS_ERROR` true). Row 37 covered the MMU fault path only. [B] MC68020UM-1992 §2.2 | `moira_rules_test` (movesFcAfterFault010: both directions, address error and /BERR; three of the four cases fail on the old core) |
 | 152 | **DBcc's count-expired read is an instruction fetch on the cached 68020** — with `MOIRA_EMULATE_ICACHE`, on the 68020/EC020, `execDbcc` reads the word at pc+2 through `readInstr` (cache, FC, watchpoint, /BERR record) and drops that fetch's charge; every other core and configuration keeps the plain `read<PROG, Word>` | `MoiraExec_cpp.h` | the read went straight to the bus past the cache on every pass of a warm loop. [B] MC68020UM-1992 §8.2.15: DBcc count expired, cache case 10(0/0/0), worst case 10(0/3/0): no instruction access when cached, and the same 10 clocks with or without one. Reproduced on unmodified upstream ce28239 on 2026-11-20 | `icache020_test` (phase reads now count every size: an E-on phase with the old R16 is non-zero) |
 | 153 | **DIVS.L of the most negative dividend by −1 under `MOIRA_MIMIC_MUSASHI`** — `divlsMusashi<Long>` returns V set before dividing `$80000000:00000000` by −1 | `MoiraALU_cpp.h` | `INT64_MIN / -1` is undefined in C++ and kills an x86-64 host with SIGFPE, in debug and release builds. Reproduced on unmodified upstream ce28239 on 2026-11-20. The non-Musashi path (`divlsMoira`, `execDivlMoira`) already had no assert and kept the registers on both overflow forms (rows 43, 55) | `moira_upstream_config_test` (divslOverflow, both configurations: SIGFPE on the old core under Musashi); `moira_rules_test` (divslOverflowKeepsRegisters, POM68K configuration, 020/030/040) |
+| 154 | **The other raw program reads of the 68020 go through its cache** — `pomProgWord` serves, on the cached 68020/EC020, the refill word after an SR or CCR write (`pomRefillRead`: MOVE to SR, MOVE to CCR, ANDI/ORI/EORI to SR), TRAPV's pc+2 and the vector jump's first fetch (`jumpToVector`) through `readInstr`, charge included; every other model and configuration keeps the plain `read<PROG, Word>`. JSR on the plain 68020 already fetched its target through `readInstr` (row 147) | `Moira.h`, `MoiraExec_cpp.h`, `MoiraDataflow_cpp.h` | the same shape as row 152: upstream read these words straight from the bus past the cache, so a warm loop with an SR write or a TRAPV still made bus reads. [B] MC68020UM-1992 §8.2.7, §8.2.16, §8.2.17: MOVE EA,SR 8(0/0/0), ANDI to SR 12(0/0/0), TRAPV (Trap) 25(1/0/5), Interrupt 26(2/0/4) in the cache case, no instruction access. Unlike the DBcc read, the charge is kept: those rows' worst cases exceed their cache cases. Upstream ce28239 not run for this one; read from its code | `icache020_test` (refills: second call 6 code and 3 handler reads on the old core, 0 now) |
 
 Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54, 56, 59-75 and 79-86 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
 when nothing arms them); rows 48 and 55 are performance alone, with no architectural effect. Row 58 is evidence documentation only. The ten files carrying no `POM68K` marker at all —

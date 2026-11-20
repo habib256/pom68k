@@ -2578,7 +2578,23 @@ private:
     // Gate: moira_rules_test (refillPrefetchFaultIsDeferred).
     template <Core C> MOIRA_HOT_INLINE void pomRefillRead() {
         if (!pomStoreEndsInstruction<C>())
-            (void)read<C, AddrSpace::PROG, Word>(reg.pc + 2);
+            (void)pomProgWord<C>(reg.pc + 2);
+    }
+    // [B] MC68020UM-1992 §8.2.7, §8.2.16, §8.2.17: MOVE EA,SR 8(0/0/0),
+    // ANDI to SR 12(0/0/0), TRAPV (Trap) 25(1/0/5), Interrupt 26(2/0/4) in
+    // the cache case: no instruction access when the code is cached.
+    // POM68K: a program-space word read that the 68020 makes as an
+    // instruction fetch. With its i-cache (MoiraConfig.h) it goes through
+    // readInstr: served by the cache when it hits, a line fill and the
+    // fetch charge when it misses. Upstream reads these words straight from
+    // the bus past the cache (the refill after an SR/CCR write, TRAPV's
+    // pc+2, the vector jump's first fetch). Every other model and
+    // configuration keeps the plain read. Gate: icache020_test (refills).
+    template <Core C> u16 pomProgWord(u32 addr) {
+        if constexpr (C == Core::C68020 && MOIRA_EMULATE_ICACHE) {
+            if (pomCacheOwnsFetch()) return readInstr<C>(addr);
+        }
+        return (u16)read<C, AddrSpace::PROG, Word>(addr);
     }
     MOIRA_HOT_INLINE int  mmuAtcLookup(u32 addr, u8 fc, bool write);
     void mmuAtcFill(u32 addr, u8 fc, bool write);

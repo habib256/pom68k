@@ -7641,7 +7641,7 @@ Moira::execTrapv(u16 opcode)
         if constexpr (C == Core::C68000) {
             (void)read<C, AddrSpace::PROG, Word>(reg.pc + 2);
         } else {
-            (void)read<C, AddrSpace::PROG, Word>(reg.pc + 2);
+            (void)pomProgWord<C>(reg.pc + 2);   // POM68K: cached on the 68020
             SYNC(2);
         }
         execException<C>(M68kException::TRAPV);

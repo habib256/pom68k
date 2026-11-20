@@ -1568,7 +1568,7 @@ Moira::jumpToVector(int nr)
             return;
         }
     }
-    queue.irc = (u16)read<C, AddrSpace::PROG, Word>(reg.pc);
+    queue.irc = pomProgWord<C>(reg.pc);   // POM68K: cached on the 68020
     SYNC(2);
     prefetch<C, POLL>();
 
