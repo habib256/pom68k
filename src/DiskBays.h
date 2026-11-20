@@ -162,6 +162,15 @@ void diskBaysInstallDrop(GLFWwindow* window);
 // session's list and the window opens; anything else is ignored (false).
 // Public so a headless gate can exercise the window without a drop.
 bool diskBaysOfferDroppedImage(const std::string& path);
+// The drop callback's router, for every dropped path. The ROM window's test
+// runs first (`romDropWanted`: a folder, a zip, or a file exactly the size
+// of a catalogued dump — never a floppy or CD size) because firmware dumps
+// are often `.bin`, which is a CD image here; then a disk image goes to
+// this window; any other small file goes to the ROM importer, which says
+// plainly that it is not a dump it knows. Rom inputs are queued for the ROM
+// window (`romWindowOfferDrop`).
+enum class DropRoute { Rom, Disk, Ignored };
+DropRoute diskBaysRouteDrop(const std::string& path);
 
 // Images discoverable from the usual places (hdv/ref/, hdv/work/, hdv/,
 // disks35/, cd/, the boot image's own directory) plus anything the user

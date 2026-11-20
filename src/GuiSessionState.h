@@ -9,6 +9,7 @@
 
 #include "GuiStartupWindow.h"
 #include "GuiAbstractionWindow.h"
+#include "GuiRomWindow.h"
 
 #include "AtalkHub.h"
 #include "CdAudioSource.h"
@@ -158,5 +159,6 @@ struct GuiSessionState {
     GuiDiagnosticState diagnostics;
     pom68k::PeripheralHost peripherals;
     pom68k::gui::GuiAbstractionState abstraction;
+    pom68k::gui::GuiRomState roms;
     pom68k::gui::GuiMachineControls machine;
 };

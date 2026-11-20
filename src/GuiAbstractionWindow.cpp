@@ -171,6 +171,12 @@ void drawAbstractionWindow(GuiSessionState& state, SnapMachine current) {
     view.engine = accelerated && state.cpu.getCpuEngine ? state.cpu.getCpuEngine() : 0;
     if (state.cpu.jitBackend) view.backend = state.cpu.jitBackend;
     drawAbstractionWindow(state.abstraction, view);
+    if (state.abstraction.openRomWindow) {
+        state.abstraction.openRomWindow = false;
+        state.roms.showWindow = true;
+        state.roms.focus.reset();
+        state.roms.returnToStartup = false;
+    }
 }
 
 void drawAbstractionWindow(GuiAbstractionState& state,
@@ -259,6 +265,8 @@ void drawAbstractionWindow(GuiAbstractionState& state,
                 ImGui::PushTextWrapPos(0.0f);
                 ImGui::TextColored(kOrange, "%s", live.hint.c_str());
                 ImGui::PopTextWrapPos();
+                if (live.degraded && ImGui::SmallButton("ROM Status..."))
+                    state.openRomWindow = true;
             }
 
             ImGui::TableSetColumnIndex(2);

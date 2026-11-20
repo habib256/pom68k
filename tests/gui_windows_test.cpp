@@ -306,6 +306,8 @@ int main() {
         ui.frame(draw);
         ui.frame(draw);
         capture(ui, "abstraction-adb");
+        check(ui.click("ROM Status...", draw) && st.openRomWindow,
+              "a degraded firmware row leads to the ROM Status window");
     }
 
     // ── Debugger ────────────────────────────────────────────────────
@@ -803,7 +805,8 @@ int main() {
                                  "src/GuiDebuggerWindow.cpp", "src/GuiSessionMenu.cpp",
                                  "src/GuiTypingWindow.cpp", "src/GuiSerialWindow.cpp",
                                  "src/GuiShellMenu.cpp", "src/GuiAbstractionWindow.cpp",
-                                 "src/AbstractionCatalog.cpp",
+                                 "src/AbstractionCatalog.cpp", "src/GuiRomWindow.cpp",
+                                 "src/GuiStartupWindow.cpp", "src/RomCatalog.h",
                                  "src/AdbVia.cpp", "src/V8Memory.cpp", "src/Q605Memory.cpp",
                                  "src/Q630Memory.cpp", "src/RbvMemory.cpp", "src/Q700Memory.cpp",
                                  "src/VaspMemory.cpp", "src/SonoraMemory.cpp", "src/TobyDeclChoice.h"};
@@ -812,7 +815,8 @@ int main() {
                    rel.find("GuiShell") != std::string::npos || rel.find("GuiMachineControls") != std::string::npos ||
                    rel.find("GuiDebugger") != std::string::npos ||
                    rel.find("GuiSessionMenu") != std::string::npos ||
-                   rel.find("AbstractionCatalog") != std::string::npos;
+                   rel.find("AbstractionCatalog") != std::string::npos ||
+                   rel.find("RomCatalog") != std::string::npos;
         };
         int missing = 0, scanned = 0;
         ui.frame([&] {

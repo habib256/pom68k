@@ -74,7 +74,7 @@ struct RomDump {
     const char* label;           // = the assets.lock label
     RomKind kind;
     RomNeed need;
-    const char* path;            // canonical install path, "roms/…"
+    const char* path;            // canonical install path, "roms/..."
     const char* alsoAt;          // '|'-joined, "" when none
     std::uint32_t size;
     const char* sha256;          // lowercase hexadecimal

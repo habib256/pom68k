@@ -51,6 +51,8 @@ GuiHostServices::GuiHostServices(GuiSessionState& state, GuiSessionObjects& obje
     // in the core policy IS the session's, and the window, the menu bar
     // and the qualification verdict all read that one.
     state_.peripherals.registry = config_.core().firmware.registry;
+    // The ROM window looks where the devices look, firmware root included.
+    state_.roms.search.firmwareRoot = config_.core().firmware.root.value_or(std::string());
     state_.relaunch.launchArguments = config_.launchArguments();
     state_.display.kiosk = config_.devices().kiosk;
     // The CRT glass pass: the stack lives in the arena (its GL objects die

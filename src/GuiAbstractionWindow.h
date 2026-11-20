@@ -25,6 +25,9 @@ struct GuiAbstractionState {
     bool showWindow = false;
     bool allMachines = false;   // false: only what this machine carries
     std::array<char, 64> search{};
+    // Set by a degraded firmware row's « ROM Status... » button; the
+    // session overload opens the ROM window and clears it.
+    bool openRomWindow = false;
 };
 
 extern const char* kAbstractionWindowTitle;
