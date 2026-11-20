@@ -141,6 +141,110 @@ def classes(cpu: str) -> list[tuple[str, int, int, int]]:
     return out
 
 
+# EA kinds of the addressing-mode sweep: (mode bits, register drawn at
+# random, EA extension words). "ixb" is a brief index word, "ixf" a full
+# one restricted to its defined encodings (bit 3 clear, a base
+# displacement size, no reserved I/IS), so that a failure is never a
+# reserved-encoding question.
+EA_KINDS = {
+    "dn": (0x00, True), "an": (0x08, True), "ind": (0x10, True), "pi": (0x18, True),
+    "pd": (0x20, True), "d16": (0x28, True), "ixb": (0x30, True), "ixf": (0x30, True),
+    "absw": (0x38, False), "absl": (0x39, False), "pcd16": (0x3A, False),
+    "pcixb": (0x3B, False), "pcixf": (0x3B, False), "imm": (0x3C, False),
+}
+CTL = ("ind", "d16", "ixb", "ixf", "absw", "absl", "pcd16", "pcixb", "pcixf")
+CTL_ALT = CTL[:6]
+MEM_ALT = ("ind", "pi", "pd") + CTL[1:6]
+DATA_ALT = ("dn",) + MEM_ALT
+DATA = DATA_ALT + ("pcd16", "pcixb", "pcixf", "imm")
+
+
+def ea_classes(cpu: str) -> list[tuple]:
+    """(name, base opcode, random opcode bits, [(base, mask)] per instruction
+    extension word, EA kinds, immediate words) — the 68020 additions and the
+    system instructions over every addressing mode they accept, with their
+    extension words drawn inside the defined encodings (a uniform 16-bit
+    MOVEC or PMOVE operand is illegal almost every time)."""
+    out: list[tuple] = []
+    c = lambda name, base, mask, shapes, kinds, imm=0: out.append((name, base, mask, shapes, kinds, imm))
+    for t, n in enumerate(("BFTST", "BFEXTU", "BFCHG", "BFEXTS", "BFCLR", "BFFFO", "BFSET", "BFINS")):
+        c(n, 0xE8C0 | t << 8, 0, [(0, 0x7FFF)], ("dn",) + (CTL if t in (0, 1, 3, 5) else CTL_ALT))
+    for size, n in ((1, "B"), (2, "W"), (3, "L")):
+        c("CAS_" + n, 0x08C0 | size << 9, 0, [(0, 0x01C7)], MEM_ALT)
+    for size, n in ((0, "B"), (1, "W"), (2, "L")):
+        c("CHK2CMP2_" + n, 0x00C0 | size << 9, 0, [(0, 0xF800)], CTL)
+        c("MOVES_" + n, 0x0E00 | size << 6, 0, [(0, 0xF800)], MEM_ALT)
+        c("TST_" + n, 0x4A00 | size << 6, 0, [], (("an",) if size else ()) + ("pcd16", "pcixb", "pcixf", "imm"),
+          2 if size == 2 else 1)
+        c("CMPI_" + n, 0x0C00 | size << 6, 0, [], ("pcd16", "pcixb", "pcixf"), -(2 if size == 2 else 1))
+    c("CAS2_W", 0x0CFC, 0, [(0, 0xF1C7), (0, 0xF1C7)], ())
+    c("CAS2_L", 0x0EFC, 0, [(0, 0xF1C7), (0, 0xF1C7)], ())
+    c("MULL", 0x4C00, 0, [(0, 0x7C07)], DATA, 2)
+    c("DIVL", 0x4C40, 0, [(0, 0x7C07)], DATA, 2)
+    c("CHK_W", 0x4180, 0x0E00, [], DATA, 1); c("CHK_L", 0x4100, 0x0E00, [], DATA, 2)
+    c("TAS", 0x4AC0, 0, [], DATA_ALT); c("NBCD", 0x4800, 0, [], DATA_ALT)
+    c("Scc", 0x50C0, 0x0F00, [], DATA_ALT)
+    c("MOVEM_W_out", 0x4880, 0, [(0, 0xFFFF)], ("pd",) + CTL_ALT)
+    c("MOVEM_L_out", 0x48C0, 0, [(0, 0xFFFF)], ("pd",) + CTL_ALT)
+    c("MOVEM_W_in", 0x4C80, 0, [(0, 0xFFFF)], ("pi",) + CTL)
+    c("MOVEM_L_in", 0x4CC0, 0, [(0, 0xFFFF)], ("pi",) + CTL)
+    c("PEA", 0x4840, 0, [], CTL); c("LEA", 0x41C0, 0x0E00, [], CTL)
+    c("JMP", 0x4EC0, 0, [], CTL); c("JSR", 0x4E80, 0, [], CTL)
+    c("MOVE_from_SR", 0x40C0, 0, [], DATA_ALT); c("MOVE_from_CCR", 0x42C0, 0, [], DATA_ALT)
+    c("MOVE_to_CCR", 0x44C0, 0, [], DATA, 1); c("MOVE_to_SR", 0x46C0, 0, [], DATA, 1)
+    for t, n in enumerate(("BTST", "BCHG", "BCLR", "BSET")):
+        c(n + "_dyn", 0x0100 | t << 6, 0x0E00, [], DATA if t == 0 else DATA_ALT, 1)
+        c(n + "_imm", 0x0800 | t << 6, 0, [(0, 0x00FF)],
+          DATA_ALT + (("pcd16", "pcixb", "pcixf") if t == 0 else ()))
+    for t, n in enumerate(("AS", "LS", "ROX", "RO")):
+        c(n + "R_mem", 0xE0C0 | t << 9, 0, [], MEM_ALT); c(n + "L_mem", 0xE1C0 | t << 9, 0, [], MEM_ALT)
+    c("ADDQ_W_An", 0x5040, 0x0E00, [], ("an",)); c("SUBQ_L_An", 0x5180, 0x0E00, [], ("an",))
+    c("ADDA_W", 0xD0C0, 0x0E00, [], DATA + ("an",), 1); c("CMPA_L", 0xB1C0, 0x0E00, [], DATA + ("an",), 2)
+    c("MOVEC_from_00x", 0x4E7A, 0, [(0x0000, 0xF007)], ()); c("MOVEC_to_00x", 0x4E7B, 0, [(0x0000, 0xF007)], ())
+    c("MOVEC_from_80x", 0x4E7A, 0, [(0x0800, 0xF007)], ()); c("MOVEC_to_80x", 0x4E7B, 0, [(0x0800, 0xF007)], ())
+    if cpu == "040":
+        c("MOVE16_abs", 0xF600, 0x1F, [(0x0000, 0x00FF), (0, 0xFFFF)], ())
+        c("MOVE16_pi", 0xF620, 7, [(0x8000, 0x7000)], ())
+    else:
+        c("PMOVE_TC_SRP_CRP", 0xF000, 0, [(0x4000, 0x1F00)], CTL_ALT)
+        c("PMOVE_TT", 0xF000, 0, [(0x0800, 0x0700)], CTL_ALT)
+        c("PMOVE_MMUSR", 0xF000, 0, [(0x6000, 0x0200)], CTL_ALT)
+        c("PFLUSH_PLOAD", 0xF000, 0, [(0x2000, 0x1FFF)], CTL_ALT)
+        c("PTEST", 0xF000, 0, [(0x8000, 0x1FFF)], CTL_ALT)
+    return out
+
+
+def ea_words(rng: random.Random, kind: str, imm: int) -> list[int]:
+    """The extension words of one EA of `kind`; `imm` is the immediate size
+    in words."""
+    if kind in ("d16", "pcd16") and rng.getrandbits(1):
+        # Half of the displacements stay inside the seeded bytes around An
+        # (or the code around PC): a random one reads the zeroes of an empty
+        # RAM, and DIVL divides by zero every time.
+        return [rng.randrange(-16, 13) & 0xFFFF]
+    if kind in ("d16", "absw", "pcd16"):
+        return [rng.getrandbits(16)]
+    if kind == "absl":
+        return [rng.getrandbits(8), rng.getrandbits(16)]
+    if kind == "imm":
+        return [rng.getrandbits(16) for _ in range(imm)]
+    if kind in ("ixb", "pcixb"):
+        return [rng.getrandbits(16) & ~0x0100]
+    if kind in ("ixf", "pcixf"):
+        bd = rng.choice((1, 2, 3))
+        iis = rng.choice((0, 1, 2, 3, 5, 6, 7))
+        suppress = rng.getrandbits(1)
+        if suppress:
+            iis = rng.choice((0, 1, 2, 3))
+        word = (rng.getrandbits(16) & 0xFE80) | 0x0100 | suppress << 6 | bd << 4 | iis
+        words = [word] + [rng.getrandbits(16) for _ in range(bd - 1)]
+        if bd == 3:
+            words[1] &= 0x00FF
+        od = iis & 3
+        return words + ([rng.getrandbits(16) for _ in range(od - 1)] if od > 1 else [])
+    return []
+
+
 def spread(rng: random.Random, mask: int) -> int:
     """Random bits in the positions `mask` selects."""
     value, bit = 0, 1
@@ -165,20 +269,48 @@ def generate(args) -> int:
     oracle = Oracle(args.a) if args.cpu == "030" else Oracle(args.a, model=68040, fpu=68040)
     rng = random.Random(args.seed)
     vectors = []
-    if args.set == "classes":
+    if args.set in ("classes", "ea"):
         # Untraced: one step. Traced: the lead-in (EXG D0,D0) takes the
         # step the oracle never traces, and the class member is the second.
         traced = args.trace != "none"
         bit = {"none": 0, "t0": 0x4000, "t1": 0x8000}[args.trace]
         table = classes(args.cpu)
-        for name, base, mask, ext in table:
+        members = [(name, lambda b=base, m=mask, e=ext:
+                    [b | spread(rng, m)] + [rng.getrandbits(16) for _ in range(e)])
+                   for name, base, mask, ext in table]
+        if args.set == "ea":
+            # One class per (instruction, addressing mode).
+            members = []
+            for name, base, mask, shapes, kinds, imm in ea_classes(args.cpu):
+                def draw(b=base, m=mask, sh=shapes, kind=None, imm=imm):
+                    op = b | spread(rng, m)
+                    if kind:
+                        bits, has_reg = EA_KINDS[kind]
+                        op |= bits | (rng.randrange(8) if has_reg else 0)
+                    inst = [sb | spread(rng, sm) for sb, sm in sh]
+                    # A negative `imm` is an immediate that precedes the EA
+                    # extension (CMPI); a positive one is the EA itself.
+                    lead = [rng.getrandbits(16) for _ in range(-imm)] if imm < 0 else []
+                    return [op] + inst + lead + (ea_words(rng, kind, imm) if kind else [])
+                if not kinds:
+                    members.append((name, draw))
+                for kind in kinds:
+                    members.append((f"{name}.{kind}", lambda d=draw, k=kind: d(kind=k)))
+        for name, member in members:
             for _ in range(args.n):
-                st = gen_state(rng, family="core", mmu="off")
-                st.sr = (st.sr & 0x3FFF) | 0x2000 | bit
-                st.a[7] = st.msp if st.sr & 0x1000 else st.isp
-                code = ([0xC140] if traced else []) + (
-                    [base | spread(rng, mask)] + [rng.getrandbits(16) for _ in range(ext)]
-                    + [0x4E71] * 6)
+                st = gen_state(rng, family="core", mmu=args.mmu)
+                if args.user:
+                    st.sr = (st.sr & 0x0FFF) | bit
+                    if args.stack == "data":
+                        # The user stack on a data page, whatever its kind:
+                        # pushes and pops fault, and the frame still goes to
+                        # a sound supervisor stack.
+                        st.usp = st.a[rng.randrange(7)] & ~1
+                    st.a[7] = st.usp
+                else:
+                    st.sr = (st.sr & 0x3FFF) | 0x2000 | bit
+                    st.a[7] = st.msp if st.sr & 0x1000 else st.isp
+                code = ([0xC140] if traced else []) + member() + [0x4E71] * 6
                 if traced:
                     st.pc -= 2
                 ram = [(ad, b) for ad, b in st.ram if not st.pc <= ad < st.pc + 2 * len(code)]
@@ -197,7 +329,7 @@ def generate(args) -> int:
                 vectors.append(sst.vector(f"op={name} #{len(vectors)} trace={args.trace}",
                                           st, final, touched, cycles, steps))
         sst.save(args.out, vectors)
-        print(f"{len(vectors)} vectors over {len(table)} classes → {args.out}")
+        print(f"{len(vectors)} vectors over {len(members)} classes → {args.out}")
         return 0
     forms = COMMON + (ONLY_030 if args.cpu == "030" else ONLY_040)
     mask = {"none": 0, "t0": 0x4000, "t1": 0x8000}[args.trace]
@@ -252,9 +384,18 @@ def main() -> int:
     g.add_argument("--a", required=True, help="oracle library (WinUAE)")
     g.add_argument("--cpu", default="030", choices=["030", "040"])
     g.add_argument("--trace", default="none", choices=["none", "t0", "t1"])
-    g.add_argument("--set", default="forms", choices=["forms", "classes"],
+    g.add_argument("--set", default="forms", choices=["forms", "classes", "ea"],
                    help="forms: fixed instruction forms behind a lead-in, two steps; "
-                        "classes: small encoding classes with random fields, one step")
+                        "classes: small encoding classes with random fields, one step; "
+                        "ea: the 68020 additions and system instructions per addressing mode")
+    g.add_argument("--mmu", default="off", choices=["off", "identity", "tt"],
+                   help="classes and ea: the translation the states are drawn under "
+                        "(identity: random page kinds, so the members fault)")
+    g.add_argument("--user", action="store_true",
+                   help="classes and ea: user mode, for the privilege violations")
+    g.add_argument("--stack", default="fixed", choices=["fixed", "data"],
+                   help="with --user: data puts the user stack on a data page, so that "
+                        "pushes and pops fault under --mmu identity")
     g.add_argument("--n", type=int, default=12, help="states per form or class")
     g.add_argument("--seed", type=int, default=77)
     g.add_argument("--out", required=True)

@@ -3058,6 +3058,64 @@ void packUnpkFaultRestoresAn()
     }
 }
 
+void cas2ExtensionLog030()
+{
+    // [D] WinUAE gencpu.c i_CAS2 @ Hatari e77819f7 — "op=CAS2_W #4168" of the
+    // addressing-mode cells under the MMU (2026-11-20). CAS2 fetches its
+    // two extension words as one long: a fault on the first operand read
+    // stacks a format-$B access log of ONE entry, the second in flight.
+    // The fork logged two words.
+    TestCpu c(moira::Model::M68030);
+    p32(c, 2 * 4, kHandler);
+    p16(c, kHandler, kNop);
+    stage(c, 0x0cfc, 0);                    // CAS2.W D0:D1,D2:D3,(A0):(A1)
+    p16(c, kCode + 2, 0x8080); p16(c, kCode + 4, 0x90c1);
+    p16(c, kCode + 6, kNop);
+    c.setIRC(0x8080);
+    c.setA(0, kHole); c.setA(1, 0x30000);
+    c.holeArmed = true;
+    const bool contained = executeContained(c);
+    const uint32_t sp = c.getSP();
+    CHECK(contained && c.getPC0() == kHandler && g16(c, sp + 6) == 0xb008 &&
+          g32(c, sp + 0x58) == 0x808090c1 && c.mem[sp + 0x37] == 0x12,
+          "68030 CAS2 first-operand fault: format %04X, log %08X (want 808090C1), "
+          "idx byte %02X (want 12)", g16(c, sp + 6), g32(c, sp + 0x58), c.mem[sp + 0x37]);
+}
+
+void moveFromSrStoreIsLastWrite()
+{
+    // [D] WinUAE gencpu.c i_MVSR2 @ Hatari e77819f7; addressing-mode cells
+    // under the MMU of 2026-11-20 ("op=MOVE_from_SR.ind #3821", 68030;
+    // "op=MOVE_from_SR.pi #3839", 68040). MOVE SR,<ea> and MOVE CCR,<ea>
+    // end on their store as every MOVE does: (An)+ has stepped when it
+    // faults, the 68030 stacks the short frame $A with the next PC. The
+    // fork called writeM itself, without the last-write mark: format $B
+    // on the 68030, An not stepped on either model.
+    for (auto model : {moira::Model::M68030, moira::Model::M68040}) {
+        const bool is040 = model == moira::Model::M68040;
+        for (const uint16_t opcode : { uint16_t(0x40da), uint16_t(0x42da) }) {   // MOVE SR|CCR,(A2)+
+            TestCpu c(model);
+            p32(c, 2 * 4, kHandler);
+            p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
+            stage(c, opcode, 0);
+            p16(c, kCode + 2, kNop); c.setIRC(kNop);
+            c.setA(2, kHole);
+            c.holeArmed = true; c.holeWritesOnly = true;
+            const bool contained = executeContained(c);
+            const uint32_t sp = c.getSP();
+            const uint16_t format = g16(c, sp + 6);
+            CHECK(contained && c.getPC0() == kHandler && c.holeTrips == 1 &&
+                  c.getA(2) == kHole + 2 && format == (is040 ? 0x7008 : 0xa008) &&
+                  (is040 || g32(c, sp + 2) == kCode + 2),
+                  "%s MOVE %s,(A2)+ store fault: PC0=%08X A2=%08X (want %08X), "
+                  "%u /BERR(s) (want 1), format %04X (want %04X), stacked PC %08X",
+                  is040 ? "68040" : "68030", opcode == 0x40da ? "SR" : "CCR", c.getPC0(),
+                  c.getA(2), kHole + 2, c.holeTrips, format, is040 ? 0x7008 : 0xa008,
+                  g32(c, sp + 2));
+        }
+    }
+}
+
 int main(int argc, char** argv)
 {
     if (argc == 2 && std::string_view(argv[1]) == "--movem-restart") {
@@ -3126,6 +3184,8 @@ int main(int argc, char** argv)
     mullSameRegister();
     cas2SameCompareRegister();
     packUnpkFaultRestoresAn();
+    moveFromSrStoreIsLastWrite();
+    cas2ExtensionLog030();
 
     if (failures) {
         std::printf("[moira_rules_test] FAIL: %d check(s)\n", failures);
@@ -3138,6 +3198,6 @@ int main(int argc, char** argv)
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68030 MOVE to (xxx).L last write, 68EC030 plain-020 path with a 68030 "
-                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, the 68040 lock ending with TAS/CAS/CAS2, a memory-indirect pointer read outside the lock, BKPT without a data access, 68040 bit-field and JSR store faults restart, the SR-write refill as a fetch, no trace before a format-$7 rerun, PACK/UNPK -(An) faults on the 68030/68040, level 7 on a transition from the 68020 up, the billed 020-core interrupt sequence, the trace exception after the traced instruction, trace on change of flow, MULx.L into one register, CAS2 with one compare register\n");
+                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, the 68040 lock ending with TAS/CAS/CAS2, a memory-indirect pointer read outside the lock, BKPT without a data access, 68040 bit-field and JSR store faults restart, the SR-write refill as a fetch, no trace before a format-$7 rerun, PACK/UNPK -(An) faults on the 68030/68040, level 7 on a transition from the 68020 up, the billed 020-core interrupt sequence, the trace exception after the traced instruction, trace on change of flow, MULx.L into one register, CAS2 with one compare register, MOVE from SR/CCR ending on its store, the 68030 CAS2 extension long\n");
     return 0;
 }

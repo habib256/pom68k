@@ -2451,6 +2451,15 @@ private:
             }
         }
     }
+    // POM68K: true on the models whose fault handling knows a "last write"
+    // (68030 LASTWRITE, 68040 mmu040LastWrite) — for the handlers that
+    // compute their EA themselves and hand the store to writeOp(n, ea, val).
+    template <Core C> MOIRA_HOT_INLINE bool pomStoreEndsInstruction() const {
+        if constexpr (C == Core::C68020)
+            return cpuModel == Model::M68030 || cpuModel >= Model::M68EC040;
+        else
+            return false;
+    }
     MOIRA_HOT_INLINE int  mmuAtcLookup(u32 addr, u8 fc, bool write);
     void mmuAtcFill(u32 addr, u8 fc, bool write);
     MOIRA_HOT_INLINE void mmuAtcTouch(int i);

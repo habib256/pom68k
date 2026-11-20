@@ -285,6 +285,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 - **When does the 68040 cache replacement counter advance, and do the JIT paths keep it?** → [On every cache access](#2026-11-10-cache040-counter)
 
+- **Are the 68020 additions and system instructions swept per addressing mode, under the MMU?** → [`opcells.py --set ea [--mmu identity]`, since 2026-11-20; MOVE from SR's store and the 68030 CAS2 log](#2026-11-20-ea-cells-under-mmu)
 - **Do the oracle corpora pass through the JIT, not only the interpreter?** → [Every pinned corpus does since 2026-11-13; the first run found a host segfault at guest pc 0](#2026-11-13-jit-corpus-replay)
 - **Why does `agent_binary_test` not compare the shipped agent with this host's build?** → [Different Retro68/GCC, different code: it compares only builds of the reference toolchain, since 2026-11-14](#2026-11-14-agent-toolchain)
 - **Is a memory-indirect pointer fetched inside the CAS/TAS lock?** → [No, since 2026-11-14: it is an ordinary read; found by the second fresh-seed sweep](#2026-11-14-second-sweep)
@@ -610,6 +611,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-20 (second) — Addressing-mode cells under the MMU: MOVE from SR ended on no "last write", the 68030 CAS2 logged its extension long as two words](#2026-11-20-ea-cells-under-mmu)
 - [2026-11-20 — T0, trace on change of flow, exists: the bit was stored and did nothing](#2026-11-20-t0-change-of-flow)
 - [2026-11-19 (nineteenth) — Trace had never met the oracle: the 68020/68030 frame was format $0, the 68040 ran one instruction too many](#2026-11-19-trace-against-the-oracle)
 - [2026-11-19 (eighteenth) — No interrupt or trace between a 68030 RTE $B and the instruction it continues](#2026-11-19-rte-b-no-boundary)
@@ -1407,6 +1409,95 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-20-ea-cells-under-mmu"></a>
+## 2026-11-20 (second) — Addressing-mode cells under the MMU: MOVE from SR ended on no "last write", the 68030 CAS2 logged its extension long as two words
+
+The class-balanced cells of this morning's entry draw register fields only:
+nearly every class is its `(An)` form, untranslated, in supervisor mode.
+`opcells.py generate --set ea` (new) draws N states per (instruction,
+addressing mode) for the 68020 additions and the system instructions — bit
+fields, CAS, CAS2, CHK2/CMP2, MOVES, MULx.L/DIVx.L, CHK, TAS, NBCD, Scc,
+MOVEM, PEA/LEA/JMP/JSR, the SR and CCR moves, the bit operations, the
+memory shifts, MOVEC, MOVE16, PMOVE/PFLUSH/PLOAD/PTEST — over every mode
+each accepts: 568 classes on the 68030, 540 on the 68040. Their own
+extension words stay inside the defined encodings (a uniform 16-bit MOVEC
+or PMOVE operand is illegal almost every time), a full-format index word
+keeps to its defined I/IS and BD sizes, and half of the 16-bit
+displacements stay inside the seeded bytes so that DIVx.L does not divide
+by the zeroes of an empty RAM. Two new switches apply to `classes` and
+`ea`: `--mmu identity|tt` draws the states under translation, with the
+generator's random page kinds, so the members fault; `--user` runs them
+unprivileged.
+
+**Untranslated, nothing new.** Seeds 3001 (25 states per class, 14 198 and
+13 500 vectors) and 4001 (100 states, 56 798 and 54 000), then `--user`
+(seed 5301): every failure is the format-$2 instruction address of CHK,
+CHK2 and a zero divide (D12).
+
+**Under the identity map, two defects.**
+
+- **MOVE SR,<ea> and MOVE CCR,<ea> to memory.** `execMoveSrEa` and
+  `execMoveCcrEa` compute their EA and called `writeM` themselves, so the
+  store carried no last-write mark. A faulting store stacked format $B
+  where the oracle stacks the short frame $A with the next PC (68030), and
+  left `(An)+` unstepped (68030 and 68040). On those two models the
+  handlers now step `(An)+` first and store through `writeOp(n, ea, val)`,
+  as every MOVE does. 6 of 6 809 vectors on the 68030 and 1 of 6 480 on
+  the 68040 (seed 5001, 12 states per class). [D] WinUAE gencpu `i_MVSR2`
+  @ Hatari e77819f7.
+- **68030 CAS2: the two extension words are one long.** The oracle fetches
+  them with one `next_ilong`, one entry of the format-$B access log; the
+  fork logged two words, so an operand fault stacked one entry too many
+  and the count byte one too high. 5 of 14 193 vectors (seed 5201, 25
+  states). The log is what a 68030 RTE continues from since 2026-11-19
+  (sixteenth); the fork read its own frames consistently, so no guest
+  misbehaved. The 68040 has no such log and is unchanged.
+
+Gates: `moira_rules_test` `moveFromSrStoreIsLastWrite` (68030 and 68040,
+both instructions; with the new branch disabled, 4 of 4 checks fail) and
+`cas2ExtensionLog030`. `POM68K_VENDOR.md` row 138 holds the first; the
+CAS2 line belongs to row 137's instruction and to the access-log rows.
+
+**What the other cells showed.** `classes` under the identity map (seed
+5101): D12, `LINK A7` (D42) and the stopped PC, nothing else. `ea` behind
+the lead-in under T1 and T0 with the identity map (seeds 5501, 5601) and
+under transparent translation (seed 5401): D12, and two single vectors
+left as they are —
+
+- `--mmu tt --seed 5401 --n 15`, "op=MOVES_B.ixb #1584" (68030): a
+  faulting `MOVES.B (d8,A4,A6.W*4),D2` whose format-$B frame matches in
+  every documented field and differs in the oracle's internal state words
+  (`mmu030_state[0]` 2 against 1, `mmu030_state[1]` $0010 against $0001,
+  `mmu030_disp_store[0]` holding the EA). One vector in 8 516; the same
+  class passes under the identity map. [F]: not understood.
+- `--mmu identity --trace t0 --seed 5601 --n 12`, "op=PMOVE_TC_SRP_CRP.d16
+  #6471" (68030): `PMOVE (8,A0),TC` loads an enabled TC whose fields sum
+  to 44. Both sides take the configuration exception; the oracle then
+  stacks its frame through the half-decoded translation
+  (`mmu030_decode_tc` sets `enabled` before it validates) and marks the
+  root descriptor of page 0 used and modified. The fork stacks it
+  untranslated. An oracle artifact: no tree was configured.
+
+Generated code: `sst68030_jit` (with `POM68K_JIT_PROFIT_SCORE=0`, 26 376
+blocks compiled) and `sst68040_jit` run the untranslated and identity-map
+`ea` vectors identically to the interpreter, 14 198 + 6 809 and
+13 500 + 6 480.
+
+**Program fuzzer, random flag combinations.** A third soak of that kind,
+the first to draw `--tracebit`, `--t0only`, `--vmrte` and `--devport` with
+the other flags, the 68000 and 68020 next to the 68030 and 68040, and the
+threaded backend (window mode or blocks) one time in five on the native
+families: 423 option sets of 1 500 fresh seeds in 70 minutes on six
+workers, AArch64, 0 failures (68040 158 sets, 68030 143, 68000 66, 68020
+56; 175 on the threaded backend). 52 more draws combined `--vmrte` with
+`--savestate`, which the fuzzer refuses, and ran nothing.
+
+A 100-state `ea` vector file is 1.5 GB; 25 states per class is the working
+size (`oracle/README.md`).
+
+Evidence, AArch64: `unit|jit|cpu-vectors` 288 / 288, no ROM gate
+soft-skipped.
 
 <a id="2026-11-20-t0-change-of-flow"></a>
 ## 2026-11-20 — T0, trace on change of flow, exists: the bit was stored and did nothing

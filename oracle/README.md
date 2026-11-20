@@ -195,9 +195,12 @@ after the older families so their existing seed assignments stay stable.
 instruction: `generate --set forms --trace t0|t1` runs fixed instruction
 forms behind a lead-in (the trace sweep of 2026-11-20), `generate --set
 classes [--trace t0|t1]` draws N states per small encoding class with
-random register fields, extension words and operands, and `report <dir>`
-tabulates a
-runner's `--dump` per form. `fuzz030.py`/`fuzz040.py --trace t1|t0` set a
+random register fields, extension words and operands, `generate --set ea`
+draws them per (instruction, addressing mode) for the 68020 additions and
+the system instructions, with extension words kept inside their defined
+encodings (`--mmu identity` makes the members fault, `--user` runs them
+unprivileged), and `report <dir>` tabulates a runner's `--dump` per form.
+A 100-state `ea` file is 1.5 GB: 25 states per class is the working size. `fuzz030.py`/`fuzz040.py --trace t1|t0` set a
 trace bit behind a lead-in instruction, and `--trace-handler rte` turns the
 vector into a single-step loop.
 

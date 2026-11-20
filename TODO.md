@@ -450,6 +450,13 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   chargé ne change ni T, ni S, ni M, ni le masque : le cœur trace (manuel),
   WinUAE non (retour anticipé de `MakeFromSR_x`) — tranché pour le manuel,
   un vrai 68030/68040 le confirmerait.
+- [ ] **Comprendre les mots d'état internes d'un MOVES indexé en faute.**
+  `opcells.py generate --set ea --mmu tt --seed 5401 --n 15`, vecteur
+  « op=MOVES_B.ixb #1584 » (68030) : cadre $B identique dans tous les champs
+  documentés, différent dans les mots internes de l'oracle
+  (`mmu030_state[0]`, `mmu030_state[1]`, `mmu030_disp_store[0]`). Un vecteur
+  sur 8 516, la même classe passe sous table identité (`CHANGELOG`
+  2026-11-20 (second)). [F] : non compris ; sans effet invité connu.
 - [ ] **Trancher CAS2 `Dn:Dn` sur 68040 (D44).** Comparaison en échec avec
   un seul registre de comparaison : le manuel de référence (M68000PRM-1992,
   CAS2) y met l'opérande mémoire 1 pour toute la famille, WinUAE l'opérande

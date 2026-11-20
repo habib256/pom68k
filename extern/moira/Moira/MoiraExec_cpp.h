@@ -1889,17 +1889,29 @@ Moira::execCas2(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    int dc1 = _____________xxx(ircWord());
-    int du1 = _______xxx______(ircWord());
-    int rn1 = xxxx____________(ircWord());
+    u16 ext1, ext2;
+    bool asLong = false;
+    if constexpr (C == Core::C68020) asLong = cpuModel == Model::M68030;
+    if (asLong) [[unlikely]] {
+        // [D] WinUAE gencpu.c i_CAS2 @ Hatari e77819f7 (next_ilong): the two
+        // extension words are ONE long entry of the 68030 access log. Logged
+        // as two words, an operand fault stacked a format-$B frame with one
+        // entry too many ("op=CAS2_W #4168", opcells.py --set ea --mmu
+        // identity seed 5201). Gate: moira_rules_test (cas2ExtensionLog030).
+        const u32 ext = readExt<C, Long>();
+        ext1 = u16(ext >> 16); ext2 = u16(ext);
+    } else {
+        ext1 = u16(ircWord()); readExt<C>();
+        ext2 = u16(ircWord()); readExt<C>();
+    }
 
-    readExt<C>();
+    int dc1 = _____________xxx(ext1);
+    int du1 = _______xxx______(ext1);
+    int rn1 = xxxx____________(ext1);
 
-    int dc2 = _____________xxx(ircWord());
-    int du2 = _______xxx______(ircWord());
-    int rn2 = xxxx____________(ircWord());
-
-    readExt<C>();
+    int dc2 = _____________xxx(ext2);
+    int du2 = _______xxx______(ext2);
+    int rn2 = xxxx____________(ext2);
 
     u32 ea1 = reg.r[rn1];
     u32 ea2 = reg.r[rn2];
@@ -4878,11 +4890,20 @@ Moira::execMoveCcrEa(u16 opcode)
         throw AddressError(makeFrame<AE_WRITE|AE_INC_PC>(ea));
     }
 
-    // Write to effective address
-    writeM<C, M, S, POLL>(ea, val);
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading (opcells.py --set ea
+    // --mmu identity, 2026-11-20). The store ends the instruction on the
+    // 68030 and the 68040 as in writeOp: (An)+ steps first, and a fault
+    // stacks the 68030's short frame $A, not $B.
+    if (pomStoreEndsInstruction<C>()) {
+        updateAnPI<M, S>(dst);
+        writeOp<C, M, S, POLL>(dst, ea, val);
+    } else {
+        // Write to effective address
+        writeM<C, M, S, POLL>(ea, val);
 
-    // Emulate (An)+ register modification
-    updateAnPI<M, S>(dst);
+        // Emulate (An)+ register modification
+        updateAnPI<M, S>(dst);
+    }
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -4997,11 +5018,17 @@ Moira::execMoveSrEa(u16 opcode)
             throw AddressError(makeFrame<AE_WRITE|AE_INC_PC>(ea));
         }
 
-        // Write to effective address
-        writeM<C, M, S, POLL>(ea, val);
+        // The store ends the instruction: see execMoveCcrEa.
+        if (pomStoreEndsInstruction<C>()) {
+            updateAnPI<M, S>(dst);
+            writeOp<C, M, S, POLL>(dst, ea, val);
+        } else {
+            // Write to effective address
+            writeM<C, M, S, POLL>(ea, val);
 
-        // Emulate (An)+ register modification
-        updateAnPI<M, S>(dst);
+            // Emulate (An)+ register modification
+            updateAnPI<M, S>(dst);
+        }
 
         /*
         writeOp<C, M, S, POLL>(dst, getSR());

@@ -53,10 +53,10 @@ pair):
 
 | | | how to re-measure |
 |---|---|---|
-| distinct `pom*` extension identifiers | **116** (65 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **572** | `grep -rn POM68K Moira/ \| wc -l` |
+| distinct `pom*` extension identifiers | **117** (65 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
+| `POM68K`-marked lines | **573** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **17 of 27** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **137** | this file |
+| patch groups in the inventory below | **138** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h`, `MoiraState.h`, `MoiraMmu030Walk.h` | — |
 
 One hundred and sixteen patch groups, two of which (the JIT seam, row 22, and the ATC
@@ -307,6 +307,7 @@ gate in the last column of each row.
 | 135 | **T0, trace on change of flow, from the 68020 up** — `State::TRACING0` mirrors SR.T0 so that a non-zero `flags` keeps the instruction in `execute()`; `traceFlow()` stages `TRACE_EXC` from `fullPrefetch` calls marked `FLOW` (taken Bcc/DBcc/FBcc, BRA, BSR, JMP, RTS, RTD, RTR, CALLM, RTM), from JSR, from an SR write made with T0 set (`setSR`: MOVE/ANDI/ORI/EORI to SR, STOP and RTE, decided by the T0 the instruction began with), and, below the 68040, from ANDI/ORI/EORI to CCR and after an instruction trap's own exception (`traceInstructionTrap`); `traceFlow040()` adds the 68040's list (NOP, MOVEC and MOVE to USP, MOVES, CAS, CAS2, CINV, CPUSH, PFLUSH, PTEST, FSAVE, FMOVEM to memory, FDBcc). The frame address is latched at instruction start | `Moira.h`, `Moira.cpp`, `MoiraTypes.h`, `MoiraDataflow_cpp.h`, `MoiraExec_cpp.h`, `MoiraExecFPU_cpp.h`, `MoiraExecMMU_cpp.h`, `MoiraExceptions_cpp.h` | [B] MC68020UM-1992 §6.1.7; [B] MC68030UM-1989 §8.1.7; [B] MC68040UM-1993 §8.2.6; [D] WinUAE check_t0_trace / trace_t0_68040; the bit was stored and inert | `moira_rules_test` (traceOnChangeOfFlow), `cpu_vectors030_test`, `cpu_vectors040_test` (trace=t0 cells), `jit_program_fuzz_{030,040}_t0_test` |
 | 136 | **68040 MULS.L/MULU.L write Dh before Dl** — `execMullMoira` wrote the 64-bit product Dl then Dh on every model; on the 68040 the order is reversed, which shows when both name one register (it keeps the low half there, the high half below the 68040) | `MoiraExec_cpp.h` | [D] WinUAE m68k_mull, "68040 is different"; the manuals call the result undefined | `moira_rules_test` (mullSameRegister) |
 | 137 | **CAS2 with one compare register keeps memory operand 1 below the 68040** — a failed CAS2 wrote Dc1 then Dc2 on every model; the 68020 and 68030 now write Dc2 then Dc1. The 68040 keeps the former order (ruling D44) | `MoiraExec_cpp.h` | [B] M68000PRM-1992 CAS2; [D] WinUAE i_CAS2, with "68040: register update order swapped" | `moira_rules_test` (cas2SameCompareRegister) |
+| 138 | **MOVE from SR and MOVE from CCR end on their store on the 68030 and 68040** — `execMoveSrEa` and `execMoveCcrEa` called `writeM` themselves; on those two models they now step `(An)+` first and store through `writeOp(n, ea, val)`, which carries the last-write mark (`pomStoreEndsInstruction`) | `MoiraExec_cpp.h`, `Moira.h` | a faulting store stacked format $B instead of $A on the 68030 and left `(An)+` unstepped on both; [D] WinUAE gencpu i_MVSR2, found by the addressing-mode cells under the MMU (`opcells.py --set ea --mmu identity`) | `moira_rules_test` (moveFromSrStoreIsLastWrite) |
 
 Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54, 56, 59-75 and 79-86 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
 when nothing arms them); rows 48 and 55 are performance alone, with no architectural effect. Row 58 is evidence documentation only. The ten files carrying no `POM68K` marker at all —
