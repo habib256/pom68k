@@ -487,7 +487,7 @@ add_library(pom68k_app STATIC
     src/RuntimeConfig.cpp src/RuntimeConfigProduct.cpp src/RuntimeConfigSerial.cpp
     src/RuntimeConfigCore.cpp src/RuntimeConfigMachine.cpp src/RuntimeConfigProfile.cpp src/RuntimeConfigFirmware.cpp
     src/RuntimeConfigRelaunch.cpp src/RuntimeConfigNetwork.cpp
-    src/MachineFactory.cpp src/MachineSession.cpp src/SessionFile.cpp)
+    src/MachineFactory.cpp src/MachineSession.cpp src/SessionFile.cpp src/AbstractionCatalog.cpp)
 target_include_directories(pom68k_app PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 # ─── ROM store (headless) — catalogue status, download and import ──────
 # src/RomCatalog.h is the table; the library finds, fetches (system curl)

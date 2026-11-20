@@ -491,6 +491,13 @@ target_compile_definitions(docs_test PRIVATE
     POM68K_PERF_BUDGET_FILE="${CMAKE_CURRENT_SOURCE_DIR}/performance_budgets.tsv")
 add_test(NAME docs_test COMMAND docs_test
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+# The abstraction catalogue (src/AbstractionCatalog.*) against the files it
+# names, the firmware manifest, every platform kind, and the master table of
+# docs/LLE_VS_HLE.md. Asset-free; runs from the source root.
+add_executable(abstraction_catalog_test tests/abstraction_catalog_test.cpp)
+target_link_libraries(abstraction_catalog_test PRIVATE pom68k_app)
+add_test(NAME abstraction_catalog_test COMMAND abstraction_catalog_test
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
 # The env-knob surface against DEV.md § 5 and config_knobs.tsv. The exact
 # registry classifies every name and checks product evidence against the
