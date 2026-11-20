@@ -2366,7 +2366,7 @@ the same decoder and overrides the variable — `RuntimeConfigRelaunch.cpp`) —
 [§3.3bis](#33bis-what-else-can-live-on-the-bus-scsitarget--daynaport)),
 `POM68K_FIRMWARE_ROOT` (`<dir>` **replaces** both default search bases
 `./` and `../` for every dump `FirmwareManifest::verify` looks up —
-`FirmwareManifest.h:89-93`; a path that does not hold `roms/…` makes every
+`FirmwareManifest.h:47-51`; a path that does not hold `roms/…` makes every
 MCU fall back to HLE, which is the point when qualifying a packaged build).
 
 **Product / LLE-AArch64 mode** — the `--lle-aarch64` promise, captured by
