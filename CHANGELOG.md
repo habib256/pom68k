@@ -1612,6 +1612,15 @@ with the gates' other options, then `--ext2 --ext --sys --smc --mmu`
 68030 and the 68040. AArch64 30 000 seeds, x86-64 under Rosetta 7 600,
 0 failures.
 
+Three more lots on the same binaries, after the last commit of the night,
+0 failures: `--tracebit` on the 68000 and 68020 (threaded backend, blocks),
+on the 68040 with `--dcache` and on the 68LC040 (seeds from 970000; AArch64
+14 000, x86-64 4 000); `--sys --mmu`, `--devport` and `--fpu --fpexc` (from
+980000; AArch64 24 000, x86-64 3 000); `--smc` and `--mmu --dcache` (from
+990000; AArch64 13 000). A first run of the 68000/68020 lot compiled no
+block — the backend variables were passed to `env` as one unsplit zsh word
+— and was discarded.
+
 <a id="2026-11-19-trace-against-the-oracle"></a>
 ## 2026-11-19 (nineteenth) — Trace had never met the oracle: the 68020/68030 frame was format $0, the 68040 ran one instruction too many
 
