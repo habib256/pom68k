@@ -147,6 +147,9 @@ checks ROM size and profile selection, media presence and floppy/hard-disk
 choice; it cannot prove that the image
 contains a bootable, compatible Mac OS. **Continue demo** dismisses it.
 Reopen it from **Machine → Set Up a Macintosh…** to prepare another machine.
+When no ROM is found for the chosen model, the guide offers **Download ROMs
+for this Mac…** and **ROM Status…** (see [Downloading or importing
+ROMs](#downloading-or-importing-roms)); nothing is downloaded until you click.
 
 Data placement depends on the package:
 
@@ -351,6 +354,20 @@ without it. From that list POM68K can fill your `roms/` folder in two ways:
   POM68K looks for. MAME's two-chip images of the 128K, 512K and Plus ROMs
   are recombined.
 
+Both live in the **ROM Status** window (**Machine → ROM Status…**). It
+lists every dump with its state — *Verified*, *Shadowed* (another file is
+found first), *Mismatch* (a file is there but is not the dump) or
+*Missing* — what it is needed for, the machines that use it, and for a
+missing one what you lose and where it can be downloaded from. **Download
+missing for** *(this Mac)* or **Download all missing** fetch in the
+background with a progress bar and **Cancel**; the result says how many
+dumps came from each source and why the others failed. **Import…** takes a
+file, a folder or a zip, and dropping ROM files, folders or zips on the
+POM68K window imports them too (disk images dropped there still go to the
+Disks window). A machine that is already running keeps the firmware it
+started with: new dumps are used the next time a machine starts. ROMs are
+Apple's copyrighted firmware; use only dumps you are entitled to use.
+
 Either way, nothing is installed unless its size and SHA-256 are the
 catalogue's. A file already at that place that is *not* the expected dump is
 first copied to `roms-replaced/` next to `roms/`, and left in place if that
@@ -456,7 +473,8 @@ large inputs are split at 1,900 MB by default. Run
   The Mac receives keys again after you close them or leave the field.
 - **Machine:** **Set Up a Macintosh…** guides model, ROM and system-media
   selection. Search the grouped model list by name or family, then choose
-  your ROM and startup disk. The menu also offers restart, pause, fast-forward,
+  your ROM and startup disk. **ROM Status…** shows which ROMs and firmware
+  dumps are present and downloads or imports the missing ones. The menu also offers restart, pause, fast-forward,
   save or restore state, **Type text...**, input recording, the **Session**
   submenu and drive sounds. On a PowerBook Duo it also offers **Close lid** /
   **Open lid**: closing the lid lets Mac OS put the Duo to sleep, and, as on

@@ -3310,6 +3310,66 @@ levels…** and from Windows; `gui_windows_test` renders it headlessly
 (`gui_abstraction*.ppm`) and `gui_machine_window_test` opens it from the
 menu.
 
+### The "ROM Status" window (`src/GuiRomWindow.*`)
+
+The ROM catalogue (§ "The ROM catalogue" below) against this host, and the
+only place the GUI downloads or imports a dump. One row per `kRomDumps`
+entry, grouped by kind (machine ROMs, controller firmware, declaration
+ROMs): the store's state chip (Verified / Shadowed / Mismatch / Missing,
+with its detail), the label, the need (Required / Substitute - the HLE
+fallback runs / Optional), the profiles that use it, where it was found
+and, for a missing row, what is lost (`absent`) and whether RetroBIOS also
+serves it or only the POM68K archive does. « This machine » keeps the rows
+of the focused profile (the running machine, or the model the Set Up
+window is preparing); « All dumps » shows the catalogue with those rows
+highlighted; a text filter matches label, id, path and machine. The
+summary line counts verified and missing dumps and names the destination
+(`writableRomsDir`), or why nothing can be installed.
+
+**Threads.** Every action is a job on ONE worker thread the window owns
+(`RomJob`): the scan (every candidate hashed), the download (`fetchRoms`)
+and the import (`importRoms`). The frame reads a mutex-guarded copy of the
+progress; Cancel sets the atomic the library polls and joins; the state's
+destructor does the same, so quitting mid-download waits one curl poll
+(30 ms), not the download. Every job ends with a scan unless cancelled, and
+a cancelled download or import is followed by one. The browser build has no
+threads: there the job runs inline and the download is refused
+(`romFetchAvailable`).
+
+**Network.** Opening the window only scans. A download starts on a click
+in this window or on « Download ROMs for this Mac... » in **Set Up a
+Macintosh**, which is offered (never started) when no ROM file was found
+for the chosen model; that button opens this window on the model, and
+« Back to Set Up a Macintosh » returns to the guide, which looks for the
+ROM again. The result separates dumps from the POM68K archive, from
+RetroBIOS and failures, and states `archiveError` on its own line.
+
+**After an install** the window rescans and calls
+`MachineFactory::forgetRomSignatures()`, so the Machine menu's greyed
+profiles and the guide's discovery see the new files. A running machine
+keeps the firmware and declaration ROMs it started with; the window says
+so.
+
+**Drops.** The application has one drop callback (`DiskBaysDrop.cpp`), and
+`diskBaysRouteDrop` routes each path: the ROM window first
+(`romDropWanted`: a folder, a `.zip`, or a file exactly the size of a
+catalogued dump whose extension is not another disk image's - none is a
+floppy or CD size, and dumps are often `.bin`, which the Disks window reads
+as a CD), then a disk image to the Disks
+window, then any other small file to the importer, which reports what it
+did not recognise. Dropped ROM inputs are queued and imported on the next
+free frame, and the window opens.
+
+It is reached from **Machine → ROM Status...**, from Windows, from the Set
+Up guide and from a degraded firmware row of the Abstraction Levels window.
+`gui_rom_window_test` renders it headlessly with no network and no ROM
+(`gui_roms-*.ppm`): an empty temporary tree with the real scanner, a fake
+scan with every state, a held fake download (progress, Cancel), a mixed
+finished result, the real `fetchRoms` over a fake transport whose archive
+answers 404, the destructor joining mid-download, the drop router and a
+dropped import. `gui_machine_window_test` opens it from the menu and drives
+the guide's offer and the way back.
+
 ### The "AppleTalk / Ethernet" window (`src/NetworkWindow.*`)
 
 Out of `GuiShell.cpp` since 2026-09-13, when the DaynaPort selector took the
