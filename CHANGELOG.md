@@ -1605,6 +1605,13 @@ state, interpreter against translator, fresh seeds: 21 000 over `--t0only`,
 `--tracebit --vmrte`, `--vmrte` alone, `--tracebit --mmuprot --mmutt
 --mmupage` and `--tracebit --dcache`, 0 failures.
 
+Closing soak on the pushed state (`7459613b` binaries), fresh seeds from
+950000 and 960000, both hosts at once: `--tracebit` and `--t0only --vmrte`
+with the gates' other options, then `--ext2 --ext --sys --smc --mmu`
+(`--dcache` on the 68040) and `--mmuprot --mmutt --mmupage`, each on the
+68030 and the 68040. AArch64 30 000 seeds, x86-64 under Rosetta 7 600,
+0 failures.
+
 <a id="2026-11-19-trace-against-the-oracle"></a>
 ## 2026-11-19 (nineteenth) — Trace had never met the oracle: the 68020/68030 frame was format $0, the 68040 ran one instruction too many
 
