@@ -1501,8 +1501,10 @@ both hosts for this morning's first three pushes. On this entry's state:
 
 No ROM gate soft-skipped. Program fuzzer on this entry's binary, 66 option
 sets of 1 500 fresh seeds weighted towards `--mmuprot` and `--vmrte`: 0
-failures. The AArch64 `m030` ROM tier on this state was started after the
-push (the refill change runs on every MOVE to SR of a 68030 boot).
+failures. The AArch64 `m030` ROM tier on this state ran after the push
+(the refill change runs on every MOVE to SR of a 68030 boot): 155 / 155,
+no gate soft-skipped. `m040`, and both ROM tiers on x86-64, have not run
+on this state.
 
 <a id="2026-11-20-fault-transparency"></a>
 ## 2026-11-20 (fourth) — Fault, RTE, same state: a gate for what a fault frame is for, and the 68030 continuation it broke on
