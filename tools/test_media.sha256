@@ -1,0 +1,40 @@
+# tools/test_media.sha256 — every file of the test-media archive
+# (archive.org item pom68k_media, pom68k_media.zip): SHA-256 and repository
+# path, `sha256sum -c` format. tools/fetch_test_media.py installs each file
+# the tree lacks, after checking it against this list; tools/build_asset_archives.py
+# media builds the zip from a tree that has them.
+#
+# The list is explicit on purpose: hdv/ on the reference host is 6.2 GB of
+# work copies, PRAM files and scratch volumes, and none of that belongs in
+# the archive. Two groups, 914.5 MiB uncompressed in all:
+#  1. every reference-disk / reference-floppy row of assets.lock (the
+#     etalons' qualified media, read-only under hdv/ref and disks35/ref);
+#  2. the other images asset-requiring gates open by name and the
+#     reference host holds (System 6.0.8 / 5.1 volumes for
+#     compact_teachtext_etalon, compact_savestate_relaunch_etalon and
+#     scsi_hfs_facade_test; the floppies of se_three_drive_etalon).
+# Images gates name that the reference host does not hold — hdv/boot.vhd
+# (1.4 GB, a last-resort fallback), hdv/MacOS-7.6-boot.vhd, the CD images
+# (MAC_OS_8-1_RETAIL_0.ISO, MacOS_86.iso, Apeiron_1_0_3.toast,
+# GliderPRO_1_1_2.toast, TIM_3.iso), disks35/Disk605.moof,
+# disks35/Oids v1.4.moof and disks35/Stuffit_Expander_5.5.dsk — are not
+# listed; their gates soft-skip without them, as they do today.
+
+73bf9d2e5db2c2f538d43933fb38ed1880ab2f2111cee5c7fec7c7468f0f7a5b  hdv/ref/GISTPERSO-boot.vhd
+b15efc29bd65736ab205caba7ea30eabd691ac554999ce0058dc7ff48dd94105  hdv/ref/HD20SC.vhd
+0a798fa4c1084a6132cacf903d057979598ee0fe024a86e867fee9217903a3dc  hdv/ref/MacOS-8.1-boot.vhd
+0d6729bf5bb72f4aac3ec7fb87194ebba6b68733c9a2a9f02c56fae0505e386c  hdv/ref/System 7.0 HD.dsk
+81f1b16c7ff6bb9c28b3ab928d2b91a9be3d1e923795e0eef39a3f8252394ae2  hdv/ref/System 7.1 HD.dsk
+32a0735184adb25796a7287e632cc9b9664fef5c6e793ff14f31003285013382  hdv/ref/System 7.5 HD.dsk
+9abafc2edfb742f71fc0e4e4840ef9f1adde78de1387c406d84e4c82d35cad6f  hdv/ref/System 7.5.5 HD.dsk
+c1b256d6f89389abf60caaab24b59f072b00b0c69e2da181695d4831e78ca932  hdv/ref/DAYNA.vhd
+e616c34227b6098e6bd549fcfe598314ed4c01a159edabc7ffba884bb30262fa  hdv/ref/TOOLS.vhd
+1e098bcb46d58bd35821afe0c5aebc2ae3f8394e6f7a20bf0409c838fd1d3386  disks35/ref/System 1.1.dsk
+0655aa5ac47a8bb750af162b5feeb5e336ec11a2f435b7f40f49bcfa079aa680  disks35/ref/System 2.0.dsk
+8fdc677cc9f24bab3eff8b2707544c2487b47235326cfc2df82c7642badb145f  disks35/ref/System 3.3.dsk
+6ea0c1c7a139d84aa3b97459d95e600daab0b25d8becb543622b8ed4067eb962  disks35/ref/Disk605.dsk
+847374700201df2e358c4b562751118ee87875853d828b84e6e1858d6f9b8137  hdv/ref/System 7.5.3 HD.dsk
+48c50e9c5a50aadde424e6056561c073b6c5f0ab17a35d0bbfe0788cecf336f3  hdv/System 6.0.8 HD.dsk
+d0b58169373b01ef8c623b90e00b0b7c54f36669e4cb066911b3d96c6832345f  hdv/System 5.1 HD.dsk
+39a011d2a4e2be2d5808e29ae609cbf8c75e51aaff0e6a8888f50aa6f878be18  disks35/Rogue.dsk
+577106db8ae7859c32ee58d1cf3818663f5c4e774a5c6143d6c416d578dc5f6c  disks35/BonjourPommeOne.dsk

@@ -21,3 +21,11 @@ add_test(NAME rom_fetch_test COMMAND rom_fetch_test)
 add_executable(rom_import_test tests/rom_import_test.cpp)
 target_link_libraries(rom_import_test PRIVATE pom68k_roms)
 add_test(NAME rom_import_test COMMAND rom_import_test)
+
+# The archive tooling's offline self-tests (no network, no roms/ needed).
+add_test(NAME asset_archives_script_test
+         COMMAND python3 tools/build_asset_archives.py --self-test
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME fetch_test_media_test
+         COMMAND python3 tools/fetch_test_media.py --self-test
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
