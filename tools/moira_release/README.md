@@ -12,7 +12,7 @@ every upstream commit up to it is in the fork, and
 commit on that master. With the fork dropped into upstream's tree, upstream's
 own `testRunner` passes unmodified (§ *In upstream's tree*).
 
-It is still not a pull request. The difference is about 14 000 lines, most
+It is still not a pull request. The difference is about 15 000 lines, most
 of it execution upstream does not have (68030 PMMU, 6888x and 68040 FPU, the
 68040) and seams for POM68K's JIT and save states. It is offered to be read
 and cherry-picked: every local change is marked `POM68K` in the source,

@@ -123,7 +123,7 @@ applied ten times, not a merge of two trees:
 | `f90fc50` | DIVU/DIVS prefetch timing | already here through NeoST (row 40) |
 
 `git diff ce28239 -- Moira` against upstream is now exactly what the fork
-adds: +14 833 −641 lines in 20 files on the day of the rebase, and a release
+adds: +14 952 −651 lines in 21 files at the end of that day, and a release
 carries it as one `git am` commit that applies to upstream's master
 (`tools/moira_release.py --upstream`).
 
