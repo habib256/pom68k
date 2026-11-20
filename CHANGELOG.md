@@ -1497,7 +1497,7 @@ both hosts for this morning's first three pushes. On this entry's state:
 | Host | `unit\|jit\|cpu-vectors` |
 |---|---|
 | AArch64 | 289 / 289 |
-| x86-64 (Rosetta) | 289 of 290 passed and none failed when this was pushed; the rest still running |
+| x86-64 (Rosetta) | 290 / 290 (289 passed and one still running when this was pushed) |
 
 No ROM gate soft-skipped. Program fuzzer on this entry's binary, 66 option
 sets of 1 500 fresh seeds weighted towards `--mmuprot` and `--vmrte`: 0
