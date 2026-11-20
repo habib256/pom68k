@@ -248,14 +248,10 @@ ruling in `CHANGELOG.md` or the relevant research note.
 
 ## Moira is a permanent fork
 
-`extern/moira/` came through NeoST from Dirk Hoffmann's Moira. POM68K's MMU,
-FPU, snapshot, timing and JIT seams make it a maintained fork rather than an
-unchanged dependency. Since 2026-11-20 it is based on upstream's master of
-that day (`ce28239`): upstream changes are ported or cherry-picked
-deliberately, one commit at a time with the tiers run; do not merge/revendor
-over the local tree. Upstream's 68020 instruction cache is carried and
-switched off here (`MOIRA_EMULATE_ICACHE`), and `MOIRA_MIMIC_MUSASHI` must
-keep upstream's own Runner passing on the fork.
+`extern/moira/` came through NeoST from Dirk Hoffmann's Moira; POM68K's MMU,
+FPU, snapshot, timing and JIT seams make it a maintained fork, based since
+2026-11-20 on upstream `ce28239`. Upstream changes are cherry-picked one at
+a time with the tiers run; do not merge/revendor over the local tree.
 
 `extern/moira/POM68K_VENDOR.md` owns the decision, patch inventory and resync
 procedure. The WinUAE/Hatari oracle under `oracle/` remains the differential

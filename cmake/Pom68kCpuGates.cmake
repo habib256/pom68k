@@ -45,8 +45,11 @@ target_link_libraries(fpu_context_test PRIVATE ${POM68K_CPU_CONTEXT_THREADS})
 set_tests_properties(cache040_test PROPERTIES TIMEOUT 1800)
 # GCC ASan on the nightly runner needs ~2 400 s (run 43222539870; 246 s
 # under AppleClang ASan on the M4). Instrumented builds only.
+# fault_transparency_test faults every bus cycle of 1 023 instructions: a
+# few seconds plain, past the 600 s default under GCC ASan/UBSan on the
+# nightly runner (run 44724906324, 2026-11-20).
 if(POM68K_SANITIZE)
-    set_tests_properties(cache040_test PROPERTIES TIMEOUT 3600)
+    set_tests_properties(cache040_test fault_transparency_test PROPERTIES TIMEOUT 3600)
 endif()
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Pom68kSstGates.cmake)
