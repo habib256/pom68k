@@ -619,6 +619,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-21 (second) — The release recut with the 68020 cache on, and merged with the night's ROM catalogue work](#2026-11-21-release-with-icache)
 - [2026-11-21 — Upstream's 68020 instruction cache is on, with its fetch timing corrected; three defects of upstream's code fixed](#2026-11-21-icache-020-on)
 - [2026-11-20 (eighth) — One ROM catalogue with a status window, a downloader and an importer; the LLE/HLE inventory as a window](#2026-11-20-rom-status-and-abstraction-windows)
 - [2026-11-20 (seventh) — The release for Dirk Hoffmann, cut on his master and accepted by his Runner](#2026-11-20-release-on-upstream-master)
@@ -1424,6 +1425,46 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-21-release-with-icache"></a>
+## 2026-11-21 (second) — The release recut with the 68020 cache on, and merged with the night's ROM catalogue work
+
+`moira-pom68k-20261121-d357e933.tar.gz` (158 files, sha256
+`39b5c8efcb76834d33d8716b764dc0ab944816122359e078959de9f7a983402a`) is cut
+from `d357e933` with its patch against upstream `ce28239` (+15 072 −652
+lines). It replaces yesterday's `98579c84` cut, which carried the cache
+switched off and none of the three fixes.
+
+`d357e933` is a merge: ten commits pushed from another session during the
+night (the ROM catalogue and its windows, 2026-11-20 (eighth)) met the four
+of this one. No file of `extern/moira`, `src/jit` or the release export is
+on the incoming side. The merged tree was built in Debug and ran the
+asset-free tier, 210 / 212 — the two reds, `hfs_inject_test` and
+`jit_asset_free_lockstep_test`, fail in that `-O0` directory since before
+the rebase and pass optimised. CI and the macOS job are green on it.
+
+On the archive:
+
+- `--verify --sst-root tests/data`: 90 / 90 on `unit|jit|corpus` in the
+  extracted tree, no `SKIP`. A first verification, run while an LTO build
+  of the parent tree was linking, had three `jit_program_fuzz_*` gates time
+  out at 300 s (the run took 22 min for 10): the build was frozen and the
+  verification repeated on a quiet machine. Three cuts of the commit gave
+  the same sha256.
+- Upstream's side, from the archive and its README alone: upstream
+  `ce28239`, `git am` of the archive's patch, its SoftFloat beside
+  `Moira/`, upstream's CMake and settings, the unmodified `testRunner`:
+  thirteen passes PASSED, exit 0 (seed 2350, the day's; four other seeds
+  on the same core before the cut).
+
+The optimised tiers of 2026-11-21 (292 / 292, 330 / 330) ran on this
+session's side of the merge, before it. A rebuild of the merged tree with
+both tiers was started after the push and is not finished as this is
+written; `STATUS.md` will carry it.
+
+Prepared beside the archive, outside the tree: the five observations on
+upstream `ce28239` with their reproductions and three fix diffs
+(`UPSTREAM_FINDINGS.md`), and a cover note.
 
 <a id="2026-11-21-icache-020-on"></a>
 ## 2026-11-21 — Upstream's 68020 instruction cache is on, with its fetch timing corrected; three defects of upstream's code fixed
