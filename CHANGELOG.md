@@ -1458,9 +1458,14 @@ On the archive:
   on the same core before the cut).
 
 The optimised tiers of 2026-11-21 (292 / 292, 330 / 330) ran on this
-session's side of the merge, before it. A rebuild of the merged tree with
-both tiers was started after the push and is not finished as this is
-written; `STATUS.md` will carry it.
+session's side of the merge, before it. The merged tree was then rebuilt
+(7 min: only the incoming side recompiled) and ran both: `etalon`
+330 / 330 in 6 503 s, the same nine floppy gates soft-skipped; and
+`unit|jit|cpu-vectors` 289 / 300 with eleven Timeouts that were this
+session's doing — the two archive verifications ran alongside, and the
+`systemctl freeze` meant for a build hit this tier's own cgroup for eleven
+minutes. The eleven gates rerun on a quiet machine: 11 / 11. All three
+runs are in `STATUS.md`.
 
 Prepared beside the archive, outside the tree: the five observations on
 upstream `ce28239` with their reproductions and three fix diffs

@@ -250,3 +250,6 @@ overwrites it, including a one-gate `ctest -R`.
 | Nov 20 19:44 +04 | x86_64 | default | 330 | 321 | 9 | 0 | same tree: ctest -L etalon -j12, 330/330 in 6606 s; nine floppy-media gates soft-skipped (no .moof/.img images on this host), 27 gates of 68020 machines executed |
 | Nov 21 01:29 +04 | x86_64 | default | 292 | 290 | 2 | 0 | 68020 i-cache on, fetch timing corrected (worktree at 19c04cb8 + TODO): ctest -L 'unit\|jit\|cpu-vectors' -j8, 292/292 in 1315 s |
 | Nov 21 01:51 +04 | x86_64 | default | 330 | 321 | 9 | 0 | same tree: ctest -L etalon -j12, 330/330 in 6479 s; the nine floppy-media gates soft-skipped again (no .moof/.img images on this host) |
+| Nov 21 03:59 +04 | x86_64 | default | 300 | 287 | 2 | 11 | merge d357e933: ctest -L 'unit\|jit\|cpu-vectors' -j8, 289/300; eleven Timeouts are self-inflicted — two archive verifications ran alongside and this run's cgroup was frozen for 11 min by mistake; rerun below |
+| Nov 21 06:28 +04 | x86_64 | default | 11 | 11 | 0 | 0 | merge d357e933: the eleven gates above rerun on a quiet machine, -j4: 11/11 |
+| Nov 21 04:39 +04 | x86_64 | default | 330 | 321 | 9 | 0 | merge d357e933: ctest -L etalon -j12, 330/330 in 6503 s; nine floppy-media gates soft-skipped (no images on this host) |
