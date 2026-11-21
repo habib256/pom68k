@@ -87,7 +87,11 @@ Engine::Engine(moira::Moira& cpu, const MemoryHooks& mem, uint32_t guestFamily,
     }
     config_.applyBackendDefaults(backend_->caps().nativeCode,
                                  backend_->caps().accessClockBias);
-    useWindow_ = config_.fetchWindow;
+    // The 68020's instruction cache owns its fetches (Moira.h
+    // pomCacheOwnsFetch): a window there is refused on every arm attempt
+    // and only pays for the attempts — 4.2 % of the Mac II interpreter
+    // (jit_bench_macii, CHANGELOG 2026-11-21 (eighth)).
+    useWindow_ = config_.fetchWindow && guestFamily_ != kGuest68020;
     useBlocks_ = config_.blockCache;
     // Constructed disabled: the interpreter owns the window until setEnabled.
     cpu_.pomSetInterpWindow(useWindow_, mem_.codeSpan, mem_.self);
@@ -603,6 +607,18 @@ void Engine::dumpHisto() const {
 }
 
 void Engine::setEnabled(bool on) {
+    // No execution for the 68000 and 68020 (executionAvailable()). Said once,
+    // not silently: an explicit POM68K_CPU_ENGINE=jit on those machines is a
+    // request this build no longer honours.
+    if (on && !executionAvailable()) {
+        if (!refusalReported_) {
+            refusalReported_ = true;
+            std::fprintf(stderr, "[jit] no execution engine for the %s: "
+                         "the interpreter runs\n",
+                         guestFamily_ == kGuest68020 ? "68020" : "68000/68010");
+        }
+        on = false;
+    }
     // Unconditional, even when the state does not change: leaving a window
     // armed while the interpreter runs would let IT fetch from a host
     // pointer the engine is no longer maintaining.

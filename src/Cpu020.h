@@ -23,16 +23,13 @@ public:
     void hardReset();
 
     // ── JIT engine (src/jit/POM68K_JIT.md) ──────────────────────────────
-    // The Mac II family was the last Core::C68020 machine still running
-    // interpreter-only, and it needed no new seam: Moira's plain-020 fetch
-    // window (pomJitFetch020) and the identity branch of pomJitProbeCode
-    // have been there since the 030 extension landed. What was missing was
-    // on this side — the memory hooks (MacIIMemory::codeSpan) and this
-    // member. Off by default for this 020/030 family.
-    //
-    // Both models of this wrapper are served: the plain 68020 takes the
-    // identity probe, the IIx/IIcx/SE-30 68030 takes the ATC probe and
-    // mmuFetchWord — the same two paths the LC/LC II pair already uses.
+    // Only this wrapper's 68030 models (IIx, IIcx, SE/30) are served: the
+    // ATC probe and mmuFetchWord, the same path as the LC II. Off by
+    // default for this family. The plain 68020 (Mac II, II FDHD) gets no
+    // engine and no window: its instruction cache owns every fetch, the
+    // engine handed the work straight back, and arming the window cost the
+    // interpreter 4.2 % (jit::Engine::executionAvailable, CHANGELOG
+    // 2026-11-21 (eighth)).
     void setEngine(int e) { jit_.setEnabled(e != 0); pomJitDisarm(); }
 
     void runCycles(moira::i64 n);

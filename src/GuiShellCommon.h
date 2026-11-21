@@ -60,6 +60,7 @@ public:
 
     template <class MachineT, class Cpu>
     void bindCpuMenu(MachineT& machine, Cpu& cpu) {
+        state_.cpu.engineAvailable = cpu.jit().executionAvailable();
         state_.cpu.setCpuEngine = [&machine](int engine) {
             machine.push({MachineT::Cmd::CpuEngine, engine});
         };

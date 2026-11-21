@@ -383,8 +383,8 @@ track/head changes, reset, snapshots, protected writes and export/reimport.
 `moof_image_test` additionally qualifies unrecorded/long-gap read noise,
 actual IWM byte framing, polling-independent pulses, export isolation and
 fresh drive/controller replay. The distribution remains an approximation.
-**Application gates:** `interp_plus_oids_moof_etalon` and
-`jit_plus_oids_moof_etalon` launch the original mixed bit/flux Oids v1.4 capture,
+**Application gates:** `interp_plus_oids_moof_etalon` (its `jit_` twin left
+with the 68000 engine on 2026-11-21) launches the original mixed bit/flux Oids v1.4 capture,
 load a galaxy, prove thrust against an equal-time neutral branch and replay
 the same input/state in a fresh machine. The exact capture digest is pinned;
 the image remains external and immutable. This qualifies one nonstandard

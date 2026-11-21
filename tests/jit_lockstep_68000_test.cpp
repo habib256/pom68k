@@ -1,30 +1,36 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// JIT gate, cycle-exact flavour. The 68040 twin of this harness
-// (tests/jit_lockstep_test.cpp) proves that the JIT and the interpreter
-// compute the same ARCHITECTURAL state. On a Mac Plus that is not the
-// interesting question, and it is not the one this file exists to answer.
+// The 68000 fetch-window gate, cycle-exact. The JIT does not execute a
+// 68000 (jit::Engine::executionAvailable: `threaded` measured 6.8 % slower
+// than the interpreter on the Plus, CHANGELOG 2026-11-21 (eighth)), but the
+// INTERPRETER keeps the engine's fetch window there, because it is worth
+// 6.2 %: opcode words come from a host pointer instead of two read8()
+// dispatches through the Mac Plus address decode.
 //
-// Every other guest the engine reaches runs on Moira's Core::C68020, where
-// the SYNC(x) macro expands to nothing (MoiraMacros.h:19) — so a fetch
-// served from the JIT's code window changes no cycle accounting at all, and
-// the interpreter/JIT clocks agree by construction. The compacts run on
-// Core::C68000, where SYNC is real, MOIRA_PRECISE_TIMING is on, and this is
-// the only family in POM68K whose timing claim is cycle-exact (`sst68000`,
-// 1 000 058 vectors WITH cycles). There, `Moira::pomJitFetch000` has to
-// re-charge by hand everything `read<C,PROG,Word,F>` would have charged:
-// two SYNC(2)s, POLL_IPL, and the machine's own video/RAM bus contention,
-// which `Cpu68k::applyContention` levies from inside read16() and which a
-// windowed fetch would otherwise silently stop paying.
+// On Core::C68000 that is not free of cycle accounting. SYNC is real,
+// MOIRA_PRECISE_TIMING is on, and this is the only family in POM68K whose
+// timing claim is cycle-exact (`sst68000`, 1 000 058 vectors WITH cycles).
+// `Moira::pomJitFetch000` has to re-charge by hand everything
+// `read<C,PROG,Word,F>` would have charged: two SYNC(2)s, POLL_IPL, and the
+// machine's own video/RAM bus contention, which `Cpu68k::applyContention`
+// levies from inside read16() and which a windowed fetch would otherwise
+// silently stop paying.
 //
 // So the assertion that matters here is `clock`, compared at EVERY
-// instruction boundary. A drifting fetch cycle on this machine does not
-// surface as a wrong pixel; it surfaces as a sound tempo, a VIA pulse
-// width, or an IWM latch hold — days later, on a different gate.
+// instruction boundary, between an interpreter on the bare bus
+// (fetchWindow = false) and the shipping interpreter with its window. A
+// drifting fetch cycle on this machine does not surface as a wrong pixel;
+// it surfaces as a sound tempo, a VIA pulse width, or an IWM latch hold —
+// days later, on a different gate.
+//
+// Until 2026-11-21 the two sides were "interpreter" and "JIT", which had
+// stopped testing this: the interpreter had owned the window since the
+// interpreter-window work, so both sides fetched through it.
 //
 // Two Mac Plus machines are built from the same ROM and the same (read-only)
-// floppy, one on each engine, and stepped together from power-up.
+// floppy, one with the window and one without, and stepped together from
+// power-up.
 // MacMemory/Cpu68k read neither the wall clock nor any host entropy, and
 // SonyDrive defaults to write-back OFF, so two instances in one process are
 // bit-for-bit reproducible.
@@ -127,13 +133,13 @@ bool same(const Devices& x, const Devices& y) {
 
 void printDeviceDiff(const Devices& r, const Devices& j) {
     auto u32 = [](const char* n, long a, long b) {
-        if (a != b) std::printf("  %-16s interp=%ld jit=%ld\n", n, a, b);
+        if (a != b) std::printf("  %-16s bare=%ld window=%ld\n", n, a, b);
     };
     auto hex = [](const char* n, unsigned a, unsigned b) {
-        if (a != b) std::printf("  %-16s interp=$%02X jit=$%02X\n", n, a, b);
+        if (a != b) std::printf("  %-16s bare=$%02X window=$%02X\n", n, a, b);
     };
     auto flag = [](const char* n, bool a, bool b) {
-        if (a != b) std::printf("  %-16s interp=%d jit=%d\n", n, a, b);
+        if (a != b) std::printf("  %-16s bare=%d window=%d\n", n, a, b);
     };
     hex("VIA IFR", r.viaIfr, j.viaIfr);
     hex("VIA IER", r.viaIer, j.viaIer);
@@ -165,9 +171,20 @@ int main(int argc, char** argv) {
 
     static const jit::ResolvedConfig jitConfig =
         testjit::resolveFromEnvironment();
+    static const jit::ResolvedConfig bareConfig = [] {
+        jit::ResolvedConfig c = jitConfig;
+        c.fetchWindow = false;                  // the bus, every fetch
+        return c;
+    }();
+    if (!jitConfig.fetchWindow) {
+        std::printf("[jit_lockstep_68000] FAIL: POM68K_JIT_FETCH=0 leaves "
+                    "nothing to compare\n");
+        return 1;
+    }
+    // memJit/cpuJit keep their names: the windowed side.
     static MacMemory memRef(pom68k::defaultCoreConfig());
     static MacMemory memJit(pom68k::defaultCoreConfig());
-    static Cpu68k cpuRef(memRef, jitConfig), cpuJit(memJit, jitConfig);
+    static Cpu68k cpuRef(memRef, bareConfig), cpuJit(memJit, jitConfig);
     memRef.setCpu(&cpuRef);
     memJit.setCpu(&cpuJit);
     if (!memRef.loadRom(rom) || !memJit.loadRom(rom)) {
@@ -188,15 +205,14 @@ int main(int argc, char** argv) {
     }
     testasset::report({ romPath, diskPath });
 
-    cpuRef.setEngine(0);
-    cpuJit.setEngine(1);
     cpuRef.hardReset();
     cpuJit.hardReset();
 
-    std::printf("[jit_lockstep_68000] rom=%s disk=%s backend=%s steps=%ld\n",
+    std::printf("[jit_lockstep_68000] rom=%s disk=%s steps=%ld "
+                "(bare bus vs fetch window)\n",
                 romPath.c_str(),
                 diskPath.empty() ? "(none — ROM only)" : diskPath.c_str(),
-                cpuJit.jit().backendName(), steps);
+                steps);
 
     // Cycles of budget per checkpoint. One compares the two engines after
     // (almost) every instruction — the sharpest possible test, and the one
@@ -239,6 +255,10 @@ int main(int argc, char** argv) {
     // and comparing inside each stretch.
     long i = 0;
     bool done = false, diverged = false;
+    // Checkpoints at which the windowed side's PC was covered by its window,
+    // and how many of those were in RAM — the only place the contention
+    // charge applies (Cpu68k::applyContention returns at once for ROM).
+    long covered = 0, coveredRam = 0;
 
     auto compare = [&]() {
         const State r = capture(cpuRef);
@@ -252,31 +272,31 @@ int main(int argc, char** argv) {
         if (r.clock != j.clock)
             std::printf("  *** CLOCK DIVERGENCE — this is the failure mode "
                         "pomJitFetch000 exists to prevent ***\n");
-        std::printf("  last boundaries (jit): ");
+        std::printf("  last boundaries (window): ");
         for (int k = 0; k < kTrail; k++) {
             const Step& t = trail[(trailAt + k) % kTrail];
             if (t.pc) std::printf("$%08X@%lld ", t.pc, (long long)t.clock);
         }
         std::printf("\n");
-        std::printf("  pc    interp=%08X  jit=%08X\n", r.pc, j.pc);
-        std::printf("  sr    interp=%04X      jit=%04X\n", r.sr, j.sr);
-        std::printf("  clock interp=%lld      jit=%lld  (delta %+lld)\n",
+        std::printf("  pc    bare=%08X  window=%08X\n", r.pc, j.pc);
+        std::printf("  sr    bare=%04X      window=%04X\n", r.sr, j.sr);
+        std::printf("  clock bare=%lld      window=%lld  (delta %+lld)\n",
                     (long long)r.clock, (long long)j.clock,
                     (long long)(j.clock - r.clock));
         for (int k = 0; k < 8; k++)
             if (r.d[k] != j.d[k])
-                std::printf("  D%d    interp=%08X  jit=%08X\n", k, r.d[k], j.d[k]);
+                std::printf("  D%d    bare=%08X  window=%08X\n", k, r.d[k], j.d[k]);
         for (int k = 0; k < 8; k++)
             if (r.a[k] != j.a[k])
-                std::printf("  A%d    interp=%08X  jit=%08X\n", k, r.a[k], j.a[k]);
-        if (r.usp != j.usp) std::printf("  USP   interp=%08X  jit=%08X\n", r.usp, j.usp);
-        if (r.isp != j.isp) std::printf("  ISP   interp=%08X  jit=%08X\n", r.isp, j.isp);
+                std::printf("  A%d    bare=%08X  window=%08X\n", k, r.a[k], j.a[k]);
+        if (r.usp != j.usp) std::printf("  USP   bare=%08X  window=%08X\n", r.usp, j.usp);
+        if (r.isp != j.isp) std::printf("  ISP   bare=%08X  window=%08X\n", r.isp, j.isp);
         if (!same(dr, dj)) {
             std::printf("  device state:\n");
             printDeviceDiff(dr, dj);
         }
         if (bad != 0xFFFFFFFF)
-            std::printf("  RAM differs at $%08X: interp=%02X jit=%02X\n",
+            std::printf("  RAM differs at $%08X: bare=%02X window=%02X\n",
                         bad, memRef.peek8(bad), memJit.peek8(bad));
         diverged = true;
         return false;
@@ -295,6 +315,11 @@ int main(int argc, char** argv) {
             cpuRef.runCycles(room > 0 ? room : 1);
             cpuJit.runCycles(room > 0 ? room : 1);
             if (!compare()) return;
+            if (cpuJit.pomJitCovers(cpuJit.getPC())) {
+                covered++;
+                if ((cpuJit.getPC() & 0xFFFFFF) < 0x400000 && !memJit.overlay())
+                    coveredRam++;
+            }
             i++;
         }
     };
@@ -319,7 +344,6 @@ int main(int argc, char** argv) {
     // comparison above proved only that the interpreter equals itself —
     // which is exactly what the compacts' first wiring did, reporting the
     // engine ON while retiring zero instructions (POM68K_JIT.md § 3.1).
-    const jit::Stats::Snapshot s = cpuJit.jit().stats().snapshot();
     const Devices fin = captureDevices(memRef);
     std::printf("[jit_lockstep_68000] OK — %ld steps identical "
                 "(clock included), %lld cycles / %ld frames of guest time\n",
@@ -327,41 +351,20 @@ int main(int argc, char** argv) {
     std::printf("  reached: overlay=%s IWM polls=%ld track=%d\n",
                 fin.overlay ? "UP (still in early boot!)" : "down",
                 fin.iwmReads, fin.track);
-    std::printf("  jit instrs %llu · window %llu covered / %llu armed"
-                " (%llu refused) · blocks %llu compiled / %llu replayed\n",
-                (unsigned long long)s.instrs,
-                (unsigned long long)s.windowInstrs,
-                (unsigned long long)s.windowArmed,
-                (unsigned long long)s.windowFailed,
-                (unsigned long long)s.blocksCompiled,
-                (unsigned long long)s.blocksRun);
-    if (s.instrs == 0) {
-        std::printf("[jit_lockstep_68000] FAIL: the JIT never retired an "
-                    "instruction — this gate proved nothing\n");
+    std::printf("  window covered the pc at %ld checkpoints, %ld of them "
+                "in RAM\n", covered, coveredRam);
+    // A green gate that exercised nothing is worse than a red one: the
+    // windowed side must have fetched through the window, and from RAM.
+    if (covered == 0) {
+        std::printf("[jit_lockstep_68000] FAIL: the window never covered the "
+                    "pc — pomJitFetch000 was never executed, so this gate "
+                    "proved nothing about it\n");
         return 1;
     }
-    // …and it must have retired them THROUGH THE WINDOW, which is the only
-    // thing under test here. `windowArmed` is the right question and
-    // `windowInstrs` is not: the latter counts only the direct
-    // fetch-window loop (Engine::runWindow), so with the block path on it
-    // stays at zero while every replayed instruction is still fetched
-    // through the window — pomJitCovers() gates each one. Asserting on
-    // windowInstrs alone failed the block variant on its first run, which
-    // is precisely the false-negative this check exists to prevent, aimed
-    // at itself.
-    if (s.windowArmed == 0 || (s.windowInstrs == 0 && s.blocksRun == 0)) {
-        std::printf("[jit_lockstep_68000] FAIL: no instruction was fetched "
-                    "through the window (armed %llu, window %llu, blocks %llu)"
-                    " — pomJitFetch000 was never executed, so this gate "
-                    "proved nothing about it\n",
-                    (unsigned long long)s.windowArmed,
-                    (unsigned long long)s.windowInstrs,
-                    (unsigned long long)s.blocksRun);
-        return 1;
-    }
-    if (cpuJit.jit().config().blockCache && s.blocksRun == 0) {
-        std::printf("[jit_lockstep_68000] FAIL: POM68K_JIT_BLOCKS is on but no "
-                    "block was ever replayed — the block path proved nothing\n");
+    if (!diskPath.empty() && coveredRam == 0) {
+        std::printf("[jit_lockstep_68000] FAIL: the window never covered "
+                    "code in RAM — the contention charge was never under "
+                    "test\n");
         return 1;
     }
     // The reach assertion, and the reason it is here. The contention charge

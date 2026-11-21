@@ -147,9 +147,9 @@ Focused research notes under `docs/`:
 
 The engine and backend are separate decisions:
 
-- 68000 and 68020 guests default to the Moira interpreter.
-- 68030 and 68040 guests default to the accelerated engine.
-- `threaded` is always compiled and is valid for every guest family.
+- 68030/68040 default to the accelerated engine; 68000/68020 run on the
+  interpreter only, the 68000 with its fetch window (`POM68K_JIT.md` § 2.2).
+- `threaded` is always compiled and declared correct for every guest family.
 - AArch64 `auto` selects native `a64` for 68030 and 68040.
 - Non-Windows x86-64 `auto` selects native `x64` for 68030 and 68040.
 - Windows x64 automatic builds omit the System V emitter and use `threaded`.

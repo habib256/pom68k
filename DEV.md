@@ -1291,7 +1291,7 @@ implementation actually depends on, several found the hard way with
   Noise never enters the medium, sector decoder or export. No mutable random
   generator is introduced; the v26 drive/controller clocks resume
   the same stream. `moof_image_test` checks real IWM framing and fresh restore.
-  `interp_plus_oids_moof_etalon` / `jit_plus_oids_moof_etalon` run the original
+  `interp_plus_oids_moof_etalon` runs the original
   mixed bit/flux Oids v1.4 capture on a Plus booted from `Disk605.moof`.
   They require the user-provided `disks35/ref/Oids v1.4.moof` (or its legacy
   root twin), pin its SHA-256, launch through Finder input, load a galaxy and
@@ -2103,7 +2103,12 @@ engine needs inside the vendored core is in `extern/moira/POM68K_VENDOR.md`
   `Cpu040`, `CentrisCpu`, `Q700Cpu`, `Q630Cpu`, and — since 2026-08-06 —
   `Cpu020` (Mac II / IIx / IIcx / SE-30) and `Cpu68k` (Plus / SE / SE FDHD
   / Classic) and `IIfxCpu` (the IIfx). **Every CPU wrapper in the tree now
-  carries one.** The GUI menu binds on every one of them. **Both** native
+  carries one** — but since 2026-11-21 the engine executes the 68030 and
+  68040 only (`jit::Engine::executionAvailable`, `POM68K_JIT.md` § 2.2): on
+  a 68000 it was 6.8 % slower than the interpreter, on a 68020 the
+  instruction cache handed it every fetch back. On those machines the GUI
+  menu offers the interpreter alone, and the 68000's engine object only
+  arms the interpreter's fetch window (+6.2 %). **Both** native
   code generators — x86-64 and AArch64 — declare `guestFamilies =
   kGuest68040 | kGuest68030` since 2026-08-18 (correctness scope; the
   030's `(An)+` timing, restartable-write/format-$A framing and prefetch
@@ -2112,30 +2117,33 @@ engine needs inside the vendored core is in `extern/moira/POM68K_VENDOR.md`
   `kGuest68040 | kGuest68030` (D.1 promotion 2026-08-20), and x64 carries
   the same mask since its 030 promotion — withdrawn on 2026-08-29 — was
   re-earned on 2026-09-06 on the terms that entry set
-  — so `auto` gives the 68000/68020 families the `threaded` backend, and
-  an 040 or an 030 the native generator on both hosts.
+  — so `auto` gives an 040 or an 030 the native generator on both hosts
+  (and resolves `threaded` for the 68000/68020 engines, which never run).
 - **…and what it is worth there**, because "wired" and "worth switching on"
   are not the same claim. The window's job is to skip an ATC walk, so the
   gain tracks the MMU: 68040 **×5.0** on a fixed budget and **×2.68** end to
   end on `q605_boot_etalon` (x64), 68030 **×1.21** (LC II, fixed
   budget, 2026-08-09 — this figure has been re-measured twice and the
-  earlier ×1.6 was retracted), **68020 ×1.0-1.2, 68000 ×1.03-1.08**. On the
-  last two there is no walk to skip and only the machine's address decode is
-  saved. `POM68K_JIT.md` § 3 owns these numbers and their method.
-- **The compacts are the one family where the window is not free.** Moira's
+  earlier ×1.6 was retracted). On the 68020 and the 68000 the engine lost or
+  did nothing on a fixed budget (2026-11-21) and no longer runs there.
+  `POM68K_JIT.md` § 2.2 and § 3 own these numbers and their method.
+- **The compacts are the one family where the window is not free** — and
+  the window, armed by the interpreter, is all that is left of the engine
+  there. Moira's
   `SYNC(x)` macro is a no-op on `Core::C68020` only — which covers the
   68020, 030 and 040. On `Core::C68000` it is real, `MOIRA_PRECISE_TIMING`
   is on, and the Mac Plus carries the tree's only cycle-exact timing claim
   (`sst68000`, 1 000 058 vectors *with cycles*). So `pomJitFetch000`
   replaces the bus read and nothing else, and the video/RAM contention
   `Cpu68k::applyContention` charges from inside `read16()` is handed back
-  to the fetch path through `Moira::pomJitSetBusStall`. Gates:
-  `jit_system_boot_etalon`, `jit_classic_boot_etalon`, and the decisive
-  `jit_lockstep_68000_test` pair — two Mac Plus machines stepped together
-  with **`clock`** compared at every checkpoint (2.5 M of them over ~646 M
-  guest cycles, one per instruction for the last 100 000). Deleting the
-  contention charge makes it red at step 982 402; deleting a `SYNC(2)` at
-  step 0.
+  to the fetch path through `Moira::pomJitSetBusStall`. Gates: every
+  compact boot etalon (the interpreter arms the window by default), and the
+  decisive `jit_lockstep_68000_test` — a Mac Plus on the bare bus and one
+  with the window, stepped together with **`clock`** compared at every
+  checkpoint (2.5 M of them over ~646 M guest cycles, one per instruction
+  for the last 100 000) — with `jit_program_fuzz_000_test` /
+  `_000_trace_test` on random programs. Deleting the contention charge made
+  the lockstep red at step 982 402; deleting a `SYNC(2)` at step 0.
 - **A harness on this family must raise the VBL itself.** `MacMemory::tick()`
   does not generate it — `MacFrameClock::runFrame()` raises VIA CA1 between
   two `runUntil()` calls (`MacFrame.h`). A stepping loop built on

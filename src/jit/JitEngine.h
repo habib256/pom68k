@@ -96,6 +96,19 @@ public:
     // drops every cached artefact.
     void setEnabled(bool on);
 
+    // Whether this engine can execute at all for its guest family. Only the
+    // 68030 and 68040 are admitted: on the 68000 `threaded` measured 6.8 %
+    // SLOWER than the interpreter, and on the 68020 the instruction cache
+    // owns every fetch, so the engine handed the work straight back
+    // (jit_bench_plus / jit_bench_macii, CHANGELOG 2026-11-21 (eighth)).
+    // setEnabled(true) on another family leaves the interpreter running.
+    // The 68000 interpreter keeps its own fetch window (+6.2 %); the
+    // 68020's is never armed (it cost 4.2 % under the cache).
+    static constexpr uint32_t kExecutionFamilies = kGuest68030 | kGuest68040;
+    bool executionAvailable() const {
+        return (guestFamily_ & kExecutionFamilies) != 0;
+    }
+
     // Told once by the CPU wrapper: where its peripheral-catch-up baseline
     // lives and how many cycles it batches. See Context::periphClock.
     void setPeriphPacing(const void* clock, int batch) {
@@ -515,6 +528,7 @@ private:
               uint8_t exit, uint32_t instrs);
 
     bool enabled_ = false;
+    bool refusalReported_ = false;
     bool useBlocks_ = true;
     bool useWindow_ = true;
     bool paranoid_ = false;      // POM68K_JIT_PARANOID: revalidate every step

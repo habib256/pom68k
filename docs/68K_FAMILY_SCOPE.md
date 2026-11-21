@@ -70,7 +70,7 @@ making them, with the 512Ke, the tree's three `scsi = false` profiles.
 | Macintosh Plus | `macplus.rom` | `system_boot_etalon`, `disk_boot_etalon`, `scsi_boot_etalon`, `rom_boot_etalon`, `input_etalon` |
 | Macintosh SE | `B2E362A8` | `se_boot_etalon`, `se_scsi_boot_etalon` |
 | Macintosh SE FDHD | `B306E171` | `sefdhd_boot_etalon`, `sefdhd_scsi_boot_etalon` |
-| Macintosh Classic | `A49F9914` | `classic_boot_etalon`, `classic_scsi_boot_etalon`, `jit_classic_boot_etalon` |
+| Macintosh Classic | `A49F9914` | `classic_boot_etalon`, `classic_scsi_boot_etalon` |
 
 ### GLUE + Toby NuBus — `MacIIMemory` / `Cpu020`
 
@@ -81,7 +81,7 @@ the PMMU is on (`MacIIMemory.h:91-96`). All five run at 15.6672 MHz:
 
 | Profile | CPU | ROM | Gate |
 |---|---|---|---|
-| Macintosh II | 68020 | `9779D2C4` | `macii_boot_etalon`, `macii_sys7_boot_etalon`, `macii_post_etalon`, `macii_mouse_etalon`, `jit_macii_boot_etalon` |
+| Macintosh II | 68020 | `9779D2C4` | `macii_boot_etalon`, `macii_sys7_boot_etalon`, `macii_post_etalon`, `macii_mouse_etalon` |
 | Macintosh II FDHD | 68020 + SWIM | `97221136` | `maciifdhd_boot_etalon`, `maciifdhd_floppy_boot_etalon` (both also verify ADB input) |
 | Macintosh IIx | 68030 + PMMU | `97221136` | `iix_boot_etalon` |
 | Macintosh IIcx | 68030 + PMMU | `97221136` | `iicx_boot_etalon` |
@@ -119,7 +119,7 @@ ctor parameter. Machine blueprint: `docs/LCII_HARDWARE.md`.
 
 | Profile | CPU / ASIC | ROM | Gate |
 |---|---|---|---|
-| Macintosh LC | 68020 + HMMU, V8 | `350EACF0` | `lc_boot_etalon`, `jit_lc_boot_etalon` |
+| Macintosh LC | 68020 + HMMU, V8 | `350EACF0` | `lc_boot_etalon` |
 | Macintosh LC II | 68030 + MMU + 68882, V8 | `35C28F5F` | `lcii_boot_etalon`, `lcii_sys7_boot_etalon`, `lcii_soak/persist/launch/floppy_etalon`, `lcii_savestate_etalon`, `jit_lcii_boot_etalon` |
 | Macintosh Classic II | 68030, Eagle (mono 512×342 from RAM) | `3193670E` | `classic2_boot_etalon` |
 | Macintosh Color Classic | 68030, Spice + Cuda 341S0417 LLE | `ECD99DC0` | `cclassic_boot_etalon` |
@@ -330,12 +330,13 @@ Re-derived from the generated gate roster (`pom68k_gates.tsv`):
 - **15 of 41** are additionally gated on the **second execution engine**
   (`jit_*_boot_etalon`: q605, centris650, q630, q700, lcii, mactv, lc3, iivx,
   iisi, lc, macii, se30, system — the Plus — and iifx from the `foreach` over
-  `lcii_boot_etalon` and its peers in `cmake/Pom68kJitGates.cmake:519-565`, plus `jit_classic_boot_etalon`
-  registered on its own at `cmake/Pom68kJitGates.cmake:694-698` because it
-  shares the compact binary); ten profiles also carry an explicit
+  `lcii_boot_etalon` and its peers in `cmake/Pom68kJitGates.cmake`, plus `jit_classic_boot_etalon`
+  registered on its own because it shares the compact binary); ten profiles also carry an explicit
   `interp_*_boot_etalon` interpreter reference (q605, centris650, q630,
   q700, lcii, lc3, iivx, iisi, iifx, duo230 —
-  `cmake/Pom68kJitGates.cmake:534-543`).
+  `cmake/Pom68kJitGates.cmake`). *(2026-11-21: the lc, macii,
+  system and classic JIT twins were retired with the 68000/68020 engine,
+  `src/jit/POM68K_JIT.md` § 2.2.)*
 
 **2026-09-14 — the agent as a beyond-boot proof, on the whole roster.**
 The guest agent « POM68K Disques » is written into the boot volume's

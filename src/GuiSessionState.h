@@ -134,6 +134,10 @@ struct GuiCpuPanelState {
     std::function<jit::Stats::Snapshot()> jitStats;
     std::function<std::pair<long long, long long>()> speedSample;
     const char* jitBackend = nullptr;
+    // False on a 68000/68020 machine: the JIT does not execute those
+    // families (jit::Engine::executionAvailable), so the menu offers the
+    // interpreter alone and says why.
+    bool engineAvailable = true;
     bool speedMeasurementDone = false;
     pom68k::GuiSpeedGauge speedGauge;
 

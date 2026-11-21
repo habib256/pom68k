@@ -38,7 +38,7 @@ design below survives; its motivating arithmetic does not. What changed:
 | "the **planned** method-JIT" (§2, §9) | Shipped 2026-07-27 → 2026-07-31 (J0–J3 + block linking); conformant 68040 default since 2026-08-10, GUI **CPU** menu, `POM68K_CPU_ENGINE=interp\|jit` override | Every "when the JIT lands" deferral below is **due now**, not pending |
 | the JIT would take the CPU-speed job, HLE the wait-elision job | `q605_boot_etalon`: **61.3 s interpreted → 22.9 s, ×2.68** (`POM68K_JIT.md` § 3). It went *through* the historical "~×2.5 conformant ceiling" recorded in the CHANGELOG | The conformant path is faster than this study assumed. The HLE overlay's remaining value is narrower and must be re-argued, not assumed |
 | the residual cost is code size / footprint | It is the **ATC-exactness contract**: 794 M window-lost exits over 12.2 G instructions — one derived-state death per ~15 instructions at the idle Finder, because Mac OS 8.1's VM ages pages by writing descriptor U bits (`POM68K_JIT.md` § 3, § 8) | This is the sharpest thing this study has learned. **It names exactly what a non-conformant mode could buy** that no conformant backend can — see § 2 |
-| the JIT accelerates "the CPU", full stop | **Corrected 2026-08-12: the JIT engine is wired into all twelve CPU wrappers**, `Cpu68k` and `Cpu020` included, and there are `jit_classic_`, `jit_macii_` and `jit_lockstep_68000_*` gates. What is 68040-only is the *native* x64/A64 codegen (by declared capability) and the default policy | The "HLE is the only accelerator on the 68000 and Mac II families" argument — § 2 and § 11's second reason — is **dead**. Those families get the `threaded` backend today; measured worth is ×1.03-1.08 on 68000, ×1.0-1.2 on 68020, so the honest form of the argument is "the JIT buys them almost nothing", not "they have nothing" |
+| the JIT accelerates "the CPU", full stop | **Corrected 2026-08-12: the JIT engine is wired into all twelve CPU wrappers**, `Cpu68k` and `Cpu020` included, and there are `jit_classic_`, `jit_macii_` and `jit_lockstep_68000_*` gates. What is 68040-only is the *native* x64/A64 codegen (by declared capability) and the default policy | The "HLE is the only accelerator on the 68000 and Mac II families" argument — § 2 and § 11's second reason — is **dead**. Those families get the `threaded` backend today; measured worth is ×1.03-1.08 on 68000, ×1.0-1.2 on 68020, so the honest form of the argument is "the JIT buys them almost nothing", not "they have nothing". **Reversed again 2026-11-21:** on a fixed budget `threaded` lost 6.8 % on the Plus and did nothing on the Mac II, so the engine no longer executes those families (`src/jit/POM68K_JIT.md` § 2.2) — the argument is back in its first form, except for the 68000 interpreter's fetch window (+6.2 %) |
 
 Two secondary premises also moved, in the overlay's favour:
 
@@ -128,7 +128,9 @@ Three observations that must steer prioritisation:
 Non-goal worth stating: this overlay is **not** a way to make the JIT faster on
 the machines it already covers. It is (a) boot-time and I/O latency everywhere,
 and (b) the only *large* win available on the 68000 and Mac II families, where
-the JIT is wired but buys ×1.03-1.08 and ×1.0-1.2 respectively.
+the JIT no longer runs at all since 2026-11-21 (it lost 6.8 % on the Plus and
+did nothing on the Mac II, `src/jit/POM68K_JIT.md` § 2.2); the 68000
+interpreter keeps only its fetch window (+6.2 %).
 
 ---
 
@@ -377,8 +379,8 @@ already reaches ×2.68 on the Quadra 605 boot (`POM68K_JIT.md` § 3), so the
 overlay can no longer be justified as "the way to make POM68K fast." Its
 remaining, honest arguments are three, and the middle one has weakened since
 this was written: **host I/O latency the JIT cannot touch** (`disk.sony`); **the
-68000 and Mac II families, where the JIT is wired but worth ×1.03-1.08 and
-×1.0-1.2 respectively** (§ 0); and
+68000 and Mac II families, where the JIT no longer runs since 2026-11-21**
+(§ 0; `src/jit/POM68K_JIT.md` § 2.2); and
 **the exactness contract itself** — the one thing a conformant backend may never
 relax, and the measured floor of the JIT at the idle Finder. Anything built here
 should be built for one of those three reasons, and for no other.

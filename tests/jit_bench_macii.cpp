@@ -33,15 +33,15 @@ void ensureBootDriverType(std::vector<uint8_t>& img) {
 
 template <class Report>
 bench::Result runMacII(const std::vector<uint8_t>& rom,
-                       const std::string& disk, int frames, int engine,
+                       const std::string& disk, int frames, bool window,
                        Report&& report) {
     MacIIMemory mem(pom68k::defaultCoreConfig(), 0x400000);
     mem.loadRom(rom);
     mem.installTobyVideo();
-    const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
+    jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
+    jitConfig.fetchWindow = window;
     Cpu020 cpu(mem, jitConfig, pom68k::defaultCoreConfig().cpu, true, false);
     mem.setCpu(&cpu);
-    cpu.setEngine(engine);
     cpu.hardReset();
     mem.attachScsi(disk);
     ensureBootDriverType(mem.scsiDisk().image());
@@ -81,20 +81,23 @@ int main() {
                     bench::nullExperiment() ? "NULL experiment (A vs A)"
                                             : "interleaved A/B",
                     bench::compareRepeats(), frames, bench::buildStamp());
-        return bench::compare("macii", "interp", "threaded", [&](int arm) {
-            const int engine = bench::nullExperiment() ? 0 : arm;
+        // The JIT does not execute this family and arms no window for it
+        // (CHANGELOG 2026-11-21 (eighth)), so on a 68020 this A/B is a null
+        // experiment by construction: it measures the host's floor, and a
+        // delta above it means the window came back.
+        return bench::compare("macii", "bare", "window", [&](int arm) {
+            const bool window = bench::nullExperiment() ? false : arm != 0;
             const bench::Result r = runMacII(
-                rom, diskPath, frames, engine,
+                rom, diskPath, frames, window,
                 [](auto&, auto&, const auto&) {});
             return bench::Sample{r.secs, r.fp};
         });
     }
 
-    const int engine = std::getenv("POM68K_CPU_ENGINE") &&
-                       !std::strcmp(std::getenv("POM68K_CPU_ENGINE"), "jit");
-    runMacII(rom, diskPath, frames, engine,
+    const bool window = testjit::resolveFromEnvironment().fetchWindow;
+    runMacII(rom, diskPath, frames, window,
              [&](MacIIMemory& mem, Cpu020& cpu, const bench::Result& r) {
-        bench::report("macii", engine ? "macii_threaded" : "macii_interp",
+        bench::report("macii", window ? "macii_window" : "macii_bare",
                       "68020", cpu, r, mem.cpuHz());
         std::printf("  SCSI=%ld  pc=$%08X  %s\n", mem.scsi().commands,
                     cpu.getPC(), cpu.isHalted() ? "HALTED" : "running");

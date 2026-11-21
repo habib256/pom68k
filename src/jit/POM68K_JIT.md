@@ -101,12 +101,12 @@ engine being worth switching on. Ranked by measured gain (§ 3.4):
 |---|---|---|---|
 | 68040 | Quadra 605/610/650/700/800/900/950, Centris, Q630 | **×5.0** on a fixed budget (x64, § 3.4); ×2.68 end to end on `q605_boot_etalon` (2026-07-31, § 3.4) | an ATC walk per fetch, replaced by a bounds check |
 | 68030 | LC II family, Sonora, VASP, RBV, **IIx/IIcx/SE-30**, **IIfx**, Duo | **×1.21** portable baseline (LC II, fixed budget, threaded); `auto` now uses the separately gated native generator on both ISAs (a64 −5.3 %, x64 −12.6 % over `threaded` at the default budget) | same fetch win, plus native replay |
-| 68020 | Macintosh LC, **Mac II** | ×1.0 since 2026-11-20 (×1.0-1.2 before) | runs on the interpreter: Moira's 68020 i-cache owns every fetch (§ 2.1) |
-| 68000 | **128K, 512K, 512Ke, Plus, SE, SE FDHD, Classic** | ×1.03-1.08 | no MMU *and* the cycle accounting must be kept (§ 3.1) |
+| 68020 | Macintosh LC, **Mac II** | **no engine** since 2026-11-21 (§ 2.2) | the i-cache owns every fetch; the engine handed the work back and the window cost the interpreter 4.2 % |
+| 68000 | **128K, 512K, 512Ke, Plus, SE, SE FDHD, Classic**, Portable, PB100 | **no engine** since 2026-11-21 (§ 2.2); the interpreter's window **+6.2 %** | `threaded` measured 6.8 % slower than the interpreter (§ 3.1) |
 
-The last two rows are the honest reason the 020/000 seams took until
-2026-08-06 to exist: they were never going to pay much, and saying so is
-worth more than a number that flatters the subsystem.
+The last two rows were never going to pay much, and the fixed-budget
+measurement of 2026-11-21 settled it: the engine no longer executes either
+family (§ 2.2).
 
 **The 68030 row has now been three different numbers, and the third is the
 first one taken on a fixed budget.** ×1.6 (before the ATC bit-exactness
@@ -181,9 +181,9 @@ Each one names the gate that would catch it breaking.
 
 | # | invariant | gate |
 |---|---|---|
-| 1 | **The interpreter is the reference.** Any divergence between engines is a JIT bug, never an interpreter bug. | `jit_asset_free_lockstep_test` is the daily native floor; `jit_lockstep_test` (five registrations on x86-64, four on AArch64 — § 5), plus its 68000 and 68030 twins (§ 3.2), widens it to real machines |
+| 1 | **The interpreter is the reference.** Any divergence between engines is a JIT bug, never an interpreter bug. | `jit_asset_free_lockstep_test` is the daily native floor; `jit_lockstep_test` (five registrations on x86-64, four on AArch64 — § 5), plus its 68030 twin (§ 3.2), widens it to real machines; the 68000 twin now proves the interpreter's fetch window against the bare bus (§ 2.2) |
 | 2 | **Exits happen at instruction boundaries only.** No partial guest state — registers, CCR, PC, clock — ever survives a block exit. Everything unusual (interrupt, trace, STOP, breakpoint, MMU fault, an opcode outside the classifier) is handed back to `Moira::execute()` at a clean boundary. A replay of `FlagMayTrap` also verifies that PC remained on the recorded straight line; an internal DIV/CHK exception ends the block with Moira's vector PC and queue intact. | `jit_asset_free_lockstep_test` compares 768 generated boundaries plus restart/last-write and divide-zero frames; `jit_lockstep_x64_fine_test` widens that to a machine one cycle at a time |
-| 3 | **The fastest proved conformant engine is the default, per guest family.** Today that is native `jit/auto` for 68040 and 68030 on AArch64/x86-64, and the interpreter on 68000/68020. `POM68K_CPU_ENGINE=interp` always restores the oracle. | `jit_backend_test` pins the policy and both overrides; ten `interp_*_boot_etalon` registrations keep one interpreter reference per accelerated platform — q605/centris650/q630/q700 and lcii/lc3/iivx/iisi/iifx/duo230 |
+| 3 | **The fastest proved conformant engine is the default, per guest family.** Today that is native `jit/auto` for 68040 and 68030 on AArch64/x86-64; the engine does not execute 68000/68020 at all (§ 2.2). `POM68K_CPU_ENGINE=interp` always restores the oracle. | `jit_backend_test` pins the policy and both overrides; ten `interp_*_boot_etalon` registrations keep one interpreter reference per accelerated platform — q605/centris650/q630/q700 and lcii/lc3/iivx/iisi/iifx/duo230 |
 | 4 | **Peripheral time stays owed.** Blocks never run past the caller's cycle target (`Context::clockTarget`) and generated cycles go through the machine's virtual `sync()` (`pomJitSync`), so VIA, ASC, SWIM and the Egret/Cuda MCU keep their pacing. | `jit_mactv_boot_etalon` — registered for exactly this reason: Tinker Bell's Cuda transport deadlocks on a 2 % shift in MCU pacing long before a Finder signature would fail |
 | 5 | **Nothing cached survives a change of the address map.** Overlay flips (`CodeGuard::invalidate()`), MMU/ATC changes (`blocksGen_` vs `Moira::pomJitMmuGen`) and cache-control writes (`didChangeCACR` → `flushAll()`) drop the block cache and the code window. | `jit_q605_boot_etalon` (the boot overlay flips in the first milliseconds); `jit_lockstep_test` |
 | 6 | **No host knowledge above `jit::Backend`.** An architecture `#ifdef` outside `src/jit/backends/` or `JitCodeBuffer.cpp` is a design error. | `jit_backend_test` (its header states invariants 6 and 7 as its purpose) |
@@ -209,6 +209,32 @@ already the interpreter (invariant 3). The 68030 (IIx/IIcx/SE-30, LC II) and
 `jit_macii_boot_etalon` / `jit_lc_boot_etalon`, now compare the interpreter
 with itself; none of them requires a native or translated share. Modelling
 the cache in the engine is open work (`TODO.md`).
+
+### 2.2 No engine for the 68000 and the 68020 (2026-11-21)
+
+Measured on a fixed budget, same binary, interleaved ABBA, one pinned core
+(`jit_bench_plus` / `jit_bench_macii`, `build-plain`, CHANGELOG 2026-11-21
+(eighth)):
+
+| Guest | interpreter | `threaded` | interpreter, window off | verdict |
+|---|---|---|---|---|
+| Plus, 30 000 frames | 12.71 s | 13.57 s (**+6.8 %**, floor 1.8 %) | 12.64 s vs 11.86 s with it (**−6.2 %**) | engine out, window kept |
+| Mac II, 6 000 frames | 12.93 s | 12.73 s (−1.6 %, floor 1.9 %: nothing) | 11.51 s vs 12.00 s with it (**+4.2 %**) | engine and window out |
+
+So `jit::Engine::executionAvailable()` admits the 68030 and 68040 alone:
+`setEnabled(true)` on a 68000/68020 engine leaves the interpreter running and
+says so once on stderr, and the GUI's CPU menu offers the interpreter alone
+on those machines. The engine object stays in the 68000 wrappers for the one
+service it still renders — it arms the interpreter's fetch window
+(`Moira::pomJitFetch000`), whose cycle accounting `jit_lockstep_68000_test`
+now proves against the bare bus, and `jit_program_fuzz_000_test` /
+`_000_trace_test` against random programs. The 68020 gets no window
+(`Engine` constructor). Backend declarations are unchanged: `threaded` is
+still *correct* for every family; it is simply not *used* where it loses.
+Retired with the engine: the `jit_` boot etalons of the Plus, Classic, Mac
+II, LC, Portable and PB100, the two Portable sleep twins, the Plus Oids
+twin, `jit_lockstep_68000_blocks_test`, and the 68020/68000 block and ext2
+fuzz registrations, which had come to compare the interpreter with itself.
 
 ---
 
@@ -303,10 +329,13 @@ claim.
 `jit_lockstep_68000_test` is the 68000 twin of § 5's harness, and it asks a
 different question: not "same registers" but **same `clock`**, compared at
 every checkpoint, alongside the VIA/IWM/drive/SCC state a cycle drift moves
-first. 2.5 M checkpoints over ~646 M guest cycles (≈ 5 000 frames), coarse
+first. Since 2026-11-21 (§ 2.2) its two sides are the interpreter on the bare
+bus and the interpreter with its fetch window; before, they were "interpreter"
+and "JIT", which had quietly stopped testing the window once the interpreter
+owned it too. 2.5 M checkpoints over ~646 M guest cycles (≈ 5 000 frames), coarse
 at 256 cycles through the boot and dropping to one cycle for the last
 100 000 — so the sharpest comparison lands in live Finder code rather than
-in a boot loop. A `_blocks_test` variant forces the block path on.
+in a boot loop. (Its `_blocks_test` variant left with the 68000 engine.)
 
 `jit_lockstep_030_test` is the third machine class: two Mac LC IIs, 120 000
 comparisons at 8192 cycles with a fine tail, and it adds the three
@@ -1303,7 +1332,7 @@ six across the two — exist because each covers something the others cannot:
 | `jit_lockstep_x64_test` | the code generator at 256 cycles per comparison — long blocks, and a loop closing on itself entirely inside generated code |
 | `jit_lockstep_x64_fine_test` | the code generator at one cycle per comparison |
 | `jit_lockstep_noaccess_test` | x64 + the conservative data path (`POM68K_JIT_ACCESS_THUNK=0`) |
-| `jit_lockstep_a64_coarse_test` | the arm64 generator at 50 cycles per comparison, 5 M comparisons — **AArch64 hosts only** (`cmake/Pom68kJitGates.cmake:686-691`), which is also why it is the one smoke gate an x86-64 developer never sees |
+| `jit_lockstep_a64_coarse_test` | the arm64 generator at 50 cycles per comparison, 5 M comparisons — **AArch64 hosts only** (`cmake/Pom68kJitGates.cmake:345-351`), which is also why it is the one smoke gate an x86-64 developer never sees |
 
 **The oracle corpora, through the translator.** Every pinned SST corpus
 also replays through the engine: `sst68030_jit`/`sst68040_jit`
@@ -2318,7 +2347,7 @@ from 149,265,073 to 72,507,478. Two fixed-budget runs improved from
   coverage.
 * **2026-08-09/10 — the default flipped on the 68040.** `defaultEngine()`
   stopped being a constant and became a per-family answer
-  (`JitConfig.h:206`, `JitEngine.cpp:202`): `jit/auto` on 68040, interpreter
+  (`JitConfig.h:206`, `JitEngine.cpp:209`): `jit/auto` on 68040, interpreter
   everywhere else, `POM68K_CPU_ENGINE` overriding either way. The plain
   `q605/centris650/q630/q700_boot_etalon` gates therefore now run the
   engine, and four `interp_*` registrations preserve one explicit

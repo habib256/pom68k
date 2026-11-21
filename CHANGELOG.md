@@ -619,6 +619,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-21 (eighth) — The JIT no longer runs a 68000 or a 68020: it lost on one and did nothing on the other; the 68000 interpreter keeps its fetch window](#2026-11-21-no-jit-68000-68020)
 - [2026-11-21 (seventh) — Six CPU wrappers become two bases, and the 68EC040 is an access control unit](#2026-11-21-wrapper-bases-ec040-acu)
 - [2026-11-21 (sixth) — The release follows the tree: recut from e6679638 after the FSAVE BUSY marker](#2026-11-21-release-recut-fsave)
 - [2026-11-21 (fifth) — The PG&E reports its firmware; the GUI smoke's frame budget was a host-load race; a real download driven from the window](#2026-11-21-pge-reported-smoke-budget)
@@ -1430,6 +1431,63 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-21-no-jit-68000-68020"></a>
+## 2026-11-21 (eighth) — The JIT no longer runs a 68000 or a 68020: it lost on one and did nothing on the other; the 68000 interpreter keeps its fetch window
+
+**The question.** The JIT's worth on the two oldest families rested on boot
+etalons (×1.03-1.08 on the 68000, ×1.0-1.2 on the 68020), which
+`POM68K_JIT.md` itself calls a poor stopwatch, and no fixed-budget A/B had
+ever been taken. Taken today on `build-plain` (RelWithDebInfo, no LTO, no
+`-march=native`), same binary, interleaved ABBA, pinned to core 14, host
+load ≈ 1.5:
+
+| Bench | A | B | delta | floor |
+|---|---|---|---|---|
+| `jit_bench_plus`, 30 000 frames | interpreter 12.71 s | `threaded` 13.57 s | **+6.8 %** (5/5 pairs) | 1.8 % |
+| `jit_bench_macii`, 6 000 frames | interpreter 12.93 s | `threaded` 12.73 s | −1.6 % | 1.9 % |
+
+The 6 000-frame Plus run gave the same sign in all five pairs (+6.5 %),
+then below its 7.2 % floor. The Mac II result is what § 2.1 predicted: since
+the 68020 cache went in, `Engine::executeUntil` hands every slice back.
+
+**But the interpreter's window is another matter.** On these families the
+interpreter itself arms the engine's fetch window (`pomSetInterpWindow`), so
+the "interpreter" arm above already had it. Measured separately, three
+alternating pairs each, `POM68K_JIT_FETCH=0` against the default, identical
+fingerprints:
+- Plus, 30 000 frames: 12.64 s bare, 11.86 s windowed — **the window buys
+  6.2 %** (two `read8()` decodes per opcode word saved);
+- Mac II, 6 000 frames: 11.51 s bare, 12.00 s windowed — **the window costs
+  4.2 %**: the cache refuses every arm and the attempts are pure overhead.
+
+**What changed.**
+- `jit::Engine::executionAvailable()` admits the 68030 and 68040 alone.
+  `setEnabled(true)` on a 68000/68020 engine leaves the interpreter running
+  and prints one line on stderr — `POM68K_CPU_ENGINE=jit` is refused there,
+  not ignored. The 68020's engine arms no window.
+- The GUI's CPU menu offers the interpreter alone on those machines, and
+  says why.
+- Backend declarations are unchanged: `threaded` stays correct for every
+  family; it is not used where it loses.
+- `jit_lockstep_68000_test` had stopped testing what its header said: since
+  the interpreter owned the window, both of its sides fetched through it.
+  It now steps an interpreter on the **bare bus** against one **with the
+  window**, clock at every boundary, and asserts the window covered code
+  in RAM. `jit_program_fuzz_000_test` and `_000_trace_test` (formerly
+  `_trace_blocks_test`) now judge the same pair on random programs.
+- Retired: `jit_system_boot_etalon`, `jit_classic_boot_etalon`,
+  `jit_macii_boot_etalon`, `jit_lc_boot_etalon`, `jit_portable_boot_etalon`,
+  `jit_pb100_boot_etalon`, `jit_{portable,pb100}_sleep_etalon`,
+  `jit_plus_oids_moof_etalon`, `jit_lockstep_68000_blocks_test`,
+  `jit_program_fuzz_000_blocks_test`, `_020_irq7_blocks_test`,
+  `_020_ext2_test` and `_020_trace_blocks_test`. `_020_irq7_test` stays as
+  the interpreter's level-7 regression.
+- `jit_bench_plus` / `jit_bench_macii` compare `bare` against `window`.
+
+This settles the TODO question "is a 68000/68020 emitter in the
+programme": no. For NeoST the JIT starts at the 68030; the 68000 fetch
+window is the one piece left to weigh there.
 
 <a id="2026-11-21-wrapper-bases-ec040-acu"></a>
 ## 2026-11-21 (seventh) — Six CPU wrappers become two bases, and the 68EC040 is an access control unit

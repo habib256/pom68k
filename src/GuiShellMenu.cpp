@@ -90,7 +90,8 @@ void drawMachineCatalogue(GuiSessionState& state, SnapMachine current) {
 void drawCpuMenu(GuiSessionState& state, double speed, bool engineLocked) {
     if (!ImGui::BeginMenu("CPU")) return;
     GuiCpuPanelState& cpu = state.cpu;
-    const bool hasAcceleratedEngine = bool(cpu.setCpuEngine);
+    const bool hasAcceleratedEngine =
+        bool(cpu.setCpuEngine) && cpu.engineAvailable;
     const int engine = hasAcceleratedEngine ? cpu.getCpuEngine() : 0;
     if (cpu.speedSample) {
         ImGui::TextColored(speedColour(speed), "Speed: ×%.2f real time",
@@ -116,7 +117,10 @@ void drawCpuMenu(GuiSessionState& state, double speed, bool engineLocked) {
     ImGui::Separator();
     ImGui::MenuItem("Engine statistics...", nullptr, &cpu.showJit,
                     hasAcceleratedEngine);
-    if (!hasAcceleratedEngine)
+    if (cpu.setCpuEngine && !cpu.engineAvailable)
+        ImGui::TextDisabled("(68000 and 68020 machines run on the\n"
+                            "interpreter: the JIT is slower or idle there)");
+    else if (!hasAcceleratedEngine)
         ImGui::TextDisabled("(no engine switch in this session:\n"
                             "no machine is bound to the menu)");
     ImGui::EndMenu();

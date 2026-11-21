@@ -94,7 +94,6 @@ cclassic_boot_etalon	x86_64	1460148	measured
 lcii_launch_etalon	x86_64	1459952	measured
 lcii_soak_etalon	x86_64	1459204	measured
 jit_lcii_boot_etalon	x86_64	1459196	measured
-jit_lc_boot_etalon	x86_64	1459108	measured
 lc_boot_etalon	x86_64	1459064	measured
 lcii_boot_etalon	x86_64	1458800	measured
 classic2_boot_etalon	x86_64	1458676	measured
@@ -174,7 +173,6 @@ compact_soak_etalon	x86_64	96356	measured
 q605_floppy_boot_etalon	x86_64	61780	measured
 iicx_boot_etalon	x86_64	42776	measured
 iix_boot_etalon	x86_64	42648	measured
-jit_macii_boot_etalon	x86_64	42524	measured
 macii_boot_etalon	x86_64	42516	measured
 se30_boot_etalon	x86_64	41616	measured
 jit_se30_boot_etalon	x86_64	41584	measured
@@ -210,7 +208,6 @@ jit_lc3_boot_etalon	aarch64	1462752	measured
 lc3_boot_etalon	aarch64	1462736	measured
 lc3plus_boot_etalon	aarch64	1462528	measured
 interp_lcii_boot_etalon	aarch64	1459968	measured
-jit_lc_boot_etalon	aarch64	1459888	measured
 lc_boot_etalon	aarch64	1459872	measured
 interp_lc3_boot_etalon	aarch64	1459376	measured
 q630_persist_etalon	aarch64	884368	measured
@@ -219,7 +216,6 @@ q605_persist_etalon	aarch64	877024	measured
 q900_persist_etalon	aarch64	843296	measured
 q700_persist_etalon	aarch64	842240	measured
 # Original native Oids replay, measured 2026-10-08 with tools/measure_gate_ram.py.
-jit_plus_oids_moof_etalon	aarch64	737344	measured
 interp_plus_oids_moof_etalon	aarch64	736704	measured
 q605_savestate_etalon	aarch64	702272	measured
 q630_soak_etalon	aarch64	573744	measured
@@ -299,15 +295,12 @@ iicx_boot_etalon	aarch64	48656	measured
 jit_se30_boot_etalon	aarch64	47616	measured
 se30_boot_etalon	aarch64	47536	measured
 macii_boot_etalon	aarch64	43696	measured
-jit_macii_boot_etalon	aarch64	43696	measured
 macii_mouse_etalon	aarch64	42496	measured
 scsi_boot_etalon	aarch64	38160	measured
 macii_post_etalon	aarch64	22912	measured
-jit_classic_boot_etalon	aarch64	20688	measured
 classic_boot_etalon	aarch64	20608	measured
 se_boot_etalon	aarch64	19840	measured
 sefdhd_boot_etalon	aarch64	19840	measured
-jit_system_boot_etalon	aarch64	19248	measured
 disk_boot_etalon	aarch64	19184	measured
 system_boot_etalon	aarch64	19168	measured
 input_etalon	aarch64	19168	measured

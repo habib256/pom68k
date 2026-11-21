@@ -856,11 +856,14 @@ compilation et dans la documentation.
   `SonoraCpu` en est la variante sans porte disquette) ; la sonde
   coprocesseur FC = 7 émulée dans quatre cartes faute de cycles d'espace
   CPU émis par le cœur.
-- [ ] **Écrire ce que le JIT vaut pour NeoST avant de le porter.** Les
-  générateurs natifs ne déclarent que 68040 et 68030 ; `threaded` vaut
-  ×1,03 à ×1,08 sur un 68000 à cycles exacts. Décider si un émetteur
-  68000/68020 est dans le programme, ou si le JIT ne concerne NeoST qu'à
-  partir d'un 68030.
+- [ ] **Porter la fenêtre de fetch 68000 vers NeoST, ou la laisser.**
+  Tranché le 2026-11-21 (`CHANGELOG` (eighth), `POM68K_JIT.md` § 2.2) :
+  le JIT ne concerne NeoST qu'à partir d'un 68030 — sur un 68000,
+  `threaded` perdait 6,8 % face à l'interpréteur et n'exécute plus. Reste
+  la seule pièce utile à un 68000 : la fenêtre de fetch de l'interpréteur
+  (`pomJitFetch000`, +6,2 % sur le Plus), qui suppose que le bus
+  n'arbitre rien par cycle (blitter, Shifter : voir § Convergence). À
+  mesurer sur NeoST avant de la proposer.
 
 ---
 

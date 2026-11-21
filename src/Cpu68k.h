@@ -22,21 +22,20 @@ public:
 
     void hardReset();                       // memory overlay + CPU reset
 
-    // ── JIT engine (src/jit/POM68K_JIT.md) ──────────────────────────────
-    // The compacts are the LAST family to get the second engine, and the
-    // only one where the fetch window had to be written rather than reused:
-    // on Core::C68020 the SYNC(x) macro expands to nothing, so the 020/030/
-    // 040 window is free of cycle accounting, while here SYNC is real and
-    // MOIRA_PRECISE_TIMING is what the whole Mac Plus timing claim rests
-    // on. Moira::pomJitFetch000 therefore replaces the BUS READ only, and
-    // charges the same cycles — including this wrapper's video/RAM
-    // contention, routed back in through pomJitSetBusStall (below).
+    // ── The interpreter's fetch window (src/jit/POM68K_JIT.md) ─────────
+    // The JIT does not execute a 68000: `threaded` ran the Plus 6.8 % slower
+    // than the interpreter, so jit::Engine::executionAvailable() is false
+    // here and setEngine(1) leaves the interpreter running (CHANGELOG
+    // 2026-11-21 (eighth)). The engine object stays for one service: it
+    // arms the interpreter's fetch window, worth 6.2 % on the same bench —
+    // MacMemory::read16 is two read8() switch dispatches per opcode word.
     //
-    // Expect little: the window's job is to skip an ATC walk and a virtual
-    // read, and a 68000 has no MMU to walk. What it does save is the map
-    // decode — MacMemory::read16 is two read8() switch dispatches per
-    // opcode word. Measured numbers live in src/jit/POM68K_JIT.md § 7.
-    // Off by default for the cycle-exact 68000 family.
+    // On Core::C68000 SYNC is real and MOIRA_PRECISE_TIMING is what the
+    // whole Mac Plus timing claim rests on, so Moira::pomJitFetch000
+    // replaces the BUS READ only and charges the same cycles — including
+    // this wrapper's video/RAM contention, routed back in through
+    // pomJitSetBusStall (below). Gate: jit_lockstep_68000_test, the bare
+    // bus against the window, clock compared at every boundary.
     jit::Engine& jit() { return jit_; }
     const jit::Engine& jit() const { return jit_; }
     int  engine() const { return jit_.enabled() ? 1 : 0; }

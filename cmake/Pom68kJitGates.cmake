@@ -206,42 +206,27 @@ set_tests_properties(jit_lockstep_blocks_test PROPERTIES
                      ENVIRONMENT "POM68K_JIT_BACKEND=threaded;POM68K_JIT_BLOCKS=1"
                      TIMEOUT 1800)
 
-# ── the cycle-exact lockstep (2026-08-06) ────────────────────────────
-# The 68000 twin, and it asks a different question. On Core::C68020 —
-# every other guest the engine reaches — SYNC(x) expands to nothing, so
-# a windowed fetch cannot move the clock and the gates above compare
-# architectural state. On Core::C68000 SYNC is real, and
+# ── the cycle-exact fetch-window lockstep (2026-08-06, retargeted 2026-11-21)
+# The JIT does not execute a 68000 any more (CHANGELOG 2026-11-21
+# (eighth)), but the interpreter keeps the engine's fetch window there
+# (+6.2 % on the Plus), and on Core::C68000 SYNC is real:
 # Moira::pomJitFetch000 has to re-charge two SYNC(2)s, POLL_IPL and the
-# Mac Plus bus contention by hand. `clock` is therefore compared at
-# every instruction boundary, alongside the VIA/IWM/drive/SCC state a
-# cycle drift would move first.
+# Mac Plus bus contention by hand. This gate steps an interpreter on the
+# bare bus against one with the window, comparing `clock` at every
+# instruction boundary alongside the VIA/IWM/drive/SCC state a cycle
+# drift would move first.
 #
-# Coarse-then-fine, because the two halves cover different things. At
-# one cycle per comparison the machine only reaches 26 M guest cycles in
-# a couple of seconds — still inside the ROM's RAM test, where the
-# window arms FOUR times and never dies. A 256-cycle budget covers 666 M
-# cycles in eleven seconds: the whole POST, the GCR floppy read, the
-# System load and the Finder, with 83 000 window arms. FINE_AT then
-# drops the last 100 000 checkpoints to one cycle each, so the sharpest
-# comparison happens in live Finder code rather than in a boot loop.
+# Coarse-then-fine, because the two halves cover different things. A
+# 256-cycle budget covers the whole POST, the GCR floppy read, the System
+# load and the Finder; FINE_AT then drops the last 100 000 checkpoints to
+# one cycle each, so the sharpest comparison happens in live Finder code
+# rather than in a boot loop.
 add_executable(jit_lockstep_68000_test tests/jit_lockstep_68000_test.cpp)
 target_link_libraries(jit_lockstep_68000_test PRIVATE pom68k_core)
 add_test(NAME jit_lockstep_68000_test COMMAND jit_lockstep_68000_test 2500000
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 set_tests_properties(jit_lockstep_68000_test PROPERTIES
                      ENVIRONMENT "POM68K_JIT_LOCKSTEP_BUDGET=256;POM68K_JIT_LOCKSTEP_FINE_AT=2400000"
-                     TIMEOUT 1800)
-
-# …and with the block path forced on. Recorded blocks are safe on a
-# cycle-exact core only because the `threaded` backend replays through
-# pomJitExecOne() — Moira's own handlers, charging Moira's own cycles —
-# and never replays the recorded Instr::cycles. That is a property worth
-# a gate, because a code generator doing the arithmetic itself would be
-# wrong here in a way no architectural comparison would catch.
-add_test(NAME jit_lockstep_68000_blocks_test COMMAND jit_lockstep_68000_test 2500000
-         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-set_tests_properties(jit_lockstep_68000_blocks_test PROPERTIES
-                     ENVIRONMENT "POM68K_JIT_BACKEND=threaded;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=1;POM68K_JIT_LOCKSTEP_BUDGET=256;POM68K_JIT_LOCKSTEP_FINE_AT=2400000"
                      TIMEOUT 1800)
 
 # The boards with no lockstep of their own (68040: Quadra 630, Quadra 700,
@@ -521,30 +506,16 @@ foreach(gate q605_boot_etalon centris650_boot_etalon
              # …and one gate per additional 030 family (Sonora / VASP /
              # RBV): same engine, each map's own span/guard plumbing.
              lc3_boot_etalon iivx_boot_etalon iisi_boot_etalon
-             # The 020 seam's guards. The JIT is measurably NOT worth
-             # turning on for a plain 68020 (nothing to save: no MMU,
-             # one cheap fetch per instruction) — the LC (V8 map +
-             # as020) and the Mac II (GLUE map) are here so the seam
-             # stays CORRECT for the day a code generator gives it
-             # something to win with.
-             lc_boot_etalon macii_boot_etalon
              # …and the Mac II family's 030 half, which is the case
              # that DOES pay: same ATC probe and mmuFetchWord choke
              # point as the V8/Sonora/VASP/RBV 030s, on the GLUE map.
              # se30 rather than iix because it also exercises the
              # pseudo-slot video path while the window is armed.
              se30_boot_etalon
-             # The compacts (2026-08-06). These are the gates that
-             # matter most of the whole list, because this is the one
-             # family where the window is NOT free of cycle accounting:
-             # Moira::pomJitFetch000 has to charge what read<> would,
-             # contention included. A Mac Plus whose fetch cycles drifted
-             # would not fail with a wrong pixel, it would fail with a
-             # sound tempo or an IWM hold — hence both models: the Plus
-             # (VIA PA4 overlay, M0110) and — just below, because it is
-             # the one gate whose binary is shared — the Classic (ADB,
-             # and the overlay drops on the first low-RAM WRITE).
-             system_boot_etalon
+             # No 68000 or 68020 machine here: the JIT does not execute
+             # those families (jit::Engine::executionAvailable; the Plus
+             # ran 6.8 % slower under `threaded`, the Mac II's cache
+             # handed every fetch back — CHANGELOG 2026-11-21 (eighth)).
              # The IIfx (2026-08-06), which completes the set: every CPU
              # wrapper in the tree now carries an engine. Its map is the
              # easiest the window has met — 32-bit clean, no HMMU, no
@@ -686,13 +657,3 @@ if(POM68K_PRODUCT_LLE_GATES)
     set_property(TEST jit_lockstep_a64_coarse_test savestate_040_test
                  APPEND PROPERTY LABELS product lle a64-oracle)
 endif()
-
-# The ADB compact under the JIT. Out of the loop above because the
-# compact family is "one binary, POM68K_COMPACT_MODEL picks the
-# sibling" — the test NAME is not an executable name here, and the
-# model variable has to ride along with the engine one.
-add_test(NAME jit_classic_boot_etalon COMMAND compact_boot_etalon
-         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-set_tests_properties(jit_classic_boot_etalon PROPERTIES
-                     ENVIRONMENT "POM68K_COMPACT_MODEL=classic;POM68K_CPU_ENGINE=jit"
-                     TIMEOUT 3600)

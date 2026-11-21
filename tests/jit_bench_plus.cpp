@@ -35,14 +35,14 @@ void ensureBootDriverType(std::vector<uint8_t>& img) {
 
 template <class Report>
 bench::Result runPlus(const std::vector<uint8_t>& rom,
-                      const std::string& disk, int frames, int engine,
+                      const std::string& disk, int frames, bool window,
                       Report&& report) {
     MacMemory mem(pom68k::defaultCoreConfig());
     mem.loadRom(rom);
-    const jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
+    jit::ResolvedConfig jitConfig = testjit::resolveFromEnvironment();
+    jitConfig.fetchWindow = window;
     Cpu68k cpu(mem, jitConfig);
     mem.setCpu(&cpu);
-    cpu.setEngine(engine);
     cpu.hardReset();
     mem.attachScsi(disk);
     ensureBootDriverType(mem.scsiDisk().image());
@@ -79,20 +79,21 @@ int main() {
                     bench::nullExperiment() ? "NULL experiment (A vs A)"
                                             : "interleaved A/B",
                     bench::compareRepeats(), frames, bench::buildStamp());
-        return bench::compare("plus", "interp", "threaded", [&](int arm) {
-            const int engine = bench::nullExperiment() ? 0 : arm;
+        // The JIT does not execute this family (CHANGELOG 2026-11-21
+        // (eighth)); what is left to weigh is the interpreter's fetch window.
+        return bench::compare("plus", "bare", "window", [&](int arm) {
+            const bool window = bench::nullExperiment() ? false : arm != 0;
             const bench::Result r = runPlus(
-                rom, diskPath, frames, engine,
+                rom, diskPath, frames, window,
                 [](auto&, auto&, const auto&) {});
             return bench::Sample{r.secs, r.fp};
         });
     }
 
-    const int engine = std::getenv("POM68K_CPU_ENGINE") &&
-                       !std::strcmp(std::getenv("POM68K_CPU_ENGINE"), "jit");
-    runPlus(rom, diskPath, frames, engine,
+    const bool window = testjit::resolveFromEnvironment().fetchWindow;
+    runPlus(rom, diskPath, frames, window,
             [&](MacMemory& mem, Cpu68k& cpu, const bench::Result& r) {
-        bench::report("plus", engine ? "plus_threaded" : "plus_interp",
+        bench::report("plus", window ? "plus_window" : "plus_bare",
                       "68000", cpu, r, mem.cpuHz());
         std::printf("  SCSI=%ld  pc=$%08X  %s\n", mem.scsi().commands,
                     cpu.getPC(), cpu.isHalted() ? "HALTED" : "running");

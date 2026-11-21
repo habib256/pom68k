@@ -36,12 +36,9 @@ public:
     // The same engine that drives the four 68040 machines: the 030 seam is
     // mmuFetchWord (the single choke point every instruction-stream fetch
     // goes through) plus the read-only ATC probe, so nothing here knows
-    // more than the Cpu040 wrapper does. Off by default. The LC's as020
-    // profile constructs it too and the window DOES arm there — through
-    // pomJitProbeCode's identity branch and pomJitFetch020. (This comment
-    // used to say the probe refused a 68020; it was stale from the day it
-    // was written, and jit_lc_boot_etalon had been proving it stale.
-    // Corrected 2026-08-06, when the same seam was wired to the Mac II.)
+    // more than the Cpu040 wrapper does. The LC's as020 profile constructs
+    // it too, but the JIT does not execute a 68020 and arms no window for
+    // it (jit::Engine::executionAvailable, CHANGELOG 2026-11-21 (eighth)).
     void setEngine(int e) { jit_.setEnabled(e != 0); pomJitDisarm(); }
     void runCycles(moira::i64 n);
     void updateIpl();                       // from the V8 priority resolver

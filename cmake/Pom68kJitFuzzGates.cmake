@@ -96,19 +96,15 @@ add_test(NAME jit_program_fuzz_040_mmuprot_test
 add_test(NAME jit_program_fuzz_040_mmuprot_cas_test
          COMMAND jit_program_fuzz --model 40 --mmuprot --sys --ext --smc --fpu
                  --seeds 100 --extra 807209)
-# The 68020 on the threaded backend with timed interrupts at every level,
-# 7 included: a held level 7 used to wedge the interpreter at constant
-# clock (seed 3) until level 7 became transition sensitive (Moira.h,
-# nmiLatch). Window mode and blocks.
+# The 68020 with timed interrupts at every level, 7 included: a held level
+# 7 used to wedge the interpreter at constant clock (seed 3) until level 7
+# became transition sensitive (Moira.h, nmiLatch). The JIT no longer
+# executes a 68020 (CHANGELOG 2026-11-21 (eighth)), so both sides are the
+# interpreter: what is left is the wedge regression itself, which would
+# show as a timeout.
 add_test(NAME jit_program_fuzz_020_irq7_test
          COMMAND jit_program_fuzz --model 20 --irq-timed --ext --sys --seeds 300 --extra 3)
-add_test(NAME jit_program_fuzz_020_irq7_blocks_test
-         COMMAND jit_program_fuzz --model 20 --irq-timed --ext --sys --seeds 300 --extra 3)
-set_tests_properties(jit_program_fuzz_020_irq7_test PROPERTIES
-                     ENVIRONMENT "POM68K_CPU_ENGINE=jit;POM68K_JIT_BACKEND=threaded")
-set_tests_properties(jit_program_fuzz_020_irq7_blocks_test PROPERTIES
-                     ENVIRONMENT "POM68K_CPU_ENGINE=jit;POM68K_JIT_BACKEND=threaded;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=1")
-set_tests_properties(jit_program_fuzz_020_irq7_test jit_program_fuzz_020_irq7_blocks_test
+set_tests_properties(jit_program_fuzz_020_irq7_test
                      PROPERTIES LABELS "jit;unit" TIMEOUT 300)
 # --ext2: CAS2, MOVES (SFC/DFC loaded), TAS, 68040 CINV/CPUSH and, under
 # --mmu, PFLUSH/PTEST — the locked, alternate-space and cache/ATC
@@ -119,30 +115,19 @@ add_test(NAME jit_program_fuzz_030_ext2_test
 add_test(NAME jit_program_fuzz_040_ext2_test
          COMMAND jit_program_fuzz --model 40 --ext2 --ext --sys --smc --mmu --dcache
                  --irq-timed --savestate --slices 20 --seeds 150)
-add_test(NAME jit_program_fuzz_020_ext2_test
-         COMMAND jit_program_fuzz --model 20 --ext2 --ext --sys --smc --irq-timed
-                 --savestate --slices 20 --seeds 200)
 set_tests_properties(jit_program_fuzz_030_ext2_test PROPERTIES
                      ENVIRONMENT "POM68K_JIT_PROFIT_SCORE=0")
-set_tests_properties(jit_program_fuzz_020_ext2_test PROPERTIES
-                     ENVIRONMENT "POM68K_JIT_BACKEND=threaded;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=1")
 set_tests_properties(jit_program_fuzz_030_ext2_test jit_program_fuzz_040_ext2_test
-                     jit_program_fuzz_020_ext2_test
                      PROPERTIES LABELS "jit;unit" TIMEOUT 300)
-# The 68000 (compact Macs) on the threaded backend, the one engine valid
-# for it: window mode and blocks, with SR/USP/RTE/STOP, self-modifying
-# stores, timed interrupts and save states.
+# The 68000 (compact Macs): the JIT does not execute it (CHANGELOG
+# 2026-11-21 (eighth)), so the translator side is the interpreter WITH the
+# engine's fetch window (Moira::pomJitFetch000) and the reference is the
+# interpreter on the bare bus — SR/USP/RTE/STOP, self-modifying stores,
+# timed interrupts and save states, clock compared at every slice.
 add_test(NAME jit_program_fuzz_000_test
          COMMAND jit_program_fuzz --model 0 --sys --smc --irq-timed --savestate
                  --slices 20 --seeds 300)
-add_test(NAME jit_program_fuzz_000_blocks_test
-         COMMAND jit_program_fuzz --model 0 --sys --smc --irq-timed --savestate
-                 --slices 20 --seeds 300)
-set_tests_properties(jit_program_fuzz_000_test PROPERTIES
-                     ENVIRONMENT "POM68K_CPU_ENGINE=jit;POM68K_JIT_BACKEND=threaded")
-set_tests_properties(jit_program_fuzz_000_blocks_test PROPERTIES
-                     ENVIRONMENT "POM68K_CPU_ENGINE=jit;POM68K_JIT_BACKEND=threaded;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=1")
-set_tests_properties(jit_program_fuzz_000_test jit_program_fuzz_000_blocks_test
+set_tests_properties(jit_program_fuzz_000_test
                      PROPERTIES LABELS "jit;unit" TIMEOUT 300)
 # 68040 seed 9121429 (--dcache under the MMU, timed interrupts): a native
 # RTS counted its stack read's D-cache hit, found an odd return address and
@@ -180,10 +165,9 @@ add_test(NAME jit_program_fuzz_030_trace_test
 add_test(NAME jit_program_fuzz_040_trace_test
          COMMAND jit_program_fuzz --model 40 --tracebit --ext --ext2 --sys --smc --mmu --fpu
                  --irq-timed --savestate --slices 20 --seeds 200)
-add_test(NAME jit_program_fuzz_020_trace_blocks_test
-         COMMAND jit_program_fuzz --model 20 --tracebit --ext --sys --smc --irq-timed
-                 --savestate --slices 20 --seeds 200)
-add_test(NAME jit_program_fuzz_000_trace_blocks_test
+# The 68000 trace under the interpreter's fetch window (see
+# jit_program_fuzz_000_test); the 68020 twin left with the 68020 engine.
+add_test(NAME jit_program_fuzz_000_trace_test
          COMMAND jit_program_fuzz --model 0 --tracebit --sys --smc --irq-timed
                  --savestate --slices 20 --seeds 200)
 add_test(NAME jit_program_fuzz_030_t0_test
@@ -196,11 +180,8 @@ set_tests_properties(jit_program_fuzz_030_trace_test jit_program_fuzz_030_t0_tes
                      ENVIRONMENT "POM68K_JIT_PROFIT_SCORE=0")
 set_tests_properties(jit_program_fuzz_030_t0_test jit_program_fuzz_040_t0_test
                      PROPERTIES LABELS "jit;unit" TIMEOUT 300)
-set_tests_properties(jit_program_fuzz_020_trace_blocks_test jit_program_fuzz_000_trace_blocks_test
-                     PROPERTIES
-                     ENVIRONMENT "POM68K_CPU_ENGINE=jit;POM68K_JIT_BACKEND=threaded;POM68K_JIT_BLOCKS=1;POM68K_JIT_HOT=1")
 set_tests_properties(jit_program_fuzz_030_trace_test jit_program_fuzz_040_trace_test
-                     jit_program_fuzz_020_trace_blocks_test jit_program_fuzz_000_trace_blocks_test
+                     jit_program_fuzz_000_trace_test
                      PROPERTIES LABELS "jit;unit" TIMEOUT 300)
 # --devport: a 4 KB page whose every read advances a counter, refused to
 # the direct views as a board's I/O is. A read performed once too often on
