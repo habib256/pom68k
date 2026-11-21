@@ -102,8 +102,33 @@ MscMemory::MscMemory(const pom68k::CoreConfig& coreConfig,
     // JeDI's ROM drives HDSEL through SWIM mode bit 5, not MSC VIA1 PA5.
     if (isPb150()) pb150_.swim.onHdsel = [this](bool high) { pb150_.swim.setSel(high); };
     // PG&E boot mask ROM — user-provided, never committed (roms/README).
-    for (const char* p : { "roms/pge/pge_boot.bin", "../roms/pge/pge_boot.bin" })
-        if (pmu_.loadBootRom(p)) break;
+    // Reported like every other firmware-carrying device, so the windows
+    // show the dump that runs — or that none does: there is no substitute.
+    pom68k::lle::Device pge;
+    pge.module = pom68k::lle::PmuFirmware;
+    pge.target = pom68k::FirmwareTarget::Pmu;
+    pge.name = "PG&E Power Manager - keyboard / trackball / clock / PRAM / power";
+    pge.pathKnob = "--firmware-override=pmu:lle:<path>";
+    pge.firmwareForced = coreConfig.firmware.pmuPath.value_or("");
+    if (coreConfig.firmware.root)
+        pge.candidates.push_back(*coreConfig.firmware.root + "/pge/pge_boot.bin");
+    pge.candidates.insert(pge.candidates.end(),
+                          { "roms/pge/pge_boot.bin", "../roms/pge/pge_boot.bin" });
+    // An explicit choice is authoritative: no silent fall-through to another
+    // dump (the rule the M50753 boards follow, Pb030Persistence.cpp).
+    if (coreConfig.firmware.pmuPath) {
+        if (pmu_.loadBootRom(*coreConfig.firmware.pmuPath))
+            pge.firmware = *coreConfig.firmware.pmuPath;
+    } else {
+        for (const std::string& p : pge.candidates)
+            if (pmu_.loadBootRom(p)) { pge.firmware = p; break; }
+    }
+    pge.mode = pmu_.active() ? pom68k::lle::Mode::Lle : pom68k::lle::Mode::Hle;
+    pge.why = pmu_.active() ? pom68k::lle::Why::LleFirmware
+                            : pom68k::lle::Why::MissingRequired;
+    if (!pmu_.active())
+        pge.consequence = "No power manager runs: the ROM stalls at the PMU handshake.";
+    lle_->report(pge);
     for (const char* p : { "roms/pge/duobatid.bin", "../roms/pge/duobatid.bin" })
         if (pmu_.loadBatteryId(p)) break;
     if (!pmu_.active())

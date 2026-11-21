@@ -107,7 +107,7 @@ analogy; that section's audit has not covered them yet.
 | `adb-devices` | ADB keyboard and mouse | Pure LLE | - | 1.6 |
 | `egret-cuda` | Egret / Cuda (ADB, PRAM, clock, power) | Pure LLE | HLE replacement | 1.9 |
 | `pmu-m50753` | M50753 Power Manager (Portable, PowerBook 1x0) | Pure LLE | required | - |
-| `pmu-pge` | PG&E Power Manager (Duo, PowerBook 150) | Pure LLE | - | - |
+| `pmu-pge` | PG&E Power Manager (Duo, PowerBook 150) | Pure LLE | required | - |
 | `rtc` | RTC / PRAM chip | Pure LLE | - | 3 |
 | `video-compact` | Compact 512x342 video | LLE simplified | - | 1.1 |
 | `video-toby` | Toby video card (Mac II, IIfx) | LLE simplified | - | 1.1 |

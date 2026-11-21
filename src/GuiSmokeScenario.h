@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <chrono>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -64,6 +65,7 @@ private:
     bool cardStaged_ = false;
     bool cardSeen_ = false;
     int frames_ = 0;
+    std::chrono::steady_clock::time_point started_{};  // first frame, host time
     int targetEngine_ = -1;
     bool windowOpened_ = false;
     bool engineRequested_ = false;

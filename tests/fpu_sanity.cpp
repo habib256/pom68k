@@ -358,9 +358,9 @@ int main() {
     CHECK(cpu.getA(1) == 0x4f28,
           "fsave busy882: A1=%08X, want 00004F28", cpu.getA(1));
     CHECK(cpu.mem[0x4f28] == 0x1f && cpu.mem[0x4f29] == 0xd4 &&
-          cpu.mem[0x4f2c] == 'P' && cpu.mem[0x4f2d] == 'O' &&
-          cpu.mem[0x4f2e] == 'M' && cpu.mem[0x4f2f] == '2',
-          "fsave busy882 header/magic not $1FD4/POM2");
+          cpu.mem[0x4f2c] == 'M' && cpu.mem[0x4f2d] == 'O' &&
+          cpu.mem[0x4f2e] == 'I' && cpu.mem[0x4f2f] == 'R',
+          "fsave busy882 header/magic not $1FD4/MOIR");
     cpu.execute();                                  // FRESTORE BUSY
     cpu.execute();                                  // RTE + completion
     CHECK(cpu.getPC0() == 0x100c && cpu.getA(1) == 0x5000,

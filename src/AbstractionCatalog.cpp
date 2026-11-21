@@ -361,7 +361,8 @@ const std::vector<Entry>& catalogue() {
      .whyNot = "Real firmware on a real core. Needs roms/pge/pge_boot.bin; "
                "without it the ROM stalls at the PMU handshake.",
      .files = "src/M68hc05Pge.h src/PgePmu.h src/PgePmu.cpp docs/DUO_BRINGUP.md",
-     .platforms = bits({P::Msc}), .docSection = "-"},
+     .platforms = bits({P::Msc}), .docSection = "-",
+     .live = LiveSource::Firmware, .module = lle::PmuFirmware},
     {.id = "rtc", .group = "Input and microcontrollers",
      .subsystem = "RTC / PRAM chip",
      .level = Level::PureLle,
@@ -592,6 +593,13 @@ LiveRow resolve(const Entry& entry, const SessionView& view) {
             row.detail = d->firmware.empty()
                 ? std::string("original firmware running")
                 : "running " + fileName(d->firmware);
+        } else if (d->why == lle::Why::MissingRequired) {
+            row.active = entry.level;
+            row.degraded = true;
+            row.state = "firmware missing";
+            row.detail = "required dump absent: the device does not run";
+            if (!d->candidates.empty())
+                row.hint = "Place " + d->candidates.front() + " and restart.";
         } else {
             row.active = entry.hasFallback ? entry.fallback : entry.level;
             row.degraded = true;

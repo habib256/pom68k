@@ -2345,7 +2345,7 @@ Moira::execFSave(u16 opcode)
     //
     // If an interrupt stopped a long 6888x operation at a protocol
     // checkpoint, serialize its private completion image as the documented
-    // $B4/$D4 BUSY frame. The opaque payload starts with a POM2 marker so
+    // $B4/$D4 BUSY frame. The opaque payload starts with this core's own marker so
     // FRESTORE can resume it deterministically; real hardware frames remain
     // accepted as opaque compatibility input.
     SUPERVISOR_MODE_ONLY
@@ -2449,14 +2449,14 @@ Moira::execFSave(u16 opcode)
 
     if (busy) {
         // The chip's internal bytes are deliberately opaque to software.
-        // Keep a deterministic POM2 image so our FRESTORE can resume the
+        // Keep a deterministic image of our own so FRESTORE can resume the
         // suspended SoftFloat operation while preserving the architectural
         // $1F/$D4 (or $B4) frame size and transfer order.
         const u32 remain = fpu.busyUntil > clock
             ? u32(fpu.busyUntil - clock) : 0;
         for (int off = 4; off < frameSize; off += 4) {
             u32 v = 0;
-            if (off == 4) v = 0x504f4d32;               // "POM2"
+            if (off == 4) v = 0x4d4f4952;               // "MOIR"
             else if (off == 8) v = remain;
             else if (off == 12) v = u32(fpu.busyOpcode) << 16 | fpu.busyExt;
             else if (off == 16) v = fpu.busyFpsr;
@@ -2524,8 +2524,8 @@ Moira::execFRestore(u16 opcode)
     //   version $00           -> NULL: FPU reset (fpu_null, fpp.c:2796)
     //   version $1F, size $18 -> 68881 IDLE: reload micro-state
     //   version $1F, size $38 -> 68882 IDLE: reload micro-state
-    //   version $1F, size $B4 -> 68881 BUSY: resume POM2 frame; accept opaque
-    //   version $1F, size $D4 -> 68882 BUSY: resume POM2 frame; accept opaque
+    //   version $1F, size $B4 -> 68881 BUSY: resume our own frame; accept opaque
+    //   version $1F, size $D4 -> 68882 BUSY: resume our own frame; accept opaque
     //   version $1F, other    -> format error (vector 14, fpp.c:2791-2794)
     //   version $41           -> WinUAE's 68040 retry hack, see below
     //   anything else         -> format error (vector 14, fpp.c:2804-2806)
@@ -2588,7 +2588,10 @@ Moira::execFRestore(u16 opcode)
         } else if (frameSize == 0xB4 || frameSize == 0xD4) {    // BUSY
 
             const u32 magic = readM<C, M, Long>(adOrig + 4);
-            if (magic == 0x504f4d32) {
+            // $4D4F4952 is the marker FSAVE writes; $504F4D32 is the one it
+            // wrote before 2026-11-21, still resumed so a save state taken
+            // across a suspended operation keeps its result.
+            if (magic == 0x4d4f4952 || magic == 0x504f4d32) {
                 const u32 remain = readM<C, M, Long>(adOrig + 8);
                 const u32 command = readM<C, M, Long>(adOrig + 12);
                 fpu.busyOpcode = u16(command >> 16);

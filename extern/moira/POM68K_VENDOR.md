@@ -892,7 +892,7 @@ therefore emits a resumable BUSY frame when one is suspended.
 |-------------------|--------------------------------------------------|
 | version $00       | NULL: full FPU reset (fpu_null)                  |
 | $1F, size $18/$38 | 68881/68882 IDLE: reload ccr/eo/BIU micro-state; BIU bit 27 clear re-arms the pending exception (fpp.c:2781-2787) |
-| $1F, size $B4/$D4 | 68881/68882 BUSY: resume POM2-authored state; opaque hardware frames remain accepted |
+| $1F, size $B4/$D4 | 68881/68882 BUSY: resume a frame this core authored; opaque hardware frames remain accepted |
 | $1F, other size   | format error, vector 14 (D21 PC convention)      |
 | $41, size $00     | 68040 IDLE via WinUAE's version hack (fpp.c:2799-2802; get_fpu_version(68040) == $41): state = non-null, expState cleared |
 | $41, size $28/$30 | 68040 UNIMP: skipped                             |

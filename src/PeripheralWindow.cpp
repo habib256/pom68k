@@ -106,6 +106,8 @@ std::string reasonText(const lle::Device& d) {
         return "no firmware dump found - nonconforming HLE substitute";
     case lle::Why::HleForced:
         return d.knob + "=0 - nonconforming HLE substitute forced";
+    case lle::Why::MissingRequired:
+        return "required firmware missing - there is no substitute";
     }
     return {};
 }

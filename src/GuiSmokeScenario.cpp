@@ -62,7 +62,15 @@ void GuiSmokeScenario::frame(GuiSessionState& session, GLFWwindow* window,
     // Native media states can contain tens of MB. Keep the same assertions,
     // but give a requested save a bounded extra window to finish publishing
     // its result instead of closing while the machine thread is writing it.
-    if (frames_ >= (saveRequested_ ? 1200 : 120)) {
+    // The engine switch and the save are done by the machine thread, which a
+    // loaded host starves while this thread keeps drawing: 120 frames went
+    // by before the switch landed, once in a full tier (2026-11-20), where an
+    // idle run takes about 80. So the frame budget only gives up once host
+    // time agrees that the machine thread had its chance.
+    if (frames_ == 1) started_ = std::chrono::steady_clock::now();
+    const bool waited = std::chrono::steady_clock::now() - started_ >=
+                        std::chrono::seconds(saveRequested_ ? 60 : 20);
+    if (frames_ >= (saveRequested_ ? 1200 : 120) && waited) {
         closeRequested_ = true;
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     }

@@ -49,6 +49,9 @@ enum class Why {
     LleFirmware,   // real firmware executing on its real MCU core
     HleNoDump,     // no dump found under any candidate path — the fallback
     HleForced,     // the knob says 0, dumps notwithstanding
+    MissingRequired, // no dump and no substitute exists: the device does not
+                     // run at all (reported as Mode::Hle so the session is
+                     // never qualified as LLE on a part that is absent)
 };
 
 struct Device {
