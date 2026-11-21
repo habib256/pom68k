@@ -65,15 +65,15 @@ une optimisation côté hôte POM68K ne rapproche pas de NeoST.
    puis la jambe AArch64 quand l'hôte est disponible.
 5. *Premier portage réel* vers NeoST, qui dira ce que le contrat a oublié.
 
-**Dépôt — décision en attente (2026-11-12).** Le commit `f9a29795`
-(2026-11-11, 21:54) contient par erreur `lc580_ide_boot.img.pomundo`, un
-journal d'écriture disque de 2,5 Mo laissé par un test en cours : des
-blocs d'une image système privée, poussés sur le dépôt public. Retiré de
-l'arbre et `*.pomundo` ignoré depuis `c5dc026c`. **Il reste dans
-l'historique** : le purger demande de réécrire `main` depuis `f9a29795`
-et de pousser en force, puis de demander à
-GitHub la suppression des objets devenus inaccessibles. Décision du
-propriétaire.
+**Dépôt — purge faite le 2026-11-21, reste GitHub.** Le journal disque
+`lc580_ide_boot.img.pomundo` (blocs d'une image système privée), poussé
+par erreur le 2026-11-11, est retiré de tout l'historique de `main` : les
+173 commits depuis ce jour sont réécrits (`CHANGELOG` (tenth)), l'historique
+antérieur et ses signatures sont intacts. **Reste au propriétaire** :
+demander au support GitHub de purger les objets désormais inaccessibles —
+les anciens commits `f9a29795` et `c5dc026c` restent servis par SHA tant
+que GitHub ne les a pas collectés — et réaligner les autres clones
+(`git fetch && git reset --hard origin/main`).
 
 **Rétro-portages NeoST (2026-11-11, `CHANGELOG` (thirteenth)).** STOP
 68000 et `<cstdlib>` portés (format de save-state v31), sur la branche
@@ -312,7 +312,7 @@ Plusieurs rangs de l'inventaire ne tiennent encore que par un boot.
   pas `--strict-ram`. Avec ce contrôle, le corpus public 030 passe
   1127 / 1128 : `$2010A3` vaut `$09` au lieu de `$01` sur le vecteur
   `rmw/identity seed=2026111532 #15 geometry=4k-2level-long`.
-  Même résultat vérifié sur `45bb774` et sur D12 ; aucune différence
+  Même résultat vérifié sur `7c7bcaf` et sur D12 ; aucune différence
   nouvelle due aux frames. Ne pas transformer ce cas en exception de
   vecteur entier pour rendre le contrôle vert.
 

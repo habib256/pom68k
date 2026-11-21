@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 870 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 871 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 28 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 44 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
-| [Cross-cutting](#cross-cutting) | 180 |
+| [Cross-cutting](#cross-cutting) | 181 |
 
 ---
 
@@ -689,7 +689,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-14 (third)** — [`agent_binary_test` compares the shipped agent only with a build of the same toolchain](CHANGELOG.md#2026-11-14-agent-toolchain)
 - **2026-11-20 (seventh)** — [The release for Dirk Hoffmann, cut on his master and accepted by his Runner](CHANGELOG.md#2026-11-20-release-on-upstream-master)
 - **2026-11-21 (fourth)** — [The release recut once more, for two comment lines](CHANGELOG.md#2026-11-21-release-recut-comments)
-- **2026-11-21 (sixth)** — [The release follows the tree: recut from e6679638 after the FSAVE BUSY marker](CHANGELOG.md#2026-11-21-release-recut-fsave)
+- **2026-11-21 (sixth)** — [The release follows the tree: recut from e6012cbb after the FSAVE BUSY marker](CHANGELOG.md#2026-11-21-release-recut-fsave)
 
 ## Tests, gates and measurement
 
@@ -932,4 +932,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-20 (eighth)** — [One ROM catalogue with a status window, a downloader and an importer; the LLE/HLE inventory as a window](CHANGELOG.md#2026-11-20-rom-status-and-abstraction-windows)
 - **2026-11-20 (fifth)** — [A write to SR or CCR at a page end took the bus error of its own refill; an RTE whose frame faults reran from a moved A7; ADDX and SUBX's pending store](CHANGELOG.md#2026-11-20-addx-subx-buffer)
 - **2026-11-21 (seventh)** — [Six CPU wrappers become two bases, and the 68EC040 is an access control unit](CHANGELOG.md#2026-11-21-wrapper-bases-ec040-acu)
+- **2026-11-21 (tenth)** — [The disk journal pushed on 2026-11-11 is out of history: 173 commits rewritten, nothing older touched](CHANGELOG.md#2026-11-21-pomundo-purge)
 

@@ -619,10 +619,11 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-21 (tenth) — The disk journal pushed on 2026-11-11 is out of history: 173 commits rewritten, nothing older touched](#2026-11-21-pomundo-purge)
 - [2026-11-21 (ninth) — A 68000 PC-relative operand read is a program reference: the manual settles what NeoST and this core disagreed on](#2026-11-21-pc-relative-program-space)
 - [2026-11-21 (eighth) — The JIT no longer runs a 68000 or a 68020: it lost on one and did nothing on the other; the 68000 interpreter keeps its fetch window](#2026-11-21-no-jit-68000-68020)
 - [2026-11-21 (seventh) — Six CPU wrappers become two bases, and the 68EC040 is an access control unit](#2026-11-21-wrapper-bases-ec040-acu)
-- [2026-11-21 (sixth) — The release follows the tree: recut from e6679638 after the FSAVE BUSY marker](#2026-11-21-release-recut-fsave)
+- [2026-11-21 (sixth) — The release follows the tree: recut from e6012cbb after the FSAVE BUSY marker](#2026-11-21-release-recut-fsave)
 - [2026-11-21 (fifth) — The PG&E reports its firmware; the GUI smoke's frame budget was a host-load race; a real download driven from the window](#2026-11-21-pge-reported-smoke-budget)
 - [2026-11-21 (fourth) — The release recut once more, for two comment lines](#2026-11-21-release-recut-comments)
 - [2026-11-21 (third) — The LC 580 names its own ROM; four things the ROM catalogue's first day left open](#2026-11-21-lc580-own-rom)
@@ -1433,6 +1434,42 @@ Newest first.
 
 ---
 
+<a id="2026-11-21-pomundo-purge"></a>
+## 2026-11-21 (tenth) — The disk journal pushed on 2026-11-11 is out of history: 173 commits rewritten, nothing older touched
+
+**What leaked.** `lc580_ide_boot.img.pomundo`, a 2.5 MB write-back journal
+(`src/DiskTimeline.h`) holding blocks of a private system disk image, was
+swept into a commit on 2026-11-11 and pushed; the next day untracked it and
+ignored `*.pomundo`, but it stayed in history. Old SHAs: `f9a29795` (added)
+and `c5dc026c` (removed).
+
+**How.** A first attempt with `git filter-repo` was not pushed: it rewrote
+959 commits instead of 173, because it strips the SSH signatures of the
+cloud-session commits since 2026-08-01, so their hashes changed and every
+descendant with them — the published `v0.2.0`+ tags would have been cut off
+`main`. The pushed rewrite is `git filter-branch --index-filter` over
+`f9a29795^..main` only, in a fresh clone:
+- 173 commits rewritten; for each, tree minus `*.pomundo`, author,
+  committer, dates and message are identical to the original;
+- every commit before 2026-11-11, its signature and the four `v0.x` tags
+  are byte-identical; the final tree is unchanged;
+- `main` and the tags reach no `*.pomundo`. GitHub's PR refs never did.
+Pushed with `--force-with-lease` (`c6dd5e45` → `eea06780`). The local clone
+was realigned, its three `backup/*` refs re-pointed to the rewritten
+commits, reflogs expired and objects pruned (pack 102 → 61 MB). A bundle of
+the whole pre-purge repository is kept outside the tree.
+
+**Hashes.** Every commit since 2026-11-11 has a new SHA;
+`scratchpad/2026-11-21/history-rewrite-map.tsv` maps all 173. Citations in
+the documents were rewritten to the new SHAs; messages of the rewritten
+commits still cite the old ones (resolve them with the map), and the Moira
+release archives keep their old names (`moira-pom68k-20261121-…`), their
+contents unchanged.
+
+**Left to the owner.** Ask GitHub support to purge the now-unreachable
+objects (the old SHAs above are still served by SHA until then), and run
+`git fetch && git reset --hard origin/main` in every other clone.
+
 <a id="2026-11-21-pc-relative-program-space"></a>
 ## 2026-11-21 (ninth) — A 68000 PC-relative operand read is a program reference: the manual settles what NeoST and this core disagreed on
 
@@ -1577,18 +1614,18 @@ fork's base; NeoST moved to `51ec0c4` with no commit under `extern/moira`
 since the 2026-11-13 survey (`9db090b`). Nothing to port either way.
 
 <a id="2026-11-21-release-recut-fsave"></a>
-## 2026-11-21 (sixth) — The release follows the tree: recut from e6679638 after the FSAVE BUSY marker
+## 2026-11-21 (sixth) — The release follows the tree: recut from e6012cbb after the FSAVE BUSY marker
 
 `moira-pom68k-20261121-e6679638.tar.gz` (158 files, sha256
 `c28e1ae936899ca2455f4c18e13e35edf998b1d4c37bd6667f08701f30de9541`)
-replaces the `203c5d15` cut of the fourth entry, which `15b9efc9` overtook
+replaces the `3d0c3651` cut of the fourth entry, which `02b0db99` overtook
 within the hour: that commit changes the core (`MoiraExecFPU_cpp.h`, the
 FSAVE BUSY marker) and `tests/fpu_sanity.cpp`, both exported. Nothing
-exported differs between `e6679638` and `6e1a8f49`, the head as this is
+exported differs between `e6012cbb` and `3ac4b7dc`, the head as this is
 written.
 
 On the archive: `--verify --sst-root tests/data` 90 / 90 on
-`unit|jit|corpus`, no `SKIP`, on a quiet machine; two cuts of `e6679638`,
+`unit|jit|corpus`, no `SKIP`, on a quiet machine; two cuts of `e6012cbb`,
 one sha256; upstream's unmodified `testRunner` from the archive and its
 README alone, thirteen passes PASSED, exit 0. The patch against upstream
 `ce28239` is +15 075 −652 lines.
@@ -1627,7 +1664,7 @@ with a marker so FRESTORE can tell its own image from an opaque hardware
 frame. FSAVE writes `$4D4F4952`; FRESTORE also resumes the marker written
 before this date, so a state saved across a suspended operation keeps its
 result. `fpu_sanity` pins the new bytes. The Moira release recut the same
-day (from `203c5d15`) predates this and carries the old marker.
+day (from `3d0c3651`) predates this and carries the old marker.
 
 **A download from the window, against the real servers.**
 `gui_rom_window_test --live` (run by hand, not a gate) clicks « Download
@@ -1647,16 +1684,16 @@ MSVC path, outside `release.yml`.
 
 `moira-pom68k-20261121-203c5d15.tar.gz` (158 files, sha256
 `47e7373a7f07749574229868e1e8e92df5d650f19ee0b864fbf794d3e85b556d`)
-replaces this morning's `d357e933` cut. Three commits landed on `main`
+replaces this morning's `20d95d0f` cut. Three commits landed on `main`
 after it; one exported file changed, `tests/sst68000.cpp`, by two comment
-lines (203c5d15, "comments stand on their own terms"). The code and the
+lines (3d0c3651, "comments stand on their own terms"). The code and the
 body of the patch against upstream `ce28239` are identical; the archive is
 recut so that what is sent matches the tree.
 
 On the archive: `--verify --sst-root tests/data` 90 / 90 on
 `unit|jit|corpus`, no `SKIP`; two cuts, one sha256; upstream's unmodified
 `testRunner` from the archive and its README alone, thirteen passes
-PASSED, exit 0 (seed 2350). CI and the macOS job are green on `203c5d15`.
+PASSED, exit 0 (seed 2350). CI and the macOS job are green on `3d0c3651`.
 
 <a id="2026-11-21-lc580-own-rom"></a>
 ## 2026-11-21 (third) — The LC 580 names its own ROM; four things the ROM catalogue's first day left open
@@ -1703,11 +1740,11 @@ failure seen once at the end of a loaded tier did not reproduce in 48 runs.
 
 `moira-pom68k-20261121-d357e933.tar.gz` (158 files, sha256
 `39b5c8efcb76834d33d8716b764dc0ab944816122359e078959de9f7a983402a`) is cut
-from `d357e933` with its patch against upstream `ce28239` (+15 072 −652
-lines). It replaces yesterday's `98579c84` cut, which carried the cache
+from `20d95d0f` with its patch against upstream `ce28239` (+15 072 −652
+lines). It replaces yesterday's `1ecb259d` cut, which carried the cache
 switched off and none of the three fixes.
 
-`d357e933` is a merge: ten commits pushed from another session during the
+`20d95d0f` is a merge: ten commits pushed from another session during the
 night (the ROM catalogue and its windows, 2026-11-20 (eighth)) met the four
 of this one. No file of `extern/moira`, `src/jit` or the release export is
 on the incoming side. The merged tree was built in Debug and ran the
@@ -1910,7 +1947,7 @@ Quadra 700 PRAM in Egret/Cuda XPRAM where the code holds a discrete `Rtc`.
 
 `moira-pom68k-20261120-98579c84.tar.gz` (158 files, sha256
 `3a3204a62ea9c2cf7132e9fc1fb4590915dd7db1bf89a94c898ab1acb2b231c9`) is cut
-from `98579c84` with `patches/moira-vs-upstream.patch` as one `git am`
+from `1ecb259d` with `patches/moira-vs-upstream.patch` as one `git am`
 commit on upstream `ce28239` (+14 952 −651 lines, 21 files). It replaces
 the 2026-11-17 cut, which was based on a commit eleven behind upstream.
 
@@ -1928,15 +1965,15 @@ What was executed on the archive, not on the tree it came from:
   of upstream at `ce28239`, `git am` of the archive's patch, the archive's
   `extern/softfloat` copied beside `Moira/`, upstream's root CMakeLists with
   its five settings, and the unmodified `testRunner`: thirteen passes
-  PASSED, exit 0 (seed 2349). That run used the cut of `c6d4e6d5`; the two
+  PASSED, exit 0 (seed 2349). That run used the cut of `e20e1002`; the two
   archives differ in `POM68K_VENDOR.md`, the README, `RELEASE.txt` and the
   manifest, and the body of the patch is identical.
 
-CI: `c6d4e6d5` was red on `file_size_budget_test` alone (203 / 204) —
+CI: `e20e1002` was red on `file_size_budget_test` alone (203 / 204) —
 `CLAUDE.md` four lines over its ceiling, the size check having been run
-before the last edit of that file and not after. `bade466a` fixes it and is
+before the last edit of that file and not after. `970ff21e` fixes it and is
 green on Linux and macOS; it also gives `fault_transparency_test` the
-sanitizer timeout whose absence made the nightly of `c5d54c28` red (Timeout
+sanitizer timeout whose absence made the nightly of `ff331ffe` red (Timeout
 at 600 s under GCC ASan/UBSan, 44 s uninstrumented). The macOS job, AArch64
 with Clang, was green on all three commits: the first AArch64 evidence for
 the rebased tree, at the asset-free tier only.
@@ -2124,7 +2161,7 @@ completes in software (`berr020_test`: Mac OS's slot-probe protocol),
 not the rerun a 68020 performs when DF, RB or RC is still set. No boot
 gate depends on it. Not in the gate, and open in `TODO.md`.
 
-**Tiers.** The ROM tiers of the previous entry's state (`6cc075f7`)
+**Tiers.** The ROM tiers of the previous entry's state (`e0a84e13`)
 finished meanwhile: `m030` 155 / 155 on AArch64 and `m040` 107 / 107 on
 x86-64 under Rosetta — with the two of the entry before, every family on
 both hosts for this morning's first three pushes. On this entry's state:
@@ -2151,7 +2188,7 @@ and returns leaves the state of a run that never faulted. Two gates now do.
 **`moira_rules_test` `stackFaultRoundTrip`** takes the stack cases of the
 previous entry through the fault and a bare RTE on the 68030 and 68040 and
 compares PC, USP, A6 and the stacked cell with a fault-free run. On this
-morning's handlers (`f7abaa8a`) it is what showed that the frame
+morning's handlers (`d37c6a18`) it is what showed that the frame
 differences were guest-visible (previous entry).
 
 **`fault_transparency_test`** (new executable, bare Moira) does it for 1 023
@@ -2172,8 +2209,8 @@ the bit-field instructions left out (below).
 
 | State of the core | 68030 cycles that differ | 68040 |
 |---|---:|---:|
-| `f7abaa8a`, this morning | 598 | 12 |
-| `e69c37d8`, the previous entry | 572 | 2 |
+| `d37c6a18`, this morning | 598 | 12 |
+| `7844e944`, the previous entry | 572 | 2 |
 | this entry | 0 | 0 |
 
 **570 of them were one defect in the continuation added on 2026-11-19
@@ -2251,7 +2288,7 @@ sign-extended operands, as NEGX does — taken up in the next entry.
 
 | State | AArch64 | x86-64 (Rosetta) |
 |---|---|---|
-| `e69c37d8`, the previous entry | `unit\|jit\|cpu-vectors` 288 / 288; `m040` 107 / 107 | `unit\|jit\|cpu-vectors` 289 / 289; `m030` 155 / 155 |
+| `7844e944`, the previous entry | `unit\|jit\|cpu-vectors` 288 / 288; `m040` 107 / 107 | `unit\|jit\|cpu-vectors` 289 / 289; `m030` 155 / 155 |
 | this entry | `unit\|jit\|cpu-vectors` 289 / 289 | `unit\|jit\|cpu-vectors` 290 / 290 |
 
 On AArch64 the first run of this entry's tier was 288 / 289:
@@ -2605,18 +2642,18 @@ compiled inline.
 
 | State | AArch64 | x86-64 (Rosetta) |
 |---|---|---|
-| `5b264588`, the (nineteenth) fixes | `unit\|jit\|cpu-vectors` green after two document contracts were fixed and rerun; `m030` 155 / 155 | `unit\|jit\|cpu-vectors` 287 / 287; `m040` 107 / 107 |
-| `7459613b`, this entry | `unit\|jit\|cpu-vectors` 288 / 288; `m040` 107 / 107; `m030` 155 / 155 | `unit\|jit\|cpu-vectors` 289 / 289; `m030` 155 / 155; `m040` 107 / 107 |
+| `99871a1e`, the (nineteenth) fixes | `unit\|jit\|cpu-vectors` green after two document contracts were fixed and rerun; `m030` 155 / 155 | `unit\|jit\|cpu-vectors` 287 / 287; `m040` 107 / 107 |
+| `4dc817c6`, this entry | `unit\|jit\|cpu-vectors` 288 / 288; `m040` 107 / 107; `m030` 155 / 155 | `unit\|jit\|cpu-vectors` 289 / 289; `m030` 155 / 155; `m040` 107 / 107 |
 
 No ROM gate soft-skipped. GitHub CI and the macOS workflow are green on
-both pushed states. An intermediate state (`0085876c`, `RTE_REPLAY`
+both pushed states. An intermediate state (`686107ba`, `RTE_REPLAY`
 on every 68040 rerun) was red on `jit_asset_free_lockstep_test` on both
 hosts and never left the machine. Program fuzzer on that intermediate
 state, interpreter against translator, fresh seeds: 21 000 over `--t0only`,
 `--tracebit --vmrte`, `--vmrte` alone, `--tracebit --mmuprot --mmutt
 --mmupage` and `--tracebit --dcache`, 0 failures.
 
-Closing soak on the pushed state (`7459613b` binaries), fresh seeds from
+Closing soak on the pushed state (`4dc817c6` binaries), fresh seeds from
 950000 and 960000, both hosts at once: `--tracebit` and `--t0only --vmrte`
 with the gates' other options, then `--ext2 --ext --sys --smc --mmu`
 (`--dcache` on the 68040) and `--mmuprot --mmutt --mmupage`, each on the
@@ -2806,7 +2843,7 @@ mode, with `--vmrte`, and with `--raw 15 --len 120`. 8 000 seeds each on
 a64 and 2 000 on x64, clean. Gates `jit_program_fuzz_{030,040}_vmrte_test`
 and `_devport_test` (the pre-fix binary fails the latter).
 
-After the push (67f3e5f6), on seeds outside every earlier range, with
+After the push (ac2d4fb6), on seeds outside every earlier range, with
 `POM68K_JIT_PROFIT_SCORE=0`:
 - a64: both gate command lines × 3 000 seeds per model;
 - x64 under Rosetta: 1 500 seeds per model.
@@ -3218,7 +3255,7 @@ interrupt that faults on a protected stack, on a real 68030.
 `moira_state_test` frameLatches030 checks both cases.
 `savestate_v8_test` passes on x86-64 and a64, and
 `jit_program_fuzz_030_mmuprot_test` (192) still passes. 3 000 seeds of three
-68030 `--savestate` combinations are clean. The pushes between 83b904cc and
+68030 `--savestate` combinations are clean. The pushes between 4276eb0d and
 this fix went out through the hook's red-CI block; this commit carries the
 `CI-Fix` trailers.
 
@@ -3424,8 +3461,8 @@ compiled each) identical too, and PowerBook 170 and 180 (13 800 and 14 600
 blocks) identical.
 
 The two harness knobs (`POM68K_JIT_LOCKSTEP_SELF`, `_FULL_EVERY`) shipped
-in `d2d5e33c` unclassified in `config_knobs.tsv`: `config_test` failed in
-CI on that commit and on `668a9588`, because the pre-push run here covered
+in `e43ea6b5` unclassified in `config_knobs.tsv`: `config_test` failed in
+CI on that commit and on `369a5ba1`, because the pre-push run here covered
 `docs_test` but not the whole asset-free tier. Classified as test knobs.
 
 <a id="2026-11-19-long-locksteps"></a>
@@ -3434,7 +3471,7 @@ CI on that commit and on `668a9588`, because the pre-push run here covered
 The random-program fuzzer having gone quiet, the same night ran the
 real-ROM locksteps (interpreter and translator side by side, every
 architectural register and the clock compared at each boundary) far past
-their gates, with the gates' own settings, on the tree of `1a8e39e8`:
+their gates, with the gates' own settings, on the tree of `9eef30ab`:
 
 | lockstep | backend | settings | length | gate | result |
 |---|---|---|---|---|---|
@@ -3505,7 +3542,7 @@ a64: `asset-none|jit` 191 / 191, CPU conformance and save-state 60 / 60,
 
 > **Corrects** the (second) entry's item 1, whose last refinement — skip a
 > footprint word the window no longer covers, on the grounds that such a
-> block gets no `ir.code` — shipped in `6b1e2627` and was wrong.
+> block gets no `ir.code` — shipped in `5ea5427f` and was wrong.
 
 `pomJitCovers()` also checks the privilege the window was armed under; the
 `ir.code` copy in `record()` checks only the window's raw bounds. A
@@ -3715,7 +3752,7 @@ header inside the MIT core; it is MIT now like the rest of the core.
 The 6888x FPU had been described in three places as "ported from WinUAE
 fpp.c". It is not: it is the fork's own code, and WinUAE is the differential
 oracle whose behaviour the `[D] fpp.c:line` citations record (corrected in
-`88841f1`). The release `LICENSES.md` now says the fork contains no code
+`2d299ef`). The release `LICENSES.md` now says the fork contains no code
 from another emulator and cites the emulators it uses as evidence.
 
 The one third-party library is `extern/softfloat` (SoftFloat-2a, QEMU BSD
@@ -3728,13 +3765,13 @@ replaces it behind `softfloat.h`.
 
 `moira-pom68k-20261117-91218fca.tar.gz` (143 files, sha256
 `8c82f862d2e91ac16fbf23471c20efaed41393978e6b48baeb7428c6f34fa37d`) is cut
-from `91218fc` with `patches/moira-vs-upstream.patch` against upstream
+from `b7c4bb8` with `patches/moira-vs-upstream.patch` against upstream
 `1efd694` (+13 549 / −511 lines). `tools/moira_release.py --verify
 --sst-root tests/data` rebuilt the extracted tree alone (GCC 15.2, Release,
 x86-64) and ran `unit|jit|corpus`: 44 / 44, no `SKIP` in `LastTest.log`, the
 thirteen external corpora first matched against `tests/sst_corpora.lock`. Two
 cuts of the same commit gave the same sha256. CI and the nightly were green
-on the parent `4505cbf`.
+on the parent `e618b60`.
 
 The only change the cut needed was in its README: "rows 1–86" had drifted
 from the 115 rows of `POM68K_VENDOR.md`; it now names the inventory without
@@ -3786,7 +3823,7 @@ also pass ordinary interpreter and AArch64 native replay, without a new
 exception or pin change. Their original replay policy is preserved; the
 already-present public-030 unlisted descriptor-history difference under
 an additional strict-RAM check is recorded in TODO, confirmed unchanged
-against 45bb774.
+against 7c7bcaf.
 
 ASan/UBSan replay also passes all 67 874 vectors in the optimized build
 (`detect_leaks=0` on Darwin, UBSan halts on the first error). Both Debug
@@ -3809,7 +3846,7 @@ Both native ARM64 and Rosetta x86-64 `docs_test` pass the corrected artifact.
 
 The completed original 68030 machine tier is recorded separately: 145 gates
 executed, zero failures, zero soft-skips, 12 192.74 seconds. Its linked
-profile binaries predate the later inspector and FPU changes (3c70ba38);
+profile binaries predate the later inspector and FPU changes (c7a5a44f);
 this result is not presented as qualification of those later changes.
 
 <a id="2026-11-16-release-strict-ram"></a>
@@ -4991,7 +5028,7 @@ boot alone.
 ## 2026-11-13 (ninth) — The full Quadra 630 gate, soaked after the x18 fix: 80 of 80 on the reference trace; and a rule cell for the 68020's external /BERR
 
 **The soak owed by (third).** `q630_ide_boot_etalon` built from
-`d15501fe` with the earlier instrumentation (clock, PC, RAM hash and ATA
+`33ad19be` with the earlier instrumentation (clock, PC, RAM hash and ATA
 counters every 300 frames, all three phases), eight at a time, 09:45 to
 10:39 on the M4: 80 runs, 80 passed, 80 traces identical to the
 reference, line for line. Before the fix the same instrument gave 8 runs
@@ -5143,7 +5180,7 @@ growing with the refusal streak made both cache-active locksteps diverge
 at their first coarse boundary and the constant 32 was kept "because it
 is green".
 
-**Measured on `d15501fe`.** `jit_lockstep_a64_coarse_test` as registered
+**Measured on `33ad19be`.** `jit_lockstep_a64_coarse_test` as registered
 (Quadra 605, `POM68K_040_DCACHE=1`, budget 50, 5 000 000 comparisons)
 with `POM68K_JIT_ARM_BACKOFF` forced:
 
@@ -5154,7 +5191,7 @@ with `POM68K_JIT_ARM_BACKOFF` forced:
 | 32 (default) | 155 712 | 30 019 | identical |
 | 64 | 137 054 | 16 519 | identical |
 
-Then the August prototype itself, rebuilt on `8fb98283` (same engine): a
+Then the August prototype itself, rebuilt on `1950bba3` (same engine): a
 backoff of 1, 2, 4… up to the knob, reset on a successful arm.
 
 | Host and gate | Cap | Windows armed | Result |
@@ -5278,13 +5315,13 @@ macOS does, and the lexical gate covers all three.
 
 **Measured.** The gate, instrumented to print clock, PC, a RAM hash and
 the ATA counters every 300 frames (phase 1 included), ran from 02:46 to
-06:05 on the M4, six instances at a time: three built from `94f7bb36`
-(before the retry) and three from `8fb98283`, 144 runs each.
+06:05 on the M4, six instances at a time: three built from `30da5d75`
+(before the retry) and three from `1950bba3`, 144 runs each.
 
 | Build | Runs | Failed | Passed with a different trace |
 |---|---|---|---|
-| `94f7bb36` | 144 | 3 | 0 |
-| `8fb98283` | 144 | 1 | 2 |
+| `30da5d75` | 144 | 3 | 0 |
+| `1950bba3` | 144 | 1 | 2 |
 
 The 282 other runs are identical line for line, and the two builds share
 one trace: the retry does not move the guest. Three failures are phase 1
@@ -5310,7 +5347,7 @@ cannot tell the two apart. The instructions involved (`DIVU.L` 64/32,
 `MULU.L` 32x32→64, `ADDX`/`SUBX`, `BVS`) are where to look for a result
 that depends on something outside the guest.
 
-**A second soak, 06:11 to 06:36** (40 runs of `8fb98283`, eight at a
+**A second soak, 06:11 to 06:36** (40 runs of `1950bba3`, eight at a
 time, one line per frame inside the three windows above): no failure, two
 passing runs with a different trace. One was kept. It differs from the
 reference in its last three samples of phase 1 only (frames 35 400 to
@@ -5336,7 +5373,7 @@ predates the pinned bases of 2026-11-12. The instrumentation is not in the tree.
 **Tried.** The candidate left measured on 2026-11-12 (sixth): in the
 dispatcher, clear a lone `CHECK_IRQ` that has nothing to deliver
 (`Moira::pomJitSettleIrq`) instead of sending the instruction through
-`execute()`. Applied on `202ae52c` with its `moira_rules_test` cell. The
+`execute()`. Applied on `90718bad` with its `moira_rules_test` cell. The
 cell passes; AArch64 `unit|jit` goes 181/185, the reds being two
 bookkeeping gates and seven pinned counters in
 `jit_asset_free_lockstep_test` and `jit_restart_write_030_test`.
@@ -5383,7 +5420,7 @@ traced wait on the exact-thunk branch, or give the check a device without
 wait cycles and say so), then the ROM tiers of both hosts. Nothing was committed; the seam and its
 cell are still `scratchpad/2026-11-12/a64-pinned-bases/candidate_A_seam_and_gate.patch`.
 
-**Nightly.** Run 43272142073 on `94f7bb36` is green on every leg,
+**Nightly.** Run 43272142073 on `30da5d75` is green on every leg,
 `asan-ubsan` included: the bounds for instrumented builds (3 600 s and
 900 s) hold.
 
@@ -5652,8 +5689,8 @@ over scribbled storage; 8 of 8 registers fail without the initialiser.
 `f189fe1e`: GCC refuses `struct moira::PomAtcProbe { … }` because a
 friend declaration does not make the name visible to a qualified
 definition (clang accepts it), and `std::memset` lacked `<cstring>`.
-Fixed in `bb8fe4db`; `CI` and `macOS` are green on it. The nightly
-re-run on `bb8fe4db` builds everywhere again; its `asan-ubsan` leg is
+Fixed in `da26c43b`; `CI` and `macOS` are green on it. The nightly
+re-run on `da26c43b` builds everywhere again; its `asan-ubsan` leg is
 still red on two **timeouts**, not on a sanitizer report:
 `cache040_test` (over 1800 s; 5 s in the last green run, 2026-11-09)
 and `jit_asset_free_lockstep_test` (over 300 s; 105-128 s then). Both
@@ -5717,7 +5754,7 @@ warm-up, AArch64 M4; an x86-64 tier running on the same host was suspended
 is `wall_ns` from `POM68K_JIT_METRICS`. Every arm of a line has the same
 fingerprint.
 
-| Bench | Frames | `6c3eb704` | window kept armed | + settle | window kept armed + pinned bases | capped window |
+| Bench | Frames | `5734dee8` | window kept armed | + settle | window kept armed + pinned bases | capped window |
 |---|---|---|---|---|---|---|
 | LC II | 3 000 | 3.658 s | 3.616 s, -1.2 % | 3.544 s, -3.1 % | 2.838 s, **-22.4 %** | 3.470 s, -5.2 % |
 | LC II | 6 000 | 6.868 s | 6.776 s, -1.3 % | 6.602 s, -3.9 % | 4.928 s, **-28.3 %** | 6.860 s, -0.1 % |
@@ -5732,7 +5769,7 @@ fourth column against the second: LC II -21.5 % and -27.3 %, Quadra 605
 The binary of this change alone, against the reference, same protocol
 with two arms (load 2.1-2.2; fingerprints identical):
 
-| Bench | Frames | `6c3eb704` | pinned bases | Change |
+| Bench | Frames | `5734dee8` | pinned bases | Change |
 |---|---|---|---|---|
 | LC II | 3 000 | 3.672 s | 2.856 s | **-22.2 %** |
 | LC II | 6 000 | 6.888 s | 4.960 s | **-28.0 %** |
@@ -5832,20 +5869,20 @@ release is a no-op.
   `lldb` under Rosetta had only wedged the translation daemon — which
   recovered by itself an hour later, no reboot needed.
 - A first "bisect" blamed the x64 `headPollsOnly` admission
-  (`89a70db9`): the gate passed at `13719be6`. That comparison was void.
+  (`481a300e`): the gate passed at `dc41be11`. That comparison was void.
   The worktree had been configured with the default `POM68K_LTO=ON` and
   `POM68K_NATIVE=ON`, the proof tree has both OFF, and the stack layout
   that makes the stale slot harmful depends on it. Withdrawing the
   admission changed nothing and was discarded before any commit. At
-  equal configuration `13719be6` crashes too.
-- `git bisect run` over `cf8e6086..13719be6` at equal configuration
+  equal configuration `dc41be11` crashes too.
+- `git bisect run` over `cf8e6086..dc41be11` at equal configuration
   (six steps, about two minutes each under Rosetta) named `f189fe1e`.
 
 The x64 `LINK` admission is therefore not implicated; the entry of
 2026-11-12 (third) below, which left it under suspicion, is corrected by
 this one.
 
-**Evidence.** All on `6c3eb704`, both trees rebuilt and found fresh by
+**Evidence.** All on `5734dee8`, both trees rebuilt and found fresh by
 `tools/check_binaries_fresh.py` (256 and 255 gate executables), after a
 host restart.
 
@@ -5878,7 +5915,7 @@ runs on this host, and it runs before the push.
 ## 2026-11-12 (fourth) — Two days of optimisation, measured once end to end: Plus −77 %, Quadra 605 −24 %, LC II −20 %, Mac II −19 %, every fingerprint unchanged
 
 One interleaved ABBA run per bench (n = 6 per side, AArch64 M4, idle
-host), the binaries of the morning of 2026-11-11 against `1dc6a2d6`.
+host), the binaries of the morning of 2026-11-11 against `02629df1`.
 Wall time is `wall_ns` from `POM68K_JIT_METRICS`; the fingerprints are
 identical on both sides at both budgets.
 
@@ -5915,7 +5952,7 @@ which is the known state of that tree.
   regenerated for aarch64 only, and Linux CI's `docs_test` holds that
   section to account — the mistake the index already lists under
   2026-11-09. Regenerated from a real configure.
-- `unit|jit` on x86-64 at `d6acec79`: **210 / 211**. Everything written
+- `unit|jit` on x86-64 at `0bbbe071`: **210 / 211**. Everything written
   in two days passes on that leg — the quiet SCC, the MCU run-ahead and
   its table, the copy-on-write ATC transaction, the compact deadlines,
   the inline RAM paths, NeoST's STOP, the recorder shortcut. The one
@@ -5926,7 +5963,7 @@ which is the known state of that tree.
   shape. With the same admission (`headPollsOnly`), `unit|jit` on x86-64
   is **211 / 211**, 647 s under Rosetta, the x64 lockstep gates included.
 
-**The ROM tiers on that leg (`99a2cecf`, under Rosetta).**
+**The ROM tiers on that leg (`984e9043`, under Rosetta).**
 
 - 68030 tier (`-L m030`): **141 / 141**, 4844 s, no soft-skip.
 - 68040 tier (`-L m040`): **100 / 102**, 4418 s, no soft-skip. Two reds,
@@ -5941,13 +5978,13 @@ which is the known state of that tree.
   agent gates of the tier pass, Quadra 650/800/900 and Centris 610
   included. Both gates are green on AArch64.
 - What is **not** established: whether this is a regression of the
-  `headPollsOnly` admission ported to x64 the same night (`89a70db9`),
+  `headPollsOnly` admission ported to x64 the same night (`481a300e`),
   of an earlier change, or a Rosetta artefact. No x86-64 full tier had
   been run since 2026-09-01. The bisect stopped on a host fault, not on
   a result: launching the gate under `lldb` wedged Rosetta's translation
   daemon, and from then on every non-system x86_64 binary hangs in the
   kernel before `main` until the host is rebooted. A worktree at
-  `13719be6` (the commit before the x64 admission) was built for the
+  `dc41be11` (the commit before the x64 admission) was built for the
   purpose and never got to run.
 
 The x64 admission therefore stands unproven on the 68040 ROM tier. It is
@@ -6080,9 +6117,9 @@ run: the rule is under `!L.is030`. **The x64 backend carries the same
 restriction and is not changed**: it cannot be run on this host.
 
 **Also this night, and not about speed:** a disk write-back journal left
-in the working directory by a test in flight was swept into `f9a29795`
+in the working directory by a test in flight was swept into `04da3a23`
 by a blanket `git add`. It is untracked and `*.pomundo` is ignored since
-`c5dc026c`. It remains in history.
+`b29bc691`. It remains in history.
 
 <a id="2026-11-11-neost-reset-port"></a>
 ## 2026-11-11 (fifteenth) — NeoST's 68000 reset timing back-ported, now that nothing depends on it
