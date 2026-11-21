@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 863 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 864 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -16,7 +16,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Sound](#sound) | 14 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 27 |
 | [Save states](#save-states) | 11 |
-| [Machine bring-ups](#machine-bring-ups) | 101 |
+| [Machine bring-ups](#machine-bring-ups) | 102 |
 | [Build, packaging and release](#build-packaging-and-release) | 26 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 44 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 9 |
@@ -655,6 +655,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-12 (later)** — [The engine stopped trying to record a block at opcodes that can never head one: LC II 1-4 % faster; a native `MOVE SR,-(A7)` measured and refused](CHANGELOG.md#2026-11-12-jit-unsafe-entry)
 - **2026-11-12 (tenth)** — [A refused fetch window cost 32 interpreted instructions even when the next one would have armed: one immediate retry, LC III and IIvx 17-18 % faster](CHANGELOG.md#2026-11-12-jit-transient-refusal)
 - **2026-11-13 (sixth)** — [The two-instruction interrupt delay after an SR write has a CPU gate: it was held by one boot](CHANGELOG.md#2026-11-13-irq-delay-gate)
+- **2026-11-21 (third)** — [The LC 580 names its own ROM; four things the ROM catalogue's first day left open](CHANGELOG.md#2026-11-21-lc580-own-rom)
 
 ## Build, packaging and release
 

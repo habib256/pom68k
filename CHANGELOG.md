@@ -619,6 +619,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-21 (third) — The LC 580 names its own ROM; four things the ROM catalogue's first day left open](#2026-11-21-lc580-own-rom)
 - [2026-11-21 (second) — The release recut with the 68020 cache on, and merged with the night's ROM catalogue work](#2026-11-21-release-with-icache)
 - [2026-11-21 — Upstream's 68020 instruction cache is on, with its fetch timing corrected; three defects of upstream's code fixed](#2026-11-21-icache-020-on)
 - [2026-11-20 (eighth) — One ROM catalogue with a status window, a downloader and an importer; the LLE/HLE inventory as a window](#2026-11-20-rom-status-and-abstraction-windows)
@@ -1425,6 +1426,46 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-21-lc580-own-rom"></a>
+## 2026-11-21 (third) — The LC 580 names its own ROM; four things the ROM catalogue's first day left open
+
+The [2026-11-20 (eighth)](#2026-11-20-rom-status-and-abstraction-windows)
+entry left an LC 580 whose catalogue checksum was not the ROM its gates
+boot, "left standing and visible". It is settled. `kMachineProfiles` gave
+the profile the Quadra 630's `06684214`; `lc580_boot_etalon` and
+`lc580_ide_boot_etalon` boot `064DC91D`, and so does [D] MAME's `maclc580`
+set by default, where `06684214` is the "older" BIOS (`tools/prober_oracle.sh`
+runs the profile on it). Both are the machine's ROMs. The profile now names
+`064DC91D`; the catalogue lists `06684214` for it as well, and its rule
+became *one default machine ROM per profile* — the required row under the
+identity the profile names — instead of one required row. The lookup had the
+same hole from the other side: the machine menu, the guide and session files
+each searched for the profile's one checksum, so a tree holding only an
+accepted revision (the LC 580 on either ROM, a Centris on `F1ACAD13`, an
+LC III on `EC904829`, a Mac II on `97851DB6`) showed the profile greyed
+although `MachineFactory` dispatches that ROM to it.
+`MachineFactory::findProfileRom` is now the single lookup of the three, and
+tries every machine ROM the catalogue lists for the profile; the ROM Status
+window counts a profile as able to start as soon as one of them is verified.
+`docs/68K_FAMILY_SCOPE.md` said `06684214` for the LC 580's etalons; it says
+`064DC91D`.
+
+The same entry's two unsettled readings: `NuBus.h` called itself HLE, the
+doc § 1.8 says simplified LLE — the guest's own Slot Manager and drivers run
+against the cards, the bus is what is not modelled; the header says so now.
+`LLE_VS_HLE.md` § 3 put the Centris and Quadra 700 PRAM in Egret/Cuda XPRAM;
+`CentrisMemory.h`, `Q700Memory.h` and `Pb030Memory.h` hold a discrete `Rtc`,
+and the Egret is the Quadra 900/950's. The doc was wrong and is corrected.
+
+`dart_image_test` did not compile under `-Werror` at `-O2` without LTO
+(GCC 15, `-Warray-bounds` inside libstdc++ on an 84-byte vector grown by
+`insert`): the buffer is sized once. With it the whole tree builds under
+`-Werror` in that configuration and the asset-free tier is 212 / 212 on
+x86-64. The nine sources added on 2026-11-20 pass `em++ -fsyntax-only -Wall
+-Wextra` clean, which the previous entry had listed as never compiled; the
+MSVC path is still unbuilt outside `release.yml`, and a `gui_smoke_test`
+failure seen once at the end of a loaded tier did not reproduce in 48 runs.
 
 <a id="2026-11-21-release-with-icache"></a>
 ## 2026-11-21 (second) — The release recut with the 68020 cache on, and merged with the night's ROM catalogue work
