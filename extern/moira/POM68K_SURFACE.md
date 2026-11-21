@@ -711,9 +711,20 @@ callback with `readFC() == 7`. A host that wants a detectable absent FPU must
 raise a bus error there (POM68K: `src/Cpu030.cpp`
 `Cpu030::checkCoprocessorBus` calls `extBusError()` when `getFPUModel() ==
 FPUModel::NONE`, `readFC() == 7`, `(addr & $FFFFE000) == $22000`;
-`src/Pb030Cpu.cpp` does the same). What a host must answer on a present FPU's
-CIR read is unverified. `TODO.md` records that this probe is reimplemented per
-board for lack of core-emitted CPU-space cycles.
+`src/Pb030Cpu.cpp` does the same). On a present FPU's CIR read the value is
+not observed by any Macintosh ROM that probes this way, so the host may
+forward the read to its bus as POM68K does:
+[C] the nine ROM images carrying the probe (LC `350EACF0`, IIsi `36B7FB6C`,
+Classic II `3193670E`, LC II `35C28F5F` at $40A03A8A; IIvx/IIvi `4957EB49`;
+Quadra 700/900 and PowerBook 140/170 `420DBFF3`, Quadra 950 `3DC27823`,
+Color Classic `ECD99DC0`, Macintosh TV `EAF1678D`) follow `MOVES.W $22000,D1`
+with `CMP.B D1,D1` — Z set whatever was read — so only the /BERR path, whose
+handler clears the flag, tells the two sockets apart. Gate:
+`lcii_boot_etalon` (68882 populated, `HWCfgFlags` $FC00) and its interpreter
+twin. [F] What a 6888x drives on that read (its idle response CIR) stays
+unknown here: settled by MC68881UM-1989 §7, not on this host, or a capture.
+`TODO.md` records that this probe is reimplemented per board for lack of
+core-emitted CPU-space cycles.
 
 ---
 

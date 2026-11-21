@@ -840,9 +840,9 @@ compilation et dans la documentation.
   l'invalidation du JIT à la restauration (relue dans les quatorze
   cartes). Le 2026-11-08 aussi, le `extBusError` levé pendant la lecture
   d'un descripteur de table 030 (un vrai défaut, corrigé : rang 56).
-  Restent : la valeur à rendre sur une
-  lecture CIR FC = 7 d'un FPU présent,
-  les séquences qui dépendent de la continuation, et la DMA son côté Atari
+  La valeur d'une lecture CIR FC = 7 sur FPU présent est réglée le
+  2026-11-21 : aucune ROM ne la lit (`POM68K_SURFACE.md` § 6.4).
+  Restent : les séquences qui dépendent de la continuation, et la DMA son côté Atari
   (à NeoST). Les champs omis du visiteur : corrigés et tenus par
   `moira_state_test` (`CHANGELOG` 2026-11-08, septième). Chacune
   devient un gate ou une phrase corrigée.

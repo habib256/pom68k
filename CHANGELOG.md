@@ -619,6 +619,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-21 (thirteenth) — What a present FPU answers on the FC = 7 CIR probe: no ROM looks](#2026-11-21-cir-read-unobserved)
 - [2026-11-21 (twelfth) — SonoraCpu joins RbvCpu and VaspCpu on one 68030 base, its pacing kept](#2026-11-21-sonora-on-moira030)
 - [2026-11-21 (eleventh) — The 68020/68030 follow: a PC-relative operand read is in program space, and still an operand cycle](#2026-11-21-pc-relative-020-030)
 - [2026-11-21 (tenth) — The disk journal pushed on 2026-11-11 is out of history: 173 commits rewritten, nothing older touched](#2026-11-21-pomundo-purge)
@@ -1435,6 +1436,26 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-21-cir-read-unobserved"></a>
+## 2026-11-21 (thirteenth) — What a present FPU answers on the FC = 7 CIR probe: no ROM looks
+
+`POM68K_SURFACE.md` § 6.4 left one claim "unverified": the value a host
+must return when a Macintosh probes the 6888x response CIR (`MOVES.W
+$22000,D1` with SFC = 7) and the socket is populated. The boards forward the
+read to their bus, so the guest receives whatever memory sits at $22000.
+
+[C] Every ROM image here that probes this way — nine of them: LC, IIsi,
+Classic II and LC II (`$40A03A8A` on the LC II), IIvx/IIvi, Quadra 700/900
+with PowerBook 140/170, Quadra 950, Color Classic, Macintosh TV — follows
+the `MOVES` with `CMP.B D1,D1` (`$B201`): Z is set whatever was read, and only
+the /BERR handler's path clears the HWCfgFlags bit. The value is unobserved,
+so forwarding it is correct for these ROMs; the populated path is held by
+`lcii_boot_etalon` (68882, HWCfgFlags $FC00) and its interpreter twin.
+What a 6888x actually drives there (its idle response CIR) stays [F]: the
+MC68881UM-1989 file could not be fetched on this host (NXP refuses the
+automated download), and the MC68030UM describes the CIR only inside a
+protocol exchange. `TODO.md` § Surface no longer lists the item.
 
 <a id="2026-11-21-sonora-on-moira030"></a>
 ## 2026-11-21 (twelfth) — SonoraCpu joins RbvCpu and VaspCpu on one 68030 base, its pacing kept
