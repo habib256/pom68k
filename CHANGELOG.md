@@ -620,6 +620,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 ## Index by date
 
 - [2026-11-21 (third) — The LC 580 names its own ROM; four things the ROM catalogue's first day left open](#2026-11-21-lc580-own-rom)
+- [2026-11-21 (third) — The release recut once more, for two comment lines](#2026-11-21-release-recut-comments)
 - [2026-11-21 (second) — The release recut with the 68020 cache on, and merged with the night's ROM catalogue work](#2026-11-21-release-with-icache)
 - [2026-11-21 — Upstream's 68020 instruction cache is on, with its fetch timing corrected; three defects of upstream's code fixed](#2026-11-21-icache-020-on)
 - [2026-11-20 (eighth) — One ROM catalogue with a status window, a downloader and an importer; the LLE/HLE inventory as a window](#2026-11-20-rom-status-and-abstraction-windows)
@@ -1466,6 +1467,22 @@ x86-64. The nine sources added on 2026-11-20 pass `em++ -fsyntax-only -Wall
 -Wextra` clean, which the previous entry had listed as never compiled; the
 MSVC path is still unbuilt outside `release.yml`, and a `gui_smoke_test`
 failure seen once at the end of a loaded tier did not reproduce in 48 runs.
+
+<a id="2026-11-21-release-recut-comments"></a>
+## 2026-11-21 (third) — The release recut once more, for two comment lines
+
+`moira-pom68k-20261121-203c5d15.tar.gz` (158 files, sha256
+`47e7373a7f07749574229868e1e8e92df5d650f19ee0b864fbf794d3e85b556d`)
+replaces this morning's `d357e933` cut. Three commits landed on `main`
+after it; one exported file changed, `tests/sst68000.cpp`, by two comment
+lines (203c5d15, "comments stand on their own terms"). The code and the
+body of the patch against upstream `ce28239` are identical; the archive is
+recut so that what is sent matches the tree.
+
+On the archive: `--verify --sst-root tests/data` 90 / 90 on
+`unit|jit|corpus`, no `SKIP`; two cuts, one sha256; upstream's unmodified
+`testRunner` from the archive and its README alone, thirteen passes
+PASSED, exit 0 (seed 2350). CI and the macOS job are green on `203c5d15`.
 
 <a id="2026-11-21-release-with-icache"></a>
 ## 2026-11-21 (second) — The release recut with the 68020 cache on, and merged with the night's ROM catalogue work
