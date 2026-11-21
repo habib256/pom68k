@@ -619,9 +619,10 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-21 (sixth) — The release follows the tree: recut from e6679638 after the FSAVE BUSY marker](#2026-11-21-release-recut-fsave)
 - [2026-11-21 (fifth) — The PG&E reports its firmware; the GUI smoke's frame budget was a host-load race; a real download driven from the window](#2026-11-21-pge-reported-smoke-budget)
+- [2026-11-21 (fourth) — The release recut once more, for two comment lines](#2026-11-21-release-recut-comments)
 - [2026-11-21 (third) — The LC 580 names its own ROM; four things the ROM catalogue's first day left open](#2026-11-21-lc580-own-rom)
-- [2026-11-21 (third) — The release recut once more, for two comment lines](#2026-11-21-release-recut-comments)
 - [2026-11-21 (second) — The release recut with the 68020 cache on, and merged with the night's ROM catalogue work](#2026-11-21-release-with-icache)
 - [2026-11-21 — Upstream's 68020 instruction cache is on, with its fetch timing corrected; three defects of upstream's code fixed](#2026-11-21-icache-020-on)
 - [2026-11-20 (eighth) — One ROM catalogue with a status window, a downloader and an importer; the LLE/HLE inventory as a window](#2026-11-20-rom-status-and-abstraction-windows)
@@ -1429,6 +1430,30 @@ Newest first.
 
 ---
 
+<a id="2026-11-21-release-recut-fsave"></a>
+## 2026-11-21 (sixth) — The release follows the tree: recut from e6679638 after the FSAVE BUSY marker
+
+`moira-pom68k-20261121-e6679638.tar.gz` (158 files, sha256
+`c28e1ae936899ca2455f4c18e13e35edf998b1d4c37bd6667f08701f30de9541`)
+replaces the `203c5d15` cut of the fourth entry, which `15b9efc9` overtook
+within the hour: that commit changes the core (`MoiraExecFPU_cpp.h`, the
+FSAVE BUSY marker) and `tests/fpu_sanity.cpp`, both exported. Nothing
+exported differs between `e6679638` and `6e1a8f49`, the head as this is
+written.
+
+On the archive: `--verify --sst-root tests/data` 90 / 90 on
+`unit|jit|corpus`, no `SKIP`, on a quiet machine; two cuts of `e6679638`,
+one sha256; upstream's unmodified `testRunner` from the archive and its
+README alone, thirteen passes PASSED, exit 0. The patch against upstream
+`ce28239` is +15 075 −652 lines.
+
+The rule this morning taught: an archive is current only until a commit
+touches `extern/moira`, `src/jit` or an exported gate. Two sessions were
+committing to `main` at once, and the release was recut three times in six
+hours. `python3 -B tools/moira_release.py --check` says nothing about
+that; comparing `collect()` of the archive's commit with `collect()` of
+HEAD does, and is what decided each recut.
+
 <a id="2026-11-21-pge-reported-smoke-budget"></a>
 ## 2026-11-21 (fifth) — The PG&E reports its firmware; the GUI smoke's frame budget was a host-load race; a real download driven from the window
 
@@ -1471,6 +1496,22 @@ the executable directory and the button was greyed.
 Asset-free tier 212 / 212 on x86-64 after these changes. Still unbuilt: the
 MSVC path, outside `release.yml`.
 
+<a id="2026-11-21-release-recut-comments"></a>
+## 2026-11-21 (fourth) — The release recut once more, for two comment lines
+
+`moira-pom68k-20261121-203c5d15.tar.gz` (158 files, sha256
+`47e7373a7f07749574229868e1e8e92df5d650f19ee0b864fbf794d3e85b556d`)
+replaces this morning's `d357e933` cut. Three commits landed on `main`
+after it; one exported file changed, `tests/sst68000.cpp`, by two comment
+lines (203c5d15, "comments stand on their own terms"). The code and the
+body of the patch against upstream `ce28239` are identical; the archive is
+recut so that what is sent matches the tree.
+
+On the archive: `--verify --sst-root tests/data` 90 / 90 on
+`unit|jit|corpus`, no `SKIP`; two cuts, one sha256; upstream's unmodified
+`testRunner` from the archive and its README alone, thirteen passes
+PASSED, exit 0 (seed 2350). CI and the macOS job are green on `203c5d15`.
+
 <a id="2026-11-21-lc580-own-rom"></a>
 ## 2026-11-21 (third) — The LC 580 names its own ROM; four things the ROM catalogue's first day left open
 
@@ -1510,22 +1551,6 @@ x86-64. The nine sources added on 2026-11-20 pass `em++ -fsyntax-only -Wall
 -Wextra` clean, which the previous entry had listed as never compiled; the
 MSVC path is still unbuilt outside `release.yml`, and a `gui_smoke_test`
 failure seen once at the end of a loaded tier did not reproduce in 48 runs.
-
-<a id="2026-11-21-release-recut-comments"></a>
-## 2026-11-21 (third) — The release recut once more, for two comment lines
-
-`moira-pom68k-20261121-203c5d15.tar.gz` (158 files, sha256
-`47e7373a7f07749574229868e1e8e92df5d650f19ee0b864fbf794d3e85b556d`)
-replaces this morning's `d357e933` cut. Three commits landed on `main`
-after it; one exported file changed, `tests/sst68000.cpp`, by two comment
-lines (203c5d15, "comments stand on their own terms"). The code and the
-body of the patch against upstream `ce28239` are identical; the archive is
-recut so that what is sent matches the tree.
-
-On the archive: `--verify --sst-root tests/data` 90 / 90 on
-`unit|jit|corpus`, no `SKIP`; two cuts, one sha256; upstream's unmodified
-`testRunner` from the archive and its README alone, thirteen passes
-PASSED, exit 0 (seed 2350). CI and the macOS job are green on `203c5d15`.
 
 <a id="2026-11-21-release-with-icache"></a>
 ## 2026-11-21 (second) — The release recut with the 68020 cache on, and merged with the night's ROM catalogue work
