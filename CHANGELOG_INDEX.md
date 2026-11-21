@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 869 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 870 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -9,7 +9,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | Subsystem | Entries |
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 115 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 163 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 164 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 38 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 32 |
@@ -306,6 +306,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-20 (sixth)** — [The Moira fork is rebased onto upstream's master, and upstream's own Runner passes on it](CHANGELOG.md#2026-11-20-rebase-on-upstream)
 - **2026-11-20 (third)** — [The user stack on a faulting page: LINK and PEA stacked format $B, a faulting JSR or BSR left A7 four below, a 68040 BSR skipped its call](CHANGELOG.md#2026-11-20-stack-fault-cells)
 - **2026-11-21** — [Upstream's 68020 instruction cache is on, with its fetch timing corrected; three defects of upstream's code fixed](CHANGELOG.md#2026-11-21-icache-020-on)
+- **2026-11-21 (ninth)** — [A 68000 PC-relative operand read is a program reference: the manual settles what NeoST and this core disagreed on](CHANGELOG.md#2026-11-21-pc-relative-program-space)
 - **2026-11-21 (second)** — [The release recut with the 68020 cache on, and merged with the night's ROM catalogue work](CHANGELOG.md#2026-11-21-release-with-icache)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E

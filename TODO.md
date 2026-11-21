@@ -99,12 +99,11 @@ NeoST).
 `c9925da`) : `diff` fichier par fichier, rien de nouveau à porter.
 `cc554ef` ne s'applique pas (`MOIRA_MIMIC_MUSASHI` est faux ici).
 `e809c24` (lecture en plus d'un MOVEM mémoire→registres dans le même
-espace que les transferts) est déjà vrai ici, mais **les deux cœurs ne
-choisissent pas le même espace en relatif PC** : NeoST lit en espace
-programme d'après fx68k @ 0602ee46 [D], ce cœur en espace données
-d'après SingleStepTests 68000/v1 [D] (`readM`, `sst68000` 16 130/16 130
-sur MOVEM avec FC comparé). À trancher par une source de rang B ou A
-avant le portage vers NeoST.
+espace que les transferts) est déjà vrai ici. **L'espace en relatif PC est
+tranché le 2026-11-21** (ruling D46, `CHANGELOG` (ninth)) : M68000PRM-1992
+§2.2.11 [B] donne l'espace programme, comme NeoST ; ce cœur y lit désormais
+sur 68000/68010. Reste le 68020/68030 (même règle de famille, voir
+§ Justesse 68030) ; le 68040 est juste en données (MC68040UM §8.4.6.7).
 `ea81c29` (2026-11-12, « le saut d'attente STOP garde la phase du
 68000 ») corrige l'enveloppe de NeoST (`Cpu68k::run` posait l'horloge
 sur une échéance impaire pendant un STOP), pas Moira. Sans objet ici :
@@ -457,6 +456,16 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   sections postérieures, ou à renvoyer vers elles.
 
 ### Justesse 68030, 68020 et 6888x
+
+- [ ] **Lectures d'opérande en relatif PC en espace programme sur 68020/68030.**
+  M68000PRM-1992 §2, §2.2.11 [B] les classe en références programme ; le
+  68000/68010 suit depuis le 2026-11-21 (ruling D46), le 68040 est juste en
+  données (MC68040UM-1993 §8.4.6.7). Ici `readM` lit encore en données :
+  le journal d'accès 030 (`mmuRead`), la substitution de résultat sur RTE
+  (`mmuSubstitutePlain020`, clé sur l'espace données) et les TT/FCL du
+  PMMU en dépendent. Premier pas : passer le 020/030 en programme et
+  compter ce que `sst68030` et ses corpus déplacent ; MC68030UM-1989 à
+  citer pour la classification propre au 030.
 
 - [ ] **Relever le cycle d'opérande d'un champ de bits de trois octets.**
   Le MC68030UM-1989 § 11.6.14 compte un seul cycle d'opérande sous cinq

@@ -635,9 +635,23 @@ Moira::undoAnPD(int n)
 template <Core C, Mode M, Size S, Flags F> u32
 Moira::readM(u32 addr)
 {
+    // [B] M68000PRM-1992 §2, §2.2.11: data items "accessed with the program
+    // counter relative addressing modes ... classify as program references",
+    // "a program reference allowed only for reads".
+    // [D] fx68k @ 0602ee46 (as NeoST reads it) and MAME agree.
     // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-    // POM68K: operand reads always use the DATA space — SingleStepTests
-    // address-error frames carry FC=101 even for PC-relative operands
+    // puts FC=101 (data) in the address-error frames of PC-relative operands;
+    // a lower grade does not overrule the manual, so those vectors are
+    // recorded divergences of sst68000.
+    // [B] MC68040UM-1993 §8.4.6.7: on the 68040 the function codes of PC
+    // relative operand accesses "are converted to data references", and
+    // the TM field of the access-error frame shows them so.
+    // POM68K: the 68000/68010 cores only. The 020/030 follow the PRM's
+    // family rule but carry an access log and an RTE substitution path
+    // keyed on the data space (TODO.md § Justesse 68030); the 68040 is
+    // right in data space.
+    if constexpr (C != Core::C68020 && isPrgMode(M))
+        return read<C, AddrSpace::PROG, S, F>(addr);
     return read<C, AddrSpace::DATA, S, F>(addr);
 }
 

@@ -60,7 +60,7 @@ pair):
 | distinct `pom*` extension identifiers | **121** (65 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
 | `POM68K`-marked lines | **627** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **22 of 33** | `grep -rln POM68K Moira/ \| wc -l` |
-| patch groups in the inventory below | **155** | this file |
+| patch groups in the inventory below | **156** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h`, `MoiraState.h`, `MoiraMmu030Walk.h` | — |
 
 One hundred and fifty-four patch groups, two of which (the JIT seam, row 22, and the ATC
@@ -371,6 +371,7 @@ gate in the last column of each row.
 | 153 | **DIVS.L of the most negative dividend by −1 under `MOIRA_MIMIC_MUSASHI`** — `divlsMusashi<Long>` returns V set before dividing `$80000000:00000000` by −1 | `MoiraALU_cpp.h` | `INT64_MIN / -1` is undefined in C++ and kills an x86-64 host with SIGFPE, in debug and release builds. Reproduced on unmodified upstream ce28239 on 2026-11-20. The non-Musashi path (`divlsMoira`, `execDivlMoira`) already had no assert and kept the registers on both overflow forms (rows 43, 55) | `moira_upstream_config_test` (divslOverflow, both configurations: SIGFPE on the old core under Musashi); `moira_rules_test` (divslOverflowKeepsRegisters, POM68K configuration, 020/030/040) |
 | 154 | **The other raw program reads of the 68020 go through its cache** — `pomProgWord` serves, on the cached 68020/EC020, the refill word after an SR or CCR write (`pomRefillRead`: MOVE to SR, MOVE to CCR, ANDI/ORI/EORI to SR), TRAPV's pc+2 and the vector jump's first fetch (`jumpToVector`) through `readInstr`, charge included; every other model and configuration keeps the plain `read<PROG, Word>`. JSR on the plain 68020 already fetched its target through `readInstr` (row 147) | `Moira.h`, `MoiraExec_cpp.h`, `MoiraDataflow_cpp.h` | the same shape as row 152: upstream read these words straight from the bus past the cache, so a warm loop with an SR write or a TRAPV still made bus reads. [B] MC68020UM-1992 §8.2.7, §8.2.16, §8.2.17: MOVE EA,SR 8(0/0/0), ANDI to SR 12(0/0/0), TRAPV (Trap) 25(1/0/5), Interrupt 26(2/0/4) in the cache case, no instruction access. Unlike the DBcc read, the charge is kept: those rows' worst cases exceed their cache cases. Upstream ce28239 not run for this one; read from its code | `icache020_test` (refills: second call 6 code and 3 handler reads on the old core, 0 now) |
 | 155 | **The 68EC040 is an access control unit, not an MMU** — `setTC040` keeps TC clear on `M68EC040` and `setModel` clears a TC left by another model, so the 040 path never searches a table there and CINV/CPUSH pages stay 4 KB; PTEST/PFLUSH decode on the EC040 (`createJumpTable`) and are inert (`execPTest40`, `execPFlush40`); the disassembler names `$004`–`$007` IACR0/1 and DACR0/1 (`Cn::acu`) | `Moira.h`, `Moira.cpp`, `MoiraExecMMU_cpp.h`, `MoiraExec_cpp.h`, `MoiraInit_cpp.h`, `MoiraDasm_cpp.h`, `StrWriter.h`, `StrWriter_cpp.h`, `MoiraTypes.h` | [B] MC68040UM-1993 App. B.1/B.3/B.6: two ACUs whose four ACRs use the TTR format, "does not perform table searches", no 8-Kbyte page, PTEST/PFLUSH cause no exception. Before, the enumerator ran the full 68040 paging path the chip lacks and PTEST/PFLUSH took the F-line. The manual's indeterminate points (PTEST's bus cycles, PFLUSH's effect, TC read-back, URP/SRP) are [F] choices of this core: no bus cycle, MMUSR untouched, TC reads 0 | `moira_rules_test` (68EC040 access control unit, with a 68LC040 control), `cache040_test` (EC040 flat cells) |
+| 156 | **A 68000/68010 PC-relative operand read is a program reference** — `readM` reads `(d16,PC)` and `(d8,PC,Xn)` operands in program space on the C68000/C68010 cores (FC 2/6), so their address-error frames carry it too; the 020/030 stay in data space for now and the 040 is right there | `MoiraDataflow_cpp.h` | [B] M68000PRM-1992 §2, §2.2.11; [B] MC68040UM-1993 §8.4.6.7 for the 040; [D] fx68k @ 0602ee46 and MAME agree, [D] SingleStepTests 68000/v1 says data space (ruling D46). Closes the MOVEM question of the NeoST survey (2026-11-13): NeoST's program-space reading is the manual's. No Macintosh board reads the function code of a 68000 access, so no fingerprint moves | `sst68000` (11 607 ruled reads, all else compared), `moira_rules_test` (`pcRelativeOperandSpace`) |
 
 Rows 2-21, 25-34, 36, 38, 40, 41, 43-47, 50-54, 56, 59-75 and 79-86 are the accuracy work; rows 22-24, 35, 39, 42, 49 and 57 are seams (inert
 when nothing arms them); rows 48 and 55 are performance alone, with no architectural effect. Row 58 is evidence documentation only. The eight files carrying no `POM68K` marker at all —
@@ -421,7 +422,9 @@ Address-error (AE) machinery:
   access — the register updates even when the access faults. `writeOp`
   keeps the upstream order (write faults leave `(An)+` unmodified).
 - `MoiraDataflow_cpp.h readM`: operand reads always drive FC = data (101),
-  including PC-relative modes.
+  including PC-relative modes. **Reversed 2026-11-21 for the 68000/68010
+  (ruling D46, row 156):** M68000PRM-1992 §2.2.11 makes them program
+  references; `sst68000` accepts that FC pair and counts it.
 - Instruction-flow faults (Bra/Bcc/DBcc/BSR/JMP/JSR/RTS/RTR/RTE): frame =
   `AE_PROG|AE_SET_CB3` with stacked PC = **target − 4**; BSR pushes the
   return address before faulting (SSP −18); DBcc decrements Dn before the

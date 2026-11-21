@@ -619,6 +619,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-21 (ninth) — A 68000 PC-relative operand read is a program reference: the manual settles what NeoST and this core disagreed on](#2026-11-21-pc-relative-program-space)
 - [2026-11-21 (eighth) — The JIT no longer runs a 68000 or a 68020: it lost on one and did nothing on the other; the 68000 interpreter keeps its fetch window](#2026-11-21-no-jit-68000-68020)
 - [2026-11-21 (seventh) — Six CPU wrappers become two bases, and the 68EC040 is an access control unit](#2026-11-21-wrapper-bases-ec040-acu)
 - [2026-11-21 (sixth) — The release follows the tree: recut from e6679638 after the FSAVE BUSY marker](#2026-11-21-release-recut-fsave)
@@ -1431,6 +1432,46 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-21-pc-relative-program-space"></a>
+## 2026-11-21 (ninth) — A 68000 PC-relative operand read is a program reference: the manual settles what NeoST and this core disagreed on
+
+**The question** (`TODO.md`, NeoST survey of 2026-11-13): NeoST reads
+MOVEM's PC-relative transfers in program space after fx68k, this core read
+every PC-relative operand in data space after SingleStepTests — two grade-D
+readings, "to settle by a grade B or A source before the port".
+
+**The source.** M68000PRM-1992, the locked NXP file (sha256 `06e4864b…`):
+§2 (PDF p. 42), "Data items in the instruction stream can be accessed with
+the program counter relative addressing modes; these accesses classify as
+program references", and §2.2.11 (p. 54), "a program reference allowed only
+for reads". The 68040 says the opposite of itself, and on purpose:
+MC68040UM-1993 §8.4.6.7 (p. 240-241), the function codes of "PC relative
+operand addressing ... are converted to data references", and the access
+error frame's TM shows them so. Upstream Moira at `ce28239` already read
+program space for every model; the fork had moved to data space on
+2026-07-14 to match the corpus.
+
+**Applied (ruling D46, Moira row 156).** `readM` reads `(d16,PC)` and
+`(d8,PC,Xn)` operands in program space on the C68000/C68010 cores. The
+68040 stays in data space, which is right. The 68020/68030 stay in data
+space for now: their access log, the RTE result substitution and the PMMU's
+TT/FCL matching all key on it, and moving them is its own step
+(`TODO.md` § Justesse 68030).
+
+**The corpus.** `sst68000` first dropped to 992 101/1 000 058 (every
+PC-relative read's FC), then 996 883 once reads were ruled, then
+1 000 058 once the FC field of the group-0 status word was ruled too. The
+harness accepts exactly that FC pair (data 1/5 in the corpus, program 2/6
+here), on vectors whose name carries a PC-relative operand, and counts it:
+11 607 reads and status words. Order, addresses, values, timing and every
+other FC are still compared. `moira_rules_test` (`pcRelativeOperandSpace`)
+pins the five models. No Macintosh 68000 board reads the function code, so
+no product fingerprint can move.
+
+The other open items of the same survey are unchanged. Also checked today:
+upstream Moira `master` is still `ce28239`, and NeoST has no core commit
+since `9db090b` (entry (seventh)).
 
 <a id="2026-11-21-no-jit-68000-68020"></a>
 ## 2026-11-21 (eighth) — The JIT no longer runs a 68000 or a 68020: it lost on one and did nothing on the other; the 68000 interpreter keeps its fetch window

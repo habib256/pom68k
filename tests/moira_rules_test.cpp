@@ -1401,6 +1401,45 @@ void directRootWrites030()
     }
 }
 
+// [B] M68000PRM-1992 §2, §2.2.11: a PC-relative operand read is a program
+// reference — the 68000 and 68010 read it with FC 6 in supervisor mode.
+// [B] MC68040UM-1993 §8.4.6.7: the 68040 converts it to a data reference
+// (FC 5). The 68020/68030 still read data space here: their access log and
+// RTE substitution are keyed on it (TODO.md § Justesse 68030); this cell
+// pins that state so the day it changes is a deliberate diff.
+void pcRelativeOperandSpace()
+{
+    struct Row { moira::Model model; unsigned fc; const char* name; };
+    const Row rows[] = {
+        { moira::Model::M68000,   6, "68000" },
+        { moira::Model::M68010,   6, "68010" },
+        { moira::Model::M68020,   5, "68020 (pending)" },
+        { moira::Model::M68030,   5, "68030 (pending)" },
+        { moira::Model::M68LC040, 5, "68LC040" },
+    };
+    for (const Row& r : rows) {
+        TestCpu c(r.model);
+        stage(c, 0x303A, 0);                       // MOVE.W (d16,PC),D0
+        p16(c, kCode + 2, 0x0010);
+        c.setIRC(0x0010);
+        const uint32_t ea = kCode + 2 + 0x10;
+        p16(c, ea, 0xBEEF);
+        c.logFc = true;
+        c.execute();
+        c.logFc = false;
+        bool seen = false;
+        for (const auto& a : c.fcLog)
+            if ((a.addr & 0xFFFFFF) == ea && !a.write) {
+                seen = true;
+                CHECK(a.fc == r.fc, "%s: (d16,PC) operand read FC=%u, want %u",
+                      r.name, unsigned(a.fc), r.fc);
+            }
+        CHECK(seen && (c.getD(0) & 0xFFFF) == 0xBEEF,
+              "%s: operand read not observed (D0=%08X)", r.name, c.getD(0));
+    }
+    std::printf("  PC-relative operand space: ok\n");
+}
+
 // [B] MC68040UM-1993 App. B.1, B.3 and B.6: the MC68EC040 replaces the MMU
 // with two access control units. Its four ACRs sit in the TTR slots
 // ($004-$007, IACR0/1 and DACR0/1) with the TTR format; it never searches a
@@ -3691,6 +3730,7 @@ int main(int argc, char** argv)
     moveAbsLongLastWrite030();
     ec030UsesPlain020Path();
     ec040AccessControlUnit();
+    pcRelativeOperandSpace();
     cacrStrobesReadZero();
     jsrTargetFetchFault();
     deferredPrefetchFault();
@@ -3741,6 +3781,6 @@ int main(int argc, char** argv)
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68030 MOVE to (xxx).L last write, 68EC030 plain-020 path with a 68030 "
-                "MMU/cache control, the 68EC040 access control unit, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, 68010 MOVES function code after an address error or /BERR, DIVS.L overflow keeping its registers, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, the 68040 lock ending with TAS/CAS/CAS2, a memory-indirect pointer read outside the lock, BKPT without a data access, 68040 bit-field and JSR store faults restart, the SR-write refill as a fetch, no trace before a format-$7 rerun, PACK/UNPK -(An) faults on the 68030/68040, level 7 on a transition from the 68020 up, the billed 020-core interrupt sequence, the throwaway frame of an interrupt taken with M set, the trace exception after the traced instruction, trace on change of flow, MULx.L into one register, CAS2 with one compare register, MOVE from SR/CCR ending on its store, the 68030 CAS2 extension long, LINK/UNLK/PEA/JSR/BSR/RTD stack faults, the UNPK source fixup and the pending store of NEG, NEGX, ADDX, SUBX and ASL, the deferred refill fault after an SR or CCR write\n");
+                "MMU/cache control, the 68EC040 access control unit, the PC-relative operand space, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, 68010 MOVES function code after an address error or /BERR, DIVS.L overflow keeping its registers, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, the 68040 lock ending with TAS/CAS/CAS2, a memory-indirect pointer read outside the lock, BKPT without a data access, 68040 bit-field and JSR store faults restart, the SR-write refill as a fetch, no trace before a format-$7 rerun, PACK/UNPK -(An) faults on the 68030/68040, level 7 on a transition from the 68020 up, the billed 020-core interrupt sequence, the throwaway frame of an interrupt taken with M set, the trace exception after the traced instruction, trace on change of flow, MULx.L into one register, CAS2 with one compare register, MOVE from SR/CCR ending on its store, the 68030 CAS2 extension long, LINK/UNLK/PEA/JSR/BSR/RTD stack faults, the UNPK source fixup and the pending store of NEG, NEGX, ADDX, SUBX and ASL, the deferred refill fault after an SR or CCR write\n");
     return 0;
 }

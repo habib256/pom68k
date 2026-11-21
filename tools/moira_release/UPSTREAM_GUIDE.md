@@ -366,6 +366,15 @@ on C68020. The defect came from the fork's own earlier ruling D12, and this
 row undoes it. [B] MC68030UM-1989 Table 8-7. Gate:
 `moira_rules_test (group2InstructionAddress)`.
 
+**Row 156 — a 68000/68010 PC-relative operand read is a program
+reference.** Upstream's `readM` at ce28239 already reads `isPrgMode` operands
+in program space; the fork had moved them to data space to match
+SingleStepTests and now returns to upstream on the 68000/68010
+([B] M68000PRM-1992 §2.2.11, ruling D46). On the 68040 the fork keeps data
+space ([B] MC68040UM-1993 §8.4.6.7), which upstream, with no 68040
+execution, does not reach. Gates: `sst68000` (the FC pair counted),
+`moira_rules_test (pcRelativeOperandSpace)`.
+
 **Row 145 — throwaway frame of an interrupt taken with SR.M set.** Upstream
 fixed this first in `eb9529c` (`setMasterMode(false)` before the format-$1
 frame). The fork followed. Gate: `moira_rules_test (masterStackInterrupt)`.
