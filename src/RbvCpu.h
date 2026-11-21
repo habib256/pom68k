@@ -9,15 +9,15 @@
 // maciici.cpp:514 defaults to "No FPU"); pass withFpu to populate it,
 // as the target System 7.5 images expect (the LC II precedent).
 // Shared wrapper plumbing: MoiraCpu.h; the pacing, floppy boost gate and
-// save-state chunk shared with VaspCpu: MoiraGated030Cpu.h.
+// save-state chunk shared with VaspCpu: Moira030Cpu.h.
 // Gate: tests/iisi_boot_etalon.cpp.
 
 #pragma once
 #include "CoreConfig.h"
-#include "MoiraGated030Cpu.h"
+#include "Moira030Cpu.h"
 #include "RbvMemory.h"
 
-class RbvCpu : public pom68k::MoiraGated030Cpu<RbvCpu, RbvMemory> {
+class RbvCpu : public pom68k::Moira030Cpu<RbvCpu, RbvMemory> {
 public:
     explicit RbvCpu(RbvMemory& mem, const jit::ResolvedConfig& jitConfig,
                     const pom68k::CoreCpuConfig& cpuConfig,
@@ -25,5 +25,5 @@ public:
 
 private:
     friend pom68k::MoiraCpu<RbvCpu, RbvMemory>;
-    friend pom68k::MoiraGated030Cpu<RbvCpu, RbvMemory>;
+    friend pom68k::Moira030Cpu<RbvCpu, RbvMemory>;
 };

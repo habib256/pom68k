@@ -859,12 +859,12 @@ compilation et dans la documentation.
   Reste le second portage de la même lignée dans `src/io/SoftFloat*.hpp`
   chez NeoST : choisir une seule implémentation et y porter les adaptations.
 - [ ] **Dédupliquer avant de porter.** Les quatre wrappers 040 partagent
-  `Moira040Cpu.h` depuis le 2026-11-21 (`CHANGELOG`). Restent : la logique
-  boost/`flushTicks`/`machineClock` recopiée sur une demi-douzaine de
-  wrappers 030 (`RbvCpu` et `VaspCpu` sont identiques ligne à ligne,
-  `SonoraCpu` en est la variante sans porte disquette) ; la sonde
-  coprocesseur FC = 7 émulée dans quatre cartes faute de cycles d'espace
-  CPU émis par le cœur.
+  `Moira040Cpu.h`, `RbvCpu`, `VaspCpu` et `SonoraCpu` partagent
+  `Moira030Cpu.h` depuis le 2026-11-21 (`CHANGELOG`). Restent : `Cpu030`
+  (LC II), `Pb030Cpu` et `MscCpu`, dont la cadence diffère vraiment
+  (paquets de 256 cycles sous le Power Manager, reset tenu par le PMU) ;
+  la sonde coprocesseur FC = 7 émulée dans deux wrappers (`Cpu030`,
+  `Pb030Cpu`) faute de cycles d'espace CPU émis par le cœur.
 - [ ] **Porter la fenêtre de fetch 68000 vers NeoST, ou la laisser.**
   Tranché le 2026-11-21 (`CHANGELOG` (eighth), `POM68K_JIT.md` § 2.2) :
   le JIT ne concerne NeoST qu'à partir d'un 68030 — sur un 68000,

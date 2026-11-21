@@ -619,6 +619,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-21 (twelfth) — SonoraCpu joins RbvCpu and VaspCpu on one 68030 base, its pacing kept](#2026-11-21-sonora-on-moira030)
 - [2026-11-21 (eleventh) — The 68020/68030 follow: a PC-relative operand read is in program space, and still an operand cycle](#2026-11-21-pc-relative-020-030)
 - [2026-11-21 (tenth) — The disk journal pushed on 2026-11-11 is out of history: 173 commits rewritten, nothing older touched](#2026-11-21-pomundo-purge)
 - [2026-11-21 (ninth) — A 68000 PC-relative operand read is a program reference: the manual settles what NeoST and this core disagreed on](#2026-11-21-pc-relative-program-space)
@@ -1434,6 +1435,27 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-21-sonora-on-moira030"></a>
+## 2026-11-21 (twelfth) — SonoraCpu joins RbvCpu and VaspCpu on one 68030 base, its pacing kept
+
+`SonoraCpu` held a third copy of the 68030 wrapper code entry (seventh)
+had merged for RBV and VASP: constructor, `hardReset`, the CACR hint behind
+the store inventory, `stall`, `catchUp`, `flushTicks` and the peripheral
+deadline, line for line. What it does differently is real and kept: no
+floppy boost gate, the slice in one `executeUntil` instead of 4096-cycle
+chunks, and a "CPU " chunk without the machineClock() bases.
+`MoiraGated030Cpu.h` becomes `Moira030Cpu.h` (beside `Moira040Cpu.h`) with a
+`FloppyGate` parameter: `true` for RBV/VASP as before, `false` for Sonora,
+where `machineClock()` is `clock / boost_`, `pollBoostGate` is compiled out
+and the bases are neither used nor saved. `SonoraCpu.cpp` is a constructor.
+
+Evidence: the 48 etalons of the three platforms (`ctest -L m030 -R
+'lc3|lc520|lc550|cc2|aio|sonora|iisi|iici|iivx|iivi|savestate'`, saves
+included) 48/48, none soft-skipped, fingerprints unchanged; the save-state
+compile check now instantiates `Moira030Cpu<SonoraCpu, SonoraMemory, false>`;
+`store_inventory_test` audits the Sonora CACR hint in the shared header.
+`Cpu030`, `Pb030Cpu` and `MscCpu` stay apart (`TODO.md` § Surface).
 
 <a id="2026-11-21-pc-relative-020-030"></a>
 ## 2026-11-21 (eleventh) — The 68020/68030 follow: a PC-relative operand read is in program space, and still an operand cycle

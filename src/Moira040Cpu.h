@@ -147,7 +147,7 @@ public:
 
     int cacheBoost() const { return cacheBoost_; }
     // Bus/wire time (E-clock, wait states, the PIC1654S co-step) must be
-    // measured here, not on the boosted core clock — see SonoraCpu.h.
+    // measured here, not on the boosted core clock — see Moira030Cpu.h.
     moira::i64 machineClock() const { return this->clock / cacheBoost_; }
 
     // ── Save states (chunk "CPU ") — the Cpu030 wrapper pattern ─────────

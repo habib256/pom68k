@@ -82,10 +82,11 @@
     template void Klass::visit<sav::Reader>(sav::Reader&)
 
 POM68K_SAV_CHECK(Cpu030);
-POM68K_SAV_CHECK(SonoraCpu);
-// RbvCpu and VaspCpu inherit theirs from MoiraGated030Cpu.
-using VaspCpuPacing = pom68k::MoiraGated030Cpu<VaspCpu, VaspMemory>;
-using RbvCpuPacing  = pom68k::MoiraGated030Cpu<RbvCpu, RbvMemory>;
+// RbvCpu, VaspCpu and SonoraCpu inherit theirs from Moira030Cpu.
+using VaspCpuPacing   = pom68k::Moira030Cpu<VaspCpu, VaspMemory>;
+using RbvCpuPacing    = pom68k::Moira030Cpu<RbvCpu, RbvMemory>;
+using SonoraCpuPacing = pom68k::Moira030Cpu<SonoraCpu, SonoraMemory, false>;
+POM68K_SAV_CHECK(SonoraCpuPacing);
 POM68K_SAV_CHECK(VaspCpuPacing);
 POM68K_SAV_CHECK(RbvCpuPacing);
 // The four 040 boards inherit their "CPU " chunk from Moira040Cpu.

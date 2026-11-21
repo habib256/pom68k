@@ -9,15 +9,15 @@
 // 68882 socket populated on the vx (maciivx.cpp FPU config switch) —
 // pass withFpu accordingly.
 // Shared wrapper plumbing: MoiraCpu.h; the pacing, floppy boost gate and
-// save-state chunk shared with RbvCpu: MoiraGated030Cpu.h.
+// save-state chunk shared with RbvCpu: Moira030Cpu.h.
 // Gate: tests/iivx_boot_etalon.cpp.
 
 #pragma once
 #include "CoreConfig.h"
-#include "MoiraGated030Cpu.h"
+#include "Moira030Cpu.h"
 #include "VaspMemory.h"
 
-class VaspCpu : public pom68k::MoiraGated030Cpu<VaspCpu, VaspMemory> {
+class VaspCpu : public pom68k::Moira030Cpu<VaspCpu, VaspMemory> {
 public:
     explicit VaspCpu(VaspMemory& mem, const jit::ResolvedConfig& jitConfig,
                      const pom68k::CoreCpuConfig& cpuConfig,
@@ -25,5 +25,5 @@ public:
 
 private:
     friend pom68k::MoiraCpu<VaspCpu, VaspMemory>;
-    friend pom68k::MoiraGated030Cpu<VaspCpu, VaspMemory>;
+    friend pom68k::Moira030Cpu<VaspCpu, VaspMemory>;
 };

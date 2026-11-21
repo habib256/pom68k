@@ -5,5 +5,5 @@
 
 VaspCpu::VaspCpu(VaspMemory& mem, const jit::ResolvedConfig& jitConfig,
                  const pom68k::CoreCpuConfig& cpuConfig, bool withFpu)
-    : MoiraGated030Cpu(mem, jitConfig, cpuConfig, withFpu) {
+    : Moira030Cpu(mem, jitConfig, cpuConfig, withFpu) {
 }

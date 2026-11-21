@@ -38,7 +38,7 @@ public:
     void flushTicks();
     // No i-cache throughput overlay on this core, so the core clock IS
     // machine time — the accessor exists so bus/wire models (E-clock, the
-    // PIC1654S co-step) read the same idiom on every machine (SonoraCpu.h).
+    // PIC1654S co-step) read the same idiom on every machine (Moira030Cpu.h).
     moira::i64 machineClock() const { return clock; }
 
     // ── Save states (chunk "CPU ") — the Cpu030 wrapper pattern ─────────

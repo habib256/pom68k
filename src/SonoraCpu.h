@@ -10,57 +10,23 @@
 // as hard. The 68882 socket is empty on a stock LC III (maclc3.cpp:338
 // set_fpu_enable(false)); pass withFpu to populate it, as the target
 // System 7.5 images expect (the LC II precedent).
-// Shared wrapper plumbing (bus forwarders, hooks, sync): MoiraCpu.h.
+// Shared wrapper plumbing: MoiraCpu.h; the pacing, CACR hint and
+// save-state chunk shared with RbvCpu and VaspCpu: Moira030Cpu.h, without
+// its floppy boost gate (FloppyGate = false).
 // Gate: tests/lc3_boot_etalon.cpp.
 
 #pragma once
 #include "CoreConfig.h"
-#include "MoiraCpu.h"
+#include "Moira030Cpu.h"
 #include "SonoraMemory.h"
-#include <cstdint>
 
-class SonoraCpu : public pom68k::MoiraCpu<SonoraCpu, SonoraMemory> {
+class SonoraCpu : public pom68k::Moira030Cpu<SonoraCpu, SonoraMemory, false> {
 public:
     explicit SonoraCpu(SonoraMemory& mem, const jit::ResolvedConfig& jitConfig,
                        const pom68k::CoreCpuConfig& cpuConfig,
                        bool withFpu = false);
 
-    void hardReset();
-    // ── JIT engine (030 extension 2026-07-28, the Cpu030 pattern) ──────
-    void setEngine(int e) { jit_.setEnabled(e != 0); pomJitDisarm(); }
-    void runCycles(moira::i64 n);
-    // `cycles` is REAL machine cycles (bus/wait-state time), not boosted
-    // core cycles — see the machineClock() note below.
-    void stall(int cycles);
-    void flushTicks();
-
-    // The core clock runs at cacheBoost_× machine rate (i-cache throughput
-    // overlay). Anything that models the BUS — E-clock alignment, device
-    // wait states — must work in machine cycles: on real silicon the
-    // i-cache accelerates instruction fetch, never a VIA bus cycle.
-    moira::i64 machineClock() const { return clock / cacheBoost_; }
-
-    // ── Save states (chunk "CPU ") — the Cpu030 wrapper pattern ─────────
-    // cacheBoost_/icacheMiss_ are environment tuning, not guest state.
-    template <class Ar> void visit(Ar& ar) {
-        visitCpuCommon(ar);
-        ar(lastPeriphClock_, periphAccum_, periphDeadline_);
-    }
-
 private:
     friend pom68k::MoiraCpu<SonoraCpu, SonoraMemory>;
-    void didChangeCACR(moira::u32 value) override;
-
-    // POM68K_JIT_030_CACR_FLUSH: -1 = board default (retired here), 0/1 =
-    // forced by the knob — Cpu030's exact contract.
-    int cacrFlushPolicy_ = -1;
-    void catchUp();
-    void schedulePeriphDeadline();
-
-    // Cpu030's i-cache throughput model (knobs + rationale there).
-    int cacheBoost_ = 4;
-    int icacheMiss_ = 4;
-    moira::i64 periphAccum_ = 0;
-    moira::i64 periphDeadline_ = 0;
-    static constexpr moira::i64 kPeriphBatch = 128;
+    friend pom68k::Moira030Cpu<SonoraCpu, SonoraMemory, false>;
 };

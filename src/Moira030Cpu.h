@@ -1,17 +1,22 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// ── 68030 wrapper base with the floppy boost gate (CRTP over MoiraCpu) ──
-// RbvCpu (IIsi, IIci) and VaspCpu (IIvx, IIvi) were the same file twice,
-// down to the line: the Cpu030 i-cache throughput boost, the floppy boost
-// gate with its continuous machineClock() bases, a capped event-derived
-// peripheral deadline, the CACR SMC hint behind the board's own store
-// inventory and the "CPU " save-state chunk. This class holds it once; each
-// board keeps its constructor (FPU population, history) in its own file.
-// SonoraCpu stays apart: it has no floppy gate and runs its slice in one
-// executeUntil, a different pacing with its own fingerprints.
+// ── 68030 wrapper base (CRTP over MoiraCpu) ──
+// RbvCpu (IIsi, IIci), VaspCpu (IIvx, IIvi) and SonoraCpu (LC III family)
+// held the same code three times: the Cpu030 i-cache throughput boost, a
+// capped event-derived peripheral deadline, the CACR SMC hint behind the
+// board's own store inventory and the "CPU " save-state chunk. This class
+// holds it once; each board keeps its constructor (FPU population, history)
+// in its own file.
+// FloppyGate selects the one real difference. true (RBV, VASP): the floppy
+// boost gate with its continuous machineClock() bases, the slice delivered
+// in 4096-cycle chunks, the bases saved. false (Sonora): a fixed boost, the
+// slice in one executeUntil, no bases in the chunk — that board's pacing
+// and save-state layout, kept as they were.
 // Gates: iisi_boot_etalon, iici_boot_etalon, iivx_boot_etalon,
-// iivi_boot_etalon (fingerprints unchanged by the merge, 2026-11-21).
+// iivi_boot_etalon (fingerprints unchanged by the merge, 2026-11-21), the
+// Sonora etalons (lc3_boot_etalon and its siblings, unchanged by the
+// FloppyGate = false fold).
 
 #pragma once
 #include "MoiraCpu.h"
@@ -20,8 +25,8 @@
 
 namespace pom68k {
 
-template <class Derived, class Memory>
-class MoiraGated030Cpu : public MoiraCpu<Derived, Memory> {
+template <class Derived, class Memory, bool FloppyGate = true>
+class Moira030Cpu : public MoiraCpu<Derived, Memory> {
     using Base = MoiraCpu<Derived, Memory>;
 
 public:
@@ -44,6 +49,14 @@ public:
         // re-armed its ROM overlay, so this fetch takes the reset vectors
         // out of ROM.
         if (this->mem_.consumeRestart()) this->reset();
+
+        if constexpr (!FloppyGate) {
+            const moira::i64 target = this->getClock() + n * boost_;
+            if (this->jit_.enabled()) this->jit_.executeUntil(target);
+            else this->executeUntil(target);
+            flushTicks();
+            return;
+        }
 
         // Deliver the machine-cycle budget in bounded chunks: the floppy
         // gate can flip boost_ mid-slice, and a single core-clock target
@@ -75,14 +88,18 @@ public:
         const int m = int(periphAccum_ / boost_);
         periphAccum_ -= moira::i64(m) * boost_;
         if (m) this->mem_.tick(m);
-        pollBoostGate();
+        if constexpr (FloppyGate) pollBoostGate();
         schedulePeriphDeadline();
     }
 
-    // Bus time is not accelerated by the i-cache — see SonoraCpu.h.
+    // The core clock runs at boost_× machine rate (i-cache throughput
+    // overlay). Anything that models the BUS — E-clock alignment, device
+    // wait states — works in machine cycles: on real silicon the i-cache
+    // accelerates instruction fetch, never a VIA bus cycle.
     // boost_ is cacheBoost_ normally, 1 while the floppy motor runs (the
     // Cpu030 floppy boost gate); the bases keep this continuous.
     moira::i64 machineClock() const {
+        if constexpr (!FloppyGate) return this->clock / boost_;
         return machineBase_ + (this->clock - clockBase_) / boost_;
     }
 
@@ -92,14 +109,16 @@ public:
     template <class Ar> void visit(Ar& ar) {
         this->visitCpuCommon(ar);
         ar(this->lastPeriphClock_, periphAccum_, periphDeadline_);
-        ar(machineBase_, clockBase_);
-        if constexpr (Ar::loading) boost_ = cacheBoost_;
+        if constexpr (FloppyGate) {
+            ar(machineBase_, clockBase_);
+            if constexpr (Ar::loading) boost_ = cacheBoost_;
+        }
     }
 
 protected:
     friend Base;
 
-    MoiraGated030Cpu(Memory& mem, const jit::ResolvedConfig& jitConfig,
+    Moira030Cpu(Memory& mem, const jit::ResolvedConfig& jitConfig,
                      const CoreCpuConfig& cpuConfig, bool withFpu)
         : Base(mem, jit::kGuest68030, jitConfig) {
         this->setModel(moira::Model::M68030);
@@ -108,7 +127,7 @@ protected:
         if (cpuConfig.cacheBoost) cacheBoost_ = *cpuConfig.cacheBoost;
         if (cpuConfig.icacheMiss) icacheMiss_ = *cpuConfig.icacheMiss;
         boost_ = cacheBoost_;
-        if (cpuConfig.floppyBoostGate)
+        if (FloppyGate && cpuConfig.floppyBoostGate)
             floppyGate_ = *cpuConfig.floppyBoostGate;
         if (cpuConfig.cacr030Flush)
             cacrFlushPolicy_ = *cpuConfig.cacr030Flush ? 1 : 0;

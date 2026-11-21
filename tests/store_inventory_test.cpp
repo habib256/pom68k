@@ -112,11 +112,11 @@ int main() {
     struct Board { const char* name, *header, *cpp, *wrapper; };
     const Board proven[] = {
         {"V8", "src/V8Memory.h", "src/V8Memory.cpp", "src/Cpu030.cpp"},
-        {"VASP", "src/VaspMemory.h", "src/VaspMemory.cpp", "src/MoiraGated030Cpu.h"},
-        {"RBV", "src/RbvMemory.h", "src/RbvMemory.cpp", "src/MoiraGated030Cpu.h"},
+        {"VASP", "src/VaspMemory.h", "src/VaspMemory.cpp", "src/Moira030Cpu.h"},
+        {"RBV", "src/RbvMemory.h", "src/RbvMemory.cpp", "src/Moira030Cpu.h"},
         {"MSC", "src/MscMemory.h", "src/MscMemory.cpp", "src/MscCpu.cpp"},
         {"Sonora", "src/SonoraMemory.h", "src/SonoraMemory.cpp",
-         "src/SonoraCpu.cpp"},
+         "src/Moira030Cpu.h"},
         // GLUE (2026-11-12): the `ram_[...] =` stores are the inline fast
         // path in the HEADER, so that is the file rules 1-3 walk; the
         // out-of-line store goes through a ramAt() pointer and has its own
