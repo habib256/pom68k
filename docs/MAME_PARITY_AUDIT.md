@@ -45,7 +45,7 @@ firmware atteint désormais le 68k sur les **six** plateformes portant un
 Egret/Cuda LLE (V8, Sonora, VASP, RBV, Q605, Q630 — le Centris n'a pas
 d'Egret et l'Eclipse tournait alors sur celui HLE, sans seam ; il a reçu le
 sien le 2026-08-14, ce qui porte le compte à **sept** — `Q700Memory.cpp:91`,
-`Q700Cpu.cpp:50`). Reset **différé** par
+`Moira040Cpu.h:57`). Reset **différé** par
 construction : le handler PC3 décide, `CudaLle::hostReset()` agit, la machine
 réarme son overlay et verrouille `restartPending_`, le wrapper CPU consomme
 le verrou à une frontière de run — jamais dans le callback mémoire, qui

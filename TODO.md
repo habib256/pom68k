@@ -849,17 +849,13 @@ compilation et dans la documentation.
   intermédiaires (`fpu_context_test`, `CHANGELOG` 2026-11-10, quatrième).
   Reste le second portage de la même lignée dans `src/io/SoftFloat*.hpp`
   chez NeoST : choisir une seule implémentation et y porter les adaptations.
-- [ ] **Dédupliquer avant de porter.** Les quatre wrappers 040
-  sont des quasi-copies qui ont divergé, et la logique
-  boost/`flushTicks`/`machineClock` est recopiée sur une demi-douzaine de
-  wrappers 030 ; la sonde coprocesseur FC = 7 est émulée dans quatre
-  cartes faute de cycles d'espace CPU émis par le cœur.
-- [ ] **Trancher le 68EC040 : le refuser ou le rendre vrai.** Sans profil
-  ni corpus, il exécute le chemin 68040 complet, pagination comprise, que
-  le silicium n'a pas, et `hasMMU()` répond faux. Étiqueté comme tel dans
-  `MoiraTypes.h` le 2026-11-08 (avec le reste des étiquettes de modèles et
-  la suppression de `fpuDisabledSaneFline`) ; reste à choisir : `setModel`
-  le refuse, ou la traduction s'arrête aux TTR et un corpus le tient.
+- [ ] **Dédupliquer avant de porter.** Les quatre wrappers 040 partagent
+  `Moira040Cpu.h` depuis le 2026-11-21 (`CHANGELOG`). Restent : la logique
+  boost/`flushTicks`/`machineClock` recopiée sur une demi-douzaine de
+  wrappers 030 (`RbvCpu` et `VaspCpu` sont identiques ligne à ligne,
+  `SonoraCpu` en est la variante sans porte disquette) ; la sonde
+  coprocesseur FC = 7 émulée dans quatre cartes faute de cycles d'espace
+  CPU émis par le cœur.
 - [ ] **Écrire ce que le JIT vaut pour NeoST avant de le porter.** Les
   générateurs natifs ne déclarent que 68040 et 68030 ; `threaded` vaut
   ×1,03 à ×1,08 sur un 68000 à cycles exacts. Décider si un émetteur

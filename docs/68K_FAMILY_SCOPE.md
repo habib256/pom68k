@@ -105,7 +105,7 @@ ADB is bit-banged by the SWIM IOP's own firmware against `AdbLine`; video is
 The ancestor of the whole V8/VASP/Sonora line: framebuffer at RAM start,
 Bt478 CLUT, SWIM1, discrete ASC. It runs at the **shared default i-cache
 boost of 4** like every other 030 — the 2026-07-25 fix was to charge VIA/bus
-time in machine cycles, not to disable the boost (`RbvCpu.cpp:14-25`).
+time in machine cycles, not to disable the boost (`RbvCpu.cpp:9-17`).
 
 | Profile | Distinguishing | ROM | Gate |
 |---|---|---|---|

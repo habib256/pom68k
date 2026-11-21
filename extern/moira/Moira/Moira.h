@@ -760,9 +760,10 @@ public:
     PomJitDataPage pomJitDataR1, pomJitDataW1;
 
     // POM68K B.2 slice 5 (2026-09-04): the 68030 half of this window is
-    // instrumented because its predecessor could not be. docs/JIT_BRINGUP.md
-    // § C.2 could only record that POM68K_DATA_WINDOW was a DEAD path on the
-    // 030 — "identical fingerprints and identical zero fills" — so a green
+    // instrumented because its predecessor could not be.
+    // docs/JIT_BRINGUP.md § C.2 could only record that POM68K_DATA_WINDOW
+    // was a DEAD path on the 030 — "identical fingerprints and identical
+    // zero fills" — so a green
     // run proved nothing either way. These two counters make the question
     // answerable by measurement instead of by inspection: jit_bench_lcii and
     // jit_lockstep_030_test print them, and a knob-on 68030 run whose hits
@@ -1763,7 +1764,15 @@ public:
 
     u32 getTC040() const { return reg.tc040; }
     void setTC040(u32 val) {
-        reg.tc040 = val & 0xC000;
+        // [B] MC68040UM-1993 §B.3.2: "The MC68EC040 does not perform
+        // table searches"; §B.6: it does not support 8-Kbyte pages.
+        // Its ACU keeps a TC opcode (§B.6) but neither E nor P can mean
+        // anything, so on the EC040 both stay clear: translation off and
+        // 4-Kbyte CINV/CPUSH pages by construction, with no model test on
+        // the access path.
+        // [F] What MOVEC TC,Rn returns on an EC040 after a write is not
+        // documented; this core reads 0. Settled by: a real MC68EC040.
+        reg.tc040 = cpuModel == Model::M68EC040 ? 0 : val & 0xC000;
         pomJitMapMoved();
     }
 

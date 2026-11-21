@@ -112,8 +112,8 @@ int main() {
     struct Board { const char* name, *header, *cpp, *wrapper; };
     const Board proven[] = {
         {"V8", "src/V8Memory.h", "src/V8Memory.cpp", "src/Cpu030.cpp"},
-        {"VASP", "src/VaspMemory.h", "src/VaspMemory.cpp", "src/VaspCpu.cpp"},
-        {"RBV", "src/RbvMemory.h", "src/RbvMemory.cpp", "src/RbvCpu.cpp"},
+        {"VASP", "src/VaspMemory.h", "src/VaspMemory.cpp", "src/MoiraGated030Cpu.h"},
+        {"RBV", "src/RbvMemory.h", "src/RbvMemory.cpp", "src/MoiraGated030Cpu.h"},
         {"MSC", "src/MscMemory.h", "src/MscMemory.cpp", "src/MscCpu.cpp"},
         {"Sonora", "src/SonoraMemory.h", "src/SonoraMemory.cpp",
          "src/SonoraCpu.cpp"},

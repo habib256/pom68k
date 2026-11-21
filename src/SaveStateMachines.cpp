@@ -83,12 +83,20 @@
 
 POM68K_SAV_CHECK(Cpu030);
 POM68K_SAV_CHECK(SonoraCpu);
-POM68K_SAV_CHECK(VaspCpu);
-POM68K_SAV_CHECK(RbvCpu);
-POM68K_SAV_CHECK(Cpu040);
-POM68K_SAV_CHECK(CentrisCpu);
-POM68K_SAV_CHECK(Q700Cpu);
-POM68K_SAV_CHECK(Q630Cpu);
+// RbvCpu and VaspCpu inherit theirs from MoiraGated030Cpu.
+using VaspCpuPacing = pom68k::MoiraGated030Cpu<VaspCpu, VaspMemory>;
+using RbvCpuPacing  = pom68k::MoiraGated030Cpu<RbvCpu, RbvMemory>;
+POM68K_SAV_CHECK(VaspCpuPacing);
+POM68K_SAV_CHECK(RbvCpuPacing);
+// The four 040 boards inherit their "CPU " chunk from Moira040Cpu.
+using Cpu040Pacing     = pom68k::Moira040Cpu<Cpu040, Q605Memory>;
+using CentrisCpuPacing = pom68k::Moira040Cpu<CentrisCpu, CentrisMemory>;
+using Q700CpuPacing    = pom68k::Moira040Cpu<Q700Cpu, Q700Memory>;
+using Q630CpuPacing    = pom68k::Moira040Cpu<Q630Cpu, Q630Memory>;
+POM68K_SAV_CHECK(Cpu040Pacing);
+POM68K_SAV_CHECK(CentrisCpuPacing);
+POM68K_SAV_CHECK(Q700CpuPacing);
+POM68K_SAV_CHECK(Q630CpuPacing);
 POM68K_SAV_CHECK(Cpu020);
 POM68K_SAV_CHECK(Cpu68k);
 POM68K_SAV_CHECK(MacKeyboard);

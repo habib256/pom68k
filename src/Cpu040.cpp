@@ -2,23 +2,13 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 
 #include "Cpu040.h"
-#include "LleSession.h"
-#include <algorithm>
 #include <cstdio>
-#include <cstdlib>
 
 Cpu040::Cpu040(Q605Memory& mem, const jit::ResolvedConfig& jitConfig,
                const pom68k::CoreCpuConfig& cpuConfig,
                const pom68k::CoreDiagnosticConfig& diagnostics)
-    : MoiraCpu(mem, jit::kGuest68040, jitConfig) {
+    : Moira040Cpu(mem, jitConfig) {
     periphStatsOn_ = diagnostics.peripheralStats;
-    // The JIT's generated code makes the peripheral catch-up test inline
-    // rather than calling sync() on every instruction.
-    jit_.setPeriphDeadline(&periphDeadline_, [](moira::Moira* cpu) {
-        auto& c = *static_cast<Cpu040*>(cpu);
-        if (c.onLockstepEvent) c.onLockstepEvent("sync", c.lockstepDebug());
-        c.flushTicks();
-    });
 
     // Q6.6: model the full 68040 with its integrated FPU, matching the MAME golden
     // oracle `macqd605` (macquadra605.cpp:158 `M68040(...)`; only its
@@ -28,61 +18,15 @@ Cpu040::Cpu040(Q605Memory& mem, const jit::ResolvedConfig& jitConfig,
     // (`$408E9AC0 fmove.l fpcr,D0`) and boots.
     //
     // POM68K_Q605_NOFPU=1 selects the LC 475 CPU identity (M68LC040) with
-    // Moira's external-68882 semantics attached — a combination no real
-    // board has, kept as the product default of the LC040 profiles until
-    // TODO.md § Moteur › Justesse 68040 decides it. POM68K_Q605_NOFPU=2 is
+    // Moira's external-68882 semantics attached; POM68K_Q605_NOFPU=2 is
     // the silicon: bare FPUModel::NONE, which boots to the Finder
-    // (q605_barefpu_boot_etalon; the earlier SysError 90 is gone).
-    if (cpuConfig.q605Fpu != pom68k::Q605FpuMode::Integrated) {
-        setModel(moira::Model::M68LC040);
-        if (cpuConfig.q605Fpu == pom68k::Q605FpuMode::None) {
-            // LLE step 5: BARE 68LC040 — no FPU at all. F2xx opcodes take
-            // the architectural vector-11 format-$4 frame; the ROM's own
-            // FPU probe must conclude "absent" and select the no-FPU
-            // UniversalInfo, like a real LC 475.
-            setFPUModel(moira::FPUModel::NONE);
-        } else {
-            setFPUModel(moira::FPUModel::M68882);
-        }
-    } else {
-        setModel(moira::Model::M68040);
-        setFPUModel(moira::FPUModel::M68040);
-    }
-
-    // Q8: walk-per-access comparison mode (disables the I/D ATC overlay).
-    if (cpuConfig.mmu040Walk) setMmu040AtcArmed(false);
-
-    if (cpuConfig.q605CacheBoost)
-        cacheBoost_ = *cpuConfig.q605CacheBoost;
-    if (cacheBoost_ < 1) cacheBoost_ = 1;
-    boostShift_ = (cacheBoost_ & (cacheBoost_ - 1)) == 0
-                ? __builtin_ctz(unsigned(cacheBoost_)) : -1;
-}
-
-void Cpu040::hardReset() {
-    mem_.reset();
-    lastPeriphClock_ = getClock();
-    periphAccum_ = 0;
-    schedulePeriphDeadline();
-    jit_.flushAll();
-    reset();                                 // SSP/PC from $0 (ROM overlay)
-}
-
-void Cpu040::runCycles(moira::i64 n) {
-    // The Egret/Cuda firmware asked for a host reset (RESET_SYSTEM $11, the
-    // Finder's "Restart"). Apply it HERE, at a run boundary, never from
-    // inside the memory callback that raised it — same contract as the
-    // Duo's PMU wake (MscCpu::runCycles). The machine has already re-armed
-    // its ROM overlay, so this fetch takes the reset vectors out of ROM.
-    if (mem_.consumeRestart()) reset();
-
-    // n is a peripheral (machine) cycle budget; run cacheBoost_× more Moira
-    // cycles so hot i-cache-resident code keeps up with a real 040 without
-    // derailing ASC/VIA pacing (same contract as Cpu030).
-    // The one and only switch point between the two engines.
-    const moira::i64 target = getClock() + n * cacheBoost_;
-    if (jit_.enabled()) jit_.executeUntil(target); else executeUntil(target);
-    flushTicks();
+    // (q605_barefpu_boot_etalon; the earlier SysError 90 is gone). The ROM's
+    // own FPU probe must then conclude "absent" and select the no-FPU
+    // UniversalInfo, like a real LC 475.
+    selectIdentity(cpuConfig.q605Fpu != pom68k::Q605FpuMode::Integrated,
+                   cpuConfig.q605Fpu == pom68k::Q605FpuMode::None,
+                   cpuConfig.mmu040Walk);
+    setCacheBoost(cpuConfig.q605CacheBoost);
 }
 
 void Cpu040::updateIpl() {
@@ -107,20 +51,6 @@ Cpu040::LockstepDebug Cpu040::lockstepDebug() const {
     return d;
 }
 
-void Cpu040::stall(int cycles) {
-    // Wait states are specified in machine cycles (VIA E-clock, SWIM +5).
-    // Scale into Moira time so flushTicks() still yields `cycles` of
-    // peripheral time under cacheBoost_ > 1.
-    if (cycles <= 0) return;
-    clock += moira::i64(cycles) * cacheBoost_;
-    catchUp();
-}
-
-void Cpu040::didChangeCACR(moira::u32) {
-    // CINV/CPUSH is the guest announcing that it just wrote code.
-    jit_.flushAll();
-}
-
 Cpu040::~Cpu040() {
     if (!periphStatsOn_) return;
     std::fprintf(stderr,
@@ -136,65 +66,15 @@ void Cpu040::onSyncCharge(int /*cycles*/) {
     if (onLockstepEvent) onLockstepEvent("sync", lockstepDebug());
 }
 
-void Cpu040::catchUp() {
-    if (periphStatsOn_) periphCatchUps_++;
-    if (clock < periphDeadline_) return;
-    flushTicks();
-}
-
-moira::i64 Cpu040::periphDeadlineFor(int machineCycles) const {
-    const moira::i64 machine = std::max(1, machineCycles);
-    moira::i64 d = machine * cacheBoost_ - periphAccum_;
-    if (d < 1) d = 1;
-    return lastPeriphClock_ + d;
-}
-
-void Cpu040::schedulePeriphDeadline() {
-    periphDeadline_ = periphDeadlineFor(mem_.cyclesToNextEvent());
-}
-
-void Cpu040::tightenPeriphDeadline(int machineCycles) {
-    // Measured from `clock`, not from the last flush: the countdown was
-    // armed by the access just served, so it starts now. A countdown that
-    // was already running is already in the deadline (the min keeps it), and
-    // measuring a fresh one from the last flush would fire it early by the
-    // unflushed span and buy an extra flush each time — +16 % flushes on the
-    // Quadra 605 bench when tried (2026-11-07).
-    if (machineCycles >= 0x7fffffff) return;
-    const moira::i64 machine = std::max(1, machineCycles);
-    periphDeadline_ = std::min(periphDeadline_, clock + machine * cacheBoost_);
-}
-
-void Cpu040::flushTicks() {
-    moira::i64 d = clock - lastPeriphClock_;
-    if (d > 0) {
-        lastPeriphClock_ = clock;
-        // Scale Moira cycles down to machine cycles (Cpu030::flushTicks).
-        // A shift at the power-of-two boosts (the default 4): the 64-bit
-        // divide by a runtime divisor was 5.8 % of the Quadra 605 JIT bench
-        // at 23 M flushes per 50 s of guest time (2026-11-07).
-        periphAccum_ += d;
-        const int m = boostShift_ >= 0 ? int(periphAccum_ >> boostShift_)
-                                       : int(periphAccum_ / cacheBoost_);
-        periphAccum_ -= moira::i64(m) * cacheBoost_;
-        if (periphStatsOn_) {
-            periphFlushes_++;
-            if (m) { periphTicks_++; periphCycles_ += m; }
-        }
-        if (m) mem_.tick(m);
-        schedulePeriphDeadline();
-        if (onLockstepEvent) onLockstepEvent("flush", lockstepDebug());
+void Cpu040::onPeriphFlushed(int machineCycles) {
+    if (periphStatsOn_) {
+        periphFlushes_++;
+        if (machineCycles) { periphTicks_++; periphCycles_ += machineCycles; }
     }
+    if (onLockstepEvent) onLockstepEvent("flush", lockstepDebug());
 }
 
-void Cpu040::setEngine(int e) {
-    // This machine's registry, not the process's: the engine lock is
-    // part of the promise made by THIS session (2026-08-27).
-    if (!pom68k::lle::engineChangeAllowed(mem_.lleRegistry(), e))
-        return;
-    // setEnabled() already flushes everything; the explicit disarm is belt
-    // and braces — a code window left armed while the INTERPRETER runs would
-    // have it fetching from a host pointer nobody maintains any more.
-    jit_.setEnabled(e != 0);
-    pomJitDisarm();
+void Cpu040::onJitDeadline() {
+    if (onLockstepEvent) onLockstepEvent("sync", lockstepDebug());
+    flushTicks();
 }

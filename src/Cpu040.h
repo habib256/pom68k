@@ -10,16 +10,19 @@
 // data-bearing 4 KB I/D caches, copyback, snooping and bus-beat timing.
 // Timing adjustments: VIA E-clock sync and TurboSCSI wait states via
 // Q605Memory::stall().
-// Shared wrapper plumbing (bus forwarders, hooks, sync): MoiraCpu.h.
+// Shared wrapper plumbing (bus forwarders, hooks, sync): MoiraCpu.h; the
+// 68040 pacing (boost, peripheral deadline, stall, engine lock, save-state
+// chunk) shared with the three other 040 boards: Moira040Cpu.h. What stays
+// here is the Q605 identity knobs and the lockstep / peripheral-stats taps.
 
 #pragma once
 #include "CoreConfig.h"
-#include "MoiraCpu.h"
+#include "Moira040Cpu.h"
 #include "Q605Memory.h"
 #include <cstdint>
 #include <functional>
 
-class Cpu040 : public pom68k::MoiraCpu<Cpu040, Q605Memory> {
+class Cpu040 : public pom68k::Moira040Cpu<Cpu040, Q605Memory> {
 public:
     // Diagnostic state deliberately kept separate from save states.  The
     // lockstep gate uses it to catch an IRQ/pacing divergence before it is
@@ -45,75 +48,22 @@ public:
                     const pom68k::CoreDiagnosticConfig& diagnostics);
     ~Cpu040();
 
-    void hardReset();                       // board + CPU reset
-    void runCycles(moira::i64 n);
-    // ── JIT engine (src/jit/POM68K_JIT.md) ─────────────────────────────
-    // The second execution engine, ON by default for this validated 68040.
-    // setEngine() is the only
-    // switch; the GUI routes it through the machine thread's command queue
-    // so it always lands between two instructions.
-    void setEngine(int e);
-
     void updateIpl();                       // from the PrimeTime resolver
-    void stall(int cycles);                 // `cycles` are machine cycles
-    void flushTicks();                      // run peripherals up to `clock`
-    // Re-arm the peripheral deadline. The board calls one of these after a
-    // device access: a register access that arms a countdown (a SCSI
-    // command or the last PIO byte, a VIA T2 load, a DAFB interrupt enable)
-    // changes the bound the current deadline was computed from, and without
-    // this the event would be served at the previously scheduled flush —
-    // late by up to one slice. Invisible while the slice was one E tick; not
-    // with the timer-aware VIA bound (Q605Memory::cyclesToNextEvent).
-    //   schedulePeriphDeadline  — from mem_.cyclesToNextEvent(), every device;
-    //   tightenPeriphDeadline   — one device's countdown armed by the access
-    //                             itself, in machine cycles from now; only
-    //                             ever brings the deadline forward. The other
-    //                             countdowns are already in the deadline, so
-    //                             this costs one bound instead of eight —
-    //                             the 53C96 status poll runs 320 000
-    //                             accesses a second.
-    // The full re-arm measures from lastPeriphClock_, the devices' common
-    // time: a running countdown is in device cycles, and the devices stand
-    // where the last flush left them, not at `clock`.
-    void schedulePeriphDeadline();
-    void tightenPeriphDeadline(int machineCycles);
-    int cacheBoost() const { return cacheBoost_; }
-    // Bus/wire time (E-clock, wait states) must be measured here, not on the
-    // boosted core clock — see SonoraCpu.h.
-    moira::i64 machineClock() const { return clock / cacheBoost_; }
     LockstepDebug lockstepDebug() const;
     // Optional lockstep-only event tap. It observes boundaries but does not
     // alter peripheral scheduling or force an extra flush.
     std::function<void(const char*, const LockstepDebug&)> onLockstepEvent;
 
-    // ── Save states (chunk "CPU ") — the Cpu030 wrapper pattern ─────────
-    // cacheBoost_ is environment tuning, not guest state.
-    template <class Ar> void visit(Ar& ar) {
-        visitCpuCommon(ar);
-        ar(lastPeriphClock_, periphAccum_, periphDeadline_);
-    }
-
 private:
     friend pom68k::MoiraCpu<Cpu040, Q605Memory>;
+    friend pom68k::Moira040Cpu<Cpu040, Q605Memory>;
     bool periphStatsOn_ = false;
     long long periphCatchUps_ = 0;
     long long periphFlushes_ = 0;
     long long periphTicks_ = 0;
     long long periphCycles_ = 0;
-    void didChangeCACR(moira::u32 value) override;
     void onSyncCharge(int cycles);          // lockstep tap (MoiraCpu::sync)
-    void catchUp();
-    moira::i64 periphDeadlineFor(int machineCycles) const;
-
-    // Throughput ceiling (Cpu030 pattern). Was pinned at 1 for a long time
-    // because "boost 2+ → SCSI=0" on q605_boot_etalon; re-measured
-    // 2026-07-25 and that ceiling is GONE — every 040 machine etalon
-    // (Q605/LC 475/LC 575/Centris/Quadra, incl. the Cuda-LLE and floppy
-    // ones) boots at 2, 4 and 8. Default is now 4, matching the 030 family.
-    // Stall / viaSync / syncSwimFromCpu are boost-invariant; tune with
-    // POM68K_Q605_CACHE_BOOST. flushTicks() scales Moira cycles back down.
-    int cacheBoost_ = 4;
-    int boostShift_ = 2;                    // log2(cacheBoost_), −1 if not a power of two
-    moira::i64 periphAccum_ = 0;
-    moira::i64 periphDeadline_ = 0;
+    void onPeriphCatchUp() { if (periphStatsOn_) periphCatchUps_++; }
+    void onPeriphFlushed(int machineCycles);
+    void onJitDeadline();
 };

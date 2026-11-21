@@ -91,8 +91,8 @@ enum class Model
     M68020,                 // Table-timed; no MMU (68851 not modelled)
     M68EC030,               // Executes as a 68020 (no MMU, no i-cache overlay); no corpus
     M68030,                 // Executes, PMMU + 68881/68882 (sst68030 corpora)
-    M68EC040,               // Executes the full 68040 path INCLUDING paging, which the
-                            // silicon lacks; no profile, no corpus — do not rely on it
+    M68EC040,               // Executes, ACU (ACRs = TTR slots, no table search, TC
+                            // inert), no FPU unless attached; moira_rules_test cells
     M68LC040,               // Executes, PMMU, F-line → vector 11 format $4 (sst68040)
     M68040                  // Executes, PMMU + on-chip FPU (sst68040, fpu040 corpora)
 };

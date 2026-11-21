@@ -58,9 +58,18 @@ core. Inside `Core::C68020`, the 030 and 040 are distinguished at run time by
 | 68030 | C68020 | `mmuRead`/`mmuWrite` (`MoiraExecMMU_cpp.h`), always, even with TC.E clear | "mode 5": `mmuExecuteStart` |
 | 68EC040, 68LC040, 68040 | C68020 | `mmu040Read`/`mmu040Write` (`cpuModel >= Model::M68EC040`) | "mode 5": `mmu040InstrStart` |
 
-`Moira::hasMMU()` answers false for `M68EC040` while every `>= M68EC040`
-model takes the 040 translation path; `TODO.md` § *Surface portable* records
-the contradiction. No profile or corpus exercises 68EC040.
+The 68EC040 takes the same path as an ACU, not an MMU ([B] MC68040UM-1993
+App. B): its IACR0/1 and DACR0/1 are the TTR slots `$004`–`$007` with the
+TTR format, and it never searches a table, so `setTC040` keeps TC clear on
+that model (and `setModel` clears a TC left by another model). An access no
+ACR matches passes through untranslated; a write to a W block is an access
+error. PTEST and PFLUSH decode and take no exception (App. B.6); what the
+manual leaves indeterminate — PTEST's bus cycles, PFLUSH's effect, MOVEC
+TC read-back, URP/SRP — is an `[F]` choice of this core: no bus cycle, MMUSR
+untouched, TC reads 0. `Moira::hasMMU()` answers false, which is now true.
+No board uses it; `moira_rules_test` (68EC040 access control unit) holds it
+against a 68LC040 control. Like the 68LC040 it has no FPU; attaching a
+6888x model is the host's choice (§ 1.1).
 
 `Moira::reset` is a host cold initialization: it resets registers and
 flushes ATCs. It is not a pin-level RESET model. In particular, the 68030

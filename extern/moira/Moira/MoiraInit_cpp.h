@@ -2014,7 +2014,11 @@ Moira::createJumpTable12(Model model, bool regDasm)
             __________MMMXXX(opcode, Instr::cpGEN, 0b111111111111, Unsized, PGen, CIMS)
         }
 
-        if (model == Model::M68040 || model == Model::M68LC040) {
+        // [B] MC68040UM-1993 §B.6: on the MC68EC040 PTEST and PFLUSH
+        // decode and take no exception (execPTest40/execPFlush40 make them
+        // inert there).
+        if (model == Model::M68040 || model == Model::M68LC040 ||
+            model == Model::M68EC040) {
 
             opcode = parse("1111 0101 000- ----");
             ___________XXXXX(opcode, Instr::PFLUSH, Mode::AI, Unsized, PFlush40, CIMS)

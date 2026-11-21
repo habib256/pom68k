@@ -619,6 +619,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-21 (seventh) — Six CPU wrappers become two bases, and the 68EC040 is an access control unit](#2026-11-21-wrapper-bases-ec040-acu)
 - [2026-11-21 (sixth) — The release follows the tree: recut from e6679638 after the FSAVE BUSY marker](#2026-11-21-release-recut-fsave)
 - [2026-11-21 (fifth) — The PG&E reports its firmware; the GUI smoke's frame budget was a host-load race; a real download driven from the window](#2026-11-21-pge-reported-smoke-budget)
 - [2026-11-21 (fourth) — The release recut once more, for two comment lines](#2026-11-21-release-recut-comments)
@@ -1429,6 +1430,52 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-21-wrapper-bases-ec040-acu"></a>
+## 2026-11-21 (seventh) — Six CPU wrappers become two bases, and the 68EC040 is an access control unit
+
+**The 040 wrappers.** `Cpu040`, `CentrisCpu`, `Q700Cpu` and `Q630Cpu`
+carried four copies of the same pacing — boost, event-derived deadline,
+`stall`, `flushTicks`, CACR → JIT flush, engine lock, "CPU " chunk. The
+copies had drifted, and none of the drift was a platform decision:
+- the Centris never clamped a zero `POM68K_CENTRIS_CACHE_BOOST` (a
+  division by zero) and divided where the others shift;
+- the Centris, Quadra 700 and Quadra 630 left the previous run's deadline
+  standing across `hardReset()`; only the Quadra 605 re-armed it. A reset
+  mid-session keeps the clock running, so the stale deadline could lie past
+  what the freshly reset devices asked for;
+- the Centris alone lacked the deadline re-arm API (`schedule`/`tighten`);
+  its board never calls it, so it gains the methods without a caller.
+
+`src/Moira040Cpu.h` now holds the pacing once; each board keeps its CPU
+identity knobs, and `Cpu040` its lockstep and peripheral-statistics taps
+through three inline hooks. **`RbvCpu` and `VaspCpu`** were the same file
+twice, down to the line; they now share `src/MoiraGated030Cpu.h`. `SonoraCpu`
+stays apart (no floppy gate, one `executeUntil` per slice).
+
+Proof that nothing moved: every boot, agent, Dayna, savestate and restart
+etalon of the 040 machines and of the IIsi, IIci, IIvx and IIvi passed with
+its pinned fingerprint (52 gates, `build-plain`), with `moira_rules_test`,
+`sst68040`, `cache040_test` and the `savestate_*` units.
+
+**The 68EC040.** Its enumerator ran the full 68040 paging path the chip does
+not have, with PTEST/PFLUSH taking the F-line. MC68040UM-1993 Appendix B
+(PDF pp. 378-387, the locked NXP file) says otherwise: two access control
+units whose four ACRs sit in the TTR slots with the TTR format, "does not
+perform table searches", no 8-Kbyte page, PTEST/PFLUSH raise no exception,
+MOVEC to URP/SRP "indeterminate". The 040 path with TC clear was already the
+ACU, so the fix is narrow: `setTC040` keeps TC clear on the EC040 and
+`setModel` clears a TC left by another model; PTEST/PFLUSH decode there and
+do nothing; the disassembler names `$004`–`$007` IACR0/1 and DACR0/1. What
+the manual leaves indeterminate is an `[F]` choice, pinned by the new
+`moira_rules_test` cell with a 68LC040 control: no bus cycle, MMUSR
+untouched, TC reads 0 (Moira inventory row 155). `tools/core_grades.py` now
+accepts lettered appendix sections (`§B.3.2`), and the lock records the six
+Appendix B locators.
+
+**Upstream check.** `dirkwhoffmann/Moira` `master` is still `ce28239`, the
+fork's base; NeoST moved to `51ec0c4` with no commit under `extern/moira`
+since the 2026-11-13 survey (`9db090b`). Nothing to port either way.
 
 <a id="2026-11-21-release-recut-fsave"></a>
 ## 2026-11-21 (sixth) — The release follows the tree: recut from e6679638 after the FSAVE BUSY marker

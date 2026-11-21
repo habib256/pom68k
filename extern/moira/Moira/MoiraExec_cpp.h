@@ -4392,6 +4392,11 @@ Moira::execMovecRxRc(u16 opcode)
         // POM68K Q2: 68040 MMU registers — setter masks in Moira.h mirror
         // WinUAE m68k_move2c (TC & $C000, ITT/DTT & $FFFFE364, URP/SRP/
         // MMUSR full 32 bits)
+        // [B] MC68040UM-1993 §B.6: on the MC68EC040, MOVEC to URP and
+        // SRP "will produce indeterminate results" (no exception); $004-$007
+        // are the IACR0/1 and DACR0/1 access control registers, in the TTR
+        // format (§B.3.1). [F] This core stores URP/SRP and never reads
+        // them there (no table search). Settled by: a real MC68EC040.
         case 0x003: setTC040(val); break;
         case 0x004: setITT0(val); break;
         case 0x005: setITT1(val); break;

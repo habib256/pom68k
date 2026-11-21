@@ -39,7 +39,9 @@ struct Pcc { int raw; Pcc(int v) : raw(v) { } };
 struct Dn { int raw; Dn(int v) : raw(v) { } };
 struct An { int raw; An(int v) : raw(v) { } };
 struct Rn { int raw;  Rn(int v) : raw(v) { } };
-struct Cn { u16 raw; Cn(u16 v) : raw(v) { } };
+// POM68K: acu — the MC68EC040 names its four TTR slots IACR0/1 and DACR0/1.
+// [B] MC68040UM-1993 §B.3.1, Figure B-2.
+struct Cn { u16 raw; bool acu; Cn(u16 v, bool a = false) : raw(v), acu(a) { } };
 struct Ccr { };
 struct Pc { };
 struct Zpc { };

@@ -1401,6 +1401,115 @@ void directRootWrites030()
     }
 }
 
+// [B] MC68040UM-1993 App. B.1, B.3 and B.6: the MC68EC040 replaces the MMU
+// with two access control units. Its four ACRs sit in the TTR slots
+// ($004-$007, IACR0/1 and DACR0/1) with the TTR format; it never searches a
+// table, has no 8-Kbyte page, and PTEST/PFLUSH raise no exception. What the
+// manual leaves indeterminate (PTEST bus cycles, MOVEC TC read-back, URP/SRP)
+// is this core's [F] choice, pinned here so a change is deliberate:
+// no bus cycle, MMUSR untouched, TC reads 0. The LC040 runs beside it as
+// the control.
+void ec040AccessControlUnit()
+{
+    for (moira::Model model : { moira::Model::M68EC040, moira::Model::M68LC040 }) {
+        const bool ec = model == moira::Model::M68EC040;
+        const char* name = ec ? "68EC040" : "68LC040";
+
+        // MOVEC D0,TC then MOVEC TC,D1: E/P never stick on the EC040.
+        {
+            TestCpu c(model);
+            stage(c, 0x4E7B, 0);                   // MOVEC D0,TC
+            p16(c, kCode + 2, 0x0003);
+            p16(c, kCode + 4, 0x4E7A); p16(c, kCode + 6, 0x1003);  // MOVEC TC,D1
+            p16(c, kCode + 8, kNop);   p16(c, kCode + 10, kNop);
+            c.setIRC(0x0003);
+            c.setD(0, 0x00004000);                 // P = 8 KB, E clear
+            c.setD(1, 0xFFFFFFFF);
+            c.execute(); c.execute();
+            const uint32_t want = ec ? 0 : 0x4000;
+            CHECK(c.getTC040() == want && c.getD(1) == want,
+                  "%s: MOVEC TC wrote %08X, read back %08X, want %08X",
+                  name, c.getTC040(), c.getD(1), want);
+        }
+
+        // A TC set under another model does not survive a switch to EC040.
+        {
+            TestCpu c(moira::Model::M68LC040);
+            c.setTC040(0x4000);
+            c.setModel(model);
+            CHECK(c.getTC040() == (ec ? 0u : 0x4000u),
+                  "%s: TC after setModel = %08X", name, c.getTC040());
+        }
+
+        // PTESTR (A0), DFC = 5: the LC040 walks from SRP; the EC040 makes
+        // no bus cycle, leaves MMUSR alone and takes no exception.
+        {
+            TestCpu c(model);
+            stage(c, 0xF568, 0);
+            c.setSRP040(0x6000);                   // DFC = 5: supervisor root
+            c.setMMUSR040(0x12345678);
+            c.setDFC(5);
+            c.setA(0, 0);
+            c.traceBus = true; c.busBase = 0x6000;
+            c.execute();
+            CHECK(c.getPC0() == kCode + 2, "%s: PTEST took an exception (PC0=%08X)",
+                  name, c.getPC0());
+            if (ec) {
+                CHECK(c.bus.empty() && c.getMMUSR040() == 0x12345678,
+                      "%s: PTEST bus=\"%s\" MMUSR=%08X", name, c.bus.c_str(),
+                      c.getMMUSR040());
+            } else {
+                CHECK(!c.bus.empty(), "%s: PTEST control made no table read", name);
+            }
+        }
+
+        // PFLUSHA: no exception on either model.
+        {
+            TestCpu c(model);
+            stage(c, 0xF518, 0);
+            c.execute();
+            CHECK(c.getPC0() == kCode + 2, "%s: PFLUSHA took an exception", name);
+        }
+
+        // DACR0 E|S=ignore|W over $01xxxxxx: a write there is an access
+        // error, a read is not. App. B.3.2: "causes the abortion of write
+        // or read-modify-write accesses to the block".
+        {
+            TestCpu c(model);
+            p32(c, 2 * 4, kHandler);
+            p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
+            stage(c, 0x3080, 0);                   // MOVE.W D0,(A0)
+            c.setDTT0(0x0100C004);
+            c.setA(0, 0x01009000);
+            c.setD(0, 0xBEEF);
+            p16(c, 0x9000, 0x1234);
+            c.execute();
+            CHECK(c.getPC0() == kHandler && g16(c, 0x9000) == 0x1234,
+                  "%s: write to a W block: PC0=%08X mem=%04X", name, c.getPC0(),
+                  g16(c, 0x9000));
+            stage(c, 0x3210, 0);                   // MOVE.W (A0),D1
+            c.setDTT0(0x0100C004);
+            c.setA(0, 0x01009000);
+            c.execute();
+            CHECK(c.getPC0() == kCode + 2 && (c.getD(1) & 0xFFFF) == 0x1234,
+                  "%s: read from a W block: PC0=%08X D1=%08X", name, c.getPC0(),
+                  c.getD(1));
+        }
+
+        // The disassembler names the ACRs on the EC040.
+        {
+            TestCpu c(model);
+            p16(c, kCode, 0x4E7B); p16(c, kCode + 2, 0x0006);   // MOVEC D0,DACR0
+            char line[128] = {};
+            c.disassemble(line, kCode);
+            const bool named = std::string_view(line).find(ec ? "DACR0" : "DTT0")
+                               != std::string_view::npos;
+            CHECK(named, "%s: MOVEC D0,$006 disassembles as \"%s\"", name, line);
+        }
+    }
+    std::printf("  68EC040 access control unit: ok\n");
+}
+
 void ec030UsesPlain020Path()
 {
     // POM68K_SURFACE.md § 1.2: the current 68EC030 implementation uses
@@ -3581,6 +3690,7 @@ int main(int argc, char** argv)
     aluWriteBuffer030();
     moveAbsLongLastWrite030();
     ec030UsesPlain020Path();
+    ec040AccessControlUnit();
     cacrStrobesReadZero();
     jsrTargetFetchFault();
     deferredPrefetchFault();
@@ -3631,6 +3741,6 @@ int main(int argc, char** argv)
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68030 MOVE to (xxx).L last write, 68EC030 plain-020 path with a 68030 "
-                "MMU/cache control, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, 68010 MOVES function code after an address error or /BERR, DIVS.L overflow keeping its registers, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, the 68040 lock ending with TAS/CAS/CAS2, a memory-indirect pointer read outside the lock, BKPT without a data access, 68040 bit-field and JSR store faults restart, the SR-write refill as a fetch, no trace before a format-$7 rerun, PACK/UNPK -(An) faults on the 68030/68040, level 7 on a transition from the 68020 up, the billed 020-core interrupt sequence, the throwaway frame of an interrupt taken with M set, the trace exception after the traced instruction, trace on change of flow, MULx.L into one register, CAS2 with one compare register, MOVE from SR/CCR ending on its store, the 68030 CAS2 extension long, LINK/UNLK/PEA/JSR/BSR/RTD stack faults, the UNPK source fixup and the pending store of NEG, NEGX, ADDX, SUBX and ASL, the deferred refill fault after an SR or CCR write\n");
+                "MMU/cache control, the 68EC040 access control unit, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, 68010 MOVES function code after an address error or /BERR, DIVS.L overflow keeping its registers, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, the 68040 lock ending with TAS/CAS/CAS2, a memory-indirect pointer read outside the lock, BKPT without a data access, 68040 bit-field and JSR store faults restart, the SR-write refill as a fetch, no trace before a format-$7 rerun, PACK/UNPK -(An) faults on the 68030/68040, level 7 on a transition from the 68020 up, the billed 020-core interrupt sequence, the throwaway frame of an interrupt taken with M set, the trace exception after the traced instruction, trace on change of flow, MULx.L into one register, CAS2 with one compare register, MOVE from SR/CCR ending on its store, the 68030 CAS2 extension long, LINK/UNLK/PEA/JSR/BSR/RTD stack faults, the UNPK source fixup and the pending store of NEG, NEGX, ADDX, SUBX and ASL, the deferred refill fault after an SR or CCR write\n");
     return 0;
 }

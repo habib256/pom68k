@@ -92,7 +92,8 @@ const std::vector<Entry>& catalogue() {
                "where a batch remains, and no gate can see it yet.",
      .files = "src/Cpu020.h src/Cpu030.h src/Cpu040.h src/IIfxCpu.h "
               "src/RbvCpu.h src/SonoraCpu.h src/VaspCpu.h src/CentrisCpu.h "
-              "src/Q700Cpu.h src/Q630Cpu.h src/MscCpu.h src/Pb030Cpu.h",
+              "src/Q700Cpu.h src/Q630Cpu.h src/MscCpu.h src/Pb030Cpu.h "
+              "src/Moira040Cpu.h src/MoiraGated030Cpu.h",
      .platforms = kNoCompact68000, .docSection = "1.2"},
     {.id = "cpu-mmu", .group = "CPU",
      .subsystem = "68030 PMMU / 68040 MMU and ATC",

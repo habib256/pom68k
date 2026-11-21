@@ -2381,7 +2381,7 @@ MCU fall back to HLE, which is the point when qualifying a packaged build).
 **Product / LLE-AArch64 mode** — the `--lle-aarch64` promise, captured by
 `RuntimeConfig` and passed directly to `lle::beginSession` and the JIT policy:
 `POM68K_LLE_AARCH64_FULL` (`StartupOptions.h:107-108`, consumed by
-`lle::beginSession`, `LleSession.h:88`; the run must be on the
+`lle::beginSession`, `LleSession.h:93`; the run must be on the
 AArch64 code generator with every MCU on real firmware, and any HLE
 fallback disqualifies it) and `POM68K_LLE_AARCH64_CHECK_ONLY`
 (`--lle-aarch64-check`: run the preflight, print, exit 0 without opening a

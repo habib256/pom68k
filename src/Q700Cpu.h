@@ -7,61 +7,22 @@
 // Moira::extBusError040. The Q700 is a FULL 68040 @ 25 MHz (50 MHz XTAL / 2),
 // so the default is M68040 + its integrated FPU; POM68K_Q700_LC040=1 selects
 // the LC040 and POM68K_Q700_BAREFPU=1 a bare FPUModel::NONE with it.
-// Shared wrapper plumbing (bus forwarders, hooks, sync): MoiraCpu.h.
+// Shared wrapper plumbing: MoiraCpu.h; the 68040 pacing (boost, peripheral
+// deadline, stall, engine lock, save-state chunk): Moira040Cpu.h.
 // Gate: tests/q700_boot_etalon.cpp.
 
 #pragma once
-#include "CoreConfig.h"
-#include "MoiraCpu.h"
 #include "Q700Memory.h"
-#include <cstdint>
+#include "CoreConfig.h"
+#include "Moira040Cpu.h"
 
-class Q700Cpu : public pom68k::MoiraCpu<Q700Cpu, Q700Memory> {
+class Q700Cpu : public pom68k::Moira040Cpu<Q700Cpu, Q700Memory> {
 public:
     explicit Q700Cpu(Q700Memory& mem,
                      const jit::ResolvedConfig& jitConfig,
                      const pom68k::CoreCpuConfig& cpuConfig);
 
-    void hardReset();
-    void runCycles(moira::i64 n);
-    // ── JIT engine (src/jit/POM68K_JIT.md) ─────────────────────────────
-    // The second execution engine, ON by default for this validated 68040.
-    // setEngine() is the only
-    // switch; the GUI routes it through the machine thread's command queue
-    // so it always lands between two instructions.
-    void setEngine(int e);
-
-    void stall(int cycles);
-    void flushTicks();
-    // Re-arm the peripheral deadline after a device access (the Cpu040
-    // contract, 2026-11-07): schedulePeriphDeadline from every bound,
-    // measured from lastPeriphClock_ — the devices' common time, where a
-    // running countdown stands; tightenPeriphDeadline from one countdown
-    // the access itself armed, measured from now, only ever earlier.
-    void schedulePeriphDeadline();
-    void tightenPeriphDeadline(int machineCycles);
-    int cacheBoost() const { return cacheBoost_; }
-    // Bus/wire time (E-clock, wait states, the PIC1654S co-step) must be
-    // measured here, not on the boosted core clock — see SonoraCpu.h.
-    moira::i64 machineClock() const { return clock / cacheBoost_; }
-
-    // ── Save states (chunk "CPU ") — the Cpu030 wrapper pattern ─────────
-    // cacheBoost_ is environment tuning, not guest state.
-    template <class Ar> void visit(Ar& ar) {
-        visitCpuCommon(ar);
-        ar(lastPeriphClock_, periphAccum_, periphDeadline_);
-    }
-
 private:
     friend pom68k::MoiraCpu<Q700Cpu, Q700Memory>;
-    void didChangeCACR(moira::u32 value) override;
-    void catchUp();
-    moira::i64 periphDeadlineFor(int machineCycles) const;
-
-    // Same ceiling as Cpu040 (see the note there): the old boost-1 pin was
-    // a stale Q605 SCSI symptom, lifted 2026-07-25.
-    int cacheBoost_ = 4;
-    int boostShift_ = 2;                    // log2(cacheBoost_), −1 if not a power of two
-    moira::i64 periphAccum_ = 0;
-    moira::i64 periphDeadline_ = 0;
+    friend pom68k::Moira040Cpu<Q700Cpu, Q700Memory>;
 };

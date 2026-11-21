@@ -1584,19 +1584,26 @@ Moira::execPFlush40(u16 opcode)
 
     const u8 mode = ___________xx___(opcode);
     const u8 an = _____________xxx(opcode);
-    switch (mode) {
-    case 0:                                         // PFLUSHN (An)
-        mmu040AtcFlushPage(readA(an), true, (reg.dfc & 4) != 0);
-        break;
-    case 1:                                         // PFLUSH (An)
-        mmu040AtcFlushPage(readA(an), false, (reg.dfc & 4) != 0);
-        break;
-    case 2:                                         // PFLUSHAN
-        mmu040AtcFlushNonGlobal();
-        break;
-    default:                                        // PFLUSHA
-        mmu040AtcFlushAll();
-        break;
+    // [B] MC68040UM-1993 §B.6: on the MC68EC040 PFLUSH "produces
+    // indeterminate results" and causes no exception. There is no ATC to
+    // flush (§B.3.2: no table search, so nothing was ever loaded).
+    // [F] The bus activity is not documented; this core performs none.
+    // Settled by: a bus capture of PFLUSH on a real MC68EC040.
+    if (cpuModel != Model::M68EC040) {
+        switch (mode) {
+        case 0:                                     // PFLUSHN (An)
+            mmu040AtcFlushPage(readA(an), true, (reg.dfc & 4) != 0);
+            break;
+        case 1:                                     // PFLUSH (An)
+            mmu040AtcFlushPage(readA(an), false, (reg.dfc & 4) != 0);
+            break;
+        case 2:                                     // PFLUSHAN
+            mmu040AtcFlushNonGlobal();
+            break;
+        default:                                    // PFLUSHA
+            mmu040AtcFlushAll();
+            break;
+        }
     }
 
     prefetch<C, POLL>();
@@ -1912,30 +1919,38 @@ Moira::execPTest40(u16 opcode)
     bool super = (reg.dfc & 4) != 0;
     bool data = (reg.dfc & 3) != 2;
 
-    mmu040AtcFlushPage(addr, false, super, data ? 1 : 0);
-    int ttr = mmu040MatchTTR(addr, super, data);
-    if (ttr) {
-        reg.mmusr040 = (ttr == 2 && write) ? 0x800     // MMU_MMUSR_B
-                                           : 0x003;    // MMU_MMUSR_T | R
-    } else {
-        u32 status = 0;
-        bool busError = false;
-        // A descriptor transfer error reports B without raising the
-        // access's format-$7 exception or disturbing its fault stamp.
-        mmuInTableSearch = true;
-        try {
-            status = mmu040Walk<C>(addr, super, write);
-        } catch (MmuTableSearchBusError &) {
-            busError = true;
-        } catch (...) {
+    // [B] MC68040UM-1993 §B.6: on the MC68EC040 PTEST "causes random
+    // bus cycles to occur" and no exception; the ACU status register
+    // "does not provide additional functionality".
+    // [F] Which cycles, and what lands in the ACU status register, is not
+    // documented; this core performs no bus cycle and leaves MMUSR alone.
+    // Settled by: a bus capture of PTEST on a real MC68EC040.
+    if (cpuModel != Model::M68EC040) {
+        mmu040AtcFlushPage(addr, false, super, data ? 1 : 0);
+        int ttr = mmu040MatchTTR(addr, super, data);
+        if (ttr) {
+            reg.mmusr040 = (ttr == 2 && write) ? 0x800     // MMU_MMUSR_B
+                                               : 0x003;    // MMU_MMUSR_T | R
+        } else {
+            u32 status = 0;
+            bool busError = false;
+            // A descriptor transfer error reports B without raising the
+            // access's format-$7 exception or disturbing its fault stamp.
+            mmuInTableSearch = true;
+            try {
+                status = mmu040Walk<C>(addr, super, write);
+            } catch (MmuTableSearchBusError &) {
+                busError = true;
+            } catch (...) {
+                mmuInTableSearch = false;
+                throw;
+            }
             mmuInTableSearch = false;
-            throw;
+            u32 maski = mmu040PageMaskI();
+            reg.mmusr040 = busError ? 0x800 : (status & maski)
+                         | (status & 0x7F7);               // G|Ux|S|CM|M|W|R
+            if (mmu040AtcArmed) mmu040AtcFill(data, addr, status, super);
         }
-        mmuInTableSearch = false;
-        u32 maski = mmu040PageMaskI();
-        reg.mmusr040 = busError ? 0x800 : (status & maski)
-                     | (status & 0x7F7);               // G|Ux|S|CM|M|W|R
-        if (mmu040AtcArmed) mmu040AtcFill(data, addr, status, super);
     }
 
     prefetch<C, POLL>();

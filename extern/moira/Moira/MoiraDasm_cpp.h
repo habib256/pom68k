@@ -1287,7 +1287,7 @@ void
 Moira::dasmMovecRcRx(StrWriter &str, u32 &addr, u16 op, Instr I, Mode M, Size S) const
 {
     auto ext = u16(dasmIncRead(addr, Word));
-    auto src = Cn(____xxxxxxxxxxxx(ext));
+    auto src = Cn(____xxxxxxxxxxxx(ext), dasmModel == Model::M68EC040);
     auto dst = Rn(xxxx____________(ext));
 
     str << Ins{I} << str.tab << src << Sep{} << dst;
@@ -1298,7 +1298,7 @@ void
 Moira::dasmMovecRxRc(StrWriter &str, u32 &addr, u16 op, Instr I, Mode M, Size S) const
 {
     auto ext = u16(dasmIncRead(addr, Word));
-    auto dst = Cn(____xxxxxxxxxxxx(ext));
+    auto dst = Cn(____xxxxxxxxxxxx(ext), dasmModel == Model::M68EC040);
     auto src = Rn(xxxx____________(ext));
 
     str << Ins{I} << str.tab << src << Sep{} << dst;

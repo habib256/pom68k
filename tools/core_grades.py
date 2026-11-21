@@ -72,7 +72,8 @@ MANUAL_FAMILY = re.compile(
     r"MC68881/(?:MC68882|882)\s*UM)"
     r"(?:-\d{4})?\b")
 MANUAL_HEAD = re.compile(r"^\s*//\s*\[([BF])\]\s+([^\n]*)", re.MULTILINE)
-LOCATOR = re.compile(r"§\s*(\d+(?:\.\d+)*)|\b((?:Table|Figure)\s+[A-Z0-9]+-\d+)\b")
+# A section is numbered (§3.5) or lettered for an appendix (§B.3.2).
+LOCATOR = re.compile(r"§\s*((?:[A-Z]\.)?\d+(?:\.\d+)*)|\b((?:Table|Figure)\s+[A-Z0-9]+-\d+)\b")
 
 
 def manual_catalog():
@@ -90,7 +91,7 @@ def manual_problems(text, catalog=None):
     references = set(MANUAL_FAMILY.findall(text))
     if not references:
         # A repository's own numbered section is not a manual citation.
-        external = re.sub(r"[\w./-]+\.(?:md|h|cpp)\s+§\s*\d+(?:\.\d+)*", "", text)
+        external = re.sub(r"[\w./-]+\.(?:md|h|cpp)\s+§\s*(?:[A-Z]\.)?\d+(?:\.\d+)*", "", text)
         if LOCATOR.search(external):
             return ["anonymous manual locator needs a named edition and grade"]
         return []

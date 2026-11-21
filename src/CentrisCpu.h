@@ -9,53 +9,22 @@
 // Q605 no-FPU precedent). POM68K_CENTRIS_BAREFPU=1 selects true
 // FPUModel::NONE (architectural F-line), POM68K_CENTRIS_FPU=1 the full
 // 68040 (for the Quadra 610/650 identity).
-// Shared wrapper plumbing (bus forwarders, hooks, sync): MoiraCpu.h.
+// Shared wrapper plumbing: MoiraCpu.h; the 68040 pacing (boost, peripheral
+// deadline, stall, engine lock, save-state chunk): Moira040Cpu.h.
 // Gate: tests/centris650_boot_etalon.cpp.
 
 #pragma once
 #include "CentrisMemory.h"
 #include "CoreConfig.h"
-#include "MoiraCpu.h"
-#include <cstdint>
+#include "Moira040Cpu.h"
 
-class CentrisCpu : public pom68k::MoiraCpu<CentrisCpu, CentrisMemory> {
+class CentrisCpu : public pom68k::Moira040Cpu<CentrisCpu, CentrisMemory> {
 public:
     explicit CentrisCpu(CentrisMemory& mem,
                         const jit::ResolvedConfig& jitConfig,
                         const pom68k::CoreCpuConfig& cpuConfig);
 
-    void hardReset();
-    void runCycles(moira::i64 n);
-    // ── JIT engine (src/jit/POM68K_JIT.md) ─────────────────────────────
-    // The second execution engine, ON by default for this validated 68040.
-    // setEngine() is the only
-    // switch; the GUI routes it through the machine thread's command queue
-    // so it always lands between two instructions.
-    void setEngine(int e);
-
-    void stall(int cycles);
-    void flushTicks();
-    int cacheBoost() const { return cacheBoost_; }
-    // Bus/wire time (E-clock, wait states, the PIC1654S co-step) must be
-    // measured here, not on the boosted core clock — see SonoraCpu.h.
-    moira::i64 machineClock() const { return clock / cacheBoost_; }
-
-    // ── Save states (chunk "CPU ") — the Cpu030 wrapper pattern ─────────
-    // cacheBoost_ is environment tuning, not guest state.
-    template <class Ar> void visit(Ar& ar) {
-        visitCpuCommon(ar);
-        ar(lastPeriphClock_, periphAccum_, periphDeadline_);
-    }
-
 private:
     friend pom68k::MoiraCpu<CentrisCpu, CentrisMemory>;
-    void didChangeCACR(moira::u32 value) override;
-    void catchUp();
-    void schedulePeriphDeadline();
-
-    // Same ceiling as Cpu040 (see the note there): the old boost-1 pin was
-    // a stale Q605 SCSI symptom, lifted 2026-07-25.
-    int cacheBoost_ = 4;
-    moira::i64 periphAccum_ = 0;
-    moira::i64 periphDeadline_ = 0;
+    friend pom68k::Moira040Cpu<CentrisCpu, CentrisMemory>;
 };

@@ -118,6 +118,14 @@ Moira::setModel(Model cpuModel, Model dasmModel)
 
         createJumpTable(cpuModel, dasmModel);
 
+        // [B] MC68040UM-1993 §B.3.2: the MC68EC040 has no table search;
+        // a TC programmed under another model must not survive the switch
+        // (setTC040 keeps it clear from here on).
+        if (cpuModel == Model::M68EC040 && reg.tc040) {
+            reg.tc040 = 0;
+            pomJitMapMoved();
+        }
+
         reg.cacr &= cacrMask();
         flushInstructionCache();
         flags &= ~State::LOOPING;
