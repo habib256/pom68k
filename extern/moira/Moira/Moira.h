@@ -2323,6 +2323,12 @@ protected:
     u32 mmuFixupVal[2] {};      // mmufixup .value (An before adjustment)
     bool mmuLogging {};         // instruction-level accesses feed mmuAd
     bool mmuRmw {};             // islrmw030 — inside a locked RMW cycle
+    // POM68K (ruling D46): a 68020/68030 PC-relative operand read is in
+    // flight. Its function code is program space (FC 2/6), yet it is an
+    // operand cycle, not an instruction-stream one: a fault on it stacks
+    // DF, not FB/RB, and a DF-cleared RTE substitutes its data. Set and
+    // cleared by readM only (scoped, so an unwinding fault clears it too).
+    bool mmuPcOperand {};
     u16 mmuCcrSave {};          // CCR at instruction start ($B fault restore)
     u32 mmuLastWritePc {};      // next-instruction PC for $A (last-write) faults
     // POM68K O6 (LC II): 68030 prefetch-pipe carry-over across a

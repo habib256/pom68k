@@ -366,14 +366,20 @@ on C68020. The defect came from the fork's own earlier ruling D12, and this
 row undoes it. [B] MC68030UM-1989 Table 8-7. Gate:
 `moira_rules_test (group2InstructionAddress)`.
 
-**Row 156 — a 68000/68010 PC-relative operand read is a program
+**Row 156 — a 68000-68030 PC-relative operand read is a program
 reference.** Upstream's `readM` at ce28239 already reads `isPrgMode` operands
 in program space; the fork had moved them to data space to match
-SingleStepTests and now returns to upstream on the 68000/68010
-([B] M68000PRM-1992 §2.2.11, ruling D46). On the 68040 the fork keeps data
-space ([B] MC68040UM-1993 §8.4.6.7), which upstream, with no 68040
-execution, does not reach. Gates: `sst68000` (the FC pair counted),
-`moira_rules_test (pcRelativeOperandSpace)`.
+SingleStepTests and now returns to upstream on the 68000 to the 68030
+([B] M68000PRM-1992 §2.2.11, [B] MC68030UM-1989 §2, ruling D46). On the
+68040 the fork keeps data space ([B] MC68040UM-1993 §8.4.6.7), which
+upstream, with no 68040 execution, does not reach. Gates: `sst68000` (the FC
+pair counted), `moira_rules_test (pcRelativeOperandSpace)`.
+
+**Row 157 — the 020/030 PC-relative read stays an operand cycle.** Fork-only:
+upstream has no bus-error frame for the 020/030. The fork's fault builder
+told a data cycle from a fetch by the function code, which program space
+defeats; `readM` now marks the read, so its frame carries DF and FC 6
+([B] MC68030UM-1989 §8.2.1). Gate: `moira_rules_test (pcRelativeOperandCycle)`.
 
 **Row 145 — throwaway frame of an interrupt taken with SR.M set.** Upstream
 fixed this first in `eb9529c` (`setMasterMode(false)` before the format-$1

@@ -911,7 +911,11 @@ Moira::mmuPageFault(u32 addr, bool read, u32 sswFlags, u8 fc)
 {
     mmuWb2Status = mmuWb3Status = 0;
 
-    if (fc & 1) {                               // data cycle
+    // [B] MC68030UM-1989 §2, §8.2.1: a PC-relative operand read drives a
+    // program FC yet is an operand (data) cycle — DF, not FB/RB.
+    // POM68K (ruling D46): readM marks it (mmuPcOperand), since the FC
+    // alone no longer tells the two apart.
+    if ((fc & 1) || mmuPcOperand) {             // data cycle
 
         // [B] MC68020UM-1992 §6.2.1: bit 9 is reserved, not a DF mirror.
         // POM68K: retain the oracle-private marker only on the 030 path.

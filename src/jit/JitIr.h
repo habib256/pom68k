@@ -1620,6 +1620,25 @@ inline bool memoryBitfieldMaySpanThreeBytes(uint16_t ext) {
 // storing the whole longword is effect-equivalent to Moira's narrower
 // accesses. A possible fifth byte is the second read slot; a backend must
 // still branch around it when the selected field does not cross bit 31.
+// [B] MC68030UM-1989 §2: a PC-relative operand read is a program reference
+// (FC 2/6). Moira's readM issues it so (ruling D46), and the 68030 ATC and
+// transparent translation match the FC exactly; the native data paths
+// (pomJitReadData, the DTLB window) read in data space. Such an instruction
+// is therefore left undescribed on the 68030 — no backend may infer a
+// protocol for it, so it stays on the interpreter. The 68040 converts these
+// reads to data references (MC68040UM-1993 §8.4.6.7) and keeps its contract.
+inline void withhold030ProgramOperands(Instr& in, bool is030) {
+    if (!is030 || !in.memory.described) return;
+    const MemoryContract& c = in.memory;
+    for (const MemoryAccess& a : c.access) {
+        if (a.direction == MemoryDirection::Read && a.eaMode == 7 &&
+            (a.eaReg == 2 || a.eaReg == 3)) {
+            in.memory = MemoryContract{};
+            return;
+        }
+    }
+}
+
 inline void refineMemoryFromExtensions(Instr& in, bool is030) {
     const InstructionSemantics& s = in.semantics;
     if (in.extensionCount == 0) return;

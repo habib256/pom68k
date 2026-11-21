@@ -619,6 +619,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-21 (eleventh) — The 68020/68030 follow: a PC-relative operand read is in program space, and still an operand cycle](#2026-11-21-pc-relative-020-030)
 - [2026-11-21 (tenth) — The disk journal pushed on 2026-11-11 is out of history: 173 commits rewritten, nothing older touched](#2026-11-21-pomundo-purge)
 - [2026-11-21 (ninth) — A 68000 PC-relative operand read is a program reference: the manual settles what NeoST and this core disagreed on](#2026-11-21-pc-relative-program-space)
 - [2026-11-21 (eighth) — The JIT no longer runs a 68000 or a 68020: it lost on one and did nothing on the other; the 68000 interpreter keeps its fetch window](#2026-11-21-no-jit-68000-68020)
@@ -1433,6 +1434,68 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-21-pc-relative-020-030"></a>
+## 2026-11-21 (eleventh) — The 68020/68030 follow: a PC-relative operand read is in program space, and still an operand cycle
+
+**The source.** MC68030UM-1989 (locked file, sha256 `ff92925a…`) §2, PDF
+p. 41: "Data items in the instruction stream can be accessed with the
+program counter relative addressing modes, and these accesses are
+classified as program references." §6.1.2 (p. 309) adds that the data cache
+still stores them; no 68030 data cache is modelled here. MC68020UM-1992 has
+no sentence of its own; the PRM's family rule (entry (ninth)) covers it.
+Both locators are now locked.
+
+**What moving the space broke, and what was done about it.** The fork's
+fault builder told an operand cycle from an instruction fetch by the
+function code (`mmuPageFault`, `fc & 1`). In program space a PC-relative
+operand read would have stacked FB/RB and lost DF, and the plain 020's
+DF-cleared RTE substitution, keyed on the data FC and on `read<DATA>`, would
+have read the bus again. So:
+- `readM` reads `(d16,PC)`/`(d8,PC,Xn)` — and, through it, MOVEM, the FPU,
+  CMP2/CHK2, bit fields and the pointer of a PC memory-indirect EA — in
+  program space on the 68000 to the 68030, and marks the read in flight on
+  the 020/030 (`mmuPcOperand`, scoped so an unwinding fault clears it);
+- `mmuPageFault` classifies a fault on it as a data cycle (DF, FC 6,
+  [B] MC68030UM-1989 §8.2.1);
+- the plain 020's substitution covers it, and is armed on FC/FB/RC/RB clear
+  (as the 68030's already was) instead of on a data FC;
+- the JIT leaves such an instruction on the interpreter on the 68030
+  (`JitIr.h withhold030ProgramOperands`): its native data paths
+  (`pomJitReadData`, the DTLB window) translate in data space, and the
+  68030 ATC and TT match the FC exactly. The 68040 keeps data space and its
+  native paths.
+
+**A slip of entry (ninth), fixed.** MOVEM's extra word read after the
+transfers stayed in data space when the transfers moved; NeoST `e809c24`
+(and the TODO's survey note, "already true here") wants the same space.
+It now goes through `readM` on every model that makes it. `sst68000` counts
+11 843 ruled reads instead of 11 607 — the 236 extra reads — and is still
+1 000 058/1 000 058 with bus order and timing.
+
+**Evidence.** The WinUAE corpora compare no function code and hold no fault
+on a PC-relative read: `sst68030` and its five siblings do not move. The
+behaviour is held by `moira_rules_test`: `pcRelativeOperandSpace` (FC on
+seven models, MOVEM's two reads in one space) and `pcRelativeOperandCycle`
+(a program-only TT serves the read under tables that fault data space; the
+/BERR frame carries DF, RW, FC 6 and no FB/RB; an RTE with DF clear delivers
+the data input buffer without a second /BERR, on EC020, 020 and 030). Each
+of the five core changes was reverted alone and the cells failed (9, 7, 3,
+3 and 6 checks). `jit_backend_test` holds the withheld contract.
+
+**Tiers, and the price.** On the optimised x86-64 build: `asset-none`
+208/208 once `file_size_budget.txt` took the filter (JitIr.h +19,
+JitEngine.cpp +2); `ctest -L m030 -j8` 154/154 in 3 203 s, 153 executed
+and one soft-skip known since September (`lcii_floppy144_etalon`, no
+1.44 MB image on this host). `lcii_boot_etalon`, HEAD against this tree
+from a detached worktree, ABBA, four pairs on one pinned core, the same
+pixel pin (`674c4049ab7980f7`) and SCSI count (9 618) in both arms: under
+the interpreter 123.38 s → 122.58 s (−0.6 %, below the floor); under the x64
+JIT 37.37 s → 38.78 s (+3.8 %, every new run slower than the HEAD runs
+around it). The price is the instructions the JIT now leaves to the
+interpreter; a native program-space read is `TODO.md` § JIT performance.
+
+Moira rows 156 (widened) and 157 (new); D46 in `oracle/README.md` widened.
 
 <a id="2026-11-21-pomundo-purge"></a>
 ## 2026-11-21 (tenth) — The disk journal pushed on 2026-11-11 is out of history: 173 commits rewritten, nothing older touched

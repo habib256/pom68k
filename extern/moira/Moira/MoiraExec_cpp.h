@@ -4473,7 +4473,9 @@ Moira::execMovemEaRg(u16 opcode)
     // guard read BEFORE the transfers but one word read AFTER the last, as
     // for the word form. [D] SingleStepTests/680x0 v1 transactions
     // (MOVEM.l.json). Other cores keep upstream's position.
-    if constexpr (S == Long && C != Core::C68000) { if (!mmu030 && cpuModel < Model::M68EC040) (void)read<C, AddrSpace::DATA, Word>(ea); }
+    // POM68K (ruling D46): the extra read uses the transfers' space, program
+    // space for a PC-relative source on the 68000-68030 (readM); NeoST e809c24.
+    if constexpr (S == Long && C != Core::C68000) { if (!mmu030 && cpuModel < Model::M68EC040) (void)readM<C, M, Word>(ea); }
 
     if constexpr (M == Mode(3)) {     // (An)+
 
@@ -4503,7 +4505,7 @@ Moira::execMovemEaRg(u16 opcode)
             if (mmu030) mmuState[0]++;
         }
     }
-    if constexpr (S == Word || C == Core::C68000) { if (!mmu030 && cpuModel < Model::M68EC040) (void)read<C, AddrSpace::DATA, Word>(ea); }
+    if constexpr (S == Word || C == Core::C68000) { if (!mmu030 && cpuModel < Model::M68EC040) (void)readM<C, M, Word>(ea); }
 
     if (mmu030) mmuLogging = logSave;
     if (cpuModel >= Model::M68EC040) mmu040MovemArmed = false;  // POM68K Q3
@@ -6968,8 +6970,10 @@ Moira::execRte(u16 opcode)
                     // which Moira's restart model cannot express).
                     // [B] MC68020UM-1992 §6.2.1 and §6.2.2: DF clear
                     // completes a data cycle; bit 9 is reserved on the 020.
-                    // POM68K: its data FC qualifies the one-shot retry,
-                    // without the oracle-private marker used by the 030.
+                    // POM68K: a data cycle qualifies the one-shot retry —
+                    // FC/FB/RC/RB clear, as on the 030 below — without the
+                    // oracle-private marker. Not the data FC: a PC-relative
+                    // operand is a data cycle in program space (ruling D46).
                     // POM68K (2026-11-19): the 68030 no longer keys on SSW
                     // bit 9, the oracle's private "data fault" marker that
                     // no 68030 writes (a frame a handler builds or edits
@@ -6985,7 +6989,7 @@ Moira::execRte(u16 opcode)
                     //     the frame names a data cycle software completed.
                     if constexpr (C == Core::C68020) {
                         if (((cpuModel == Model::M68030 && !(ssw & 0xF000)) ||
-                             (mmuPlain020() && (ssw & 1) && newpc == replayPc020)) &&
+                             (mmuPlain020() && !(ssw & 0xF000) && newpc == replayPc020)) &&
                             !(ssw & 0x0100) && !(ssw & 0x0080)) {
                             mmuRteSubstArmed = true;
                             mmuRteSubstWrite = !(ssw & 0x0040);

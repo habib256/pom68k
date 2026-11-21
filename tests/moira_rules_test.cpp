@@ -1401,20 +1401,20 @@ void directRootWrites030()
     }
 }
 
-// [B] M68000PRM-1992 §2, §2.2.11: a PC-relative operand read is a program
-// reference — the 68000 and 68010 read it with FC 6 in supervisor mode.
-// [B] MC68040UM-1993 §8.4.6.7: the 68040 converts it to a data reference
-// (FC 5). The 68020/68030 still read data space here: their access log and
-// RTE substitution are keyed on it (TODO.md § Justesse 68030); this cell
-// pins that state so the day it changes is a deliberate diff.
+// [B] M68000PRM-1992 §2, §2.2.11; MC68030UM-1989 §2: a PC-relative operand
+// read is a program reference — the 68000 to the 68030 read it with FC 6 in
+// supervisor mode (ruling D46). [B] MC68040UM-1993 §8.4.6.7: the 68040
+// converts it to a data reference (FC 5).
 void pcRelativeOperandSpace()
 {
     struct Row { moira::Model model; unsigned fc; const char* name; };
     const Row rows[] = {
         { moira::Model::M68000,   6, "68000" },
         { moira::Model::M68010,   6, "68010" },
-        { moira::Model::M68020,   5, "68020 (pending)" },
-        { moira::Model::M68030,   5, "68030 (pending)" },
+        { moira::Model::M68EC020, 6, "68EC020" },
+        { moira::Model::M68020,   6, "68020" },
+        { moira::Model::M68EC030, 6, "68EC030" },
+        { moira::Model::M68030,   6, "68030" },
         { moira::Model::M68LC040, 5, "68LC040" },
     };
     for (const Row& r : rows) {
@@ -1437,7 +1437,99 @@ void pcRelativeOperandSpace()
         CHECK(seen && (c.getD(0) & 0xFFFF) == 0xBEEF,
               "%s: operand read not observed (D0=%08X)", r.name, c.getD(0));
     }
+    // MOVEM.W ($10,PC),D0: the transfer and the extra word read after it are
+    // in the same space (NeoST e809c24). The 68030 and 68040 make no extra
+    // read here (POM68K_VENDOR.md § MOVEM).
+    for (const Row& r : rows) {
+        TestCpu c(r.model);
+        stage(c, 0x4CBA, 0);                       // MOVEM.W (d16,PC),D0
+        p16(c, kCode + 2, 0x0001);
+        p16(c, kCode + 4, 0x0010);
+        c.setIRC(0x0001);
+        const uint32_t ea = kCode + 4 + 0x10;
+        p16(c, ea, 0xBEEF);
+        c.logFc = true;
+        c.execute();
+        c.logFc = false;
+        unsigned reads = 0;
+        for (const auto& a : c.fcLog)
+            if ((a.addr & 0xFFFFFF) >= ea && (a.addr & 0xFFFFFF) < ea + 4 && !a.write) {
+                reads++;
+                CHECK(a.fc == r.fc, "%s: MOVEM (d16,PC) read at %06X FC=%u, want %u",
+                      r.name, unsigned(a.addr), unsigned(a.fc), r.fc);
+            }
+        const bool extra = r.model < moira::Model::M68EC030 ||
+                           r.model == moira::Model::M68EC030;
+        CHECK(reads == (extra ? 2u : 1u) && (c.getD(0) & 0xFFFF) == 0xBEEF,
+              "%s: MOVEM (d16,PC) made %u read(s), want %u (D0=%08X)",
+              r.name, reads, extra ? 2u : 1u, c.getD(0));
+    }
     std::printf("  PC-relative operand space: ok\n");
+}
+
+// [B] MC68030UM-1989 §2, §8.2.1: the PC-relative operand read of the 68020
+// and 68030 is a program reference that is still an OPERAND cycle (ruling
+// D46). (1) Under translation, a transparent window on program space alone
+// serves it, with tables that would fault any data-space access. (2) A
+// /BERR on it stacks a format-$B frame with DF set, FC 6 and no FB/RB, and
+// (3) an RTE of that frame with DF cleared delivers the data input buffer
+// without a second bus cycle.
+void pcRelativeOperandCycle()
+{
+    constexpr uint32_t kTarget = kCode + 2 + 0x10;   // MOVE.W ($10,PC),D0
+    {   // (1) 68030: TT0 on FC 2/6 only, every table descriptor invalid
+        constexpr uint32_t kTc  = 0x80000000u | 0xCu << 20 | 0xAu << 12 | 0xAu << 8;
+        constexpr uint32_t kTt0 = 0x00008124u;          // E, RWM, FC 2/6 (program)
+        constexpr uint32_t kTable = 0x60000;            // zeros: invalid
+        constexpr uint64_t kCrp = uint64_t(0x7FFF0002u) << 32 | kTable;
+        TestCpu c(moira::Model::M68030);
+        p32(c, 2 * 4, kHandler);
+        p16(c, kHandler, kNop);
+        stage(c, 0x303A, 0);
+        p16(c, kCode + 2, 0x0010);
+        c.setIRC(0x0010);
+        p16(c, kTarget, 0xBEEF);
+        c.mmu030(kTc, kCrp, kTt0, 0);
+        const bool ran = executeContained(c);
+        CHECK(ran && c.getPC0() == kCode + 4 && (c.getD(0) & 0xFFFF) == 0xBEEF,
+              "68030 (d16,PC) under a program-only TT: PC0=%08X D0=%08X "
+              "(want %08X, BEEF: no data-space table search)",
+              c.getPC0(), c.getD(0), kCode + 4);
+    }
+    for (moira::Model m : { moira::Model::M68EC020, moira::Model::M68020,
+                            moira::Model::M68030 }) {
+        TestCpu c(m);
+        p32(c, 2 * 4, kHandler);
+        p16(c, kHandler, 0x4E73);                       // RTE
+        stage(c, 0x303A, 0);
+        p16(c, kCode + 2, 0x0010);
+        c.setIRC(0x0010);
+        p16(c, kTarget, 0xBEEF);
+        c.holeAt = kTarget;
+        c.holeArmed = true;
+        const bool contained = executeContained(c);
+        const uint32_t sp = c.getSP();
+        const uint16_t ssw = g16(c, sp + 0x0A);
+        CHECK(contained && c.getPC0() == kHandler && (g16(c, sp + 6) >> 12) == 0xB &&
+              g32(c, sp + 0x10) == kTarget,
+              "model %d (d16,PC) /BERR: PC0=%08X format $%X fault address %08X "
+              "(want the handler, $B, %08X)", int(m), c.getPC0(),
+              g16(c, sp + 6) >> 12, g32(c, sp + 0x10), kTarget);
+        CHECK((ssw & 0xF000) == 0 && (ssw & 0x0100) && (ssw & 0x0040) &&
+              (ssw & 7) == 6,
+              "model %d (d16,PC) /BERR: SSW %04X (want DF, RW, FC 6; no FC/FB/RC/RB)",
+              int(m), ssw);
+        p16(c, sp + 0x0A, uint16_t(ssw & ~0x0100));     // software completed it
+        p32(c, sp + 0x2C, 0x0000CAFE);                  // data input buffer
+        const bool rte = executeContained(c);
+        const bool rerun = rte && executeContained(c);
+        CHECK(rerun && c.getPC0() == kCode + 4 && (c.getD(0) & 0xFFFF) == 0xCAFE &&
+              c.holeTrips == 1,
+              "model %d (d16,PC) RTE with DF clear: PC0=%08X D0=%08X, %u /BERR "
+              "(want %08X, CAFE from the frame, one)", int(m), c.getPC0(),
+              c.getD(0), c.holeTrips, kCode + 4);
+    }
+    std::printf("  PC-relative operand cycle: ok\n");
 }
 
 // [B] MC68040UM-1993 App. B.1, B.3 and B.6: the MC68EC040 replaces the MMU
@@ -3731,6 +3823,7 @@ int main(int argc, char** argv)
     ec030UsesPlain020Path();
     ec040AccessControlUnit();
     pcRelativeOperandSpace();
+    pcRelativeOperandCycle();
     cacrStrobesReadZero();
     jsrTargetFetchFault();
     deferredPrefetchFault();
@@ -3781,6 +3874,6 @@ int main(int argc, char** argv)
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68030 MOVE to (xxx).L last write, 68EC030 plain-020 path with a 68030 "
-                "MMU/cache control, the 68EC040 access control unit, the PC-relative operand space, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, 68010 MOVES function code after an address error or /BERR, DIVS.L overflow keeping its registers, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, the 68040 lock ending with TAS/CAS/CAS2, a memory-indirect pointer read outside the lock, BKPT without a data access, 68040 bit-field and JSR store faults restart, the SR-write refill as a fetch, no trace before a format-$7 rerun, PACK/UNPK -(An) faults on the 68030/68040, level 7 on a transition from the 68020 up, the billed 020-core interrupt sequence, the throwaway frame of an interrupt taken with M set, the trace exception after the traced instruction, trace on change of flow, MULx.L into one register, CAS2 with one compare register, MOVE from SR/CCR ending on its store, the 68030 CAS2 extension long, LINK/UNLK/PEA/JSR/BSR/RTD stack faults, the UNPK source fixup and the pending store of NEG, NEGX, ADDX, SUBX and ASL, the deferred refill fault after an SR or CCR write\n");
+                "MMU/cache control, the 68EC040 access control unit, the PC-relative operand space and cycle, CACR strobes read as zero, JSR target fetch fault on the 68030/68040, deferred prefetch faults and the 68040 page-end exception rule, 68030 long-displacement access log, 68040 ATC replay copy-on-write, 68000 STOP without a bus cycle, 68000 reset timing, FP registers before the first reset, IRQ recognition after an SR write, faulting MOVES function code, 68010 MOVES function code after an address error or /BERR, DIVS.L overflow keeping its registers, watchpoints under the MMU, 68020 external /BERR, interrupt frame on an odd SSP, 68030 pipe across PMOVE to TC, IPL sampled in a DBRA loop, 68030 CAS2 as a read-modify-write, the 68040 lock ending with TAS/CAS/CAS2, a memory-indirect pointer read outside the lock, BKPT without a data access, 68040 bit-field and JSR store faults restart, the SR-write refill as a fetch, no trace before a format-$7 rerun, PACK/UNPK -(An) faults on the 68030/68040, level 7 on a transition from the 68020 up, the billed 020-core interrupt sequence, the throwaway frame of an interrupt taken with M set, the trace exception after the traced instruction, trace on change of flow, MULx.L into one register, CAS2 with one compare register, MOVE from SR/CCR ending on its store, the 68030 CAS2 extension long, LINK/UNLK/PEA/JSR/BSR/RTD stack faults, the UNPK source fixup and the pending store of NEG, NEGX, ADDX, SUBX and ASL, the deferred refill fault after an SR or CCR write\n");
     return 0;
 }

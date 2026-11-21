@@ -646,12 +646,26 @@ Moira::readM(u32 addr)
     // [B] MC68040UM-1993 §8.4.6.7: on the 68040 the function codes of PC
     // relative operand accesses "are converted to data references", and
     // the TM field of the access-error frame shows them so.
-    // POM68K: the 68000/68010 cores only. The 020/030 follow the PRM's
-    // family rule but carry an access log and an RTE substitution path
-    // keyed on the data space (TODO.md § Justesse 68030); the 68040 is
-    // right in data space.
-    if constexpr (C != Core::C68020 && isPrgMode(M))
-        return read<C, AddrSpace::PROG, S, F>(addr);
+    // [B] MC68030UM-1989 §2: data items accessed with the PC-relative modes
+    // "are classified as program references"; §6.1.2: the data cache
+    // still stores them (no 030 data cache is modelled here).
+    // POM68K: the 68000 to 68030 read in program space; the 68040 is right
+    // in data space. On the 020/030 the read stays an OPERAND cycle for the
+    // fault machinery (mmuPcOperand: DF frame, RTE data substitution), and
+    // the JIT leaves such reads to this path on the 68030 (JitIr.h
+    // withhold030ProgramOperands).
+    if constexpr (isPrgMode(M)) {
+        if constexpr (C != Core::C68020) {
+            return read<C, AddrSpace::PROG, S, F>(addr);
+        } else if (cpuModel < Model::M68EC040) {
+            struct Scope {
+                bool &flag;
+                explicit Scope(bool &f) : flag(f) { flag = true; }
+                ~Scope() { flag = false; }
+            } scope(mmuPcOperand);
+            return read<C, AddrSpace::PROG, S, F>(addr);
+        }
+    }
     return read<C, AddrSpace::DATA, S, F>(addr);
 }
 
@@ -860,9 +874,12 @@ Moira::read(u32 addr)
 
     // [B] MC68020UM-1992 §6.2.2: a DF-cleared data cycle is complete.
     // POM68K: consume the software result before any physical bus callback.
-    if constexpr (C == Core::C68020 && AS == AddrSpace::DATA) {
+    // POM68K (ruling D46): a PC-relative operand read is a data cycle in
+    // program space (mmuPcOperand), so it is substituted the same way.
+    if constexpr (C == Core::C68020) {
         constexpr u32 firstOffset = (S == Long && (F & REVERSE)) ? 2 : 0;
-        if (mmuSubstitutePlain020(addr + firstOffset, false)) {
+        if ((AS == AddrSpace::DATA || mmuPcOperand) &&
+            mmuSubstitutePlain020(addr + firstOffset, false)) {
             if (F & POLL) POLL_IPL;
             return CLIP<S>(mmuRteSubstData);
         }
@@ -946,8 +963,9 @@ Moira::read(u32 addr)
             SYNC(4);
             if constexpr (F & POLL) POLL_IPL;
             if constexpr (kPlain020) { mmuAccAddr = addr; mmuAccSsw = 0x20; }
-            if constexpr (kPlain020 && AS == AddrSpace::DATA) {
-                if (mmuSubstitutePlain020(addr, false))
+            if constexpr (kPlain020) {
+                if ((AS == AddrSpace::DATA || mmuPcOperand) &&
+                    mmuSubstitutePlain020(addr, false))
                     result |= u32(u16(mmuRteSubstData)) << 16;
                 else result |= read16(addr & addrMask<C>()) << 16;
             } else result |= read16(addr & addrMask<C>()) << 16;
@@ -959,8 +977,9 @@ Moira::read(u32 addr)
             SYNC(4);
             if constexpr (F & POLL) POLL_IPL;
             if constexpr (kPlain020) { mmuAccAddr = addr + 2; mmuAccSsw = 0x20; }
-            if constexpr (kPlain020 && AS == AddrSpace::DATA) {
-                if (mmuSubstitutePlain020(addr + 2, false))
+            if constexpr (kPlain020) {
+                if ((AS == AddrSpace::DATA || mmuPcOperand) &&
+                    mmuSubstitutePlain020(addr + 2, false))
                     result |= u16(mmuRteSubstData);
                 else result |= read16((addr + 2) & addrMask<C>());
             } else result |= read16((addr + 2) & addrMask<C>());

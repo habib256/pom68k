@@ -221,6 +221,23 @@ int main() {
                   jit::describeMemory(0x1429, false)),
               "Speedometer device polls require exact reads only on the 68030");
 
+        // Ruling D46: a 68030 PC-relative operand read is in program space,
+        // which the native data paths do not translate; the 68040 reads it
+        // as data. MOVE.W ($10,PC),D0 / MOVE.W D0,(A0) stay native.
+        {
+            const auto withheld = [](uint16_t op, bool is030) {
+                jit::Instr in;
+                in.opcode = op;
+                in.memory = jit::describeMemory(op, is030);
+                const bool before = in.memory.described;
+                jit::withhold030ProgramOperands(in, is030);
+                return before && !in.memory.described;
+            };
+            check(withheld(0x303A, true) && withheld(0x303B, true) &&
+                  !withheld(0x303A, false) && !withheld(0x3080, true),
+                  "68030 PC-relative operand reads are withheld from native code");
+        }
+
         jit::Instr bfextuMemory;
         bfextuMemory.opcode = 0xE9D0;       // BFEXTU (A0){0:D0},D2
         bfextuMemory.words = 2;

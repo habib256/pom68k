@@ -1025,6 +1025,7 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
         const uint16_t terminalIrc = cpu_.getIRC();
         const auto describeObserved = [&](Instr& in) {
             in.memory = describeMemory(op, guestFamily_ == kGuest68030);
+            withhold030ProgramOperands(in, guestFamily_ == kGuest68030);
             in.semantics = describeInstruction(op);
             in.iplPolls = iplPolls;
             in.fetchWords040 = uint16_t(timing.fetchWords040);
@@ -1153,6 +1154,7 @@ Engine::Block* Engine::record(uint32_t pc, bool super, int64_t clockTarget) {
                 in.extensions[i] = ir.word(in.pc + 2 + uint32_t(i) * 2);
             describeEffectiveAddresses(in);
             refineMemoryFromExtensions(in, guestFamily_ == kGuest68030);
+            withhold030ProgramOperands(in, guestFamily_ == kGuest68030);
             describeControlFlow(in);
         }
     }

@@ -99,11 +99,11 @@ NeoST).
 `c9925da`) : `diff` fichier par fichier, rien de nouveau à porter.
 `cc554ef` ne s'applique pas (`MOIRA_MIMIC_MUSASHI` est faux ici).
 `e809c24` (lecture en plus d'un MOVEM mémoire→registres dans le même
-espace que les transferts) est déjà vrai ici. **L'espace en relatif PC est
-tranché le 2026-11-21** (ruling D46, `CHANGELOG` (ninth)) : M68000PRM-1992
-§2.2.11 [B] donne l'espace programme, comme NeoST ; ce cœur y lit désormais
-sur 68000/68010. Reste le 68020/68030 (même règle de famille, voir
-§ Justesse 68030) ; le 68040 est juste en données (MC68040UM §8.4.6.7).
+espace que les transferts) est vrai ici aussi depuis le 2026-11-21.
+**L'espace en relatif PC est tranché le 2026-11-21** (ruling D46,
+`CHANGELOG` (ninth) et le suivant) : M68000PRM-1992 §2.2.11 et
+MC68030UM-1989 §2 [B] donnent l'espace programme, comme NeoST ; ce cœur y
+lit du 68000 au 68030, le 68040 est juste en données (MC68040UM §8.4.6.7).
 `ea81c29` (2026-11-12, « le saut d'attente STOP garde la phase du
 68000 ») corrige l'enveloppe de NeoST (`Cpu68k::run` posait l'horloge
 sur une échéance impaire pendant un STOP), pas Moira. Sans objet ici :
@@ -457,16 +457,6 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
 
 ### Justesse 68030, 68020 et 6888x
 
-- [ ] **Lectures d'opérande en relatif PC en espace programme sur 68020/68030.**
-  M68000PRM-1992 §2, §2.2.11 [B] les classe en références programme ; le
-  68000/68010 suit depuis le 2026-11-21 (ruling D46), le 68040 est juste en
-  données (MC68040UM-1993 §8.4.6.7). Ici `readM` lit encore en données :
-  le journal d'accès 030 (`mmuRead`), la substitution de résultat sur RTE
-  (`mmuSubstitutePlain020`, clé sur l'espace données) et les TT/FCL du
-  PMMU en dépendent. Premier pas : passer le 020/030 en programme et
-  compter ce que `sst68030` et ses corpus déplacent ; MC68030UM-1989 à
-  citer pour la classification propre au 030.
-
 - [ ] **Relever le cycle d'opérande d'un champ de bits de trois octets.**
   Le MC68030UM-1989 § 11.6.14 compte un seul cycle d'opérande sous cinq
   octets et le bus 020/030 a un SIZ de trois octets ; le cœur et l'oracle
@@ -785,6 +775,16 @@ profil temporel reproductible et se mesure en ABBA intra-binaire,
 empreintes identiques. Une règle 68k commune vit dans l'IR ou le coût
 partagé, jamais dans un émetteur.
 
+- [ ] **Lecture d'opérande en relatif PC native en espace programme sur
+  68030.** Depuis le 2026-11-21 (ruling D46, `CHANGELOG` (eleventh)), une
+  instruction 030 qui lit en `(d16,PC)`/`(d8,PC,Xn)` reste à l'interprète
+  (`JitIr.h withhold030ProgramOperands`) : les chemins natifs
+  (`pomJitReadData`, fenêtre DTLB) traduisent en espace données. Coût
+  mesuré : +3,8 % sur `lcii_boot_etalon` en x64 (ABBA quatre paires,
+  binaires HEAD/nouveau, même cœur), l'interprète inchangé. Piste : un
+  thunk en espace programme (FC 2/6, `mmuPcOperand`) que les deux
+  émetteurs prennent pour ces lectures, sans la fenêtre données. *La jambe
+  a64 : Bloqué : hôte AArch64.*
 - [ ] **Re-référencer les tables de performance des deux hôtes sur
   l'arbre courant.** Les empreintes de référence de `POM68K_JIT.md`
   (M4 du 2026-08-23, x86-64 du 2026-08-10) ne sont plus reproductibles
