@@ -26,6 +26,11 @@
 //
 // No network access and no ROM: the dumps are the catalogue's rows, never
 // their bytes. Captures land beside the binary as gui_roms-*.ppm.
+//
+// `gui_rom_window_test --live` is the one exception, and is not a gate: it
+// clicks « Download missing for Macintosh Plus » with the real transport —
+// the system curl against archive.org and RetroBIOS — into a temporary
+// tree, and holds the window to what the servers answered. Run by hand.
 
 #define POM68K_IMGUI_HEADLESS_HOOKS
 #include "ImGuiHeadless.h"
@@ -149,9 +154,64 @@ struct HeldFetch {
     }
 };
 
+// The window against the real servers. Nothing is faked: the library's
+// own curl transport, the catalogue's SHA-256 gate, the real rescan.
+int live() {
+    std::printf("gui_rom_window_test --live - a real download, driven from the window\n");
+    headless::Context ui(1024, 768);
+    const fs::path base = fs::temp_directory_path() /
+        ("pom68k-rom-live-" + std::to_string(Clock::now().time_since_epoch().count()));
+    fs::create_directories(base / "work");
+    {
+        GuiRomState st;
+        roms::RomSearch confined;            // no executable dir: this host's own
+        confined.workingDir = base / "work"; // roms/ must not answer for the servers
+        st.search = confined;
+        st.showWindow = true;
+        auto draw = [&] { drawRomWindow(st, SnapMachine::Plus); };
+        ui.frame(draw);
+        check(settle(ui, st, draw) && st.scanned, "the empty tree is scanned");
+        std::string why;
+        check(roms::romFetchAvailable(&why), "a download is possible on this host (curl)");
+        const headless::Item* button = ui.findContaining("Download missing for Macintosh Plus");
+        check(button != nullptr && ui.clickId(button->id, draw) && st.job != nullptr,
+              "clicking the button starts the download, off the frame");
+        const auto until = Clock::now() + std::chrono::minutes(5);
+        while (st.job && Clock::now() < until) {
+            ui.frame(draw);
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+        ui.frame(draw);
+        ui.frame(draw);
+        check(!st.job && st.fetched.has_value(), "the download finishes and reports");
+        if (st.fetched) {
+            const roms::FetchResult& r = *st.fetched;
+            std::printf("    summary: %s\n    archive: %s\n    saved %d (archive %d, RetroBIOS %d), failed %d\n",
+                        r.summary.c_str(), r.archiveError.empty() ? "ok" : r.archiveError.c_str(),
+                        r.saved, r.fromArchive, r.fromRetroBios, r.failed);
+            for (const roms::FetchItem& it : r.items)
+                std::printf("    %-34s %s %s\n", it.dump ? it.dump->label : "?",
+                            it.ok ? it.source.c_str() : "FAILED", it.ok ? "" : it.error.c_str());
+            check(r.saved >= 1, "at least the Plus ROM was installed");
+        }
+        bool plusVerified = false;
+        for (const roms::RomStatus& row : st.rows)
+            if (row.dump && roms::romUsedBy(*row.dump, "plus") &&
+                row.dump->kind == roms::RomKind::MachineRom)
+                plusVerified = row.state == roms::RomState::Verified;
+        check(plusVerified, "the rescan shows the Plus ROM Verified (SHA-256 of the installed file)");
+        capture(ui, "roms-live");
+    }
+    std::error_code ec;
+    fs::remove_all(base, ec);
+    std::printf("gui_rom_window_test --live: %s\n", gFails ? "FAILED" : "ok");
+    return gFails ? 1 : 0;
+}
+
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
+    if (argc > 1 && std::string(argv[1]) == "--live") return live();
     std::printf("gui_rom_window_test - the ROM Status window, headless\n");
     headless::Context ui(1024, 768);
 

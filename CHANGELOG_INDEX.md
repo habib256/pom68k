@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 865 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 866 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -10,7 +10,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 114 |
 | [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 163 |
-| [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 37 |
+| [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 38 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 32 |
 | [Sound](#sound) | 14 |
@@ -346,6 +346,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-10-19 (sixth)** — [The Jaws PowerBook 140 reaches Finder with PMU input and raw state replay](CHANGELOG.md#2026-10-19-pb140-jaws)
 - **2026-10-19 (third)** — [PowerBook 150 boots its ROM-resident IDE driver; PG&E replies must precede completion](CHANGELOG.md#2026-10-19-pb150-jedi-adb)
 - **2026-11-07 (sixteenth)** — [The Quadra 605 recipe reaches the Quadra 630 and the Quadra 700/900/950; the Centris refuses it — its PIC1654S ADB outcome depends on where the slices fall](CHANGELOG.md#2026-11-07-040-siblings-deadline)
+- **2026-11-21 (fifth)** — [The PG&E reports its firmware; the GUI smoke's frame budget was a host-load race; a real download driven from the window](CHANGELOG.md#2026-11-21-pge-reported-smoke-budget)
 
 ## Storage — SCSI, IWM, SWIM, media
 

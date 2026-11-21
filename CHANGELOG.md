@@ -619,6 +619,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-21 (fifth) — The PG&E reports its firmware; the GUI smoke's frame budget was a host-load race; a real download driven from the window](#2026-11-21-pge-reported-smoke-budget)
 - [2026-11-21 (third) — The LC 580 names its own ROM; four things the ROM catalogue's first day left open](#2026-11-21-lc580-own-rom)
 - [2026-11-21 (third) — The release recut once more, for two comment lines](#2026-11-21-release-recut-comments)
 - [2026-11-21 (second) — The release recut with the 68020 cache on, and merged with the night's ROM catalogue work](#2026-11-21-release-with-icache)
@@ -1427,6 +1428,48 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-21-pge-reported-smoke-budget"></a>
+## 2026-11-21 (fifth) — The PG&E reports its firmware; the GUI smoke's frame budget was a host-load race; a real download driven from the window
+
+Three items the two previous ROM entries listed as open or not proven.
+
+**The GUI smoke.** `gui_smoke_test` failed once at the end of a loaded tier
+on 2026-11-20 and passed 48 times alone. The saved log gives the cause: 120
+frames, the budget after which the scenario closes when no save has been
+requested yet. The engine switch it waits for is done by the machine
+thread; an idle run reaches the save in about 80 frames, and a host busy
+with a build lets the GUI thread draw 120 before the switch lands. The frame
+budget now also requires 20 s of host time (60 s once a save is requested).
+This is gate scaffolding, not machine time.
+
+**The PG&E.** `MscMemory` loaded `roms/pge/pge_boot.bin` and said so on
+stderr only, so the Abstraction Levels row was static and a Duo without the
+dump looked like any other. It now reports to the session's `lle::Registry`
+like the M50753 boards do, honours an explicit `pmu` firmware path instead
+of ignoring it, and a missing dump is `Why::MissingRequired`: no substitute
+exists, the device does not run, and the session cannot qualify as LLE.
+`duo230_boot_etalon` and `pb150_boot_etalon` pass with the dump present.
+
+**The FSAVE BUSY image.** The private payload of the $B4/$D4 frame starts
+with a marker so FRESTORE can tell its own image from an opaque hardware
+frame. FSAVE writes `$4D4F4952`; FRESTORE also resumes the marker written
+before this date, so a state saved across a suspended operation keeps its
+result. `fpu_sanity` pins the new bytes. The Moira release recut the same
+day (from `203c5d15`) predates this and carries the old marker.
+
+**A download from the window, against the real servers.**
+`gui_rom_window_test --live` (run by hand, not a gate) clicks « Download
+missing for Macintosh Plus » with the library's own curl transport into an
+empty temporary tree. Result on this date: archive.org refused the archive
+(curl exit 22 — the `pom68k_firm` item does not exist yet), the Plus ROM
+came from RetroBIOS at the pinned commit, passed the catalogue's SHA-256 and
+the rescan showed it Verified. The first attempt taught the harness
+something: with the default search the host's own `roms/` answered through
+the executable directory and the button was greyed.
+
+Asset-free tier 212 / 212 on x86-64 after these changes. Still unbuilt: the
+MSVC path, outside `release.yml`.
 
 <a id="2026-11-21-lc580-own-rom"></a>
 ## 2026-11-21 (third) — The LC 580 names its own ROM; four things the ROM catalogue's first day left open
