@@ -269,10 +269,10 @@ new bus. Backlog entries: `TODO.md` § Nouvelles machines.
 Two things worth knowing about that table:
 
 - **The IOP was one brick that unlocked three machines, and all three are in.**
-  The 65C02 core landed 2026-08-01 as `src/R65c02.*` — vendored from **POM2's
-  `M6502`** (CMOS mode + full Rockwell RMB/SMB/BBR/BBS), *not* the POMIIGS
-  `CPU65816` this doc first designated: 65816 emulation mode lacks the Rockwell
-  bit ops MAME's R65C02 PIC core has (`applepic.h:9`).
+  The 65C02 core landed 2026-08-01 as `src/R65c02.*` — reduced from **the
+  author's own `M6502`** (CMOS mode + full Rockwell RMB/SMB/BBR/BBS), *not*
+  the POMIIGS `CPU65816` this doc first designated: 65816 emulation mode
+  lacks the Rockwell bit ops MAME's R65C02 PIC core has (`applepic.h:9`).
 - **The AV DSP is not the AV boot blocker.** The DSP3210 is an *offload*
   engine (audio, speech, telecom/GeoPort, video accel) — per the AV DSP FAQ it
   is not required to boot Mac OS or run the Finder. Stub it, as POM68K already
@@ -398,7 +398,7 @@ is left, in return-on-effort order:
 5. **AV boot without the DSP** — the AV I/O complex (video / Curio / MACE /
    codec) at functional accuracy, DSP stubbed.
 6. **Deferred / separate frontiers**: M50753 portables (need a 740/6502 core,
-   borrowable from the POMIIGS/POM2 siblings), full AV DSP fidelity (no
+   borrowable from POMIIGS or the author's 6502 core), full AV DSP fidelity (no
    reusable core; MAME itself doesn't run it), and full 68040 cache/FPSP
    accuracy.
 

@@ -2,9 +2,9 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
 // CrtParams -- the settings of the CRT "glass" pass (CrtEffectStack.h), and
-// the named presets. Ported from NeoST (gui/CrtParams.h, itself a subset of
-// POM2's NtscParams) on 2026-09-16; field names kept so the shader's uniform
-// wiring stays identical across the three emulators.
+// the named presets. Ported from NeoST (gui/CrtParams.h) on 2026-09-16;
+// field names kept so the shader's uniform wiring stays identical across
+// the emulators that share it.
 //
 // Defaults are a "visibly neutral" look: flat geometry, identity BCS, light
 // scanlines and barrel. A preset overwrites them; the settings window then
@@ -25,7 +25,7 @@ struct CrtParams {
     // against a 4-tap blur), <0.5 softens.
     float sharpness   = 0.5f;
     // Phosphor persistence: 0 = none, 0.98 = near-infinite (per-frame
-    // retention factor, POM2's "punchy" model).
+    // retention factor, not a time constant in seconds).
     float persistence = 0.4f;
     // Pure post effects.
     float scanlines   = 0.25f;  // 0 = off, 1 = black between every line

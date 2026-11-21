@@ -1,12 +1,12 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2000-2026 — GPLv3 (see LICENSE)
-// Portions Copyright (C) 2012 John D. Corrado (POM2 M6502 lineage)
+// Portions Copyright (C) 2012 John D. Corrado (6502 core lineage)
 //
-// R65C02 core body — vendored from POM2 `src/M6502.cpp` (see R65c02.h for
-// the vendoring contract: CMOS-only, bus-by-callback, diagnostics
-// stripped). Cycle comments cite MAME `m6502/ow65c02.lst` (CMOS) — POM2
-// carries the full derivation for each count; keep the two files
-// diffable when pulling fixes either way.
+// R65C02 core body — reduced from the author's own 6502/65C02 core
+// `M6502.cpp` (see R65c02.h for the vendoring contract: CMOS-only,
+// bus-by-callback, diagnostics stripped). Cycle comments cite MAME
+// `m6502/ow65c02.lst` (CMOS); keep the body diffable against the parent
+// core when pulling fixes either way.
 
 #include "R65c02.h"
 
@@ -307,9 +307,9 @@ void R65c02::ADC()
 
     if (statusRegister & Status::D)
     {
-        // CMOS decimal ADC — POM2 carries the full silicon derivation
-        // (invalid-BCD nibble repack, carry-out ≥ $100, high-sum V);
-        // validated there against Tom Harte `wdc65c02/v1/69`.
+        // CMOS decimal ADC (invalid-BCD nibble repack, carry-out ≥ $100,
+        // high-sum V); validated in the parent core against Tom Harte
+        // `wdc65c02/v1/69`.
         if (!((Op1 + Op2 + (statusRegister & Status::C ? 1 : 0)) & 0xFF))
             statusRegister |= Status::Z;
         else
@@ -999,7 +999,7 @@ void R65c02::WAI()
     // `ow65c02.lst:797-803`): the wake is unconditional on the line, only
     // the vectoring honours I. Modelled as "consume 3 cycles, fall
     // through": the next step() vectors (NMI / IRQ+I=0) or continues at
-    // PC+1 (IRQ+I=1). See POM2 for the full derivation.
+    // PC+1 (IRQ+I=1).
     cycles += 2;
 }
 
@@ -1387,7 +1387,7 @@ void R65c02::step()
 
     // NMI outranks IRQ. The 7-cycle entry sequence is captured before
     // executeOpcode() reseeds `cycles`, then folded back in.
-    // Owned deviation (inherited from POM2, full derivation there):
+    // Owned deviation (inherited from the parent core):
     // interrupt sampling is instruction-granular, so an IRQ pending
     // across a CLI is taken one instruction earlier than real silicon.
     int interruptCycles = 0;

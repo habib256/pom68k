@@ -2,8 +2,7 @@ POM68K — Drive mechanical sound samples
 =======================================
 
 Two sample sets from the MAME project drive POM68K's FloppySound device
-(a port of MAME's src/devices/imagedev/floppy.cpp::floppy_sound_device,
-via POM2's FloppySoundDevice):
+(a port of MAME's src/devices/imagedev/floppy.cpp::floppy_sound_device):
 
   35_*.wav   — 3.5" drives: voices the Sony MFD-51W / MFD-75W
                (Plus / Mac II / LC II / Quadra internal drives)
@@ -13,8 +12,7 @@ via POM2's FloppySoundDevice):
 Source
 ------
 https://github.com/mamedev/mame/tree/master/samples/floppy
-(copied 2026-07-23 from POM2's roms/floppy_samples, itself fetched
-2026-05-14 from master)
+(fetched 2026-05-14 from master; copied into this tree 2026-07-23)
 
 License
 -------

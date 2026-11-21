@@ -183,20 +183,20 @@ shared `$420DBFF3` ROM, so any other value — `q950` included — leaves q700
 
 ---
 
-## 4. The 65C02 core — POM2's `M6502`, not POMIIGS's `CPU65816`
+## 4. The 65C02 core — the author's `M6502`, not POMIIGS's `CPU65816`
 
 An earlier revision of this file designated POMIIGS `CPU65816` (emulation
 mode). **That was wrong**: MAME's PIC core is an **R65C02** (`applepic.h:9`)
 with the Rockwell bit ops `RMB/SMB/BBR/BBS`, and 65816 emulation mode does not
-have them (those opcode columns are `ORA [dp]` etc. on a 65816). The sibling
-**POM2 `M6502`** has a runtime CMOS 65C02 mode including the full Rockwell set,
+have them (those opcode columns are `ORA [dp]` etc. on a 65816). The author's
+own **`M6502`** has a runtime CMOS 65C02 mode including the full Rockwell set,
 cycle counts cited against MAME `ow65c02.lst`, and two ready test images.
 Vendored as `src/R65c02.*`; the only couplings to strip were
 `memory->memRead/memWrite` (→ `read8`/`write8` callbacks, the `M68hc05`
 pattern) and four Apple II-isms (`advanceCycles`, `getCycleCounter`,
 `iieModeFlags`, `busStateSummary`).
 
-**The §6 WAI/STP question is CLOSED.** POM2 implements the WDC halts
+**The §6 WAI/STP question is CLOSED.** `M6502` implements the WDC halts
 **WAI/STP** (`$CB/$DB`) where MAME's `r65c02` treats them as NOPs. A capstone
 sweep over both uploaded firmware blobs finds **zero** `$CB/$DB`, so the
 personality is unobservable on this board and the WDC behaviour is kept —
@@ -210,7 +210,7 @@ image to its `$24F1` success trap, since that image tests WAI/STP
 
 | M | Deliverable | Gate | The fact it pinned |
 |---|---|---|---|
-| M1 | `src/R65c02.*` vendored from POM2 `M6502` | `r65c02_test` (Klaus's 65C02 extended image → `$24F1`, plus the base 6502 functional image; `tests/assets/`, label `unit`, no machine assets) | CMOS + Rockwell set required; WAI/STP kept (§ 4) |
+| M1 | `src/R65c02.*` reduced from the author's `M6502` | `r65c02_test` (Klaus's 65C02 extended image → `$24F1`, plus the base 6502 functional image; `tests/assets/`, label `unit`, no machine assets) | CMOS + Rockwell set required; WAI/STP kept (§ 4) |
 | M2 | `src/ApplePic.*` — host window, shared RAM + auto-increment, status/control, timer, 2-channel DMA, int mask/flags, GPIO, bypass | `applepic_test` (uploads a hand-assembled 65C02 program, then proves reset-release, mailboxes both ways, timer one-shot + continuous cadence, DMA loopback, bypass pass-through) | 32 KB RAM, not 2 KB; timer/DMA phase counted in PIC clocks with remainders carried |
 | M3 | `src/IIfxMemory.*` + platform loop: map, OSS, BIU stub, the `$50024000` BERR window, VIA1/RTC/ASC/SWIM1/SCC, ROM overlay | `iifx_post_etalon` | The IOP firmware uploads are byte-identical to the system ROM — verify that before suspecting anything else |
 | M4 | SCSIDMA | the Mac OS subset folded into M3 (`IIfxMemory.cpp:234+`), no separate class; true DMA + the restartable handshake stall stay deferred as A/UX-only, and `IIfxMemory.h:308-309` still calls that remainder "M4" | Mac OS needs only the 5380 + soft handshake; `$00-$03` must fall through to reg 0 with no DRQ |

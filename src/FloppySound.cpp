@@ -14,8 +14,7 @@ namespace {
 // MAME's floppy samples aren't designed for seamless looping — every
 // looping clip has a 0.4-2.7% amplitude jump between last and first
 // sample, an audible click each loop (~200 ms cadence). Blend the last
-// ~3 ms into the first at load time so the wraparound is continuous
-// (POM2 applyLoopCrossfade).
+// ~3 ms into the first at load time so the wraparound is continuous.
 void applyLoopCrossfade(std::vector<float>& data) {
     if (data.size() < 8) return;
     const size_t n = data.size();

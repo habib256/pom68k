@@ -291,7 +291,7 @@ if(POM68K_COVERAGE AND NOT MSVC)
     message(STATUS "POM68K coverage: ON (${CMAKE_CXX_COMPILER_ID})")
 endif()
 
-# ─── Optional sanitizer build (POM2/POMIIGS convention) ───────────────────
+# ─── Optional sanitizer build (POMIIGS convention) ────────────────────────
 set(POM68K_SANITIZE "" CACHE STRING "Build with -fsanitize=<value>. Empty = off.")
 if(POM68K_SANITIZE AND NOT MSVC)
     add_compile_options(-fsanitize=${POM68K_SANITIZE} -fno-omit-frame-pointer -g)

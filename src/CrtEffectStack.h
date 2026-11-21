@@ -6,7 +6,7 @@
 // curve, scanlines, shadow mask, vignette, luminance gain and phosphor
 // persistence, in one FBO pass rendered at output resolution so scanlines
 // and mask are anti-aliased analytically (fwidth) without moiré. Ported from
-// NeoST (gui/CrtEffectStack, itself from POM2) on 2026-09-16; the shader is
+// NeoST (gui/CrtEffectStack) on 2026-09-16; the shader is
 // the same, the GL binding is POM68K's 3.x core context (GlEntryPoints.h).
 //
 // Opt-in and safe: when the shader does not compile or the entry points are

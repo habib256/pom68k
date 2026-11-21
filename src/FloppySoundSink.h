@@ -4,8 +4,8 @@
 // Header-only abstract interface so SonyDrive / ScsiDisk can notify a
 // mechanical-sound consumer without dragging the miniaudio-based
 // FloppySound TU into every test/headless build. Concrete
-// implementation: FloppySound. Pattern: POM2 FloppySoundSink.h (itself
-// after MAME floppy.cpp floppy_sound_device).
+// implementation: FloppySound. Pattern: after MAME floppy.cpp
+// floppy_sound_device.
 
 #pragma once
 #include <cstdint>
@@ -13,7 +13,7 @@
 class FloppySoundSink {
 public:
     // step() stamps carry **emulated** microseconds so cadence
-    // classification survives turbo (POM2 lesson: wall-clock audio
+    // classification survives turbo (wall-clock audio
     // frames see gap=0 for every step of a turbo'd seek sweep).
     // kNoStamp asks the consumer to fall back to wall-clock cadence —
     // used by callers with no emulated clock in reach (ScsiDisk).

@@ -116,7 +116,7 @@ jobs:
           if-no-files-found: warn
 
   # ── Sanitizers ────────────────────────────────────────────────────────
-  # POM68K_SANITIZE existed since the POM2 days and NO job had ever used it
+  # POM68K_SANITIZE had long existed and NO job had ever used it
   # (TODO.md section 0.B item 2, from the 2026-08-26 review). This is that job.
   #
   # Measured on the dev host (aarch64/macOS, clang) before being written here,

@@ -730,8 +730,7 @@ supported platform/firmware combinations.
 | [`src/jit/POM68K_JIT.md`](src/jit/POM68K_JIT.md) | JIT design, conformance evidence and performance journal |
 | [`docs/`](docs/) | Subsystem research and implementation notes |
 
-POM68K is a sibling of POMIIGS and POM2, sharing their architecture and
-conventions.
+POM68K is a sibling of POMIIGS, sharing its architecture and conventions.
 
 ## License
 

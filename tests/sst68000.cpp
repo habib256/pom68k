@@ -5,7 +5,7 @@
 // Validates our vendored Moira build (PRECISE_TIMING, address errors, no
 // Musashi mimicry) against 1M+ single-instruction vectors on a bare flat
 // 16 MB bus: registers, SR, USP/SSP, PC + prefetch queue, touched RAM and
-// exact cycle counts. Same hand-rolled JSON scanner as POMIIGS/POM2.
+// exact cycle counts. Same hand-rolled JSON scanner as POMIIGS.
 // This JSON format is the planned exchange format for the 68030 oracle
 // phase (TODO.md § Phase 2) — this harness is its 68000 prototype.
 //
@@ -116,7 +116,7 @@ private:
     }
 };
 
-// ── JSON scanner (POM2/POMIIGS pattern — decimal values only) ────────────
+// ── JSON scanner (POMIIGS pattern — decimal values only) ─────────────────
 inline void skipWs(const char*& p) { while (*p==' '||*p=='\t'||*p=='\n'||*p=='\r') ++p; }
 inline bool eat(const char*& p, char c) { skipWs(p); if (*p==c) { ++p; return true; } return false; }
 inline uint64_t parseUint(const char*& p) { skipWs(p); uint64_t v=0; while (*p>='0'&&*p<='9'){v=v*10u+uint64_t(*p-'0');++p;} return v; }

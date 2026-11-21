@@ -1,27 +1,27 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2000-2026 — GPLv3 (see LICENSE)
-// Portions Copyright (C) 2012 John D. Corrado (POM2 M6502 lineage)
+// Portions Copyright (C) 2012 John D. Corrado (6502 core lineage)
 //
 // ── R65C02 CPU core (Apple PIC IOP brick, docs/IOP_BRINGUP.md M1) ────────
 // The 65C02 inside the Apple 343S1021 PIC (Mac IIfx / Quadra 900-950 I/O
 // processors — MAME `machine/applepic.h:9` instantiates R65C02). The
 // portable M50753 uses the distinct Mitsubishi interpreter in M740.h.
 //
-// Vendored from the sibling POM2's `M6502` (src/M6502.cpp, GPL, same
-// author) with two deliberate reductions — diff against POM2 to pull
-// upstream fixes:
-//   * CMOS-only. POM2's runtime NMOS/CMOS switch and the NMOS opcode
+// Taken from the author's own 6502/65C02 core (`M6502`, GPL) with two
+// deliberate reductions — diff against that core to pull upstream
+// fixes:
+//   * CMOS-only. The parent's runtime NMOS/CMOS switch and the NMOS opcode
 //     remap are gone; POM68K has no NMOS 6502 target. The dispatch table
 //     IS the 65C02 table, Rockwell RMB/SMB/BBR/BBS included (cycle costs
 //     cited against MAME `ow65c02.lst` in the .cpp).
-//   * Bus by callback. POM2's `Memory*` becomes `read8`/`write8`
+//   * Bus by callback. The parent's `Memory*` becomes `read8`/`write8`
 //     std::function members (the `M68hc05` pattern): the PIC maps RAM +
 //     its own registers, the core does not care.
 // Apple II diagnostics (PC-trace ring, BRK dumps, env-var traps) are
 // stripped — they held process-global state that two PIC instances would
 // have raced on.
 //
-// WAI/STP ($CB/$DB) are kept from POM2 (WDC behaviour, Klaus-gated).
+// WAI/STP ($CB/$DB) kept from the parent core (WDC behaviour, Klaus-gated).
 // MAME's r65c02 decodes them as 1-cycle NOPs. The M2 personality question
 // is CLOSED (docs/IOP_BRINGUP.md §4, "§6 WAI/STP question is CLOSED"): a
 // capstone sweep over BOTH shipped IOP firmware blobs finds zero $CB/$DB,

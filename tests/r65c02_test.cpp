@@ -15,9 +15,9 @@
 //
 // Both images live in tests/assets/ (Klaus's suite is GPL test code, not
 // a ROM — committable, unlike everything under roms/). Success addresses
-// were derived in POM2 by walking each .lst for the unique non-`trap`
-// "jmp *"; the harness convention (trap = JMP-to-self detected as two
-// consecutive identical PCs) is inherited from POM2's gates too.
+// were derived by walking each .lst for the unique non-`trap` "jmp *";
+// the harness convention (trap = JMP-to-self detected as two consecutive
+// identical PCs) is shared with the parent 6502 core's gates.
 //
 // Reference: https://github.com/Klaus2m5/6502_65C02_functional_tests
 

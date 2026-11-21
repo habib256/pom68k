@@ -4,9 +4,9 @@
 // FloppySound — mechanical sounds for the Sony 3.5" drives and (as a
 // coarse proxy) the SCSI hard disks: head step/seek, spindle spin-up /
 // loop / spin-down, insert-eject click. Port of MAME's
-// `floppy.cpp::floppy_sound_device` via POM2's FloppySoundDevice,
-// sample-based playback from MAME's `samples/floppy/` WAV set
-// (BSD-3-Clause; see assets/floppy_samples/README.txt).
+// `floppy.cpp::floppy_sound_device`, sample-based playback from MAME's
+// `samples/floppy/` WAV set (BSD-3-Clause; see
+// assets/floppy_samples/README.txt).
 //
 // Threading: the emulator (or GUI) thread posts events through the
 // FloppySoundSink API into a mutex-guarded command queue; MacAudioHost's
@@ -23,7 +23,7 @@
 //     kNoStamp callers (ScsiDisk).
 //   * kSeekTimeoutMs without steps → exit seek, land with `step_1_1`.
 //
-// Additions over POM2: setAutoMotorOff() — the HDD proxy has no real
+// Addition over MAME: setAutoMotorOff() — the HDD proxy has no real
 // motor line, so the device retires its own spin loop after an idle
 // window; step events keep it alive.
 
@@ -131,7 +131,8 @@ private:
     bool audioMotorOn_ = false;
     bool audioWithDisk_ = false;
     // Wall-clock hold-off before spin-down so turbo'd emulated delays
-    // still leave an audible whirr (POM2 lesson).
+    // still leave an audible whirr: at high turbo a 1 s emulated spin-down
+    // delay lasts a few wall-clock ms, too short to hear the loop.
     bool pendingMotorOff_ = false;
     uint64_t motorOffDeadline_ = 0;
     int startIdx_ = -1;                       // spin_start one-shot
@@ -168,8 +169,11 @@ private:
     void drainCommands();
     static int pickSeekSample(double rateMs);
 
-    // Thresholds (ms) — see POM2 FloppySoundDevice.h for the rationale;
-    // kSeekTimeoutMs must stay strictly greater than kSeekJoinMs.
+    // Thresholds (ms). kSeekJoinMs matches the slowest seek sample
+    // pickSeekSample() supplies (20 ms cadence, usable up to ~50 ms).
+    // kSeekTimeoutMs must stay strictly greater than kSeekJoinMs, else a
+    // steady stream at the max joined cadence trips the timeout between
+    // steps and plays a spurious mid-seek landing click.
     static constexpr double kSeekJoinMs = 50.0;
     static constexpr double kSeekTimeoutMs = 100.0;
     static constexpr double kMotorOffHoldMs = 800.0;

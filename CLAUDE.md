@@ -239,7 +239,7 @@ hidden**: state what would settle it.
 // [F] Unknown: tuned until MacPaint stopped tearing. Settled by: a capture.
 ```
 
-This hierarchy is shared by every emulator from the same author (POM2, POM1,
+This hierarchy is shared by every emulator from the same author (POM1,
 POMIIGS, POM68K, POMPPC, NeoST, RasterSystemGG). The previous ranking here put
 MAME above *Guide to the Macintosh Family Hardware*; that was backwards.
 
