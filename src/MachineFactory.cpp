@@ -4,6 +4,7 @@
 #include "MachineFactory.h"
 
 #include "FixtureStore.h"
+#include "RomCatalog.h"
 
 #include <cctype>
 #include <cstdlib>
@@ -136,6 +137,19 @@ MachineFactory::findRomBySignature(const std::string& signature, bool refresh) {
     const std::lock_guard<std::mutex> lock(gSignatureMutex);
     gSignatureCache[signature] = result;
     return result;
+}
+
+std::string MachineFactory::findProfileRom(const MachineProfile& profile, bool refresh) {
+    std::string found = findPath(profile.romPath);
+    if (found.empty() && profile.romCrc32)
+        found = findRomBySignature(profile.romCrc32, refresh);
+    for (const roms::RomDump& d : roms::kRomDumps) {
+        if (!found.empty()) break;
+        if (d.kind == roms::RomKind::MachineRom && roms::romUsedBy(d, profile.slug) &&
+            !roms::romIsDefaultFor(d, profile))
+            found = findRomBySignature(d.checksum, refresh);
+    }
+    return found;
 }
 
 const MachineProfile& MachineFactory::selectProfile(

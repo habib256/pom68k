@@ -11,9 +11,9 @@
 // check holds each one to it:
 //   * `kMachineProfiles` (MachineCatalog.h) decides which ROM a profile
 //     boots: `validRomCatalog()` below fails the BUILD unless every profile
-//     has exactly one required machine ROM and the ROM its menu entry
-//     looks for (`romCrc32`, or `romPath` for the Plus ROMs that dispatch on
-//     size alone) is catalogued.
+//     has exactly one default machine ROM: the required row that lists it
+//     under the identity its menu entry looks for (`romCrc32`, or `romPath`
+//     for the Plus ROMs that dispatch on size alone).
 //   * `assets.lock` is the identity list of the private asset set:
 //     `rom_catalog_test` requires its firmware / machine-rom /
 //     machine-rom-variant / declaration-rom rows and this table to agree
@@ -223,12 +223,12 @@ inline constexpr RomDump kRomDumps[] = {
     {.id = "rom-06684214", .label = "Quadra 630 06684214", .kind = RomKind::MachineRom, .need = RomNeed::Required,
      .path = "roms/1MB ROMs/1994-07 - 06684214 - LC,Quadra,Performa 630.ROM", .alsoAt = "roms/mame/macqd630/06684214.bin", .size = 1048576,
      .sha256 = "c1098a03786667c8bf888792590ce53b47f65bf44a75e11c24718983e1d25af8", .crc32 = 0x1735E7A5, .checksum = "06684214",
-     .profiles = "q630", .absent = "This machine cannot start.", .rootRelative = false,
+     .profiles = "q630,lc580", .absent = "The Quadra 630 cannot start; the LC 580 starts on its own 064DC91D.", .rootRelative = false,
      .retroBios = "bios/Apple/Macintosh/mac.rom", .retroBiosMember = nullptr},
     {.id = "rom-064dc91d", .label = "Macintosh LC 580 064DC91D", .kind = RomKind::MachineRom, .need = RomNeed::Required,
      .path = "roms/1MB ROMs/1995-04 - 064DC91D - LC, Performa 580 & Performa 588.ROM", .alsoAt = "roms/mame/maclc580/064dc91d.bin", .size = 1048576,
      .sha256 = "bcf86532d70913c1d4fc487416eedbe510fb11ce3443e33c350ceeb3873019ca", .crc32 = 0x59E6960F, .checksum = "064DC91D",
-     .profiles = "lc580", .absent = "This machine cannot start.", .rootRelative = false,
+     .profiles = "lc580", .absent = "This machine cannot start, unless the Quadra 630's 06684214 is present.", .rootRelative = false,
      .retroBios = nullptr, .retroBiosMember = nullptr},
     {.id = "rom-ecfa989b", .label = "PowerBook Duo ECFA989B", .kind = RomKind::MachineRom, .need = RomNeed::Required,
      .path = "roms/1MB ROMs/1992-10 - ECFA989B - Powerbook 210 & 230 & 250.ROM", .alsoAt = "", .size = 1048576,
@@ -385,6 +385,16 @@ constexpr bool romUsedBy(const RomDump& d, std::string_view slug) {
     return listHas(d.profiles, slug, ',');
 }
 
+// True when `d` is the machine ROM `p` boots by default: the required row
+// that lists it under the identity its menu entry looks for.
+constexpr bool romIsDefaultFor(const RomDump& d, const MachineProfile& p) {
+    if (d.kind != RomKind::MachineRom || d.need != RomNeed::Required ||
+        !romUsedBy(d, p.slug))
+        return false;
+    return p.romCrc32 ? std::string_view(p.romCrc32) == d.checksum
+                      : std::string_view(p.romPath) == d.path;
+}
+
 // Every dump `slug` uses, in catalogue order (machine ROMs first).
 inline std::vector<const RomDump*> romDumpsForProfile(std::string_view slug) {
     std::vector<const RomDump*> out;
@@ -450,7 +460,6 @@ constexpr int profileIndex(const char* s, std::size_t n) {
 } // namespace detail
 
 consteval bool validRomCatalog() {
-    int required[kMachineProfileCount] = {};
     for (std::size_t i = 0; i < kRomDumpCount; ++i) {
         const RomDump& a = kRomDumps[i];
         if (!a.id || !a.label || !a.path || !a.alsoAt || !a.profiles || !a.absent)
@@ -459,7 +468,7 @@ consteval bool validRomCatalog() {
             return false;
         if ((a.kind == RomKind::MachineRom) != (a.checksum != nullptr)) return false;
         if ((a.retroBios == nullptr) && (a.retroBiosMember != nullptr)) return false;
-        // Every slug is a real profile; count required machine ROMs per profile.
+        // Every slug is a real profile.
         const char* s = a.profiles;
         if (!*s) return false;
         while (*s) {
@@ -467,27 +476,21 @@ consteval bool validRomCatalog() {
             while (s[n] && s[n] != ',') ++n;
             const int at = detail::profileIndex(s, n);
             if (at < 0) return false;
-            if (a.kind == RomKind::MachineRom && a.need == RomNeed::Required) ++required[at];
             s += n;
             if (*s == ',') ++s;
         }
     }
-    // Every profile: exactly one REQUIRED machine ROM lists it, and the ROM
-    // its menu entry looks for (`romCrc32` by file-name signature, or
-    // `romPath` for the Plus ROMs) is a catalogued machine ROM. The two may
-    // differ: the LC 580 boots its own 064DC91D by default, while its menu
-    // entry looks for the Quadra 630's 06684214, which MachineFactory also
-    // dispatches to it.
+    // Every profile has exactly one DEFAULT machine ROM: the required row
+    // that lists it and carries the identity its menu entry looks for
+    // (`romCrc32` by file-name signature, or `romPath` for the Plus ROMs).
+    // Other machine ROMs may list the profile too — revisions MachineFactory
+    // dispatches to it as well (the LC 580 on the Quadra 630's 06684214, the
+    // "older" BIOS of [D] MAME's maclc580 set @ mame0287).
     for (std::size_t i = 0; i < kMachineProfileCount; ++i) {
-        const MachineProfile& p = kMachineProfiles[i];
-        if (required[i] != 1) return false;
-        bool menuRomCatalogued = false;
-        for (const RomDump& d : kRomDumps) {
-            if (d.kind != RomKind::MachineRom || menuRomCatalogued) continue;
-            menuRomCatalogued = p.romCrc32 ? detail::same(p.romCrc32, d.checksum)
-                                           : detail::same(p.romPath, d.path);
-        }
-        if (!menuRomCatalogued) return false;
+        int defaults = 0;
+        for (const RomDump& d : kRomDumps)
+            defaults += romIsDefaultFor(d, kMachineProfiles[i]);
+        if (defaults != 1) return false;
     }
     return true;
 }

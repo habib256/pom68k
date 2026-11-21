@@ -43,9 +43,7 @@ bool matchesModel(const MachineProfile& profile, std::string_view query) {
 
 void discoverRom(GuiStartupState& form, bool refresh = false) {
     const MachineProfile& profile = *machineProfile(form.profile);
-    std::string found = app::MachineFactory::findPath(profile.romPath);
-    if (found.empty() && profile.romCrc32)
-        found = app::MachineFactory::findRomBySignature(profile.romCrc32, refresh);
+    const std::string found = app::MachineFactory::findProfileRom(profile, refresh);
     copyPath(form.rom, found.empty() ? profile.romPath : found);
     form.romFound = !found.empty();
     form.ready = false;

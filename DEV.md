@@ -1128,9 +1128,9 @@ them with the code:
     keeps running and writes.
 11. `assets.lock` and `src/RomCatalog.h`: the ROM identity with this
     profile's slug, in both — `tools/verify_assets.py` requires every
-    catalogue profile exactly once among the `machine-rom` rows, the
-    catalogue's `static_assert` requires one required machine ROM per
-    profile, and `rom_catalog_test` requires the two files to agree row for
+    catalogue profile among the `machine-rom` rows, the catalogue's
+    `static_assert` requires one default machine ROM per profile (the
+    required row under the identity `kMachineProfiles` names), and `rom_catalog_test` requires the two files to agree row for
     row. Any new firmware or declaration ROM the board opens gets a row in
     both too.
 
@@ -3501,8 +3501,8 @@ import writes, and its member name in the archive), the other paths the code
 also probes, size, SHA-256, CRC-32, the profiles that use it, what its
 absence costs (`Required` / `Substitute` / `Optional`) and, when RetroBIOS
 carries it, where. It is held to the existing owners rather than standing
-beside them: a `static_assert` against `kMachineProfiles` (one required
-machine ROM per profile, every menu ROM catalogued) and `rom_catalog_test`
+beside them: a `static_assert` against `kMachineProfiles` (one default
+machine ROM per profile: the required row under its menu's identity) and `rom_catalog_test`
 against `assets.lock`, `firmware::kManifest` and the literal paths the
 devices open.
 

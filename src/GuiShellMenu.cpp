@@ -74,9 +74,7 @@ void drawMachineCatalogue(GuiSessionState& state, SnapMachine current) {
         }
         if (!groupOpen) continue;
         const bool isCurrent = profile.snapshot == current;
-        std::string path = app::MachineFactory::findPath(profile.romPath);
-        if (path.empty() && profile.romCrc32)
-            path = app::MachineFactory::findRomBySignature(profile.romCrc32);
+        const std::string path = app::MachineFactory::findProfileRom(profile);
         if (ImGui::MenuItem(profile.label, nullptr, isCurrent,
                             isCurrent || !path.empty()) &&
             !isCurrent) {

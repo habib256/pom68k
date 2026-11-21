@@ -1,9 +1,11 @@
 // POM68K — Macintosh 68k emulator
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 //
-// HLE NuBus: 32-bit slot windows ($90000000 super-slot, $F9000000 16 MB slot),
-// declaration ROM at the top of each populated slot, slot IRQ → VIA2 PA0..5.
-// Functional only — no arbitration or cycle-exact timeouts.
+// NuBus, simplified LLE (docs/LLE_VS_HLE.md § 1.8): 32-bit slot windows
+// ($90000000 super-slot, $F9000000 16 MB slot), declaration ROM at the top of
+// each populated slot, slot IRQ → VIA2 PA0..5. The guest's own Slot Manager
+// and drivers run against the cards; what is not modelled is the bus itself —
+// no arbitration, no cycle-exact timeouts.
 
 #pragma once
 #include <cstdint>

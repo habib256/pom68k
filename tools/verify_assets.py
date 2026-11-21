@@ -113,16 +113,13 @@ def validate_profile_slugs(entries, root: Path) -> None:
         profile
         for entry in entries if entry.role == "machine-rom"
         for profile in entry.profiles.split(","))
+    # A profile may sit on two machine-rom rows: its own ROM, and another
+    # machine's ROM it also starts on (the LC 580 on the Quadra 630's). Which
+    # of them is its default is src/RomCatalog.h's static_assert, not this.
     missing = sorted(slugs - machine_rom_profiles.keys())
-    duplicated = sorted(
-        profile for profile, count in machine_rom_profiles.items() if count != 1)
-    if missing or duplicated:
-        details = []
-        if missing:
-            details.append(f"missing machine ROM: {', '.join(missing)}")
-        if duplicated:
-            details.append(f"multiple machine ROMs: {', '.join(duplicated)}")
-        raise ValueError("MachineCatalog coverage error (" + "; ".join(details) + ")")
+    if missing:
+        raise ValueError("MachineCatalog coverage error (missing machine ROM: "
+                         + ", ".join(missing) + ")")
 
 
 def main() -> int:

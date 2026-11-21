@@ -2,6 +2,7 @@
 // VERHILLE Arnaud — Copyright (C) 2026 — GPLv3 (see LICENSE)
 #include "DartImage.h"
 #include "SonyDrive.h"
+#include <algorithm>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -99,12 +100,14 @@ int main() {
         check(drive.readSector(79, kib == 400 ? 0 : 1, kib == 1440 ? 17 : 7, sector) &&
               sector[0] == data[data.size() - 512], "last physical sector retains archive ordering");
         if (kib != 1440) {
-            std::vector<uint8_t> dc42(84, 0);
+            // Sized once: growing an 84-byte vector by insert() trips GCC 15's
+            // -Warray-bounds in libstdc++ at -O2 without LTO.
+            std::vector<uint8_t> dc42(84 + data.size() + tags.size(), 0);
             dc42[82] = 1;
             dc42::put32(dc42.data() + 64, uint32_t(data.size()));
             dc42::put32(dc42.data() + 68, uint32_t(tags.size()));
-            dc42.insert(dc42.end(), data.begin(), data.end());
-            dc42.insert(dc42.end(), tags.begin(), tags.end());
+            std::copy(data.begin(), data.end(), dc42.begin() + 84);
+            std::copy(tags.begin(), tags.end(), dc42.begin() + 84 + std::ptrdiff_t(data.size()));
             save("dart_image_tmp.image", dc42);
             SonyDrive reference;
             check(reference.insert("dart_image_tmp.image") && physicalTagMatch(drive, reference),

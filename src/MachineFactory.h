@@ -32,6 +32,12 @@ public:
         const std::string& relative, std::string& matched);
     static std::string findPath(const std::string& relative);
     static std::string findRomBySignature(const std::string& signature, bool refresh = false);
+    // The ROM file a profile's menu entry, guide and session start from:
+    // its `romPath`, else a file carrying its `romCrc32`, else one carrying
+    // the checksum of another machine ROM the catalogue lists for it
+    // (RomCatalog.h) — every one of those dispatches to the profile.
+    // Empty when none is present.
+    static std::string findProfileRom(const MachineProfile& profile, bool refresh = false);
     // Drop every cached signature walk (hits and misses alike), so the next
     // lookup sees files installed since: the ROM window calls this after a
     // download or an import (GuiRomWindow.cpp).

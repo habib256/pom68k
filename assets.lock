@@ -4,8 +4,9 @@
 # floppies under disks35/ref/ likewise to disks35/work/.
 # The ROM roles (firmware, machine-rom, machine-rom-variant, declaration-rom)
 # are row for row the ROM catalogue, src/RomCatalog.h (rom_catalog_test).
-# A machine-rom-variant is another revision a profile accepts; the one
-# machine-rom per profile is what it boots by default.
+# A machine-rom-variant is another revision a profile accepts. A machine-rom
+# is some profile's default; it may list a second profile that also starts
+# on it (the LC 580 on the Quadra 630's ROM).
 # role | label | size | sha256 | path | qualified profile slugs
 firmware | Cuda 341s0788 | 4352 | 4bad3d4f18425f96bbbdde55eb0413603dba4910d172ffed7ed4d7c1a34358cc | roms/cuda/341s0788.bin | lc475,lc575,q605
 firmware | Cuda 341s0060 | 4352 | 607890e9ed816be6ca2210620f649ef63816e78d35b4e1e23858b9c8478a2c16 | roms/cuda/341s0060.bin | q630,lc580
@@ -44,7 +45,7 @@ machine-rom | LC 475, LC 575 and Quadra 605 FF7439EE | 1048576 | 9c758473a523ffe
 machine-rom | Centris and Quadra F1A6F343 | 1048576 | 7d9cb8c3bae0e26171adf9f24bedf10bf6371ae3c9bdbcdfd3b94e5350099fb6 | roms/1MB ROMs/1993-02 - F1A6F343 - Quadra, Centris 610,650.ROM | c610,c650,q610,q650,q800
 machine-rom | Quadra 700 and 900 420DBFF3 | 1048576 | c2093476e9c9a7d76973910a91fbfba23ca71163b84eb2623adf8608a6b03ed2 | roms/1MB ROMs/1991-10 - 420DBFF3 - Quadra 700&900 & PB140&170.ROM | q700,q900,pb140,pb170,pb145,pb145b
 machine-rom | Quadra 950 3DC27823 | 1048576 | 7c11d2fce3217df8c70aaa07faea8b9420db561e6414bd4b557a2e72141374a4 | roms/1MB ROMs/1992-03 - 3DC27823 - Quadra 950.ROM | q950
-machine-rom | Quadra 630 06684214 | 1048576 | c1098a03786667c8bf888792590ce53b47f65bf44a75e11c24718983e1d25af8 | roms/1MB ROMs/1994-07 - 06684214 - LC,Quadra,Performa 630.ROM | q630
+machine-rom | Quadra 630 06684214 | 1048576 | c1098a03786667c8bf888792590ce53b47f65bf44a75e11c24718983e1d25af8 | roms/1MB ROMs/1994-07 - 06684214 - LC,Quadra,Performa 630.ROM | q630,lc580
 machine-rom | Macintosh LC 580 064DC91D | 1048576 | bcf86532d70913c1d4fc487416eedbe510fb11ce3443e33c350ceeb3873019ca | roms/1MB ROMs/1995-04 - 064DC91D - LC, Performa 580 & Performa 588.ROM | lc580
 machine-rom | PowerBook Duo ECFA989B | 1048576 | a5cbde0f1fe905f05592e181685df79df4a4fd3d4bfb7fe3df2e45ac8601b59a | roms/1MB ROMs/1992-10 - ECFA989B - Powerbook 210 & 230 & 250.ROM | duo210,duo230,duo250
 machine-rom | PowerBook Duo 270c 0024D346 | 1048576 | 5a931e02f1de0570c6c5995c66b8f9a89c7be31fd6e17883eca783df8ea5feaf | roms/1MB ROMs/1993-10 - 0024D346 - Powerbook Duo 270C.ROM | duo270c

@@ -461,9 +461,7 @@ int main() {
                 const pom68k::MachineProfile* other = nullptr;
                 for (const pom68k::MachineProfile& p : pom68k::kMachineProfiles) {
                     if (std::string(p.group) != group || p.snapshot == pom68k::SnapMachine::Plus) continue;
-                    std::string path = pom68k::app::MachineFactory::findPath(p.romPath);
-                    if (path.empty() && p.romCrc32)
-                        path = pom68k::app::MachineFactory::findRomBySignature(p.romCrc32);
+                    const std::string path = pom68k::app::MachineFactory::findProfileRom(p);
                     if (!path.empty()) { other = &p; break; }
                 }
                 if (other) {

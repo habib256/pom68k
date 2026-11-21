@@ -1295,8 +1295,10 @@ Sonora-style platforms at `GuiRunnerSonora.h:90` / `GuiRunnerSonora.h:229`; V8 a
 `<image>.<profile-tag>.pram`, profile-tagged so two profiles sharing a boot
 image do not share a battery (`GuiRunnerToby.h:51-53`). What varies is the
 **store**, not the persistence: a discrete `Rtc` (compacts, Mac II family,
-IIfx, IIci), the Egret/Cuda XPRAM (V8, Sonora, VASP, RBV/IIsi, Q605, Q630,
-Centris, Q700), or the PG&E's own internal RAM + 32 KB SRAM on the Duo
+IIfx, IIci, the Centris/Quadra DJMEMC boards, the Quadra 700 and the 68030
+PowerBooks — `CentrisMemory.h`, `Q700Memory.h` and `Pb030Memory.h` each hold
+an `Rtc rtc_`), the Egret/Cuda XPRAM (V8, Sonora, VASP, IIsi, Q605, Q630,
+and the Quadra 900/950, whose Egret replaces the discrete chip), or the PG&E's own internal RAM + 32 KB SRAM on the Duo
 (`MscMemory.h:184-191`, with MAME's `$91` power-flag scrub).
 
 - **`ScsiDisk` flat-HFS façade** (`ScsiDisk.cpp:43-208`, `ScsiDisk::applyFlatHfsFacade`): synthesizes an

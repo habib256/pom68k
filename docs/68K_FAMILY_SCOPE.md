@@ -207,7 +207,7 @@ own ATA driver boots from; the reference gates boot over SCSI.
 | Profile | ROM | Gate |
 |---|---|---|
 | Macintosh Quadra 630 | `06684214` | `q630_boot_etalon`, `q630_ide_boot_etalon`, `jit_q630_boot_etalon`, `interp_q630_boot_etalon` |
-| Macintosh LC / Performa 580 | `06684214` | `lc580_boot_etalon`, `lc580_ide_boot_etalon` |
+| Macintosh LC / Performa 580 | `064DC91D` (also starts on `06684214`) | `lc580_boot_etalon`, `lc580_ide_boot_etalon` |
 
 ### MSC + PG&E — `MscMemory` / `MscCpu` (the only laptop)
 

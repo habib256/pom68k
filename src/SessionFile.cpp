@@ -434,9 +434,7 @@ SessionParse loadSession(const fs::path& path) {
     if (result.session && result.session->profile && !result.session->rom) {
         const MachineProfile* profile =
             machineProfile(std::string_view(*result.session->profile));
-        std::string rom = MachineFactory::findPath(profile->romPath);
-        if (rom.empty() && profile->romCrc32)
-            rom = MachineFactory::findRomBySignature(profile->romCrc32);
+        std::string rom = MachineFactory::findProfileRom(*profile);
         if (rom.empty()) {
             result.errors.push_back({0, "profile `" + *result.session->profile +
                 "`: no `rom` line and its ROM (" + profile->romPath +

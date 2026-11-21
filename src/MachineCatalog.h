@@ -136,7 +136,7 @@ inline constexpr MachineProfile kMachineProfiles[] = {
     {"Discrete 040 (Quadra 700/900/950)", "Macintosh Quadra 950 (33 MHz, IOP)", "q950", MachineKind::Q700, PlatformKind::Spike, CpuFamily::M68040, SnapMachine::Quadra950, "roms/quadra950.rom", "3DC27823"},
 
     {"F108 + PrimeTime II + Valkyrie", "Macintosh Quadra 630 (33 MHz)", "q630", MachineKind::Q630, PlatformKind::F108, CpuFamily::M68040, SnapMachine::Q630, "roms/quadra630.rom", "06684214"},
-    {"F108 + PrimeTime II + Valkyrie", "Macintosh LC / Performa 580", "lc580", MachineKind::Q630, PlatformKind::F108, CpuFamily::M68040, SnapMachine::Lc580, "roms/quadra630.rom", "06684214"},
+    {"F108 + PrimeTime II + Valkyrie", "Macintosh LC / Performa 580", "lc580", MachineKind::Q630, PlatformKind::F108, CpuFamily::M68040, SnapMachine::Lc580, "roms/maclc580.rom", "064DC91D"},
 
     {"MSC + PG&E (PowerBook)", "PowerBook Duo 210 (25 MHz)", "duo210", MachineKind::Duo, PlatformKind::Msc, CpuFamily::M68030, SnapMachine::Duo210, "roms/macduo230.rom", "ECFA989B"},
     {"MSC + PG&E (PowerBook)", "PowerBook Duo 230 (33 MHz)", "duo230", MachineKind::Duo, PlatformKind::Msc, CpuFamily::M68030, SnapMachine::Duo230, "roms/macduo230.rom", "ECFA989B"},

@@ -10,8 +10,8 @@
 //     catalogue probes;
 //   * firmware::kManifest: every strict-LLE row is a catalogue row with the
 //     same path, size and digest;
-//   * kMachineProfiles: each profile has exactly one required machine ROM,
-//     and its menu's ROM is catalogued (also a static_assert);
+//   * kMachineProfiles: each profile has exactly one default machine ROM,
+//     the required row under its menu's identity (also a static_assert);
 //   * the runtime: every non-machine canonical path is spelled, literally,
 //     in a source file that opens it, and every machine ROM's canonical
 //     file name carries the checksum the signature scan looks for (or is
@@ -198,10 +198,10 @@ int main(int argc, char** argv) {
     // ── kMachineProfiles ─────────────────────────────────────────────────
     static_assert(validRomCatalog());
     for (const MachineProfile& p : kMachineProfiles) {
-        int required = 0;
+        int defaults = 0;
         for (const RomDump* d : romDumpsForProfile(p.slug))
-            required += d->kind == RomKind::MachineRom && d->need == RomNeed::Required;
-        check(required == 1, std::string(p.slug) + ": exactly one required machine ROM");
+            defaults += romIsDefaultFor(*d, p);
+        check(defaults == 1, std::string(p.slug) + ": exactly one default machine ROM");
     }
 
     // ── the runtime probes each canonical path ───────────────────────────

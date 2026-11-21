@@ -419,6 +419,14 @@ struct Counts {
 
 Counts countRows(const GuiRomState& s, const MachineProfile* focus) {
     Counts c;
+    // A profile starts on ANY machine ROM the catalogue lists for it
+    // (MachineFactory::findProfileRom), so once one is verified the others
+    // are no longer what keeps it from starting.
+    bool focusHasRom = false;
+    for (const roms::RomStatus& st : s.rows)
+        focusHasRom = focusHasRom ||
+            (focus && st.dump && st.dump->kind == roms::RomKind::MachineRom &&
+             st.state == roms::RomState::Verified && roms::romUsedBy(*st.dump, focus->slug));
     for (const roms::RomStatus& st : s.rows) {
         if (!st.dump) continue;
         ++c.total;
@@ -428,7 +436,8 @@ Counts countRows(const GuiRomState& s, const MachineProfile* focus) {
         (required ? c.missingRequired : c.missingOther)++;
         if (focus && roms::romUsedBy(*st.dump, focus->slug)) {
             ++c.focusMissing;
-            if (required) ++c.focusMissingRequired;
+            const bool spare = focusHasRom && st.dump->kind == roms::RomKind::MachineRom;
+            if (required && !spare) ++c.focusMissingRequired;
         }
     }
     return c;
