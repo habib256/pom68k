@@ -1443,6 +1443,72 @@ Newest first.
 
 ---
 
+<a id="2026-11-22-oracle-vectors-on-dirk-fpu-branch"></a>
+## 2026-11-22 (eighth) — POM68K's oracle vectors run on Dirk Hoffmann's rebuilt Moira (FPU branch 70e7aff7): what disagrees, and what that is worth
+
+**Context.** In Moira discussion #36 (2026-08-12) Dirk said he might merge
+the fork's FPU/MMU work "once the time is right"; the reply of 2026-08-23
+promised a minimal archive with reproducible tests. Since 2026-11-02 he
+has been rebuilding Moira on the `FPU` branch (402 commits ahead of
+`master`, active today): his own MIT FPU on `MFloat80` (SoftFloat removed
+2026-11-08), `MMU030` and `MMU040`, a 020/030/040 cache class, and test
+runners against UAE, MAME's microcoded 68000, Musashi and SingleStepTests.
+Nothing in it cites POM68K or NeoST. A 15 000-line patch on `master` is
+therefore not something he can take; the fork's vectors and rulings can
+still check his code. `tools/dirk_moira/sst_dirk` replays them on his
+core (README there for the recipe and the caveats).
+
+**Numbers** (his `DEFAULT` mode with address and bus errors on,
+`--strict-ram`; "failures" exclude the vectors POM68K itself lists as
+known divergences from the oracle):
+
+| Corpus | Pass |
+|---|---|
+| `sst68030` (3 082) | 2 252 — `core_off` 160 / 160 |
+| `sst68040` LC040 (7 200) | 5 905 — `core_off` 771 / 800, `mmu_off` 598 / 600 |
+| `sst68040_fpu` 68040 (7 500) | 2 786 |
+
+**What the disagreements are**, read vector by vector on samples:
+
+- *68040 address error on an odd RTS/RTE target* (all 29 `core_off`
+  failures): his core stacks 92 bytes, the size of a 68030 format-$B frame;
+  the oracle and the fork stack the 68040's format $2 with the target
+  address ([B] MC68040UM-1993 §8.2.2, POM68K_VENDOR row 158). A defect on
+  his side, the clearest one.
+- *FPU accrued byte* (030 and 040, e.g. FBcc `F295`, FTRAPcc `F27C`):
+  `FPU::setExcStatusBit` recomputes the whole AEXC byte from the whole
+  EXC byte whenever one bit is set, so a conditional's BSUN turns stale
+  INEX/OVFL into accrued bits. The oracle and the fork leave them, and the
+  manual agrees: for FBcc, FDBcc, FScc and FTRAPcc alike, "The IOP bit is
+  set if the BSUN bit is set in the exception byte. No other bit is
+  affected." ([B] MC68881UM-1989, PDF pp. 88, 96, 154, 177; the general
+  rule of §2.3.4, p. 43, ORs the whole EXC byte only at the end of an
+  arithmetic operation). A defect on his side.
+- *68030 data-write fault* (`MOVE.L D2,(A0)+` under the MMU): he rolls
+  the registers back and restarts; the oracle completes the instruction
+  (A0 incremented, CCR set) and leaves the write pending in the format-$B
+  frame. Both run a handler that only returns; a handler that completes
+  the write and clears DF ([B] MC68030UM-1989 §8.2.1) sees a stale A0 on
+  his core.
+- *68040 FPSP*: most of the 68040 FPU failures are operations the 68040
+  does not execute in hardware (FMOD, FREM, FSCALE, FSGLDIV,
+  transcendentals, packed-decimal moves); the oracle takes the
+  unimplemented-instruction / data-type exception, his core computes the
+  result. A design choice to ask about, not a defect.
+- *Malformed PMMU words* (e.g. PFLUSH `F010 30DB`, FC field 11011): Line-F
+  in the oracle and the fork, illegal instruction or execution on his
+  core. His `Tests/README.md` records the same split and says which is
+  right "is not known"; the fork's rule is grade D (WinUAE), §9.8 of the
+  030 manual covering only the valid PFLUSH forms.
+- *Not reportable as they stand*: the U-bit differences of the
+  identity-mapped files (the harness preloads the queue without a fetch;
+  the oracle does not refill the pipe through the MMU after an exception
+  while his core does), FSAVE/FRESTORE frame contents
+  (implementation-specific), and transcendental results where the
+  oracle's mantissa ends in eleven zero bits — a host double, so the
+  oracle is the weaker witness there (FSINCOS of a tiny argument: his
+  core returns exactly 1.0 for the cosine, the oracle 0.FFFFFFFFFFFFF800).
+
 <a id="2026-11-22-moira-github-release"></a>
 ## 2026-11-22 (seventh) — The Moira release is published on GitHub, its README corrected; the firmware and media archives built; the Centris soak fails on the a64 backend, not because of D28
 
@@ -1483,7 +1549,11 @@ ran on the interpreter because the JIT does not model its cache — since
 D25–D29 as open when D27–D29 are settled by the manuals against the
 oracle; and it named only the Linux check of upstream's Runner. The 68000
 fuzz gates compare the bare bus with the fetch window, which the README now
-says.
+says. Recut from `228e63a5` and published the same evening as
+`moira-pom68k-20261122-228e63a5` (sha256
+`0c56347b8a1eb81b838cbd2108e53c6a6fc1cb3fb7bce285c7558f2f1cf7f1f7`,
+`--verify` 87 / 87, the patch byte-identical but for its date line), with
+the patch also attached on its own; the `b122e04a` release points to it.
 
 **The two downloader archives** were built for publication with
 `tools/build_asset_archives.py`: `pom68k_firm.zip` 52 / 52 dumps, 11.8 MiB,

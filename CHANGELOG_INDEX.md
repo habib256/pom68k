@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 881 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 882 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -9,7 +9,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | Subsystem | Entries |
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 117 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 169 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 170 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 38 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 32 |
@@ -313,6 +313,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-21 (second)** — [The release recut with the 68020 cache on, and merged with the night's ROM catalogue work](CHANGELOG.md#2026-11-21-release-with-icache)
 - **2026-11-21 (thirteenth)** — [What a present FPU answers on the FC = 7 CIR probe: no ROM looks](CHANGELOG.md#2026-11-21-cir-read-unobserved)
 - **2026-11-21 (twelfth)** — [SonoraCpu joins RbvCpu and VaspCpu on one 68030 base, its pacing kept](CHANGELOG.md#2026-11-21-sonora-on-moira030)
+- **2026-11-22 (eighth)** — [POM68K's oracle vectors run on Dirk Hoffmann's rebuilt Moira (FPU branch 70e7aff7): what disagrees, and what that is worth](CHANGELOG.md#2026-11-22-oracle-vectors-on-dirk-fpu-branch)
 - **2026-11-22 (fifth)** — [D27, D29 and the 68030 half of D28 settled by the manuals, D25/D26 narrowed; the continuation and CIR sentences of the surface contract](CHANGELOG.md#2026-11-22-d25-d29-by-manual)
 - **2026-11-22 (sixth)** — [The 68040 FBcc/FDBcc with an odd displacement faults as the manual says: after the predicate, taken or not](CHANGELOG.md#2026-11-22-fbcc-odd-040)
 

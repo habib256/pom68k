@@ -45,19 +45,30 @@ une optimisation côté hôte POM68K ne rapproche pas de NeoST.
 
 **Prochaines actions, dans l'ordre :**
 
-1. **Archive pour Dirk publiée** le 2026-11-22 depuis `b122e04a`
-   (release GitHub `moira-pom68k-20261122-b122e04a`). À recouper et
-   republier dès qu'un commit touche `extern/moira`, `src/jit` ou un gate
-   exporté.
-2. **D30** (`› Justesse 68040`) : relire d'abord MC68040UM-1993 §9.6.2 et
+1. **Dirk réécrit Moira sur sa branche `FPU`** (MMU, FPU MIT et caches à
+   lui, depuis le 2026-11-02) : ce qui l'aide n'est plus un patch sur
+   `master` mais nos vecteurs et nos jugements rejoués sur *sa* branche
+   (`tools/dirk_moira/`, `CHANGELOG` 2026-11-22 (huitième)). À faire :
+   trancher l'AEXC des conditionnels FPU par le manuel 68881/68882 ;
+   relancer `sst_dirk` à chaque avancée de sa branche ; message dans la
+   discussion Moira #36 (brouillon prêt, envoi par le propriétaire).
+   L'archive `moira-pom68k-20261122-228e63a5` reste la référence publiée ;
+   la recouper dès qu'un commit touche `extern/moira`, `src/jit` ou un
+   gate exporté.
+2. **Le cœur de Dirk dans une carte POM68K** (un 030 IIci, puis un 040) :
+   preuve d'intégration que personne d'autre ne peut lui donner. Demande
+   une enveloppe CPU propre à son API (`MOIRA_NAMESPACE`, BusError levée
+   par exception, pas de JIT ni d'instantané) et des classes mémoire qui
+   ne nomment pas leur CPU concret.
+3. **D30** (`› Justesse 68040`) : relire d'abord MC68040UM-1993 §9.6.2 et
    la Table 8-4 — une exception pré-instruction y est prise *avant*
    l'instruction fautive elle-même (format $0, redémarrage), pas postée
    jusqu'à l'instruction FPU suivante comme l'item le dit.
-3. **Autres restes décidables ici** (`› Justesse 68030`, `› Justesse 68040`) :
+4. **Autres restes décidables ici** (`› Justesse 68030`, `› Justesse 68040`) :
    TRAPV en fin de page, 68020 nu transparent à une faute, mots d'état d'un
    MOVES indexé, report du pipe de préfetch, ordre de lecture de FMOVEM.
-4. **Jambe AArch64** sur l'autre machine (pas sur cet hôte x86-64).
-5. **Premier portage réel vers NeoST**, qui dira ce que le contrat a oublié
+5. **Jambe AArch64** sur l'autre machine (pas sur cet hôte x86-64).
+6. **Premier portage réel vers NeoST**, qui dira ce que le contrat a oublié
    (demande l'arbre de NeoST).
 
 **Dépôt — purge faite le 2026-11-21, reste GitHub.** Le journal disque
