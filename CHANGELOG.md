@@ -1443,6 +1443,36 @@ Newest first.
 
 ---
 
+<a id="2026-11-22-moira-convergence-inventory"></a>
+## 2026-11-22 (ninth) — Dirk's Moira becomes the base: the fork's 158 changes sorted against his rewrite, and the first findings sent to him
+
+**Direction.** The owner decided that Dirk Hoffmann's rewritten Moira
+(`FPU` branch), corrected and improved, is the base, and that POM68K's
+68k CPUs are built on top of it, adding only what the Macintosh needs.
+`CLAUDE.md` § Moira now says so; until the rebase the fork keeps
+cherry-picking.
+
+**Inventory.** `docs/MOIRA_CONVERGENCE.md` sorts every row of
+`POM68K_VENDOR.md` against his branch at `70e7aff7`: 41 covered, 65
+upstream gaps, 24 Mac-layer rows, 27 obsolete on his design, 1 unsure.
+Three of his choices decide most verdicts: a faulted instruction is
+restarted with its registers restored, never continued (so RTE ignores a
+cleared DF and a host /BERR is completed into a frame only on the 68000 —
+the Mac slot-probe path); his FPU takes no exception (no 48-54 vectors,
+no BUSY frames, no FPSP traps); he has no 68040 caches.
+
+**Sent.** Moira discussion #36 (comment 19816076): the release, the
+replay numbers, three findings each run on his branch and read in the
+locked manuals — conditional FPU instructions accrue more than IOP
+(MC68881UM-1989 p. 4-30), a 68040 address error stacks a format $B
+(MC68040UM-1993 §8.4.6.7), a 68040 unimplemented FPU instruction stacks
+format $0 instead of $2 (§9.6.1) — and two questions. Checking the draft
+removed four errors before posting: an FSINCOS example that ran under
+round-to-zero (the oracle was right there), the claim that he executes
+FMOD and the transcendentals natively on the 68040 (he refuses them; the
+frame is the defect), FSGLDIV in the FPSP list (native, §9.7.6), and
+MC68030UM §8.2.1 for §8.2.2.
+
 <a id="2026-11-22-oracle-vectors-on-dirk-fpu-branch"></a>
 ## 2026-11-22 (eighth) — POM68K's oracle vectors run on Dirk Hoffmann's rebuilt Moira (FPU branch 70e7aff7): what disagrees, and what that is worth
 

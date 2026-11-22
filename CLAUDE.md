@@ -118,6 +118,7 @@ Focused research notes under `docs/`:
 | `LLE_VS_HLE.md` | current LLE/HLE inventory and qualification rules |
 | `MAME_PARITY_AUDIT.md` | chip-level POM68K/MAME comparison |
 | `MEASURING.md` | rules for publishable performance measurements |
+| `MOIRA_CONVERGENCE.md` | the fork's 158 changes sorted against Dirk Hoffmann's rewritten Moira (the base) |
 | `RASPBERRY_PI.md` | Pi tuning, packaging and PGO |
 | `SCSI_HOTPLUG.md` | live SCSI attach, guest-side mount/unmount and the bus view the GUI needs |
 | `SIMPLIFICATIONS_REVIEW.md` | reviewed implementation simplifications |
@@ -246,13 +247,12 @@ MAME above *Guide to the Macintosh Family Hardware*; that was backwards.
 On a specification/oracle conflict, preserve the reproducer and record the
 ruling in `CHANGELOG.md` or the relevant research note.
 
-## Moira is a permanent fork
+## Moira: Dirk's core is the base
 
-`extern/moira/` came through NeoST from Dirk Hoffmann's Moira; POM68K's MMU,
-FPU, snapshot, timing and JIT seams make it a maintained fork, based since
-2026-11-20 on upstream `ce28239`. Upstream changes are cherry-picked one at
-a time with the tiers run; do not merge/revendor over the local tree.
-
-`extern/moira/POM68K_VENDOR.md` owns the decision, patch inventory and resync
-procedure. The WinUAE/Hatari oracle under `oracle/` remains the differential
-reference for the local 68030/68040 extensions.
+`extern/moira/` came through NeoST; based on upstream `ce28239` since
+2026-11-20. **Direction (owner, 2026-11-22):** Dirk's rewritten Moira (`FPU`
+branch), corrected and improved, is the base; POM68K's CPUs add on top only
+what the Macintosh needs (`docs/MOIRA_CONVERGENCE.md`, `tools/dirk_moira/`).
+Until that rebase, cherry-pick upstream one change at a time; never revendor.
+`extern/moira/POM68K_VENDOR.md` owns the patch inventory and resync procedure;
+the WinUAE/Hatari oracle (`oracle/`) stays the 030/040 differential reference.

@@ -50,8 +50,11 @@ une optimisation côté hôte POM68K ne rapproche pas de NeoST.
    `master` mais nos vecteurs et nos jugements rejoués sur *sa* branche
    (`tools/dirk_moira/`, `CHANGELOG` 2026-11-22 (huitième)). À faire :
    trancher l'AEXC des conditionnels FPU par le manuel 68881/68882 ;
-   relancer `sst_dirk` à chaque avancée de sa branche ; message dans la
-   discussion Moira #36 (brouillon prêt, envoi par le propriétaire).
+   relancer `sst_dirk` à chaque avancée de sa branche. Message posté dans
+   la discussion Moira #36 le 2026-11-22 (trois défauts, deux questions) :
+   suivre sa réponse. Prochains candidats : `docs/MOIRA_CONVERGENCE.md`
+   § *Candidates to report first*, chacun relu dans le manuel et reproduit
+   sur sa branche avant envoi.
    L'archive `moira-pom68k-20261122-228e63a5` reste la référence publiée ;
    la recouper dès qu'un commit touche `extern/moira`, `src/jit` ou un
    gate exporté.
