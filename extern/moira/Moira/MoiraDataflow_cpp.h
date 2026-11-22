@@ -81,7 +81,7 @@ Moira::skipExt()
 {
     if constexpr (C == Core::C68020) {
         if (cpuModel == Model::M68030) [[unlikely]] mmuLogExtWord(ircWord());
-        if (ircPoison) [[unlikely]] ircRefetch();   // POM68K: Moira.h § ircPoison
+        if (ircPoison) [[unlikely]] ircRefetch();   // POM68K (host): Moira.h § ircPoison
     }
     reg.pc += 2;
 }
@@ -129,9 +129,9 @@ Moira::computeEA(u32 n) {
             if constexpr ((F & IMPL_DEC) == 0) SYNC(2);
             result = readA(n) - ((n == 7 && S == Byte) ? 2 : S);
 
-            // POM68K O4 slice 3: see case 3
+            // POM68K (host) O4 slice 3: see case 3
             if constexpr (C == Core::C68020) {
-                // POM68K Q3: see case 3
+                // POM68K (host) Q3: see case 3
                 if ((mmuPlain020() || cpuModel == Model::M68030 || cpuModel >= Model::M68EC040)
                     && (F & MMU_NOFIXUP) == 0) [[unlikely]]
                     mmuArmFixup<S>(int(n), true);
@@ -181,7 +181,7 @@ Moira::computeEA(u32 n) {
         case 7: // ABS.W
         {
             result = (i16)ircWord();
-            pomSetRB<C>(queue.irc);  // POM68K: 68010-only (Moira.h pomSetRB)
+            pomSetRB<C>(queue.irc);  // POM68K (host): 68010-only (Moira.h pomSetRB)
 
             if constexpr ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { skipExt<C>(); }
             break;
@@ -196,7 +196,7 @@ Moira::computeEA(u32 n) {
                     bool logSave = mmuLogging;
                     mmuLogging = false;
                     result = ircLong<C>();
-                    pomSetRB<C>(queue.irc);  // POM68K: 68010-only (Moira.h pomSetRB)
+                    pomSetRB<C>(queue.irc);  // POM68K (host): 68010-only (Moira.h pomSetRB)
                     if ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { reg.pc += 2; }
                     mmuLogging = logSave;
                     mmuLogExtWord(result);
@@ -205,7 +205,7 @@ Moira::computeEA(u32 n) {
             }
 
             result = ircLong<C>();
-            pomSetRB<C>(queue.irc);  // POM68K: 68010-only (Moira.h pomSetRB)
+            pomSetRB<C>(queue.irc);  // POM68K (host): 68010-only (Moira.h pomSetRB)
 
             if constexpr ((F & SKIP_LAST_RD) == 0) { readExt<C>(); } else { skipExt<C>(); }
             break;
@@ -222,7 +222,7 @@ Moira::computeEA(u32 n) {
         {
             if constexpr (C == Core::C68020) {
 
-                // POM68K O4 slice 3: see case 6
+                // POM68K (host) O4 slice 3: see case 6
                 if (cpuModel == Model::M68030) [[unlikely]] {
                     result = computeEAdisp030<C, M, S, F>(reg.pc);
                     break;
@@ -469,7 +469,7 @@ Moira::writeOp(int n, u32 val)
 
         default:
 
-            pomSetWB<C>((S == Long) ? u16(val >> 16) : u16(val & 0xFFFF));  // POM68K: 68010-only
+            pomSetWB<C>((S == Long) ? u16(val >> 16) : u16(val & 0xFFFF));  // POM68K (host): 68010-only
 
             // Compute effective address
             u32 ea = computeEA<C, M, S>(n);
@@ -527,15 +527,15 @@ Moira::writeOp(int n, u32 ea, u32 val)
 
         default:
 
-            pomSetWB<C>((S == Long) ? u16(val >> 16) : u16(val & 0xFFFF));  // POM68K: 68010-only
+            pomSetWB<C>((S == Long) ? u16(val >> 16) : u16(val & 0xFFFF));  // POM68K (host): 68010-only
 
-            // POM68K O4 slice 3: see the other writeOp overload
+            // POM68K (host) O4 slice 3: see the other writeOp overload
             if constexpr (C == Core::C68020) {
                 if (cpuModel == Model::M68030) [[unlikely]] {
                     mmuState[1] |= 0x0100;      // LASTWRITE
                     mmuLastWritePc = reg.pc;
                 }
-                // POM68K Q3: 68040 last-write marker (see overload 1)
+                // POM68K (host) Q3: 68040 last-write marker (see overload 1)
                 if (cpuModel >= Model::M68EC040) [[unlikely]] {
                     mmu040LastWrite = true;
                     mmu040LastWritePc = reg.pc;
@@ -848,7 +848,7 @@ Moira::read(u32 addr)
         if (cpuModel == Model::M68030) [[unlikely]] {
             return mmuRead<C, S, F>(addr);
         }
-        // POM68K Q3: 68040 bus translation (TTR + walk, page-boundary
+        // POM68K (host) Q3: 68040 bus translation (TTR + walk, page-boundary
         // splitting, format $7 faults) — identity-fast when TC.E and all
         // TTR.E bits are clear
         if (cpuModel >= Model::M68EC040) [[unlikely]] {
@@ -885,6 +885,8 @@ Moira::read(u32 addr)
         }
     }
 
+    // [B] MC68020UM-1992 §6.2.2: the long frame holds the data fault
+    //     address at SP+$10 and the data input buffer at SP+$2C.
     // POM68K Phase C (Mac LC/Mac II, 2026-07-24): record the in-flight
     // sub-access on the PLAIN 68020/EC020 path too, so a device raising
     // /BERR (extBusError) stacks a $B frame with the RIGHT fault address.
@@ -907,7 +909,7 @@ Moira::read(u32 addr)
     if constexpr (S == Word) {
 
         // An 8 bit port needs a second bus cycle to deliver a word
-        // POM68K: compiled with the 68020 i-cache only (busSizing)
+        // POM68K (host): compiled with the 68020 i-cache only (busSizing)
         if constexpr (busSizing<C>) {
 
             if (pomSized020() && portSize(dsack(addr & addrMask<C>())) == 1) {
@@ -957,7 +959,7 @@ Moira::read(u32 addr)
 
         if constexpr (F & REVERSE) {
 
-            // POM68K: low word first — the read twin of write<>'s REVERSE.
+            // POM68K (host): low word first — the read twin of write<>'s REVERSE.
             if constexpr (kPlain020) mmuAccAddr = addr + 2;
             result = read16((addr + 2) & addrMask<C>());
             SYNC(4);
@@ -993,7 +995,7 @@ Moira::read(u32 addr)
 template <Core C, Flags F> u16
 Moira::readInstr(u32 addr)
 {
-    // POM68K: the cache serves the 68020/EC020 only. The 68030 and 68040
+    // POM68K (host): the cache serves the 68020/EC020 only. The 68030 and 68040
     // never get here (prefetch, fullPrefetch and readExt return into their
     // own fetch paths first) and keep their own cache models; the EC030,
     // which this fork runs on the plain path, fetches from the bus as before
@@ -1007,7 +1009,7 @@ Moira::readInstr(u32 addr)
             setFC(FC::USER_PROG);
             SYNC(2);
 
-            // Check if a watchpoint has been reached (POM68K: masked to the
+            // Check if a watchpoint has been reached (POM68K (host): masked to the
             // bus as in read<>, and reported through the same delegate)
             if ((flags & State::CHECK_WP) &&
                 debugger.watchpointMatches(addr & addrMask<C>(), Word)) {
@@ -1069,7 +1071,7 @@ Moira::write(u32 addr, u32 val)
     // Update function code pins
     setFC(AS == AddrSpace::DATA ? FC::USER_DATA : FC::USER_PROG);
 
-    // POM68K O4 slice 3: 68030 bus-level address translation (see read;
+    // POM68K (host) O4 slice 3: 68030 bus-level address translation (see read;
     // slice 4: taken for M68030 even with TC.E off — logging/splitting)
     if constexpr (C == Core::C68020) {
         // [D] Musashi @ 1efd694 (Runner/Musashi of upstream Moira), run by its Runner:
@@ -1088,7 +1090,7 @@ Moira::write(u32 addr, u32 val)
             mmuWrite<C, S, F>(addr, val);
             return;
         }
-        // POM68K Q3: 68040 bus translation (see read)
+        // POM68K (host) Q3: 68040 bus translation (see read)
         if (cpuModel >= Model::M68EC040 && !plainWrite) [[unlikely]] {
             mmu040Write<C, S>(addr, val, AS == AddrSpace::DATA);
             return;
@@ -1119,7 +1121,7 @@ Moira::write(u32 addr, u32 val)
         }
     }
 
-    // POM68K Phase C: in-flight sub-access recording on the plain
+    // POM68K (host) Phase C: in-flight sub-access recording on the plain
     // 68020/EC020 path — see the read<> counterpart above.
     constexpr bool kPlain020 = (C == Core::C68020);
 
@@ -1139,7 +1141,7 @@ Moira::write(u32 addr, u32 val)
     if constexpr (S == Word) {
 
         // An 8 bit port needs a second bus cycle to accept a word
-        // POM68K: compiled with the 68020 i-cache only (busSizing)
+        // POM68K (host): compiled with the 68020 i-cache only (busSizing)
         if constexpr (busSizing<C>) {
 
             if (pomSized020() && portSize(dsack(addr & addrMask<C>())) == 1) {
@@ -1167,7 +1169,7 @@ Moira::write(u32 addr, u32 val)
         }
 
         // See read<>: four cycles on an 8 bit port
-        // POM68K: compiled with the 68020 i-cache only (busSizing); a 32-bit
+        // POM68K (host): compiled with the 68020 i-cache only (busSizing); a 32-bit
         // port keeps the two-word transfer, as in read<>
         if constexpr (busSizing<C>) {
 
@@ -1224,7 +1226,7 @@ Moira::readI()
             readExt<C>();
             mmuLogging = logSave;
             mmuLogExtWord(result);
-            pomSetRB<C>(queue.irc);  // POM68K: 68010-only (Moira.h pomSetRB)
+            pomSetRB<C>(queue.irc);  // POM68K (host): 68010-only (Moira.h pomSetRB)
             return result;
         }
     }
@@ -1252,7 +1254,7 @@ Moira::readI()
         default:
             fatalError;
     }
-    pomSetRB<C>(queue.irc);  // POM68K: 68010-only
+    pomSetRB<C>(queue.irc);  // POM68K (host): 68010-only
 
     return result;
 }
@@ -1356,27 +1358,27 @@ Moira::prefetch()
 
     queue.ird = ircWord();
 #if MOIRA_ENABLE_JIT
-    // POM68K JIT code window, 020 flavor (Moira.h § pomJitFetch020); the
+    // POM68K (host) JIT code window, 020 flavor (Moira.h § pomJitFetch020); the
     // cycle-exact 68000/68010 cores take the pomJitFetch000 flavor instead,
     // which reproduces read<>'s SYNCs and bus model. Either way pomJitFetch
     // refuses unless a jit::Engine armed the window.
     if constexpr (C == Core::C68020) {
         if (u16 w; pomJitFetch020<(F & POLL) != 0>(reg.pc + 2, w)) {
             queue.irc = w;
-            pomSetRB<C>(w);  // POM68K: 68010-only
+            pomSetRB<C>(w);  // POM68K (host): 68010-only
             return;
         }
     } else {
         if (u16 w; pomJitFetch000<C, (F & POLL) != 0>(reg.pc + 2, w)) {
             queue.irc = w;
-            pomSetRB<C>(w);  // POM68K: 68010-only
+            pomSetRB<C>(w);  // POM68K (host): 68010-only
             return;
         }
     }
 #endif
 
     queue.irc = readInstr<C, F>(reg.pc + 2);
-    pomSetRB<C>(queue.irc);  // POM68K: 68010-only
+    pomSetRB<C>(queue.irc);  // POM68K (host): 68010-only
 }
 
 template <Core C, Flags F, int delay> void
@@ -1387,6 +1389,7 @@ Moira::fullPrefetch()
     // (Moira.h, traceFlow).
     if constexpr (C == Core::C68020 && (F & FLOW)) traceFlow();
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K O4 slice 3: see prefetch — jumps do not fetch the target on
     // the mode-5 68030; the fetch happens at the next instruction start.
     // Q3: same for the 68040.
@@ -1399,19 +1402,19 @@ Moira::fullPrefetch()
 
     assert(!misaligned<C>(reg.pc));
 
-    // POM68K: the cache functions live in Moira.cpp; without the cache the
+    // POM68K (host): the cache functions live in Moira.cpp; without the cache the
     // per-core TUs must not pay a call to an empty function on every jump.
     if constexpr (MOIRA_EMULATE_ICACHE) flushInstructionLatch();
 
 #if MOIRA_ENABLE_JIT
-    if constexpr (C == Core::C68020) {           // POM68K instruction window
+    if constexpr (C == Core::C68020) {           // POM68K (host) instruction window
         if (u16 w; pomJitFetch020<false>(reg.pc, w)) {
             queue.irc = w;
             if (delay) SYNC(delay);
             prefetch<C, F>();
             return;
         }
-    } else {                                     // POM68K cycle-exact window
+    } else {                                     // POM68K (host) cycle-exact window
         if (u16 w; pomJitFetch000<C, false>(reg.pc, w)) {
             queue.irc = w;
             if (delay) SYNC(delay);
@@ -1435,7 +1438,7 @@ Moira::noPrefetch(int delay)
     if (delay) SYNC(delay);
 }
 
-// POM68K: one long extension word pair (Moira.h § ircLongAt).
+// POM68K (host): one long extension word pair (Moira.h § ircLongAt).
 template <Core C> u32
 Moira::ircLong()
 {
@@ -1456,7 +1459,7 @@ Moira::readExt()
     // next_iword_mmu030_state); the refill of irc is Moira's one-slot
     // lookahead, translated but unlogged.
     if constexpr (C == Core::C68020) {
-        if (ircPoison) [[unlikely]] ircRefetch();   // POM68K: Moira.h § ircPoison
+        if (ircPoison) [[unlikely]] ircRefetch();   // POM68K (host): Moira.h § ircPoison
         if (cpuModel == Model::M68030) [[unlikely]] {
             mmuLogExtWord(ircWord());
             reg.pc += 2;
@@ -1469,7 +1472,7 @@ Moira::readExt()
         if (cpuModel >= Model::M68EC040) [[unlikely]] {
             reg.pc += 2;
 #if MOIRA_ENABLE_JIT
-            // POM68K JIT code window — the second and by far the busiest
+            // POM68K (host) JIT code window — the second and by far the busiest
             // fetch site: every extension word past the lookahead
             // (immediates, abs.l, 68020 extended EAs) comes through here.
             if (const u8 *p; pomJitFetch(reg.pc, 2, p)) {
@@ -1490,12 +1493,12 @@ Moira::readExt()
 
     reg.pc += 2;
 #if MOIRA_ENABLE_JIT
-    if constexpr (C == Core::C68020) {           // POM68K instruction window
+    if constexpr (C == Core::C68020) {           // POM68K (host) instruction window
         if (u16 w; pomJitFetch020<false>(reg.pc, w)) {
             queue.irc = w;
             return;
         }
-    } else {                                     // POM68K cycle-exact window
+    } else {                                     // POM68K (host) cycle-exact window
         if (u16 w; pomJitFetch000<C, false>(reg.pc, w)) {
             queue.irc = w;
             return;
@@ -1562,8 +1565,8 @@ Moira::jumpToVector(int nr)
         } else {
 
             queue.irc = u16(reg.pc);
-            pomSetRB<C>(queue.irc);  // POM68K: 68010-only
-            pomSetWB<C>(u16(4 * nr));  // POM68K: 68010-only
+            pomSetRB<C>(queue.irc);  // POM68K (host): 68010-only
+            pomSetWB<C>(u16(4 * nr));  // POM68K (host): 68010-only
             
             switch (M68kException(nr)) {
                     
@@ -1590,6 +1593,7 @@ Moira::jumpToVector(int nr)
     }
 
     // Update the prefetch queue
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     // POM68K O4 slice 3: not on the mode-5 68030 (fill_prefetch is a
     // no-op there; the handler opcode is fetched at the next step).
     // Q3: same for the 68040.
@@ -1601,7 +1605,7 @@ Moira::jumpToVector(int nr)
             return;
         }
     }
-    queue.irc = pomProgWord<C>(reg.pc);   // POM68K: cached on the 68020
+    queue.irc = pomProgWord<C>(reg.pc);   // POM68K (host): cached on the 68020
     SYNC(2);
     prefetch<C, POLL>();
 

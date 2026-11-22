@@ -61,7 +61,11 @@ extern "C" int pom68kJitRead(moira::Moira* cpu, uint32_t addr, uint32_t bytes,
         : 0;
     if (bias) cpu->pomJitBiasClock(bias);
     if (replay) cpu->pomJitAtcReplayBegin040(*replay, addr, true, replay->access);
-    const int ok = cpu->pomJitReadData(addr, int(bytes), *out) ? 1 : 0;
+    // kJitReadProgramSpace (JitRuntime.h): a 68030 PC-relative operand.
+    const bool program = (bytes & kJitReadProgramSpace) != 0;
+    bytes &= ~kJitReadProgramSpace;
+    const int ok = (program ? cpu->pomJitReadOperandProg(addr, int(bytes), *out)
+                            : cpu->pomJitReadData(addr, int(bytes), *out)) ? 1 : 0;
     if (bias) cpu->pomJitBiasClock(-bias);
     return ok;
 }

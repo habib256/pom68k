@@ -20,7 +20,7 @@
 #include <vector>
 #include <stdexcept>
 
-// POM68K O5: 80-bit softfloat backing the 68882 FPU (extern/softfloat,
+// POM68K (host) O5: 80-bit softfloat backing the 68882 FPU (extern/softfloat,
 // GPLv2+ — linked, not incorporated; Moira itself stays MIT). Included
 // before the moira namespace so the C declarations stay global.
 extern "C" {
@@ -55,7 +55,7 @@ Moira::Moira() : fpuFloatStatus(std::make_unique<::float_status>())
 
     createJumpTable(cpuModel, dasmModel);
 
-    // POM68K M1-M3 (docs/CACHE_040.md): the data-bearing 040 I/D caches
+    // POM68K (host) M1-M3 (docs/CACHE_040.md): the data-bearing 040 I/D caches
     // stay off until setPomCache040() arms them. The core reads no process
     // environment; the host decides and injects.
 
@@ -189,7 +189,7 @@ Moira::hasMMU() const
 bool
 Moira::hasFPU() const
 {
-    // POM68K O5: an attached 6888x counts (Mac LC II PDS 68882)
+    // POM68K (host) O5: an attached 6888x counts (Mac LC II PDS 68882)
     if (fpuModel != FPUModel::NONE) return true;
 
     switch (cpuModel) {
@@ -205,7 +205,7 @@ Moira::hasFPU() const
 void
 Moira::setFPUModel(FPUModel model)
 {
-    // POM68K O5: same mechanism as setModel — rebuild the jump table so the
+    // POM68K (host) O5: same mechanism as setModel — rebuild the jump table so the
     // F2xx window switches between Line-F (NONE) and the FPU handlers.
     if (fpuModel != model) {
 
@@ -279,12 +279,12 @@ Moira::reset()
     ipl = 0;
     fcl = 2;
     fcSource = 0;
-    irqDelay = 0;                  // POM68K: clear the SR-write IRQ delay too
-    stopGraceUntil = -1;           // POM68K: no STOP iteration in flight
-    trace040Pending = false;       // POM68K Q2: 68040 trace machinery
+    irqDelay = 0;                  // POM68K (host): clear the SR-write IRQ delay too
+    stopGraceUntil = -1;           // POM68K (host): no STOP iteration in flight
+    trace040Pending = false;       // POM68K (host) Q2: 68040 trace machinery
     tracePc040 = 0;
 
-    // POM68K Q3: 68040 MMU fault capture + MOVEM latch + MOVE16 buffer
+    // POM68K (host) Q3: 68040 MMU fault capture + MOVEM latch + MOVE16 buffer
     mmu040FaultAddr = mmu040EffAddr = 0;
     mmu040Ssw = 0;
     mmu040Wb3Address = mmu040Wb3Data = 0;
@@ -305,9 +305,9 @@ Moira::reset()
     // [F] Cold-reset initialization policy, not a pin-level warm-reset model.
     // Settled by: a reset-retention gate and a defined cold/warm reset API.
     for (auto &e : mmuAtcArr) { e.valid = false; e.mru = false; }
-    mmuAtcMruCount = 0;                 // POM68K perf: O(1) LRU counter
+    mmuAtcMruCount = 0;                 // POM68K (host) perf: O(1) LRU counter
     for (auto &r : mmuAtcLast) r[0] = r[1] = 0;
-    // POM68K Q8: 040 I/D ATCs
+    // POM68K (host) Q8: 040 I/D ATCs
     mmu040AtcFlushAll();
     mmu040AtcAccessI = mmu040AtcAccessD = 0;
     mmuState[0] = mmuState[1] = mmuState[2] = 0;
@@ -321,7 +321,7 @@ Moira::reset()
     mmuLogging = false;
     mmuRmw = false;
     mmuRteSubstArmed = false;            // reset cancels a pending RTE retry
-    mmuPipeCnt = 0;                     // POM68K O6: prefetch-pipe carry
+    mmuPipeCnt = 0;                     // POM68K (host) O6: prefetch-pipe carry
 
     // [B] MC68881UM-1989 §10.2 and §6.4.2.1: FPCP reset state.
     // POM68K O5: the reset line also resets an attached FPU
@@ -377,7 +377,7 @@ Moira::reset()
 bool
 Moira::executeFastOne()
 {
-    // POM68K 030 extension (2026-07-28): the SAME seam serves the 68030 —
+    // POM68K (host) 030 extension (2026-07-28): the SAME seam serves the 68030 —
     // its mode-5 loop head (mmuExecuteStart: POLL_IPL, per-instruction MMU
     // state reset, translated ird/irc fetch) plays the role
     // mmu040InstrStart plays below, and the dispatch tail is shared. One
@@ -451,7 +451,7 @@ Moira::executeFastOne()
         return retired;
     }
 
-    // POM68K JIT seam (src/jit/POM68K_JIT.md). This IS the 68040 fast path
+    // POM68K (host) JIT seam (src/jit/POM68K_JIT.md). This IS the 68040 fast path
     // of execute() — there is exactly ONE copy of it and execute() calls it
     // below, so the block replayer in src/jit/ can never drift from the
     // instruction-start contract (POLL_IPL, the eight per-instruction MMU
@@ -522,7 +522,7 @@ Moira::executeFastOne()
 void
 Moira::syncCp(int cycles)
 {
-    // POM68K: only the 68020/EC020 have the cache whose discounts the budget
+    // POM68K (host): only the 68020/EC020 have the cache whose discounts the budget
     // spends (MoiraConfig.h); the 68030/68040 on this core keep their own
     // cache timing and are charged as before.
     if (cpuModel != Model::M68020 && cpuModel != Model::M68EC020) {
@@ -530,7 +530,7 @@ Moira::syncCp(int cycles)
         return;
     }
 
-    // POM68K: kept as upstream wrote it, but its debt path (a balance below
+    // POM68K (host): kept as upstream wrote it, but its debt path (a balance below
     // zero, the stall rule, minAccum) is now cold. It existed to spend
     // upstream's -2 per cache hit; with the corrected fetch charges
     // (readInstr: 0 per hit, +2 or +6 per bus cycle) every charge is
@@ -587,7 +587,7 @@ Moira::execute()
     assert(reg.pc0 == reg.pc);
 
 #if MOIRA_ENABLE_JIT
-    // POM68K: the interpreter-owned fetch window on the cores without an
+    // POM68K (host): the interpreter-owned fetch window on the cores without an
     // MMU loop head (68000/68010/68020 — the 68030 and 68040 arm theirs in
     // mmuExecuteStart / mmu040InstrStart). Their opcode words come from the
     // prefetch queue, filled by prefetch<>() through pomJitFetch000/020 on
@@ -606,12 +606,12 @@ Moira::execute()
         // Fast path: Call the instruction handler and return
         //
 
-        // POM68K O4 slice 3: on the 68030 every instruction starts with a
+        // POM68K (host) O4 slice 3: on the 68030 every instruction starts with a
         // per-instruction MMU state reset and a mode-5-style translated
         // opcode fetch (may fault). One predictable branch for the other
         // models; emulated 68000 cycles are unaffected.
         if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) [[unlikely]] {
-            // POM68K JIT: both MMU cores' fast paths live in
+            // POM68K (host) JIT: both MMU cores' fast paths live in
             // pomJitExecOne() so that the src/jit block replayer runs the
             // SAME code, not a hand-copied twin. Same TU, still inlined.
             executeFastOne();
@@ -723,6 +723,9 @@ Moira::execute()
         }
 
         // Process pending interrupt (if any)
+        // [D] fx68k @ 0602ee46, as NeoST read it (Moira.h stopGraceUntil).
+        // [F] Hatari disagrees on the segment. Settled by: a capture on a
+        //     68000.
         // POM68K (back-port of NeoST 993ce5e / 2fc53a8, see stopGraceUntil):
         // during a 68000 STOP the interrupt is taken at the end of a STOP
         // ITERATION, every 4 cycles from its start, the first iteration
@@ -738,9 +741,12 @@ Moira::execute()
                 if (mis) sync(int(4 - mis));
             }
 
-            // POM68K: honour the one-instruction delay armed by a mask-
-            // lowering SR-write — run the next instruction before taking
-            // the IRQ (breaks the SimCity-2000 redraw livelock).
+            // [F] The depth is the core's (irqDelay = 2, two instructions;
+            //     the PRM reads as one): POM68K_VENDOR.md row 13, pinned by
+            //     moira_rules_test irqDelayAfterMaskLowering. Settled by: a
+            //     capture of MOVE to SR with a pending interrupt.
+            // POM68K: honour the delay armed by a mask-lowering SR-write
+            // before taking the IRQ (breaks the SimCity-2000 redraw livelock).
             if (irqDelay) {
                 irqDelay--;
             } else if (!rteContinues) {
@@ -801,7 +807,7 @@ Moira::execute()
         }
 
         // Execute the instruction
-        // POM68K O4 slice 3: see the fast path
+        // POM68K (host) O4 slice 3: see the fast path
         if (cpuModel == Model::M68030) [[unlikely]] {
             if (!mmuExecuteStart<Core::C68020>()) goto done;
         } else if (cpuModel >= Model::M68EC040) [[unlikely]] {
@@ -830,6 +836,8 @@ Moira::execute()
             }
         }
 
+        // [B] MC68040UM-1993 §8.2.6: trace is taken when the traced
+        //     instruction completes.
         // POM68K Q2: 68040 pending trace (staged TRACE_EXC consumed above,
         // or armed mid-instruction by an SR write) — fires post-instruction
         if (trace040Pending) [[unlikely]] {
@@ -911,10 +919,14 @@ Moira::processException(const std::exception &exc)
         // double fault → HALT (WinUAE Exception_mmu030 / cpu_halt)
         if constexpr (C == Core::C68020) {
             if (dynamic_cast<const MmuBusError *>(&exc)) {
+                // [B] M68000PRM-1992 MOVES: SFC/DFC name the address space
+                //     of the instruction's own operand access, nothing else.
                 // POM68K: a faulting MOVES must release SFC/DFC before
                 // stacking and running its handler (the saved access keeps FC).
                 fcSource = 0;
                 try {
+                    // [B] MC68030UM-1989 §8.2: short/long bus fault frames.
+                    // [B] MC68040UM-1993 §8.4: the access error frame ($7).
                     // POM68K Q3: the 68040 stacks a format $7 frame with
                     // the restart model; the 030 keeps its $A/$B frames
                     if (cpuModel >= Model::M68EC040) {
@@ -931,14 +943,14 @@ Moira::processException(const std::exception &exc)
 
         if (auto ae = dynamic_cast<const AddressError *>(&exc); ae) {
 
-            willProcessFault(ae->stackFrame);  // POM68K (ported from NeoST ce1cc52)
+            willProcessFault(ae->stackFrame);  // POM68K (host) (ported from NeoST ce1cc52)
             execAddressError<C>(ae->stackFrame);
             return;
         }
 
         if (auto be = dynamic_cast<const BusError *>(&exc); be) {
 
-            willProcessFault(be->stackFrame);  // POM68K (ported from NeoST ce1cc52)
+            willProcessFault(be->stackFrame);  // POM68K (host) (ported from NeoST ce1cc52)
             execBusError<C>(be->stackFrame);
             return;
         }
@@ -959,7 +971,7 @@ Moira::processException(const std::exception &exc)
 
     } catch (AddressError &ae) {
 
-        willProcessFault(ae.stackFrame);  // POM68K (ported from NeoST ce1cc52)
+        willProcessFault(ae.stackFrame);  // POM68K (host) (ported from NeoST ce1cc52)
         // NEOST : erreur d'adresse PENDANT le traitement d'une exception groupe 0
         // (ex. vecteur BUS ERROR impair) = double faute → HALT, comme le vrai 68000.
         halt();
@@ -967,7 +979,7 @@ Moira::processException(const std::exception &exc)
 
     } catch (BusError &be) {
 
-        willProcessFault(be.stackFrame);  // POM68K (ported from NeoST ce1cc52)
+        willProcessFault(be.stackFrame);  // POM68K (host) (ported from NeoST ce1cc52)
         // NEOST : bus error pendant l'empilement d'une exception groupe 0
         // (pile dans une zone bus-error) = double faute → HALT.
         halt();
@@ -1118,7 +1130,7 @@ Moira::setCACR(u32 val)
 
     reg.cacr = val & cacrMask();
 #if MOIRA_ENABLE_JIT
-    // POM68K: native 040 cache-line entries are published only while the
+    // POM68K (host): native 040 cache-line entries are published only while the
     // D-cache is enabled (pomJitCache040Publish). One published under DE=1
     // stayed live after a MOVEC cleared DE, and generated code kept reading
     // the copyback line where the interpreter, cache disabled, reads memory
@@ -1142,7 +1154,7 @@ Moira::setCAAR(u32 val)
 u8 *
 Moira::pomJitDataSlow(u32 addr, u32 want, bool w) noexcept
 {
-    // POM68K J3 (Moira.h § pomJitData): levels 1 and 2 behind the one-entry
+    // POM68K (host) J3 (Moira.h § pomJitData): levels 1 and 2 behind the one-entry
     // level 0. The big table absorbs page ping-pong beyond two pages; the
     // fill is attempted once — a transient refusal (no resident ATC entry
     // yet, an unmodified page seen by a write) leaves the tag unset, and
@@ -1158,7 +1170,7 @@ Moira::pomJitDataSlow(u32 addr, u32 want, bool w) noexcept
         pomJitDtlbFillFn(pomJitDtlbFillCtx, addr, w != 0);
         if (e.tag != want) return nullptr;
     }
-    // POM68K 2026-08-10: the level-0 page carries a tag and a host and
+    // POM68K (host) 2026-08-10: the level-0 page carries a tag and a host and
     // nothing else, so it cannot express the entry's per-slice code mask.
     // Rather than widen it, this path keeps the OLD, coarser rule — a write
     // page holding any translated code is refused outright. The mask exists

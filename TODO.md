@@ -775,16 +775,6 @@ profil temporel reproductible et se mesure en ABBA intra-binaire,
 empreintes identiques. Une règle 68k commune vit dans l'IR ou le coût
 partagé, jamais dans un émetteur.
 
-- [ ] **Lecture d'opérande en relatif PC native en espace programme sur
-  68030.** Depuis le 2026-11-21 (ruling D46, `CHANGELOG` (eleventh)), une
-  instruction 030 qui lit en `(d16,PC)`/`(d8,PC,Xn)` reste à l'interprète
-  (`JitIr.h withhold030ProgramOperands`) : les chemins natifs
-  (`pomJitReadData`, fenêtre DTLB) traduisent en espace données. Coût
-  mesuré : +3,8 % sur `lcii_boot_etalon` en x64 (ABBA quatre paires,
-  binaires HEAD/nouveau, même cœur), l'interprète inchangé. Piste : un
-  thunk en espace programme (FC 2/6, `mmuPcOperand`) que les deux
-  émetteurs prennent pour ces lectures, sans la fenêtre données. *La jambe
-  a64 : Bloqué : hôte AArch64.*
 - [ ] **Re-référencer les tables de performance des deux hôtes sur
   l'arbre courant.** Les empreintes de référence de `POM68K_JIT.md`
   (M4 du 2026-08-23, x86-64 du 2026-08-10) ne sont plus reproductibles
@@ -846,18 +836,6 @@ compilation et dans la documentation.
   (à NeoST). Les champs omis du visiteur : corrigés et tenus par
   `moira_state_test` (`CHANGELOG` 2026-11-08, septième). Chacune
   devient un gate ou une phrase corrigée.
-- [ ] **Terminer la revue des affirmations matérielles sans source du cœur.**
-  Les citations explicites de manuel ont une édition et un emplacement
-  vérifiés ; les comparaisons Musashi perdues sont `[F]` avec leur témoin
-  manquant et les alias Clock Signal sans preuve indépendante sont retirés.
-  `core_grades_test` tient ces sources (`CHANGELOG` 2026-11-08, huitième).
-  Depuis le 2026-11-22 un commentaire sans affirmation matérielle s'écrit
-  `POM68K (host)` et `core_grades.py --check` tient un cliquet sur les autres
-  (`--ungraded` les liste) : 264 restent, à relier à une preuve ou à
-  étiqueter `[F]` avec ce qui les trancherait, lot par lot, en baissant
-  `UNGRADED_CEILING` ; les cinq gros fichiers du cœur (`MoiraExec_cpp.h`,
-  `MoiraExecMMU_cpp.h`, `Moira.h`, `MoiraDataflow_cpp.h`, `Moira.cpp`)
-  n'ont pas encore été relus.
 - [ ] **Unifier le softfloat 80 bits avec NeoST.** POM68K utilise
   `extern/softfloat` avec un contexte par CPU, y compris les captures
   intermédiaires (`fpu_context_test`, `CHANGELOG` 2026-11-10, quatrième).

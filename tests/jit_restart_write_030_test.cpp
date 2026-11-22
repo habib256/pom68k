@@ -665,6 +665,25 @@ void installMovemLoop(FaultCpu& c) {
     put16(c, kHandler, 0x4E71);
 }
 
+void installPcRelativeReadLoop(FaultCpu& c) {
+    put32(c, 0, kStack);
+    put32(c, 4, kCode);
+    put32(c, 8, kHandler);
+    put16(c, kCode + 0x00, 0x303A);    // MOVE.W ($3E,PC),D0 -> kCode + $40
+    put16(c, kCode + 0x02, 0x003E);
+    put16(c, kCode + 0x04, 0xD240);    // ADD.W D0,D1
+    put16(c, kCode + 0x06, 0x60F8);    // BRA.S kCode
+    put16(c, kCode + 0x40, 0xBEEF);    // the program-space operand
+    put16(c, 0x50040, 0xDEAD);         // the same page, as data space maps it
+    put16(c, kHandler, 0x4E71);
+    // TC.E, 4 KB pages, TIA = TIB = 10. In DATA space page $1000 maps to
+    // physical $50000 (root $60000 -> table $61000, entry 1); TT0 makes
+    // program space (FC 2/6) transparent, so code and the PC-relative read
+    // see identity.
+    put32(c, 0x60000, 0x61000 | 2);
+    put32(c, 0x61000 + 1 * 4, 0x50000 | 1);
+}
+
 void prepareFault(FaultCpu& c) {
     c.setPC(kCode);
     c.setA(6, kHole);
@@ -731,6 +750,53 @@ int main() {
         std::printf("SKIP: native backend '%s' unavailable (%s)\n",
                     nativeName, native.jit.backendName());
         return 0;
+    }
+
+    // Ruling D46: a 68030 PC-relative operand read is a program reference.
+    // Under a translation that maps program and data space apart, the
+    // native exact read must take program space as the interpreter's readM
+    // does — the data window would read the alias ($DEAD) instead.
+    {
+        const auto pcRefOwner = std::make_unique<FaultCpu>();
+        FaultCpu& pcRef = *pcRefOwner;
+        const auto pcNativeOwner = std::make_unique<FaultCpu>();
+        FaultCpu& pcNative = *pcNativeOwner;
+        installPcRelativeReadLoop(pcRef);
+        installPcRelativeReadLoop(pcNative);
+        pcRef.reset(); pcNative.reset();
+        for (FaultCpu* c : {&pcRef, &pcNative}) {
+            c->setTC(0x80000000u | 12u << 20 | 10u << 12 | 10u << 8);
+            c->setCRP(uint64_t(0x7FFF0002u) << 32 | 0x60000);
+            c->setTT0(0x00FF8124u);           // E, RWM, FC 2/6, all addresses
+            c->setPC(kCode);
+            c->setD(1, 0);
+        }
+        pcNative.jit.setEnabled(true);
+        bool same = true;
+        for (int step = 0; step < 96 && same; step++) {
+            const int64_t target = pcRef.getClock() + 61;
+            pcRef.executeUntil(target);
+            pcNative.jit.executeUntil(target);
+            for (int r = 0; r < 8; r++)
+                same = same && pcRef.getD(r) == pcNative.getD(r) &&
+                       pcRef.getA(r) == pcNative.getA(r);
+            same = same && pcRef.getPC() == pcNative.getPC() &&
+                   pcRef.getSR() == pcNative.getSR() &&
+                   pcRef.getClock() == pcNative.getClock();
+            if (!same)
+                std::printf("    PC-relative divergence at checkpoint %d: "
+                            "ref/jit D0=%08X/%08X D1=%08X/%08X clock=%lld/%lld\n",
+                            step, pcRef.getD(0), pcNative.getD(0),
+                            pcRef.getD(1), pcNative.getD(1),
+                            (long long)pcRef.getClock(),
+                            (long long)pcNative.getClock());
+        }
+        const auto pcStats = pcNative.jit.stats().snapshot();
+        check(same && (pcNative.getD(0) & 0xFFFF) == 0xBEEF,
+              "68030 PC-relative read takes program space natively (D46)");
+        check(pcStats.blocksCompiled != 0 && pcStats.blocksRun != 0 &&
+              pcStats.slowInstrs == 0,
+              "68030 MOVE.W (d16,PC),Dn runs through the native exact read");
     }
 
     // Speedometer 4's CPU test uses this exact six-instruction sequence in

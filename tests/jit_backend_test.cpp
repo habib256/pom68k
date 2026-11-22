@@ -222,20 +222,32 @@ int main() {
               "Speedometer device polls require exact reads only on the 68030");
 
         // Ruling D46: a 68030 PC-relative operand read is in program space,
-        // which the native data paths do not translate; the 68040 reads it
-        // as data. MOVE.W ($10,PC),D0 / MOVE.W D0,(A0) stay native.
+        // which the native data window does not translate. A sole such read
+        // becomes an exact thunk read in program space; a two-access form
+        // (MOVE.W ($10,PC),(A0)) stays on the interpreter. The 68040 reads
+        // it as data and keeps its contract; MOVE.W D0,(A0) is untouched.
         {
-            const auto withheld = [](uint16_t op, bool is030) {
+            const auto filtered = [](uint16_t op, bool is030) {
                 jit::Instr in;
                 in.opcode = op;
                 in.memory = jit::describeMemory(op, is030);
-                const bool before = in.memory.described;
                 jit::withhold030ProgramOperands(in, is030);
-                return before && !in.memory.described;
+                return in.memory;
             };
-            check(withheld(0x303A, true) && withheld(0x303B, true) &&
-                  !withheld(0x303A, false) && !withheld(0x3080, true),
-                  "68030 PC-relative operand reads are withheld from native code");
+            const jit::MemoryProofOptions options;
+            const auto sole030 = filtered(0x303A, true);
+            const auto soleProof = jit::memoryProofPlan(sole030, options);
+            const auto sole040 = filtered(0x303A, false);
+            check(sole030.described && sole030.count == 1 &&
+                  sole030.access[0].exactRequired &&
+                  sole030.access[0].programSpace &&
+                  soleProof.exactThunkMask == 1 && soleProof.cacheMask == 0 &&
+                  filtered(0x303B, true).access[0].programSpace &&
+                  !filtered(0x30BA, true).described &&
+                  sole040.described && !sole040.access[0].programSpace &&
+                  !sole040.access[0].exactRequired &&
+                  !filtered(0x3080, true).access[0].programSpace,
+                  "68030 PC-relative operand reads take the program-space thunk");
         }
 
         jit::Instr bfextuMemory;

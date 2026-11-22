@@ -165,7 +165,7 @@ Moira::isValidExtMMU(Instr I, Mode M, u16 op, u32 ext) const
 u32
 Moira::mmuRead32(u32 addr) const
 {
-    // POM68K: sequence host words; a first-half abort cannot read the second.
+    // POM68K (host): sequence host words; a first-half abort cannot read the second.
     const u32 hi = read16(addr);
     return hi << 16 | read16(addr + 2);
 }
@@ -261,7 +261,7 @@ Moira::mmuMatchTT(u32 tt, u32 addr, int fc, int rw, u16 &sr) const
 u16
 Moira::mmuFetchWord(u32 addr)
 {
-    // POM68K O6: serve linear fetches from the pre-switch pipe after a
+    // POM68K (host) O6: serve linear fetches from the pre-switch pipe after a
     // PMOVE to TC/CRP/SRP; any fetch outside the window kills it
     if (mmuPipeCnt > 0) {
 
@@ -272,6 +272,7 @@ Moira::mmuFetchWord(u32 addr)
 
     const u8 fc = u8((reg.sr.s ? 4 : 0) | 2);
 
+    // [B] MC68030UM-1989 §6: both caches are accessed by logical addresses.
     // POM68K: 68030 i-cache overlay — every instruction-word fetch, LOGICAL
     // address (the 030 caches are logical), before translation. Inline
     // (was a virtual hook — Moira.h § PomIcache); model rationale in Cpu030.h.
@@ -279,12 +280,12 @@ Moira::mmuFetchWord(u32 addr)
     // with mmuExecuteStart's fused ird/irc fetch so it exists exactly once.
     pomIcacheFetch<1>(addr);
 
-    // POM68K O6: recorded here too — with TC.E off mmuTranslateAccess is
+    // POM68K (host) O6: recorded here too — with TC.E off mmuTranslateAccess is
     // bypassed, but an unmapped fetch must still be extBusError()-able
     mmuAccAddr = addr; mmuAccSsw = 0x0020; mmuAccFc = fc; mmuAccWrite = false;
 
 #if MOIRA_ENABLE_JIT
-    // POM68K JIT code window, 030 flavor (2026-07-28). ONE hook site covers
+    // POM68K (host) JIT code window, 030 flavor (2026-07-28). ONE hook site covers
     // every instruction-stream fetch — mmuExecuteStart's ird/irc AND the
     // readExt 030 branch all come through here. Placed AFTER the icache
     // overlay (its miss penalty is cycle-visible and must keep charging)
@@ -306,7 +307,7 @@ Moira::mmuFetchWord(u32 addr)
 
 #endif
 
-// POM68K O6: pipe capture — called by the PMOVE handlers with the OLD
+// POM68K (host) O6: pipe capture — called by the PMOVE handlers with the OLD
 // TC/CRP/SRP still in force. Faults during capture (next code page not
 // mapped under the old view) just shorten the pipe.
 // The following definitions are not templated. They are compiled into the
@@ -330,7 +331,7 @@ Moira::mmuCapturePipe()
 
 #endif
 
-// POM68K: deferred prefetch fault (Moira.h § ircPoison). mmuPageFault's latches
+// POM68K (host): deferred prefetch fault (Moira.h § ircPoison). mmuPageFault's latches
 // describe the fault being raised; a lookahead that does not raise must
 // leave them, and the locked-RMW and RTE flags it clears, as they were.
 // The following definitions are not templated. They are compiled into the
@@ -464,6 +465,8 @@ Moira::mmuArmFixup(int n, bool predec)
 template <Core C> bool
 Moira::mmuExecuteStart()
 {
+    // [C] LC II ROM 35C28F5F $40A00820: TimeDBRA installs its level-1
+    //     autovector ($64) and counts DBRA iterations until it fires.
     // POM68K O6: the mode-5 loop suppressed the end-of-instruction
     // prefetches that carried POLL_IPL — without this, a dbra-only loop
     // (no data accesses) never samples the IPL lines and interrupts
@@ -528,7 +531,7 @@ Moira::mmuExecuteStart()
     }
 
 #if MOIRA_ENABLE_JIT
-    // POM68K JIT code window, 030 flavour (B.2 slice 4) — the shape
+    // POM68K (host) JIT code window, 030 flavour (B.2 slice 4) — the shape
     // mmu040InstrStart already uses below. Placed AFTER the POLL_IPL and the
     // per-instruction MMU resets above, which feed execMmuBusError and may
     // never be skipped. Three conditions, in this order:
@@ -550,7 +553,7 @@ Moira::mmuExecuteStart()
     // left, which is the only one extBusError() can ever read back.
     if (!pomMmuPipeLive() && !(flags & State::CHECK_WP)) {
         if (pomInterpWindowOn && !pomJitCovers(reg.pc)) [[unlikely]]
-            pomInterpArm(reg.pc);                       // POM68K: interpreter-owned window
+            pomInterpArm(reg.pc);                       // POM68K (host): interpreter-owned window
         if (const u8 *p; pomJitFetch(reg.pc, 4, p)) {
             pomIcacheFetch<2>(reg.pc);
             mmuAccAddr  = reg.pc + 2;
@@ -713,7 +716,7 @@ Moira::mmuTableWalkBody(u32 addr, u8 fc, bool write, int limit,
 void
 Moira::mmuAtcTouch(int i)
 {
-    // POM68K perf: O(1) equivalent of the original two-pass scan.
+    // POM68K (host) perf: O(1) equivalent of the original two-pass scan.
     // mmuAtcMruCount always equals the number of set history bits
     // (transitions happen only here and in the resets), so "no clear
     // bit left" is a counter test instead of a 22-entry walk.
@@ -737,7 +740,7 @@ Moira::mmuAtcLookup(u32 addr, u8 fc, bool write)
     const u32 imask = ~mmuPageMask();
     const u32 maddr = addr & imask;
 
-    // POM68K perf: probe the line that satisfied the previous lookup for
+    // POM68K (host) perf: probe the line that satisfied the previous lookup for
     // this (fc, direction) first — page-local access streams (nearly all
     // of them) then check one entry instead of scanning 22. The checks,
     // the write-upgrade invalidation and the LRU touch are the same as
@@ -751,7 +754,7 @@ Moira::mmuAtcLookup(u32 addr, u8 fc, bool write)
                 return mmuAtcLast[fc & 7][write];
             }
             e.valid = false;
-            pomJitAtcEvict(e.logical & imask, ~imask + 1, (fc & 3) == 2);   // POM68K J3b
+            pomJitAtcEvict(e.logical & imask, ~imask + 1, (fc & 3) == 2);   // POM68K (host) J3b
         }
     }
 
@@ -767,7 +770,7 @@ Moira::mmuAtcLookup(u32 addr, u8 fc, bool write)
             return i;
         }
         e.valid = false;
-        pomJitAtcEvict(e.logical & imask, ~imask + 1, (fc & 3) == 2);       // POM68K J3b
+        pomJitAtcEvict(e.logical & imask, ~imask + 1, (fc & 3) == 2);       // POM68K (host) J3b
     }
     return -1;
 }
@@ -795,7 +798,7 @@ Moira::mmuAtcFill(u32 addr, u8 fc, bool write)
     const u32 imask = ~mmuPageMask();
     auto &e = mmuAtcArr[i];
 
-    // POM68K J3b (Moira.h § pomJitAtcEvict): whatever the JIT derived from
+    // POM68K (host) J3b (Moira.h § pomJitAtcEvict): whatever the JIT derived from
     // the replaced entry dies with it — same U-bit argument as the 040.
     if (e.valid && (e.logical != (addr & imask) || e.fc != fc))
         pomJitAtcEvict(e.logical, ~imask + 1, (e.fc & 3) == 2);
@@ -822,14 +825,14 @@ Moira::mmuAtcFill(u32 addr, u8 fc, bool write)
 void
 Moira::mmuAtcFlushAll()
 {
-    pomJitMapMoved();               // POM68K JIT (030 window)
+    pomJitMapMoved();               // POM68K (host) JIT (030 window)
     for (auto &e : mmuAtcArr) e.valid = false;
 }
 
 void
 Moira::mmuAtcFlushFc(u32 fcBase, u32 fcMask)
 {
-    pomJitMapMoved();               // POM68K JIT (030 window)
+    pomJitMapMoved();               // POM68K (host) JIT (030 window)
     for (auto &e : mmuAtcArr)
         if (e.valid && (fcBase & fcMask) == (e.fc & fcMask)) e.valid = false;
 }
@@ -837,7 +840,7 @@ Moira::mmuAtcFlushFc(u32 fcBase, u32 fcMask)
 void
 Moira::mmuAtcFlushPage(u32 addr)
 {
-    pomJitMapMoved();               // POM68K JIT (030 window)
+    pomJitMapMoved();               // POM68K (host) JIT (030 window)
     addr &= ~mmuPageMask();
     for (auto &e : mmuAtcArr)
         if (e.valid && e.logical == addr) e.valid = false;
@@ -846,7 +849,7 @@ Moira::mmuAtcFlushPage(u32 addr)
 void
 Moira::mmuAtcFlushPageFc(u32 addr, u32 fcBase, u32 fcMask)
 {
-    pomJitMapMoved();               // POM68K JIT (030 window)
+    pomJitMapMoved();               // POM68K (host) JIT (030 window)
     addr &= ~mmuPageMask();
     for (auto &e : mmuAtcArr)
         if (e.valid && (fcBase & fcMask) == (e.fc & fcMask) && e.logical == addr)
@@ -862,11 +865,11 @@ Moira::mmuAtcFlushPageFc(u32 addr, u32 fcBase, u32 fcMask)
 u32
 Moira::mmuTranslateAccess(u32 addr, u8 fc, bool write, u32 sswFlags)
 {
-    // POM68K O6: remember the sub-access so a device asserting /BERR from
+    // POM68K (host) O6: remember the sub-access so a device asserting /BERR from
     // the physical read/write callback (extBusError) faults it exactly
     mmuAccAddr = addr; mmuAccSsw = sswFlags; mmuAccFc = fc; mmuAccWrite = write;
 
-    // POM68K O4 slice 4: the funnel now routes every M68030 access here;
+    // POM68K (host) O4 slice 4: the funnel now routes every M68030 access here;
     // with translation disabled the address passes through untouched
     if (!(reg.tc & 0x80000000)) return addr;
 
@@ -964,7 +967,7 @@ Moira::mmuPageFault(u32 addr, bool read, u32 sswFlags, u8 fc)
 
 #endif
 
-// POM68K O6: external /BERR — replays the recorded in-flight sub-access
+// POM68K (host) O6: external /BERR — replays the recorded in-flight sub-access
 // into the translation-fault machinery. The MmuBusError unwinds through
 // mmuRead/mmuWrite/mmuFetchWord into the per-instruction handler, which
 // stacks the same $A/$B frame a real bus error at that point would.
@@ -975,6 +978,7 @@ Moira::mmuPageFault(u32 addr, bool read, u32 sswFlags, u8 fc)
 void
 Moira::extBusError()
 {
+    // [B] MC68020UM-1992 §6.2.2: the frame's data fault address (SP+$10).
     // POM68K Phase C: also valid for the plain 68020/EC020 core — the
     // read<>/write<> paths record the in-flight sub-access (MoiraDataflow)
     // so the $B frame carries the true fault address (the Mac LC ROM's
@@ -987,7 +991,7 @@ Moira::extBusError()
 
 #endif
 
-// POM68K: the 68000/68010 twin — see the declaration in Moira.h.
+// POM68K (host): the 68000/68010 twin — see the declaration in Moira.h.
 // The following definitions are not templated. They are compiled into the
 // main translation unit only (see MoiraCore_cpp.h).
 #ifdef MOIRA_MAIN_TU
@@ -1019,7 +1023,7 @@ Moira::extBusError000(u32 addr, bool write)
 template <Core C, Size S, Flags F> u32
 Moira::mmuRead(u32 addr)
 {
-    // POM68K: the translated 030/040 path bypasses readM's watchpoint
+    // POM68K (host): the translated 030/040 path bypasses readM's watchpoint
     // hook — match on the LOGICAL address here so the debugger works
     // under the MMU too (found chasing the Q605 _FP68K trap install).
     if ((flags & State::CHECK_WP)
@@ -1040,6 +1044,8 @@ Moira::mmuRead(u32 addr)
         return v;
     }
 
+    // [B] MC68030UM-1989 §8.2.1: with DF clear the data input buffer on
+    //     the stack is taken as the read's result.
     // POM68K O6.9: the RTE of a DF-cleared fault frame marked this very
     // access as software-completed — deliver the frame's data input
     // buffer without a bus cycle (Moira.h mmuRteSubst*)
@@ -1054,7 +1060,7 @@ Moira::mmuRead(u32 addr)
         return v;
     }
 
-    // POM68K B.2 slice 5 (2026-09-04) — the J3 data window, read side, on
+    // POM68K (host) B.2 slice 5 (2026-09-04) — the J3 data window, read side, on
     // the 68030. mmu040Read has consulted pomJitData since J3; mmuRead never
     // did, which is why docs/JIT_BRINGUP.md § C.2 could only record
     // POM68K_DATA_WINDOW as a DEAD path on this family. Moira.h
@@ -1198,7 +1204,7 @@ Moira::mmuRead(u32 addr)
 template <Core C, Size S, Flags F> void
 Moira::mmuWrite(u32 addr, u32 val)
 {
-    // POM68K: logical-address watchpoint hook (see mmuRead above).
+    // POM68K (host): logical-address watchpoint hook (see mmuRead above).
     if ((flags & State::CHECK_WP)
         && debugger.watchpointMatches(addr & addrMask<C>(), S)) {
         pomDidReachWatchpoint(addr & addrMask<C>(), S, true,
@@ -1239,7 +1245,7 @@ Moira::mmuWrite(u32 addr, u32 val)
         return;
     }
 
-    // POM68K B.2 slice 5 (2026-09-04) — the J3 data window, write side, on
+    // POM68K (host) B.2 slice 5 (2026-09-04) — the J3 data window, write side, on
     // the 68030. Everything mmuRead's twin comment above establishes applies
     // unchanged: aligned forms only (the unaligned branches below own
     // mmuState[1]/mmuDataBuffer), POLL_IPL reproduced at its size's position
@@ -1723,12 +1729,13 @@ Moira::execPMove(u16 opcode)
 
             } else {
 
+                // [C] LC II ROM 35C28F5F $40A416AA (Moira.h § mmuPipe).
                 // POM68K O6: the words already in the 030 pipe were
                 // fetched under the OLD translation — capture them
                 // before the switch (LC II ROM "pmove tc; nop; bne; jmp")
                 mmuCapturePipe();
                 reg.tc = readM<C, M, Long>(ea);
-                // POM68K JIT: TC.E is the switch between "translation off,
+                // POM68K (host) JIT: TC.E is the switch between "translation off,
                 // logical == physical" and a page-table walk, so every
                 // cached mapping — the code window, the data TLB and every
                 // recorded block — describes the wrong machine the instant
@@ -1764,10 +1771,10 @@ Moira::execPMove(u16 opcode)
 
             } else {
 
-                mmuCapturePipe();       // POM68K O6: see the TC case
+                mmuCapturePipe();       // POM68K (host) O6: see the TC case
                 reg.srp = u64(readM<C, M, Long>(ea)) << 32;
                 reg.srp |= readM<C, M, Long>(ea + 4);
-                pomJitMapMoved();       // POM68K JIT: see the TC case
+                pomJitMapMoved();       // POM68K (host) JIT: see the TC case
                 if ((reg.srp >> 32 & 3) == 0) {
                     execMmuConfigError<C>();
                     trapped = true;
@@ -1784,10 +1791,10 @@ Moira::execPMove(u16 opcode)
 
             } else {
 
-                mmuCapturePipe();       // POM68K O6: see the TC case
+                mmuCapturePipe();       // POM68K (host) O6: see the TC case
                 reg.crp = u64(readM<C, M, Long>(ea)) << 32;
                 reg.crp |= readM<C, M, Long>(ea + 4);
-                pomJitMapMoved();       // POM68K JIT: see the TC case
+                pomJitMapMoved();       // POM68K (host) JIT: see the TC case
                 if ((reg.crp >> 32 & 3) == 0) {
                     execMmuConfigError<C>();
                     trapped = true;
@@ -1982,7 +1989,7 @@ Moira::execPTest40(u16 opcode)
 void
 Moira::mmu040AtcFlushAll()
 {
-    pomJitMapMoved();                 // POM68K JIT: every cached mapping dies
+    pomJitMapMoved();                 // POM68K (host) JIT: every cached mapping dies
     mmu040AtcCowBoth();
     for (auto &e : mmu040AtcI) e.valid = false;
     for (auto &e : mmu040AtcD) e.valid = false;
@@ -1993,7 +2000,7 @@ Moira::mmu040AtcFlushAll()
 void
 Moira::mmu040AtcFlushNonGlobal()
 {
-    pomJitMapMoved();                 // POM68K JIT
+    pomJitMapMoved();                 // POM68K (host) JIT
     mmu040AtcCowBoth();
     for (auto &e : mmu040AtcI)
         if (e.valid && !(e.status & 0x400)) e.valid = false;
@@ -2004,7 +2011,7 @@ Moira::mmu040AtcFlushNonGlobal()
 void
 Moira::mmu040AtcFlushPage(u32 addr, bool nonGlobalOnly, bool super, int space)
 {
-    pomJitMapMoved();                 // POM68K JIT
+    pomJitMapMoved();                 // POM68K (host) JIT
     mmu040AtcCowBoth();
     const u32 imask = mmu040PageMaskI();
     addr &= imask;
@@ -2036,7 +2043,7 @@ Moira::pomJitAtcBacked040(u32 addr, bool data, bool super) const
 
 #endif
 
-// POM68K: exact native accesses are speculative until the instruction owns
+// POM68K (host): exact native accesses are speculative until the instruction owns
 // their result. Keep their ATC mutations and debits atomic with that commit;
 // a refused native attempt must not choose the following access's victim.
 // The following definitions are not templated. They are compiled into the
@@ -2157,7 +2164,7 @@ Moira::mmu040AtcLookup(bool data, u32 addr, bool write, bool super)
             }
             pomAtcCow040Touch(data);
             e.valid = false;
-            pomJitAtcEvict(e.logical & imask, ~imask + 1, !data);   // POM68K J3b
+            pomJitAtcEvict(e.logical & imask, ~imask + 1, !data);   // POM68K (host) J3b
         }
     }
 
@@ -2171,7 +2178,7 @@ Moira::mmu040AtcLookup(bool data, u32 addr, bool write, bool super)
         }
         pomAtcCow040Touch(data);
         e.valid = false;
-        pomJitAtcEvict(e.logical & imask, ~imask + 1, !data);       // POM68K J3b
+        pomJitAtcEvict(e.logical & imask, ~imask + 1, !data);       // POM68K (host) J3b
     }
     return -1;
 }
@@ -2179,7 +2186,7 @@ Moira::mmu040AtcLookup(bool data, u32 addr, bool write, bool super)
 void
 Moira::mmu040AtcFill(bool data, u32 addr, u32 status, bool super)
 {
-    // POM68K M0 probe (docs/CACHE_040.md): histogram the descriptor CM
+    // POM68K (host) M0 probe (docs/CACHE_040.md): histogram the descriptor CM
     // bits Mac OS actually maps, per ATC fill. Diagnostic only, prints at
     // process exit; recorded in POM68K_VENDOR.md. The host arms it through
     // setPomCmStats040() (POM68K_040_CM_STATS in POM68K) — one member test
@@ -2216,7 +2223,7 @@ Moira::mmu040AtcFill(bool data, u32 addr, u32 status, bool super)
 
     pomAtcCow040Touch(data);
     auto &e = arr[i];
-    // POM68K J3b (Moira.h § pomJitAtcEvict): whatever the JIT derived from
+    // POM68K (host) J3b (Moira.h § pomJitAtcEvict): whatever the JIT derived from
     // the entry being REPLACED dies with it, so a window/TLB hit implies a
     // resident ATC entry and the walk/U-bit pattern stays bit-identical to
     // an engine with no windows at all.
@@ -2258,6 +2265,7 @@ Moira::mmu040InstrStart()
     ircPoison = false;
     ircLongAt = ircNoLong;
 
+    // [D] WinUAE @ Hatari e77819f7 — oracle reading (execAddressError040).
     // POM68K: the deferred odd-target fetch fault — see mmuExecuteStart.
     // execJsr leaves a 68040 JSR to an odd target retired at that target;
     // this is the fetch that takes vector 3, stacked PC = the odd pc.
@@ -2267,7 +2275,7 @@ Moira::mmu040InstrStart()
     }
 
 #if MOIRA_ENABLE_JIT
-    // POM68K JIT code window (Moira.h § PomJitWindow). Placed AFTER the
+    // POM68K (host) JIT code window (Moira.h § PomJitWindow). Placed AFTER the
     // POLL_IPL above and AFTER the eight per-instruction MMU resets — those
     // feed execMmu040BusError's restart/last-write dichotomy and may never
     // be skipped. Both words come from the window or neither does: serving
@@ -2275,7 +2283,7 @@ Moira::mmu040InstrStart()
     // touches for an instruction sitting on a page's last word, and with it
     // the fault frame.
     if (pomInterpWindowOn && !pomJitCovers(reg.pc)) [[unlikely]]
-        pomInterpArm(reg.pc);                           // POM68K: interpreter-owned window
+        pomInterpArm(reg.pc);                           // POM68K (host): interpreter-owned window
     if (const u8 *p; pomJitFetch(reg.pc, 4, p)) {
         queue.ird = u16(u16(p[0]) << 8 | p[1]);
         queue.irc = u16(u16(p[2]) << 8 | p[3]);
@@ -2351,7 +2359,7 @@ bool
 Moira::pomJitProbeCode(u32 logical, bool super,
                        u32 &phys, u32 &pageBase, u32 &pageLen) const
 {
-    // POM68K JIT (src/jit/POM68K_JIT.md § 4). A PROBE, not a translation:
+    // POM68K (host) JIT (src/jit/POM68K_JIT.md § 4). A PROBE, not a translation:
     // it must not touch guest memory, must not throw, and must not disturb
     // any CPU state, because it runs BETWEEN instructions on behalf of the
     // engine. That rules out mmu040Walk — a walk writes the descriptor U/M
@@ -2401,7 +2409,7 @@ Moira::pomJitProbeCode(u32 logical, bool super,
         pageBase = logical & ~mask;
         pageLen  = mask + 1;
 
-        // POM68K patch 31: both answers below are identity, so they carry
+        // POM68K (host) patch 31: both answers below are identity, so they carry
         // an identity bound rather than TC's unprogrammed page size.
         if (mmuMatchTTAccess(logical, fc, false)) {
             pomIdentityProbeBound(logical, pageBase, pageLen);
@@ -2449,7 +2457,7 @@ Moira::pomJitProbeCode(u32 logical, bool super,
     // Transparent translation is identity and cannot fault on a read.
     if (mmu040MatchTTR(logical, super, false)) return finish(logical);
     if (!mmu040Enabled()) return finish(logical);
-    if (!mmu040AtcArmed) return false;      // POM68K_MMU040_WALK differential mode
+    if (!mmu040AtcArmed) return false;      // POM68K (host)_MMU040_WALK differential mode
 
     // Read-only scan of the INSTRUCTION ATC. Deliberately not
     // mmu040AtcLookup(): that one updates the pseudo-LRU, and a probe has
@@ -2480,7 +2488,7 @@ Moira::pomJitProbeData(u32 logical, bool super, bool write,
                        u32 &phys, u32 &pageBase, u32 &pageLen,
                        bool allowCache040) const
 {
-    // POM68K J2 (src/jit/POM68K_JIT.md § 8). The data twin of
+    // POM68K (host) J2 (src/jit/POM68K_JIT.md § 8). The data twin of
     // pomJitProbeCode, and held to the same three rules: it must not touch
     // guest memory, must not throw, and must not disturb any CPU state —
     // it runs on behalf of GENERATED code that has no exception frame and
@@ -2587,7 +2595,7 @@ Moira::pomJitProbeData(u32 logical, bool super, bool write,
         return true;
     }
     if (!mmu040Enabled()) { phys = logical; return true; }
-    if (!mmu040AtcArmed) return false;      // POM68K_MMU040_WALK differential mode
+    if (!mmu040AtcArmed) return false;      // POM68K (host)_MMU040_WALK differential mode
 
     const unsigned set = mmu040AtcSet(logical);
     for (unsigned i = set; i < set + MMU040_ATC_WAYS; ++i) {
@@ -2771,12 +2779,33 @@ Moira::pomJitReadData(u32 addr, int bytes, u32 &out) noexcept
 }
 
 bool
+Moira::pomJitReadOperandProg(u32 addr, int bytes, u32 &out) noexcept
+{
+    if (cpuModel != Model::M68030 || fcSource != 0) return false;
+    mmuFixupReg[0] = mmuFixupReg[1] = 0;     // as pomJitReadData
+    setFC(FC::USER_PROG);                   // readFC() ORs in sr.s
+    mmuPcOperand = true;
+    try {
+        switch (bytes) {
+            case 1: out = mmuRead<Core::C68020, Byte, 0>(addr); break;
+            case 2: out = mmuRead<Core::C68020, Word, 0>(addr); break;
+            default: out = mmuRead<Core::C68020, Long, 0>(addr); break;
+        }
+    } catch (...) {
+        mmuPcOperand = false;
+        return false;
+    }
+    mmuPcOperand = false;
+    return true;
+}
+
+bool
 Moira::pomJitWriteData(u32 addr, int bytes, u32 val) noexcept
 {
     try {
         if (cpuModel == Model::M68030) {
             if (fcSource != 0) return false;
-            // POM68K: the 68030 fault builder applies the (An)± fixups it
+            // POM68K (host): the 68030 fault builder applies the (An)± fixups it
             // finds in mmuFixupReg when it throws (mmu030fixupmod), and this
             // thunk swallows the throw so generated code can replay the
             // instruction through Moira. None of those fixups belongs to a
@@ -2878,7 +2907,7 @@ Moira::pomJitJsr040(u32 instructionPc, u32 returnAddress, u32 target,
     reg.pc0 = instructionPc;
     reg.pc = returnAddress;
     queue.ird = opcode;
-    // POM68K: and the lookahead word mmu040InstrStart leaves in irc. The
+    // POM68K (host): and the lookahead word mmu040InstrStart leaves in irc. The
     // queue is refetched at every 68040 instruction start, so it shows only
     // where no instruction follows: a push fault with no stack left for the
     // frame halts the core, and the halted queue held the previous
@@ -2922,7 +2951,7 @@ Moira::pomJitJsr040(u32 instructionPc, u32 returnAddress, u32 target,
 int
 Moira::mmu040MatchTTR(u32 addr, bool super, bool data, u32 *cm) const
 {
-    // POM68K: answered from a table of the 512 possible inputs. The test
+    // POM68K (host): answered from a table of the 512 possible inputs. The test
     // below ran on every access — instruction fetches included — and was
     // 9.9 % of the 68040 interpreter (scratchpad/2026-11-06/
     // INTERP_PROFILE.md); the registers it decodes change on MOVEC only.
@@ -3011,11 +3040,11 @@ Moira::pomCache040Touch(bool data, u32 pa, bool write, int cm, int szCode)
 // main translation unit only (see MoiraCore_cpp.h).
 #ifdef MOIRA_MAIN_TU
 
-// POM68K: these probe types are thrown by extBusError040() and caught by the
+// POM68K (host): these probe types are thrown by extBusError040() and caught by the
 // cache fill/push paths, all of which are compiled into the main translation
 // unit only. Keeping the unnamed namespace there gives them a single identity.
 namespace {
-// POM68K: cache-bus probes defer frame construction until the controller
+// POM68K (host): cache-bus probes defer frame construction until the controller
 // can distinguish a fill abort from a physical push and its pending store.
 constexpr int kCache040ReadFillProbe = -1, kCache040PushProbe = -2;
 struct Cache040ReadFillBusError {};
@@ -3451,7 +3480,7 @@ template <Core C> u32
 Moira::mmu040TranslateHot(u32 addr, u32 val, bool super, bool data,
                           bool write, int szCode)
 {
-    // POM68K: mmu040Translate for the access that neither faults nor
+    // POM68K (host): mmu040Translate for the access that neither faults nor
     // walks, with the cache model off — an instruction fetch or a data
     // access answered by a TTR, by a disabled MMU, or by the ATC line the
     // previous access of its kind hit. Line for line the same decisions:
@@ -3557,6 +3586,7 @@ Moira::mmu040Translate(u32 addr, u32 val, bool super, bool data,
     int ttr = mmu040MatchTTR(addr, super, data, &ttrCm);
     if (ttr) {
         if (asWrite && ttr == 2) mmu040Fault<C>(addr, val, fc, asWrite, szCode);
+        // [B] MC68040UM-1993 §3.1.3: CM encoding.
         // POM68K M1: transparent regions cache per the TTR's CM field
         if (pomCache040On) pomCache040Touch(data, addr, asWrite, int(ttrCm), szCode);
         return addr;
@@ -3707,7 +3737,7 @@ Moira::mmu040Fault(u32 addr, u32 val, int fc, bool write, int szCode,
 template <Core C, Size S> u32
 Moira::mmu040Read(u32 addr, bool data)
 {
-    // POM68K: logical-address watchpoint hook (see mmuRead above — the
+    // POM68K (host): logical-address watchpoint hook (see mmuRead above — the
     // 040 bus path bypasses readM's check just like the 030 one).
     if ((flags & State::CHECK_WP)
         && debugger.watchpointMatches(addr & addrMask<C>(), S)) {
@@ -3722,7 +3752,7 @@ Moira::mmu040Read(u32 addr, bool data)
     // this call, so counting on entry equals counting on return.
     if (data && pomJitTimingProbe) [[unlikely]] pomJitTiming.dataAccesses++;
 
-    // POM68K J3 — the data window (Moira.h § pomJitData). A hit is plain
+    // POM68K (host) J3 — the data window (Moira.h § pomJitData). A hit is plain
     // guest memory behind a resident, permitted translation: no fault is
     // possible, so the in-flight access context is not stamped — the same
     // contract as the fetch window and the JIT's inline loads, and the
@@ -3813,7 +3843,7 @@ Moira::mmu040Read(u32 addr, bool data)
 template <Core C, Size S> void
 Moira::mmu040Write(u32 addr, u32 val, bool data)
 {
-    // POM68K: logical-address watchpoint hook (see mmuRead above).
+    // POM68K (host): logical-address watchpoint hook (see mmuRead above).
     if ((flags & State::CHECK_WP)
         && debugger.watchpointMatches(addr & addrMask<C>(), S)) {
         pomDidReachWatchpoint(addr & addrMask<C>(), S, true,
@@ -3824,7 +3854,7 @@ Moira::mmu040Write(u32 addr, u32 val, bool data)
     // JIT trace: see mmu040Read — one data access per call.
     if (data && pomJitTimingProbe) [[unlikely]] pomJitTiming.dataAccesses++;
 
-    // POM68K J3 — the data window, write side. The last-write marker is
+    // POM68K (host) J3 — the data window, write side. The last-write marker is
     // replicated bit for bit from the long path below: a LATER access in
     // the SAME instruction can still fault, and the format $7 frame stacks
     // this dichotomy — a fast path that skipped it would change which pc a
@@ -4022,7 +4052,7 @@ Moira::extBusError040()
     // original access with ATC. Each caller owns its side-effect-free unwind.
     if (mmuInTableSearch) throw MmuTableSearchBusError{};
 
-    // POM68K: a read-fill beat is not necessarily demanded. Its controller
+    // POM68K (host): a read-fill beat is not necessarily demanded. Its controller
     // catches this private signal before any architectural fault is built.
     if (mmu040AccSz == kCache040ReadFillProbe) throw Cache040ReadFillBusError{};
     if (mmu040AccSz == kCache040PushProbe) throw Cache040PushBusError{};

@@ -619,6 +619,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-22 (third) — The 68030 JIT reads PC-relative operands natively again, in program space](#2026-11-22-jit-pc-relative-native)
+- [2026-11-22 (second) — The core's grade review is complete: every POM68K rule has its source or says it is host](#2026-11-22-grades-review-complete)
 - [2026-11-22 — Ungraded core rules become a ratchet; the first batch sourced, and a 68010 claim that was wrong](#2026-11-22-grades-ratchet)
 - [2026-11-21 (thirteenth) — What a present FPU answers on the FC = 7 CIR probe: no ROM looks](#2026-11-21-cir-read-unobserved)
 - [2026-11-21 (twelfth) — SonoraCpu joins RbvCpu and VaspCpu on one 68030 base, its pacing kept](#2026-11-21-sonora-on-moira030)
@@ -1437,6 +1439,69 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-22-jit-pc-relative-native"></a>
+## 2026-11-22 (third) — The 68030 JIT reads PC-relative operands natively again, in program space
+
+Entry 2026-11-21 (eleventh) left every 68030 instruction with a
+PC-relative read to the interpreter, at +3.8 % on `lcii_boot_etalon` under
+the x64 JIT, because the native data window probes in data space.
+
+**The door.** `Moira::pomJitReadOperandProg` reads in program space (FC
+2/6) with `mmuPcOperand` set — `readM`'s read, faults included — and
+`pom68kJitRead` takes it when `kJitReadProgramSpace` is or'ed into its byte
+count. `withhold030ProgramOperands` now makes a sole such read
+exact-required with `programSpace` set: every execution goes through the
+thunk, which also owns the live bus delay (the Speedometer protocol), never
+through the data window. A shape with more accesses keeps the withheld
+contract, since its preflight would probe the data window. Each backend
+sets the bit at its one read-thunk call (x64 `memLoad`, a64 the shared
+miss path).
+
+**The gate.** The fuzzer could not see it: under `--mmutt` and `--mmuprot`
+its tables map program and data space onto the same pages, and a mutation
+making the thunk read data space passed 300 seeds. A new cell of
+`jit_restart_write_030_test` maps them apart — TT0 transparent on FC 2/6,
+the tables sending data-space page $1000 to $50000 — and runs
+`MOVE.W ($3E,PC),D0` natively against the interpreter: `$BEEF`, no slow
+instruction. Both mutations (thunk ignoring the bit, IR not setting it)
+read `$DEAD` and fail. The macOS CI runner is AArch64 and runs this gate,
+so the a64 leg is checked there.
+**Tiers and the price, recovered.** `asset-none` 208/208 (after the
+changelog index, a drifted `POM68K_JIT.md` citation and the `JitIr.h` size
+budget, +15); `ctest -L m030 -j8` 154/154 in 3 172 s, 153 executed and the
+known `lcii_floppy144_etalon` soft-skip (recorded in `STATUS.md`).
+`lcii_boot_etalon` under the x64 JIT, HEAD 30f03f45 against this tree,
+ABBA four pairs on one pinned core, same pixel pin `674c4049ab7980f7`:
+38.42 s → 38.31 s (−0.3 %, inside the HEAD arm's 36.6-40.0 s spread). The
++3.8 % of 2026-11-21 (eleventh) is gone; the `TODO.md` item is closed.
+
+<a id="2026-11-22-grades-review-complete"></a>
+## 2026-11-22 (second) — The core's grade review is complete: every POM68K rule has its source or says it is host
+
+The ratchet of the morning entry went from 264 to 0 in four batches
+(`Moira.cpp`, `MoiraDataflow_cpp.h`, `Moira.h`, `MoiraExecMMU_cpp.h`,
+`MoiraExec_cpp.h`): `UNGRADED_CEILING` is 0, so a new `POM68K` comment now
+either carries a grade or says `(host)`. Most units were host contracts —
+seams, JIT windows, save-state fields, pointers to another comment. The
+hardware rules found their sources:
+- [B]: MC68020UM-1992 §6.2.2 (data fault address at SP+$10, data input
+  buffer at SP+$2C), MC68030UM-1989 §6 (logical caches), §8.1.3, §8.2,
+  §8.2.1, MC68040UM-1993 §3.1.3, §8.2.6, §8.4, PRM TAS, MOVES and MOVEC
+  (three locators added to `tests/core_manuals.lock`);
+- [C]: the LC II ROM's TimeDBRA ($40A00820, its level-1 autovector) and
+  its PMOVE-to-TC sequence ($40A416AA-$40A416B6), both disassembled again;
+- [D]: NeoST's microcode reading (`d8d33bb`), Hatari CE and fx68k as NeoST
+  read them, SingleStepTests for the 68000 interim flags and word orders,
+  WinUAE for the 030 last-write, access-log and MOVE16 models.
+- [F]: the 030 pre-switch pipe depth, and the SR-write interrupt delay.
+
+One comment was wrong. `Moira.h` described `irqDelay` as a one-instruction
+delay; the core arms two (`irqDelay = 2`, `moira_rules_test`
+irqDelayAfterMaskLowering, Moira row 13), where the PRM reads as one. It is
+now an [F] with its witness. Code untouched: stripped of comments, every
+core file but the new `pomJitReadOperandProg` (entry (third)) is identical
+to its previous revision.
 
 <a id="2026-11-22-grades-ratchet"></a>
 ## 2026-11-22 — Ungraded core rules become a ratchet; the first batch sourced, and a 68010 claim that was wrong

@@ -1795,7 +1795,8 @@ void memLoadGuest(Asm& a, const Layout& L, bool super, int bits, unsigned rd,
     prepareAtcThunk040(a, L, access.index, 5);
     a.address(3, 1, 72);                // Frame::value
     a.movRegW(1, 9);                    // guest address
-    a.movW(2, unsigned(bits / 8));
+    a.movW(2, unsigned(bits / 8) |
+              (access.programSpace ? kJitReadProgramSpace : 0u));
     if (ea) commitEaBeforeAccess(a, L, *ea, bits, access);
     if (icacheCountersLive(L)) spillIcacheCounters(a, L);
     spillQueueLive(a, L);

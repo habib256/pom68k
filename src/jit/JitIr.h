@@ -386,6 +386,9 @@ struct MemoryAccess {
     FaultPhase fault = FaultPhase::RestartInstruction;
     uint8_t cache = MemoryCacheNone;
     bool exactRequired = false; // model/device timing requires the exact path
+    // A 68030 PC-relative operand read: program space (ruling D46). Only
+    // with exactRequired — the thunk reads it, never the data window.
+    bool programSpace = false;
     // The slot names a native PROOF span wider than the architectural access:
     // a memory bit field whose 1-, 2- or 3-byte shape is selected at run time
     // (or is narrower than the slot) is proved, loaded and stored as a
@@ -464,6 +467,7 @@ struct MemoryAccessPlan {
     bool preflight = false;
     bool exactThunk = false;
     bool exactRequired = false;
+    bool programSpace = false;
     bool cache = false;
     bool proofSpan = false;
 
@@ -1174,6 +1178,7 @@ inline MemoryAccessPlan memoryAccessPlan(const MemoryContract& c,
         result.preflight = (proof.preflightMask & bit) != 0;
         result.exactThunk = (proof.exactThunkMask & bit) != 0;
         result.exactRequired = a.exactRequired;
+        result.programSpace = a.programSpace;
         result.cache = (proof.cacheMask & bit) != 0;
         result.proofSpan = a.proofSpan;
     }
@@ -1622,20 +1627,30 @@ inline bool memoryBitfieldMaySpanThreeBytes(uint16_t ext) {
 // still branch around it when the selected field does not cross bit 31.
 // [B] MC68030UM-1989 §2: a PC-relative operand read is a program reference
 // (FC 2/6). Moira's readM issues it so (ruling D46), and the 68030 ATC and
-// transparent translation match the FC exactly; the native data paths
-// (pomJitReadData, the DTLB window) read in data space. Such an instruction
-// is therefore left undescribed on the 68030 — no backend may infer a
-// protocol for it, so it stays on the interpreter. The 68040 converts these
-// reads to data references (MC68040UM-1993 §8.4.6.7) and keeps its contract.
+// transparent translation match the FC exactly; the native data window
+// probes in data space. A sole such read is made exact-required in program
+// space: every execution goes through pom68kJitRead's program-space door
+// (pomJitReadOperandProg), which also owns its live bus delay, as for the
+// Speedometer polls. Any other shape is left undescribed — its preflight
+// would probe the data window — so it stays on the interpreter. The 68040
+// converts these reads to data references (MC68040UM-1993 §8.4.6.7) and
+// keeps its contract.
 inline void withhold030ProgramOperands(Instr& in, bool is030) {
     if (!is030 || !in.memory.described) return;
-    const MemoryContract& c = in.memory;
-    for (const MemoryAccess& a : c.access) {
-        if (a.direction == MemoryDirection::Read && a.eaMode == 7 &&
-            (a.eaReg == 2 || a.eaReg == 3)) {
-            in.memory = MemoryContract{};
+    MemoryContract& c = in.memory;
+    for (MemoryAccess& a : c.access) {
+        if (a.direction != MemoryDirection::Read || a.eaMode != 7 ||
+            (a.eaReg != 2 && a.eaReg != 3))
+            continue;
+        // A memory-indirect source with an exact-required read is refused
+        // by both emitters (their pointer-read admission).
+        if (c.count == 1 && !a.proofSpan) {
+            a.exactRequired = true;
+            a.programSpace = true;
             return;
         }
+        in.memory = MemoryContract{};
+        return;
     }
 }
 

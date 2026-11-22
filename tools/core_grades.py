@@ -80,7 +80,7 @@ MANUAL_HEAD = re.compile(r"^\s*//\s*\[([BF])\]\s+([^\n]*)", re.MULTILINE)
 # neither are claims still to be sourced or marked [F]: their count may only
 # fall; lower the ceiling with each reviewed batch.
 GRADE_ANY = re.compile(r"\[[A-F]\]")
-UNGRADED_CEILING = 264
+UNGRADED_CEILING = 0
 LOCATOR = re.compile(r"§\s*((?:[A-Z]\.)?\d+(?:\.\d+)*)|\b((?:Table|Figure)\s+[A-Z0-9]+-\d+)\b")
 
 

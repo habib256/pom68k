@@ -16,6 +16,9 @@ extern "C" int pom68kJitJsr040(moira::Moira* cpu, uint32_t instructionPc,
 
 // Exact accesses shared by both native emitters. Failure requests replay.
 extern "C" int pom68kJitStep(moira::Moira* cpu, moira::Moira::PomJitAtcReplay040* replay) noexcept;
+// Or'ed into pom68kJitRead's `bytes`: read in program space as a 68030
+// PC-relative operand (ruling D46, MemoryAccessPlan::programSpace).
+constexpr uint32_t kJitReadProgramSpace = 0x100;
 extern "C" int pom68kJitRead(moira::Moira* cpu, uint32_t addr, uint32_t bytes,
                              uint32_t* out, uint64_t pcWords, moira::Moira::PomJitAtcReplay040* replay) noexcept;
 extern "C" int pom68kJitWrite(moira::Moira* cpu, uint32_t addr, uint32_t bytes,

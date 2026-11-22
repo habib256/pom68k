@@ -2062,7 +2062,8 @@ void Emitter::memLoad(Reg addr, int szIdx, Reg dst,
         spillClock();                    // a device access can stall the CPU
         a_.movRR(Sz::Q, RDI, kCpu);
         a_.movRR(Sz::L, RSI, addr);
-        a_.movRI(RDX, uint32_t(sizeBytes(szIdx)));
+        a_.movRI(RDX, uint32_t(sizeBytes(szIdx)) |
+                      (access.programSpace ? kJitReadProgramSpace : 0u));
         a_.leaRM(RCX, F(kFValue));
         a_.movRI64(R8, accessPcWords(idx));
         prepareAtcThunk040(access.index, R9);
