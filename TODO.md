@@ -55,11 +55,13 @@ une optimisation côté hôte POM68K ne rapproche pas de NeoST.
    L'archive `moira-pom68k-20261122-228e63a5` reste la référence publiée ;
    la recouper dès qu'un commit touche `extern/moira`, `src/jit` ou un
    gate exporté.
-2. **Le cœur de Dirk dans une carte POM68K** (un 030 IIci, puis un 040) :
-   preuve d'intégration que personne d'autre ne peut lui donner. Demande
-   une enveloppe CPU propre à son API (`MOIRA_NAMESPACE`, BusError levée
-   par exception, pas de JIT ni d'instantané) et des classes mémoire qui
-   ne nomment pas leur CPU concret.
+2. **La base est la Moira de Dirk ; les CPU 68K de POM68K s'ajoutent
+   par-dessus** (décision du propriétaire, 2026-11-22). Sa branche `FPU`,
+   corrigée (nos constats remontés) et améliorée, devient le socle ;
+   POM68K n'y ajoute que ce que les Macintosh exigent, chaque ajout
+   justifié par la ROM ou le logiciel Mac qui en a besoin
+   (`POM68K_VENDOR.md`). À préparer : la liste de ce que sa branche couvre
+   déjà, et de ce qui resterait à ajouter par-dessus pour les cartes Mac.
 3. **D30** (`› Justesse 68040`) : relire d'abord MC68040UM-1993 §9.6.2 et
    la Table 8-4 — une exception pré-instruction y est prise *avant*
    l'instruction fautive elle-même (format $0, redémarrage), pas postée
