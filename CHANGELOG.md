@@ -619,6 +619,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-22 (sixth) — The 68040 FBcc/FDBcc with an odd displacement faults as the manual says: after the predicate, taken or not](#2026-11-22-fbcc-odd-040)
 - [2026-11-22 (fifth) — D27, D29 and the 68030 half of D28 settled by the manuals, D25/D26 narrowed; the continuation and CIR sentences of the surface contract](#2026-11-22-d25-d29-by-manual)
 - [2026-11-22 (fourth) — The core and NEOST_VENDOR.md are in English, for the release to Dirk Hoffmann](#2026-11-22-core-in-english)
 - [2026-11-22 (third) — The 68030 JIT reads PC-relative operands natively again, in program space](#2026-11-22-jit-pc-relative-native)
@@ -1441,6 +1442,34 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-22-fbcc-odd-040"></a>
+## 2026-11-22 (sixth) — The 68040 FBcc/FDBcc with an odd displacement faults as the manual says: after the predicate, taken or not
+
+Entry (fifth) left D28's 68040 half open: a taken FBcc to an odd target
+retired and the next fetch faulted with the odd target stacked, a not-taken
+one raised nothing. MC68040UM-1993 §8.2.2 (p. 221) counts "a conditional
+branch instruction with an odd branch offset that is not taken" and stacks
+"the address of the instruction that caused the address error"; §9.7.1
+(p. 269) and Table 8-4 put an enabled BSUN (a pre-instruction exception,
+group 2) ahead of the address error (group 5, after completion).
+
+**Applied (Moira row 158).** On the 68040, FBcc and FDBcc evaluate the
+predicate first — FPSR's BSUN bit set, an enabled BSUN taken — then any odd
+displacement takes vector 3, format $2, the branch's address stacked and
+the target with A0 clear. This differs on purpose from the 040 Bcc, whose
+check precedes a side-effect-free condition (WinUAE op_6xxx_31). FDBcc
+leaves Dn undecremented, as the fork's DBcc: [F], no manual orders the two.
+Compiled with address errors only, so upstream's Runner configuration sees
+no extra bus read. The JIT never translates FPU branches (Kind::Unsafe).
+
+**Evidence.** `moira_rules_test` fbccOddTarget040: taken, not taken, an
+enabled BSUN on a NaN taken first, and FDBcc with Dn untouched; disabling
+the check fails all four. `sst68040_fpu` moves by exactly 141 vectors, all
+FBcc.L or FDBcc with an odd displacement — classified one by one from the
+corpus before being listed under D28 (sixteen other names printed by
+`--unlisted` were already listed); every other 68040 corpus and JIT twin
+unchanged.
 
 <a id="2026-11-22-d25-d29-by-manual"></a>
 ## 2026-11-22 (fifth) — D27, D29 and the 68030 half of D28 settled by the manuals, D25/D26 narrowed; the continuation and CIR sentences of the surface contract

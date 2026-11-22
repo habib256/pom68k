@@ -2083,6 +2083,33 @@ Moira::execFBcc(u16 opcode)
     int cc = fpuCondEval<C>(opcode & 0x3f);
     if (cc < 0) { FINALIZE return; }        // enabled BSUN trap taken
 
+    // [B] MC68040UM-1993 §8.2.2: an odd branch offset is an address error,
+    //     taken or not, the frame holding the instruction's address and
+    //     the target with A0 cleared (ruling D28).
+    // [B] MC68040UM-1993 §9.7.1, Table 8-4: the predicate and its BSUN
+    //     (a pre-instruction exception, group 2) come before the address
+    //     error (group 5, "after the currently executing instructions have
+    //     completed"). So unlike the 040 Bcc, whose check precedes a
+    //     condition test without side effects, FBcc evaluates its
+    //     predicate first: FPSR's BSUN bit is set either way.
+    // [D] WinUAE @ Hatari e77819f7 — op_6xxx_31 checks Bcc's offset first.
+    // Gate: moira_rules_test (fbccOddTarget040). Compiled out with address
+    // errors (upstream's Runner configuration): no extra bus read there.
+    if constexpr (C == Core::C68020 && MOIRA_EMULATE_ADDRESS_ERROR) {
+        if (cpuModel >= Model::M68EC040) {
+            u32 d40 = ircWord();
+            if constexpr (S == Long) {
+                d40 = d40 << 16 | (u16)read<C, AddrSpace::PROG, Word>(reg.pc + 2);
+            }
+            const u32 t40 = U32_ADD(reg.pc, SEXT<S>(d40));
+            if (oddFlowTarget(t40)) {
+                execAddressError040<C>(t40, reg.pc0);
+                FINALIZE
+                return;
+            }
+        }
+    }
+
     if (cc) {
 
         u32 oldpc = reg.pc;                 // address of the displacement
@@ -2091,12 +2118,7 @@ Moira::execFBcc(u16 opcode)
         u32 newpc = U32_ADD(oldpc, SEXT<S>(disp));
 
         // [B] MC68030UM-1989 §8.1.3: an odd prefetch is vector 3.
-        // [B] MC68040UM-1993 §8.2.2: the same on the 68040 (ruling D28;
-        //     the oracle's FPU branches lack the test). Not this branch:
-        //     there the FBcc retires and the next fetch takes vector 3
-        //     (mmuExecuteStart's deferred fault), stacking the odd target
-        //     where Bcc stacks its own address — open, TODO.md § Justesse
-        //     68040; moira_rules_test fbccOddTarget040.
+        // (The 68040 faulted above, before taking the branch.)
         // POM68K O4 slice 4 pattern: 68030 odd instruction-flow target —
         // vector 3 with a format $B frame (see execBcc)
         if constexpr (C == Core::C68020) {
@@ -2153,6 +2175,24 @@ Moira::execFDbcc(u16 opcode)
 
     int cc = fpuCondEval<C>(ext & 0x3f);
     if (cc < 0) { FINALIZE return; }
+
+    // [B] MC68040UM-1993 §8.2.2, §9.7.1, Table 8-4: as FBcc above — the
+    //     predicate (and its BSUN) first, then the odd-offset address
+    //     error, whatever the predicate and the count (ruling D28).
+    // [F] Dn is not decremented before the fault, as in the fork's 040
+    //     DBcc; no manual orders the two. Settled by: FDBcc with an odd
+    //     displacement on a real 68040.
+    // [D] WinUAE @ Hatari e77819f7 — op_51c8_31, the DBcc it mirrors.
+    if constexpr (C == Core::C68020 && MOIRA_EMULATE_ADDRESS_ERROR) {
+        if (cpuModel >= Model::M68EC040) {
+            const u32 t40 = U32_ADD(reg.pc, (i16)ircWord());
+            if (oddFlowTarget(t40)) {
+                execAddressError040<C>(t40, reg.pc0);
+                FINALIZE
+                return;
+            }
+        }
+    }
 
     int ck = FPU_CK_FDBCC_TRUE;             // [B] MC68881UM-1989 Table 8-7: true predicate.
 

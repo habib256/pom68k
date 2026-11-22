@@ -39,8 +39,8 @@ une optimisation côté hôte POM68K ne rapproche pas de NeoST.
 - **Les additions 68030/68040 et le JIT sont prouvés dans POM68K, pas
   prêts à exporter.** Corpus différentiels verts contre WinUAE strict,
   premier oracle FPU 68040, D23b/D24 tranchées par le manuel — mais :
-  1. D27, D29 et la moitié 030 de D28 sont tranchés par les manuels
-     depuis le 2026-11-22 ; la moitié 040 de D28, D25 et
+  1. D27, D28 et D29 sont tranchés par les manuels depuis le
+     2026-11-22 ; D25 et
      le registre An de D26 attendent un vrai 68040 (les six octets de
      frame IDLE 68882 le sont depuis le 2026-11-14) ; depuis le 2026-11-10 (`CHANGELOG`, sixième à
      onzième), les champs de bits mémoire ne touchent plus que leurs
@@ -56,13 +56,15 @@ une optimisation côté hôte POM68K ne rapproche pas de NeoST.
 
 **Ordre de travail** (le détail vit dans `§ Moteur`) :
 
-1. *Propreté présentable* — code mort et étiquettes périmées du cœur, grades
-   de preuve `[B]`/`[C]`/`[D] @ révision`/`[F]` en tête de chaque patch
-   `POM68K` du cœur, documents du cœur à jour (`§ Moteur › Surface`).
-2. *Couture JIT séparable à la compilation* : un interpréteur nu doit se
-   construire sans fenêtre, DTLB ni sonde (`› Surface`).
-3. *Contrat de surface vérifié* : chaque « unverified » devient un gate ou
-   une phrase corrigée.
+1. *Propreté présentable* — fait le 2026-11-22 : chaque commentaire
+   `POM68K` du cœur porte son grade ou se déclare `(host)` (cliquet à 0),
+   cœur et `NEOST_VENDOR.md` en anglais, archive pour Dirk recoupée.
+2. *Couture JIT séparable à la compilation* — fait le 2026-11-10
+   (`MOIRA_ENABLE_JIT=0`, gate `moira_interp_bare`).
+3. *Contrat de surface vérifié* — les « unverified » restants de
+   `POM68K_SURFACE.md` sont des inconnues de silicium étiquetées (frames
+   internes du 020, pipeline de CAS2, battements d'écriture inutiles du
+   040) ou côté NeoST (DMA son).
 4. *Restes nommés* décidables ici (`› Justesse 68030`, `› Justesse 68040`),
    puis la jambe AArch64 quand l'hôte est disponible.
 5. *Premier portage réel* vers NeoST, qui dira ce que le contrat a oublié.
@@ -584,18 +586,6 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   taille de 12 octets est [B] (MC68881UM §4.1), pas l'état de An quand la
   trappe est prise — 16 vecteurs. *Bloqué : FMOVE.P FP0,D0 et
   FMOVE.P FP0,-(A0){D1} sur un vrai 68040.*
-- [ ] **FBcc/FDBcc non pris à déplacement impair sur 68040.**
-  MC68040UM-1993 §8.2.2 compte en address error « a conditional branch
-  instruction with an odd branch offset that is not taken » ; le fork le
-  fait pour Bcc, pas pour les branches FPU, et l'oracle ne le fait pour
-  aucune (ruling D28). À trancher : le texte vise-t-il aussi les branches
-  du FPU intégré ? Si oui, c'est un changement de comportement avec ses
-  vecteurs à ajouter aux `.known`. Même famille : un FBcc *pris* vers une
-  cible impaire se termine, puis le fetch suivant faute en empilant la
-  cible comme PC, là où Bcc empile sa propre adresse (§8.2.2 : « the
-  address of the instruction that caused the address error ») ;
-  `moira_rules_test` fbccOddTarget040 ne fige que vecteur, format et
-  champ d'adresse.
 - [ ] **Mesurer la phase exacte du remplacement ATC 040 sur matériel.**
   La géométrie 64 entrées par ATC, seize jeux de quatre voies, la priorité
   aux invalides et le compteur aux accès sont modélisés et comparés en

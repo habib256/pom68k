@@ -1869,32 +1869,51 @@ void jmpOddTargetPc030()
     }
 }
 
-// [B] MC68040UM-1993 §8.2.2: a prefetch from an odd address is an address
-// error — vector 3, a frame holding the instruction's address and the odd
-// address with A0 cleared. Ruling D28: an FBcc taken to an odd target (the
-// oracle's FPU branches raise nothing). Here the FBcc retires and the next
-// fetch takes vector 3, format $2, address field = the target with A0
-// clear — what this cell pins. Its stacked PC is the odd target, where the
-// fork's 68040 Bcc stacks its own address: which one §8.2.2 means by "the
-// instruction that caused the address error" is open (TODO.md § Justesse
-// 68040), so the PC is not asserted.
+// [B] MC68040UM-1993 §8.2.2: an odd branch offset is an address error,
+// taken or not — vector 3, the frame holding the branch's own address and
+// the target with A0 cleared. §9.7.1 and Table 8-4: an enabled BSUN is a
+// pre-instruction exception, ahead of it. Ruling D28 (the oracle's FPU
+// branches raise nothing).
 void fbccOddTarget040()
 {
-    for (auto model : {moira::Model::M68040}) {
-        TestCpu c(model);
+    struct Case { uint16_t op, w1, w2; bool bsun; const char* what; };
+    const Case cases[] = {
+        { 0xF28F, 0x0011, kNop,   false, "FBT.W to an odd target" },
+        { 0xF280, 0x0011, kNop,   false, "FBF.W, odd offset, not taken" },
+        { 0xF292, 0x0011, kNop,   true,  "FBGT.W on a NaN, BSUN enabled" },
+        { 0xF248, 0x0000, 0x0011, false, "FDBF D0 with an odd offset" },
+    };
+    for (const Case& k : cases) {
+        TestCpu c(moira::Model::M68040);
         p32(c, 3 * 4, kHandler);
-        p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
-        stage(c, 0xF28F, 0);                        // FBT.W kCode+2+$11
-        p16(c, kCode + 2, 0x0011); c.setIRC(0x0011);
-        const uint32_t target = kCode + 2 + 0x11;
-        int steps = 0;
-        while (c.getPC0() != kHandler && steps < 3) { executeContained(c); steps++; }
+        p32(c, 48 * 4, kHandler + 0x10);
+        p16(c, kHandler, kNop); p16(c, kHandler + 0x10, kNop);
+        stage(c, k.op, 0);
+        p16(c, kCode + 2, k.w1); p16(c, kCode + 4, k.w2);
+        c.setIRC(k.w1);
+        c.setD(0, 0x12340005);
+        if (k.bsun) {
+            c.setFPCR(0x8000);                      // BSUN enabled
+            c.setFPSR(0x01000000);                  // FPCC NAN
+        }
+        const bool fdbcc = k.op == 0xF248;
+        const uint32_t target = kCode + (fdbcc ? 4 : 2) + 0x11;
+        const bool contained = executeContained(c);
         const uint32_t sp = c.getSP();
-        CHECK(c.getPC0() == kHandler && g16(c, sp + 6) == 0x200C &&
-              g32(c, sp + 8) == (target & ~1u),
-              "68040 FBcc to odd %08X: PC0=%08X format/vector %04X address %08X "
-              "(want the handler, $200C, %08X)", target, c.getPC0(),
-              g16(c, sp + 6), g32(c, sp + 8), target & ~1u);
+        if (k.bsun) {
+            CHECK(contained && c.getPC0() == kHandler + 0x10 &&
+                  (g16(c, sp + 6) & 0x0FFF) == 48 * 4,
+                  "68040 %s: PC0=%08X vector offset %04X (want the BSUN handler, $0C0)",
+                  k.what, c.getPC0(), g16(c, sp + 6));
+            continue;
+        }
+        CHECK(contained && c.getPC0() == kHandler && g16(c, sp + 6) == 0x200C &&
+              g32(c, sp + 2) == kCode && g32(c, sp + 8) == (target & ~1u),
+              "68040 %s: PC0=%08X format/vector %04X stacked PC %08X address %08X "
+              "(want the handler at once, $200C, %08X, %08X)", k.what, c.getPC0(),
+              g16(c, sp + 6), g32(c, sp + 2), g32(c, sp + 8), kCode, target & ~1u);
+        CHECK(c.getD(0) == 0x12340005, "68040 %s: D0=%08X (want it untouched)",
+              k.what, c.getD(0));
     }
 }
 
