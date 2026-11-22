@@ -12,7 +12,8 @@ every upstream commit up to it is in the fork, and
 commit on that master. With the fork dropped into upstream's tree, upstream's
 own `testRunner` passes unmodified (§ *In upstream's tree*).
 
-It is still not a pull request. The difference is about 15 000 lines, most
+It is still not a pull request. The difference is about 15 000 lines
+(`RELEASE.txt` gives this cut's exact count), most
 of it execution upstream does not have (68030 PMMU, 6888x and 68040 FPU, the
 68040) and seams for POM68K's JIT and save states. It is offered to be read
 and cherry-picked: every local change is marked `POM68K` in the source,
@@ -68,11 +69,13 @@ Targets:
 Labels: `unit` and `jit` need nothing outside the archive and must run; a
 gate in them that prints `SKIP` is a failure of the release, not a pass.
 On POSIX hosts the `jit` label includes the program fuzzer
-(`jit_program_fuzz_*`, about forty gates over fixed seed ranges, every
-model from the 68000 to the 68040): random multi-instruction programs run
-by the interpreter and by the translator, compared register, clock and bus
-after every slice, through blocks, self-modifying stores, timed interrupts,
-MMU faults, traces and save states. A failing seed replays alone with
+(`jit_program_fuzz_*`, some forty gates over fixed seed ranges): on the
+68030 and 68040, random multi-instruction programs run by the interpreter
+and by the translator, compared register, clock and bus after every slice,
+through blocks, self-modifying stores, timed interrupts, MMU faults, traces
+and save states. The 68000 and 68020 have no translator: their fuzz gates
+compare the 68000 interpreter's bare bus with its fetch window, and hold a
+68020 level-7 regression on the interpreter. A failing seed replays alone with
 `jit_program_fuzz <same options> --first S --seeds 1 -v`.
 `corpus` replays the large differential corpora, which live outside the
 archive (`tests/sst_corpora.lock` names each one by hash and by recipe;
@@ -173,8 +176,9 @@ has the same value in both and is passed for clarity):
 
 They must reach every translation unit that includes `Moira.h`, the
 Runner's too, which `CMAKE_CXX_FLAGS` does; editing `Moira/MoiraConfig.h`
-works as well. Checked on 2026-11-20 on Linux x86-64 with GCC 15: all
-thirteen Runner passes PASSED, exit 0. `UPSTREAM_GUIDE.md` § *Upstream's
+works as well. Checked on 2026-11-20 on Linux x86-64 with GCC 15, and
+again on 2026-11-22 on macOS arm64 with Apple clang 21 from the archive and
+this section alone: all thirteen Runner passes PASSED, exit 0. `UPSTREAM_GUIDE.md` § *Upstream's
 Runner on the fork* says what that does and does not show. The Xcode
 project was not updated or built: it does not list SoftFloat's three C
 files, the fork's added headers or the definitions.
@@ -201,12 +205,13 @@ files, the fork's added headers or the definitions.
   aligned data longword stays two 16-bit calls instead of one
   `read32`/`write32`, because the fork's /BERR and RTE-retry machinery for
   the plain 68020 lives in that path (`berr020_test` runs under both port
-  widths). The JIT does not model the cache, so a 68020
-  guest runs on the interpreter even with the JIT enabled.
-  `icache020_test` holds the cache and the timing anchors.
-- Open rulings with the oracle (D25–D29 and others) are listed by name in
-  the `.known` files; each listed vector fails the gate if it starts to pass.
-  Several need a capture from real silicon to be settled.
+  widths). The JIT runs the 68030 and 68040 only; a 68000 or
+  68020 guest always runs on the interpreter (the 68000 with its fetch
+  window). `icache020_test` holds the cache and the timing anchors.
+- Disagreements with the WinUAE oracle are listed by name in the `.known`
+  files; each listed vector fails the gate if it starts to pass. Some are
+  settled against the oracle by the Motorola manuals (D27–D29); others need
+  a capture from real silicon (D25, the address-register half of D26).
 - The 68EC040 runs the full 68040 paging path; it has no corpus.
 - `POM68K_SURFACE.md` marks every host-contract statement not proved by
   execution as "unverified".

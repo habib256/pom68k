@@ -443,7 +443,10 @@ root `CMakeLists.txt`, upstream's settings (README § *In upstream's tree*
 has the commands). The unmodified `testRunner` prints PASSED for all
 thirteen passes — 68000, 68010, EC020, 68020, EC030, 68030, EC040, LC040
 and 68040 CPU, the three MMU passes and the FPU pass — and exits 0, on the
-day's seed (2349) and on seeds 1, 7 and 2026.
+day's seed (2349) and on seeds 1, 7 and 2026. Rerun on 2026-11-22 (macOS
+arm64, Apple clang 21, Release) on the archive cut from POM68K `b122e04a`,
+following README § *In upstream's tree* alone: the same thirteen PASSED,
+exit 0.
 
 It did not at first. A census of its reports against the fork as it stood
 (three seeds, 15.9 M cases each) found 2.7 % of the CPU cases failing, in

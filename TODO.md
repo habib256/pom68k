@@ -45,10 +45,10 @@ une optimisation côté hôte POM68K ne rapproche pas de NeoST.
 
 **Prochaines actions, dans l'ordre :**
 
-1. **Valider 185fb20f** (FBcc/FDBcc impairs sur 68040, D28) : build
-   optimisé, tiers `asset-none` et `m040`, puis **recouper l'archive pour
-   Dirk** (`tools/moira_release.py --verify`, son `testRunner` sur
-   `ce28239`) — celle du 2026-11-22 (`9feac610`) est périmée.
+1. **Archive pour Dirk publiée** le 2026-11-22 depuis `b122e04a`
+   (release GitHub `moira-pom68k-20261122-b122e04a`). À recouper et
+   republier dès qu'un commit touche `extern/moira`, `src/jit` ou un gate
+   exporté.
 2. **D30** (`› Justesse 68040`) : relire d'abord MC68040UM-1993 §9.6.2 et
    la Table 8-4 — une exception pré-instruction y est prise *avant*
    l'instruction fautive elle-même (format $0, redémarrage), pas postée
@@ -643,7 +643,12 @@ par `cacheBoost` ; le reste est correction locale.
   q610 contre MAME, bissecté). Le temps du PIC doit être fonction du temps
   machine, pas du motif des flushs ; un gate qui découpe la même fenêtre
   en deux tailles de tranche et compare le flux ADB le prouvera. Ensuite
-  seulement la recette (`CHANGELOG` quatorzième). Reste nommé sur le
+  seulement la recette (`CHANGELOG` quatorzième). Reproducteur au
+  2026-11-22 : `centris_soak_etalon` échoue à coup sûr sur le M4 (backend
+  `a64`, écran de veille que le clic ne lève pas, « Finder GONE ») dès
+  `e0a84e13`, et passe sous Rosetta (`x64`, binaire du 2026-11-20) — même
+  guest, autre backend (lien avec le découpage supposé, pas prouvé :
+  binaires de commits différents). Reste nommé sur le
   Q605 : les lectures 53C96/ASC/DAFB et les octets pseudo-DMA voient
   l'appareil là où le dernier flush l'a laissé (retard ≤ une tranche) —
   un modèle « temps de l'appareil = horloge CPU à l'accès », celui de

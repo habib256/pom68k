@@ -1443,6 +1443,67 @@ Newest first.
 
 ---
 
+<a id="2026-11-22-moira-github-release"></a>
+## 2026-11-22 (seventh) — The Moira release is published on GitHub, its README corrected; the firmware and media archives built; the Centris soak fails on the a64 backend, not because of D28
+
+`moira-pom68k-20261122-b122e04a.tar.gz` (158 files, sha256
+`b2f2af9e913ac08aa851b6197c0a035216d5571d576d3fdac37949a32c7db81e`) is the
+first archive published as a GitHub release, under the tag of the same name
+(not `v*`, so `release.yml` does not package the emulator for it; it is not
+marked Latest). It replaces the `9feac610` cut, which entry (sixth) overtook.
+The patch against upstream `ce28239`, still upstream's `master`, is
++15 346 −659 lines.
+
+On the archive: `--verify --sst-root tests/data` 87 / 87 on
+`unit|jit|corpus`, no soft-skip (M4). The three fewer than on 2026-11-21 are
+the 68020 fuzz registrations `276f10bd` retired. Two cuts, one sha256. In
+upstream's tree from the archive's README alone (`ce28239`, `git am`, its
+SoftFloat), the unmodified `testRunner` passes thirteen passes, exit 0.
+
+**Tiers on `185fb20f`** (M4, a64): `asset-none` 209 / 209; `m040` with one
+failure, `centris_soak_etalon` — after 180 s the screen is the screensaver
+the wake click does not lift (menu 1.00, desk 1.00), the symptom of the
+SCC-sync entry where the PIC1654S's ADB stopped answering. It is not D28: it
+fails with `185fb20f`'s core change reverted, and in a worktree at
+`e0a84e13`, the last state recorded green on `m040` — which was recorded
+under Rosetta. The x86-64 binary of 2026-11-20 passes the same soak there.
+The gate builds its CPU from `defaultResolvedConfig()`, so it always runs
+the host's native backend. That the outcome follows the backend is
+consistent with TODO § *PIC1654S des cartes DjMEMC* — a PIC whose time
+follows the slicing rather than machine time — but not proven: the Rosetta
+binary is not of the same commit, and no `threaded` run on the M4 was made.
+Recorded there as a reproducer; settled by running the gate with the engine
+or backend injected on one host.
+
+**The release's own text was stale**, and is corrected in its templates
+for the next cut: the README still said the program fuzzer ran interpreter
+against translator "from the 68000 to the 68040" and that a 68020 guest
+ran on the interpreter because the JIT does not model its cache — since
+`276f10bd` the JIT has no engine for the 68000 and 68020 at all; it listed
+D25–D29 as open when D27–D29 are settled by the manuals against the
+oracle; and it named only the Linux check of upstream's Runner. The 68000
+fuzz gates compare the bare bus with the fetch window, which the README now
+says.
+
+**The two downloader archives** were built for publication with
+`tools/build_asset_archives.py`: `pom68k_firm.zip` 52 / 52 dumps, 11.8 MiB,
+sha256 `af2d119e03472e1627d4b2f05e6d700afb2e0e04447065a4f2e351387b0f578a`;
+`pom68k_media.zip` 18 / 18 files, 209.6 MiB, sha256
+`3a23c8424b1f0bf0114a6fbd7fe8fbee823d1676bebe4edfb624971d92fcc821`.
+`fetch_test_media.py --zip … --strict` installs all 18 into an empty tree.
+The owner uploaded `pom68k_firm` to archive.org the same evening: the
+download URL `RomFetch.h` names serves the same bytes (sha256 above), and
+`gui_rom_window_test --live`, which failed on 2026-11-21 for want of the
+item, now installs the Plus ROM from the POM68K archive and rescans it
+Verified. `pom68k_media` is not uploaded yet. The media build first
+refused `disks35/Rogue.dsk` and `disks35/BonjourPommeOne.dsk`:
+`tools/test_media.sha256` (`278d0efa`) had recorded other copies than this
+host's. This host's are unchanged since 2026-09-13/16 (the 2026-09-16
+AArch64 full-tier log already reports Rogue as `ccddfe14…`),
+`se_three_drive_etalon` passes on them and leaves them byte-identical, so
+the manifest now records them. A tree holding the other copies will see
+them as wrong and must take this archive's.
+
 <a id="2026-11-22-fbcc-odd-040"></a>
 ## 2026-11-22 (sixth) — The 68040 FBcc/FDBcc with an odd displacement faults as the manual says: after the predicate, taken or not
 
