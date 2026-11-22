@@ -28,46 +28,37 @@ en présenter une version à Dirk Hoffmann, l'auteur de Moira. Tout le reste
 de ce fichier passe après, la section « Vitesse » ci-dessous comprise :
 une optimisation côté hôte POM68K ne rapproche pas de NeoST.
 
-**Où on en est (2026-11-08).**
+**Où on en est (2026-11-22).**
 
 - **Le 68000 est prêt à reprendre** : 1 000 058 vecteurs SingleStepTests
   tenus cycle de bus par cycle de bus, frames /BERR externes, les trois
-  hooks que NeoST attend (`illegalOpcodeHook`, `willProcessFault`,
-  `setBusLock`) ; le contrat de surface (`extern/moira/POM68K_SURFACE.md`)
-  écrit ce que l'hôte doit au cœur, et le cœur ne lit plus
-  l'environnement du processus.
-- **Les additions 68030/68040 et le JIT sont prouvés dans POM68K, pas
-  prêts à exporter.** Corpus différentiels verts contre WinUAE strict,
-  premier oracle FPU 68040, D23b/D24 tranchées par le manuel — mais :
-  1. D27, D28 et D29 sont tranchés par les manuels depuis le
-     2026-11-22 ; D25 et
-     le registre An de D26 attendent un vrai 68040 (les six octets de
-     frame IDLE 68882 le sont depuis le 2026-11-14) ; depuis le 2026-11-10 (`CHANGELOG`, sixième à
-     onzième), les champs de bits mémoire ne touchent plus que leurs
-     octets, les restes 030 du balayage de 60 000 vecteurs sont réglés et
-     `sst68030_rmw` n'a plus de liste de divergences ;
-  2. le JIT n'a jamais tourné hors d'un Macintosh : fenêtres de fetch et
-     de données, garde d'écriture dans le code traduit reposent sur
-     `codeSpan`/`jitGuard_` fournis par nos cartes ; le contrat de
-     surface le décrit, un premier portage le prouvera ;
-  3. les corpus CPU/JIT sont rejoués sur AArch64 depuis le 2026-11-15
-     (`CHANGELOG`, sixième) ; restent le tier 030 des machines sur ARM
-     dû depuis septembre et le delta a64 de +6 % jamais attribué.
+  hooks que NeoST attend ; le contrat de surface
+  (`extern/moira/POM68K_SURFACE.md`) dit ce que l'hôte doit au cœur.
+- **Le cœur est présentable** : chaque commentaire `POM68K` porte son grade
+  ou se déclare `(host)` (cliquet `core_grades.py` à 0), cœur et
+  `NEOST_VENDOR.md` en anglais, couture JIT séparable (`MOIRA_ENABLE_JIT=0`),
+  les « unverified » du contrat sont des inconnues de silicium étiquetées
+  ou côté NeoST. D27, D28 et D29 sont tranchés par les manuels.
+- **Restent** : D25 et le An de D26 (un vrai 68040) ; le JIT n'a jamais
+  tourné hors d'un Macintosh (`codeSpan`/`jitGuard_` fournis par nos
+  cartes) ; sur AArch64, le tier 030 des machines et le delta a64 de +6 %.
 
-**Ordre de travail** (le détail vit dans `§ Moteur`) :
+**Prochaines actions, dans l'ordre :**
 
-1. *Propreté présentable* — fait le 2026-11-22 : chaque commentaire
-   `POM68K` du cœur porte son grade ou se déclare `(host)` (cliquet à 0),
-   cœur et `NEOST_VENDOR.md` en anglais, archive pour Dirk recoupée.
-2. *Couture JIT séparable à la compilation* — fait le 2026-11-10
-   (`MOIRA_ENABLE_JIT=0`, gate `moira_interp_bare`).
-3. *Contrat de surface vérifié* — les « unverified » restants de
-   `POM68K_SURFACE.md` sont des inconnues de silicium étiquetées (frames
-   internes du 020, pipeline de CAS2, battements d'écriture inutiles du
-   040) ou côté NeoST (DMA son).
-4. *Restes nommés* décidables ici (`› Justesse 68030`, `› Justesse 68040`),
-   puis la jambe AArch64 quand l'hôte est disponible.
-5. *Premier portage réel* vers NeoST, qui dira ce que le contrat a oublié.
+1. **Valider 185fb20f** (FBcc/FDBcc impairs sur 68040, D28) : build
+   optimisé, tiers `asset-none` et `m040`, puis **recouper l'archive pour
+   Dirk** (`tools/moira_release.py --verify`, son `testRunner` sur
+   `ce28239`) — celle du 2026-11-22 (`9feac610`) est périmée.
+2. **D30** (`› Justesse 68040`) : relire d'abord MC68040UM-1993 §9.6.2 et
+   la Table 8-4 — une exception pré-instruction y est prise *avant*
+   l'instruction fautive elle-même (format $0, redémarrage), pas postée
+   jusqu'à l'instruction FPU suivante comme l'item le dit.
+3. **Autres restes décidables ici** (`› Justesse 68030`, `› Justesse 68040`) :
+   TRAPV en fin de page, 68020 nu transparent à une faute, mots d'état d'un
+   MOVES indexé, report du pipe de préfetch, ordre de lecture de FMOVEM.
+4. **Jambe AArch64** sur l'autre machine (pas sur cet hôte x86-64).
+5. **Premier portage réel vers NeoST**, qui dira ce que le contrat a oublié
+   (demande l'arbre de NeoST).
 
 **Dépôt — purge faite le 2026-11-21, reste GitHub.** Le journal disque
 `lc580_ide_boot.img.pomundo` (blocs d'une image système privée), poussé
