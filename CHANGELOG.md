@@ -619,7 +619,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
-- [2026-11-22 (fifth) — D27-D29 settled by the manuals, D25/D26 narrowed; the continuation and CIR sentences of the surface contract](#2026-11-22-d25-d29-by-manual)
+- [2026-11-22 (fifth) — D27, D29 and the 68030 half of D28 settled by the manuals, D25/D26 narrowed; the continuation and CIR sentences of the surface contract](#2026-11-22-d25-d29-by-manual)
 - [2026-11-22 (fourth) — The core and NEOST_VENDOR.md are in English, for the release to Dirk Hoffmann](#2026-11-22-core-in-english)
 - [2026-11-22 (third) — The 68030 JIT reads PC-relative operands natively again, in program space](#2026-11-22-jit-pc-relative-native)
 - [2026-11-22 (second) — The core's grade review is complete: every POM68K rule has its source or says it is host](#2026-11-22-grades-review-complete)
@@ -1443,7 +1443,7 @@ Newest first.
 ---
 
 <a id="2026-11-22-d25-d29-by-manual"></a>
-## 2026-11-22 (fifth) — D27-D29 settled by the manuals, D25/D26 narrowed; the continuation and CIR sentences of the surface contract
+## 2026-11-22 (fifth) — D27, D29 and the 68030 half of D28 settled by the manuals, D25/D26 narrowed; the continuation and CIR sentences of the surface contract
 
 The MC68040UM-1993 and MC68881UM-1989 files had been out of reach (NXP
 refuses plain downloads); fetched with a browser fingerprint, both match
@@ -1455,11 +1455,15 @@ edition's. Comments and documents only; no behaviour changed.
   is executed"; [B] MC68030UM §10.4.9 — the 030 aborts on the EA's class,
   before calculating it. The fork's immediate Line-F is the manual's; the
   oracle's EA evaluation is not.
-- **D28** (FBcc/FDBcc to an odd address): [B] MC68030UM §8.1.3 and
-  MC68040UM §8.2.2. The same §8.2.2 counts "a conditional branch
-  instruction with an odd branch offset that is not taken" — the fork does
-  it for Bcc, not for the FPU branches. Whether the text covers them is now
-  an open item (`TODO.md` § Justesse 68040), not a change made on a reading.
+- **D28** (FBcc/FDBcc to an odd address): settled on the 68030 ([B]
+  MC68030UM §8.1.3). On the 68040, checked by a new cell
+  (`moira_rules_test` fbccOddTarget040): the FBcc retires and the next fetch
+  takes vector 3, format $2, address field = the target with A0 clear, as
+  §8.2.2 says — but it stacks the odd target as PC where the fork's Bcc
+  stacks its own address. A first draft of this entry called the 68040
+  half settled without that check. The stacked PC and §8.2.2's "odd branch
+  offset that is not taken" (done for Bcc, not for FPU branches) are an
+  open item (`TODO.md` § Justesse 68040), not a change made on a reading.
 - **D29** (EA fields $3D-$3F on a 68030): [B] MC68030UM §10.5.2.2 — at
   decode the 030 refuses only bits [8:6] = 110/111 and unmapped words;
   §10.4.9 — the EA is checked when a transfer primitive asks; [B]
@@ -1483,7 +1487,7 @@ every cycle of 1 023 instructions to hold it; what is left is named. § 6.4's
 [F] on the idle response CIR is now [B]: MC68881UM §6.1.12 and Table 7-7 —
 a null primitive with CA = 0 — read with the very MOVES/SFC = 7 sequence the
 ROMs use. The 68000 rule list no longer says "FC = data for PC-relative
-reads" (ruling D46). Nine locators locked.
+reads" (ruling D46). Ten locators locked.
 
 <a id="2026-11-22-core-in-english"></a>
 ## 2026-11-22 (fourth) — The core and NEOST_VENDOR.md are in English, for the release to Dirk Hoffmann

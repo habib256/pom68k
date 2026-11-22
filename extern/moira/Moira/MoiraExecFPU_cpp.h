@@ -2092,7 +2092,11 @@ Moira::execFBcc(u16 opcode)
 
         // [B] MC68030UM-1989 §8.1.3: an odd prefetch is vector 3.
         // [B] MC68040UM-1993 §8.2.2: the same on the 68040 (ruling D28;
-        //     the oracle's FPU branches lack the test).
+        //     the oracle's FPU branches lack the test). Not this branch:
+        //     there the FBcc retires and the next fetch takes vector 3
+        //     (mmuExecuteStart's deferred fault), stacking the odd target
+        //     where Bcc stacks its own address — open, TODO.md § Justesse
+        //     68040; moira_rules_test fbccOddTarget040.
         // POM68K O4 slice 4 pattern: 68030 odd instruction-flow target —
         // vector 3 with a format $B frame (see execBcc)
         if constexpr (C == Core::C68020) {

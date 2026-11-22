@@ -39,7 +39,8 @@ une optimisation côté hôte POM68K ne rapproche pas de NeoST.
 - **Les additions 68030/68040 et le JIT sont prouvés dans POM68K, pas
   prêts à exporter.** Corpus différentiels verts contre WinUAE strict,
   premier oracle FPU 68040, D23b/D24 tranchées par le manuel — mais :
-  1. D27–D29 sont tranchés par les manuels depuis le 2026-11-22 ; D25 et
+  1. D27, D29 et la moitié 030 de D28 sont tranchés par les manuels
+     depuis le 2026-11-22 ; la moitié 040 de D28, D25 et
      le registre An de D26 attendent un vrai 68040 (les six octets de
      frame IDLE 68882 le sont depuis le 2026-11-14) ; depuis le 2026-11-10 (`CHANGELOG`, sixième à
      onzième), les champs de bits mémoire ne touchent plus que leurs
@@ -589,7 +590,12 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   fait pour Bcc, pas pour les branches FPU, et l'oracle ne le fait pour
   aucune (ruling D28). À trancher : le texte vise-t-il aussi les branches
   du FPU intégré ? Si oui, c'est un changement de comportement avec ses
-  vecteurs à ajouter aux `.known`.
+  vecteurs à ajouter aux `.known`. Même famille : un FBcc *pris* vers une
+  cible impaire se termine, puis le fetch suivant faute en empilant la
+  cible comme PC, là où Bcc empile sa propre adresse (§8.2.2 : « the
+  address of the instruction that caused the address error ») ;
+  `moira_rules_test` fbccOddTarget040 ne fige que vecteur, format et
+  champ d'adresse.
 - [ ] **Mesurer la phase exacte du remplacement ATC 040 sur matériel.**
   La géométrie 64 entrées par ATC, seize jeux de quatre voies, la priorité
   aux invalides et le compteur aux accès sont modélisés et comparés en

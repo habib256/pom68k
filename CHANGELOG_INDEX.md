@@ -9,7 +9,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | Subsystem | Entries |
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 116 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 167 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 168 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 38 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 32 |
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 29 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 44 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 10 |
-| [Cross-cutting](#cross-cutting) | 183 |
+| [Cross-cutting](#cross-cutting) | 182 |
 
 ---
 
@@ -312,6 +312,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-21 (second)** — [The release recut with the 68020 cache on, and merged with the night's ROM catalogue work](CHANGELOG.md#2026-11-21-release-with-icache)
 - **2026-11-21 (thirteenth)** — [What a present FPU answers on the FC = 7 CIR probe: no ROM looks](CHANGELOG.md#2026-11-21-cir-read-unobserved)
 - **2026-11-21 (twelfth)** — [SonoraCpu joins RbvCpu and VaspCpu on one 68030 base, its pacing kept](CHANGELOG.md#2026-11-21-sonora-on-moira030)
+- **2026-11-22 (fifth)** — [D27, D29 and the 68030 half of D28 settled by the manuals, D25/D26 narrowed; the continuation and CIR sentences of the surface contract](CHANGELOG.md#2026-11-22-d25-d29-by-manual)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E
 
@@ -940,5 +941,4 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-21 (seventh)** — [Six CPU wrappers become two bases, and the 68EC040 is an access control unit](CHANGELOG.md#2026-11-21-wrapper-bases-ec040-acu)
 - **2026-11-21 (tenth)** — [The disk journal pushed on 2026-11-11 is out of history: 173 commits rewritten, nothing older touched](CHANGELOG.md#2026-11-21-pomundo-purge)
 - **2026-11-22** — [Ungraded core rules become a ratchet; the first batch sourced, and a 68010 claim that was wrong](CHANGELOG.md#2026-11-22-grades-ratchet)
-- **2026-11-22 (fifth)** — [D27-D29 settled by the manuals, D25/D26 narrowed; the continuation and CIR sentences of the surface contract](CHANGELOG.md#2026-11-22-d25-d29-by-manual)
 
