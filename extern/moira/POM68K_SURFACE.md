@@ -613,10 +613,20 @@ SFC/DFC = 7 and through CALLM/RTM's own hooks (§ 2.7, which bypass the bus).
 - One-word lookahead: `irc` at `pc+2` is fetched (and may fault or touch a
   page) at instruction start on 030/040 even when the instruction is one word
   long; visible only for an instruction on a page's last word.
-- Restart, not continuation: Moira re-executes a faulted instruction after
-  RTE; WinUAE continues mid-instruction from the access log. The RTE $B
-  substitution latch and the 040 MOVEM latch bridge the observed cases; other
-  continuation-dependent sequences are unverified.
+- Continuation and restart, per model. The 68030 continues a faulted
+  instruction from the frame's access log after RTE ([B] MC68030UM-1989
+  §8.2.1; since 2026-11-19): completed accesses are not reissued, and a
+  DF-cleared frame delivers its data input buffer. The 68040 restarts the
+  instruction ([B] MC68040UM-1993 §8.4.6), with its MOVEM latch for the
+  indexed modes (ruling D34). The plain 020 is below. `fault_transparency_test`
+  holds the property a host relies on — a fault whose handler lets the access
+  through and returns leaves the state of a run that never faulted — by
+  faulting every recorded cycle of 1 023 instructions on the 68030 and the
+  68040; `berr030_test` and `berr020_test` hold the frames. Not covered,
+  each named in `TODO.md` § Justesse 68030/68040: a locked read-modify-write
+  with DF cleared on the 68030 (excluded from substitution), and the 68040
+  bit-field, CAS/CAS2 stores, a MOVEM loading its own base register, and
+  packed FPU operands.
 - The plain 020/EC020 path seeds its restart context at handler entry,
   before prefetch can advance `pc0`. For a data fault it rolls back the
   interpreter's CCR/EA updates, then uses a format-$B one-shot retry after
@@ -721,8 +731,10 @@ Color Classic `ECD99DC0`, Macintosh TV `EAF1678D`) follow `MOVES.W $22000,D1`
 with `CMP.B D1,D1` — Z set whatever was read — so only the /BERR path, whose
 handler clears the flag, tells the two sockets apart. Gate:
 `lcii_boot_etalon` (68882 populated, `HWCfgFlags` $FC00) and its interpreter
-twin. [F] What a 6888x drives on that read (its idle response CIR) stays
-unknown here: settled by MC68881UM-1989 §7, not on this host, or a capture.
+twin. [B] MC68881UM-1989 §6.1.12 (p. 246) and Table 7-7 (p. 284): an idle
+FPCP answers a null primitive with CA = 0 ($0800-$0802) — the value a
+strict host would return; the same section reads the response CIR with
+exactly this MOVES/SFC = 7 sequence.
 `TODO.md` records that this probe is reimplemented per board for lack of
 core-emitted CPU-space cycles.
 
@@ -1088,7 +1100,7 @@ includes inside `src/jit` resolve within that directory or to `Moira.h`.
 | 020 cycle tables reused for 030/040 | approximation, not calibrated per model | `src/Cpu030.h` comment |
 | External /BERR on plain 020 with `mmuAcc*` stamping | generic; found with the Mac LC ROM 32-bit probe | row 21 |
 | FC = 7 CIR probe | board-side, Mac (V8, PowerBook) | row 37, § *MOVES bus faults* |
-| 68000 SST rules (AE idle 0/2, uniform PC−2 frames, early DIVS overflow exit, DIV N/Z preserved, ADDQ/SUBQ.l An 6 cycles, BTST Dn,#imm 10, ASR C/X clear past width, FC = data for PC-relative reads) | generic 68000 but SingleStepTests-graded (grade D); two contradict higher-grade readings | row 2, § *SingleStepTests convergence* |
+| 68000 SST rules (AE idle 0/2, uniform PC−2 frames, early DIVS overflow exit, DIV N/Z preserved, ADDQ/SUBQ.l An 6 cycles, BTST Dn,#imm 10, ASR C/X clear past width; PC-relative reads in program space since ruling D46, against the corpus) | generic 68000 but SingleStepTests-graded (grade D); two contradict higher-grade readings | row 2, § *SingleStepTests convergence* |
 | 24-bit pc refusal in `pomJitProbeCode` (68000/68010) | generic (bus width); "Mac code never leaves 24 bits" is only the cost argument | § *JIT seam* point 4 |
 | DTLB 4 KB slices (`>> 12`), `kSliceShift = 8`, 4 KB identity bound | generic host choices; 030 pages of 256 B–32 KB are handled by slice loops | rows 22, 31 |
 | Data window default on for 030, off for 040 | measured on Mac OS workloads | row 34 |

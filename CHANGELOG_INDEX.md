@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 878 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 879 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 29 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 44 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 10 |
-| [Cross-cutting](#cross-cutting) | 182 |
+| [Cross-cutting](#cross-cutting) | 183 |
 
 ---
 
@@ -940,4 +940,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-21 (seventh)** — [Six CPU wrappers become two bases, and the 68EC040 is an access control unit](CHANGELOG.md#2026-11-21-wrapper-bases-ec040-acu)
 - **2026-11-21 (tenth)** — [The disk journal pushed on 2026-11-11 is out of history: 173 commits rewritten, nothing older touched](CHANGELOG.md#2026-11-21-pomundo-purge)
 - **2026-11-22** — [Ungraded core rules become a ratchet; the first batch sourced, and a 68010 claim that was wrong](CHANGELOG.md#2026-11-22-grades-ratchet)
+- **2026-11-22 (fifth)** — [D27-D29 settled by the manuals, D25/D26 narrowed; the continuation and CIR sentences of the surface contract](CHANGELOG.md#2026-11-22-d25-d29-by-manual)
 

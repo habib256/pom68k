@@ -39,7 +39,8 @@ une optimisation côté hôte POM68K ne rapproche pas de NeoST.
 - **Les additions 68030/68040 et le JIT sont prouvés dans POM68K, pas
   prêts à exporter.** Corpus différentiels verts contre WinUAE strict,
   premier oracle FPU 68040, D23b/D24 tranchées par le manuel — mais :
-  1. les restes nommés D25–D29 ne sont pas tranchés (les six octets de
+  1. D27–D29 sont tranchés par les manuels depuis le 2026-11-22 ; D25 et
+     le registre An de D26 attendent un vrai 68040 (les six octets de
      frame IDLE 68882 le sont depuis le 2026-11-14) ; depuis le 2026-11-10 (`CHANGELOG`, sixième à
      onzième), les champs de bits mémoire ne touchent plus que leurs
      octets, les restes 030 du balayage de 60 000 vecteurs sont réglés et
@@ -544,11 +545,6 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
 - [ ] **Généraliser le report du pipe de préfetch.** `mmuCapturePipe`
   capture quatre mots après PMOVE TC/CRP/SRP seulement, pour un idiome de
   la ROM LC II ; PFLUSH, une écriture de TT ou une cible de saut n'ont rien.
-- [ ] **Trancher les champs EA $3D-$3F sur 68030 (D29).** Le fork laisse le
-  coprocesseur décider (un registre-à-registre s'exécute, une forme
-  mémoire efface l'octet d'état puis prend un Line-F) ; la table d'opcodes
-  de l'oracle les refuse d'emblée. 63 vecteurs listés. *Tranche :
-  `$F23D $0000` sur un vrai 68030 + 68882.*
 - [ ] **Décider le sixième bit du prédicat FBcc du 68040 sur preuve.**
   FBcc évalue cinq bits sur tout FPU, comme FScc/FDBcc/FTRAPcc et
   l'oracle. Pour le 6888x c'est réglé par [B] MC68881UM-1989 §4.7.3,
@@ -580,16 +576,20 @@ fusionné doit le garder à 1 000 058 / 1 000 058.
   simplification : à faire avec le mécanisme de D24 étendu au vecteur 55,
   des vecteurs à deux instructions, et une liste de divergences connues
   le temps de régénérer. Noté le 2026-11-07 en lisant § 9.7 pour D24.
-- [ ] **Trancher FMOVE.P vers Dn (D25) et le pas (An)± du k-facteur
-  dynamique (D26).** D25 : Line-F ici (`fpu040_test`), trappe de type de
-  donnée dans l'oracle — 27 vecteurs. D26 : le fork avance An de 12, la
-  table de tailles de l'oracle contient 0 pour le format 7 — 16 vecteurs ;
-  là le manuel donne raison au fork. *Tranche : la même instruction sur
-  un vrai 68040.*
-- [ ] **Évaluer l'EA avant le Line-F d'un déplacement de registres de
-  contrôle vers une destination relative au PC (D27).** Un vecteur : un
-  EA indirect mémoire marque une page « utilisée » dans l'oracle. Même
-  famille que l'ordre de lecture de FMOVEM (› Justesse 68030).
+- [ ] **Trancher FMOVE.P vers Dn (D25) et la valeur de An au moment de la
+  trappe de D26.** D25 : deux règles [B] sans ordre entre elles — le PRM
+  refuse Dn pour `.P`, MC68040UM §9.6.2 fait du format packed un type non
+  supporté ; Line-F ici, trappe dans l'oracle, 27 vecteurs. D26 : la
+  taille de 12 octets est [B] (MC68881UM §4.1), pas l'état de An quand la
+  trappe est prise — 16 vecteurs. *Bloqué : FMOVE.P FP0,D0 et
+  FMOVE.P FP0,-(A0){D1} sur un vrai 68040.*
+- [ ] **FBcc/FDBcc non pris à déplacement impair sur 68040.**
+  MC68040UM-1993 §8.2.2 compte en address error « a conditional branch
+  instruction with an odd branch offset that is not taken » ; le fork le
+  fait pour Bcc, pas pour les branches FPU, et l'oracle ne le fait pour
+  aucune (ruling D28). À trancher : le texte vise-t-il aussi les branches
+  du FPU intégré ? Si oui, c'est un changement de comportement avec ses
+  vecteurs à ajouter aux `.known`.
 - [ ] **Mesurer la phase exacte du remplacement ATC 040 sur matériel.**
   La géométrie 64 entrées par ATC, seize jeux de quatre voies, la priorité
   aux invalides et le compteur aux accès sont modélisés et comparés en
@@ -832,7 +832,9 @@ compilation et dans la documentation.
   d'un descripteur de table 030 (un vrai défaut, corrigé : rang 56).
   La valeur d'une lecture CIR FC = 7 sur FPU présent est réglée le
   2026-11-21 : aucune ROM ne la lit (`POM68K_SURFACE.md` § 6.4).
-  Restent : les séquences qui dépendent de la continuation, et la DMA son côté Atari
+  Les séquences qui dépendent de la continuation sont décrites depuis le
+  2026-11-22 (`POM68K_SURFACE.md` § 5.4, ce qui reste est nommé dans
+  § Justesse 68030/68040). Reste : la DMA son côté Atari
   (à NeoST). Les champs omis du visiteur : corrigés et tenus par
   `moira_state_test` (`CHANGELOG` 2026-11-08, septième). Chacune
   devient un gate ou une phrase corrigée.

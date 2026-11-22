@@ -619,6 +619,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-22 (fifth) — D27-D29 settled by the manuals, D25/D26 narrowed; the continuation and CIR sentences of the surface contract](#2026-11-22-d25-d29-by-manual)
 - [2026-11-22 (fourth) — The core and NEOST_VENDOR.md are in English, for the release to Dirk Hoffmann](#2026-11-22-core-in-english)
 - [2026-11-22 (third) — The 68030 JIT reads PC-relative operands natively again, in program space](#2026-11-22-jit-pc-relative-native)
 - [2026-11-22 (second) — The core's grade review is complete: every POM68K rule has its source or says it is host](#2026-11-22-grades-review-complete)
@@ -1440,6 +1441,49 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-22-d25-d29-by-manual"></a>
+## 2026-11-22 (fifth) — D27-D29 settled by the manuals, D25/D26 narrowed; the continuation and CIR sentences of the surface contract
+
+The MC68040UM-1993 and MC68881UM-1989 files had been out of reach (NXP
+refuses plain downloads); fetched with a browser fingerprint, both match
+the sha256 in `tests/core_manuals.lock`, so every page below is the locked
+edition's. Comments and documents only; no behaviour changed.
+
+- **D27** (FMOVE(M) control registers to a PC-relative destination):
+  [B] MC68040UM Table 8-4 — an F-line exception "begins before instruction
+  is executed"; [B] MC68030UM §10.4.9 — the 030 aborts on the EA's class,
+  before calculating it. The fork's immediate Line-F is the manual's; the
+  oracle's EA evaluation is not.
+- **D28** (FBcc/FDBcc to an odd address): [B] MC68030UM §8.1.3 and
+  MC68040UM §8.2.2. The same §8.2.2 counts "a conditional branch
+  instruction with an odd branch offset that is not taken" — the fork does
+  it for Bcc, not for the FPU branches. Whether the text covers them is now
+  an open item (`TODO.md` § Justesse 68040), not a change made on a reading.
+- **D29** (EA fields $3D-$3F on a 68030): [B] MC68030UM §10.5.2.2 — at
+  decode the 030 refuses only bits [8:6] = 110/111 and unmapped words;
+  §10.4.9 — the EA is checked when a transfer primitive asks; [B]
+  MC68881UM §2.3.3 — the FPCP clears EXC at the start of most operations.
+  The fork's behaviour, step by step.
+- **D25** stays [F], with both of its rules now cited: the PRM's FMOVE table
+  refuses Dn for `.P` (PDF p. 380), MC68040UM §9.6.2 makes a packed
+  destination an unsupported data type, and nothing orders them. A first
+  reading of Table 8-4 ("only reported for FMOVE to memory") seemed to
+  decide it; §9.7.3 describes a post-instruction OPERR with an integer
+  register destination, so the table's wording does not bind, and it was
+  not used. The oracle's "even if destination EA is Dn" (`fpp.c:2055`)
+  carries no source.
+- **D26**: the 12-byte size is [B] (MC68881UM §4.1, "96 bits, 12 bytes");
+  An at the 68040's trap stays [F].
+
+The surface contract loses two stale sentences. § 5.4 still said "restart,
+not continuation … unverified": since 2026-11-19 the 68030 continues from
+the access log, the 68040 restarts, and `fault_transparency_test` faults
+every cycle of 1 023 instructions to hold it; what is left is named. § 6.4's
+[F] on the idle response CIR is now [B]: MC68881UM §6.1.12 and Table 7-7 —
+a null primitive with CA = 0 — read with the very MOVES/SFC = 7 sequence the
+ROMs use. The 68000 rule list no longer says "FC = data for PC-relative
+reads" (ruling D46). Nine locators locked.
 
 <a id="2026-11-22-core-in-english"></a>
 ## 2026-11-22 (fourth) — The core and NEOST_VENDOR.md are in English, for the release to Dirk Hoffmann

@@ -1883,8 +1883,16 @@ Moira::fpuPutDest(u16 opcode, u16 ext, FpuExtended value, u32 &ea)
 
     if constexpr (M == Mode::DN) {
 
-        // Packed output to Dn is an invalid EA (ordinary Line-F), not a
-        // software-datatype operation. Memory packed output is handled below.
+        // [B] M68000PRM-1992 FMOVE: Dn is a destination "only if <fmt> is
+        //     byte, word, long, or single".
+        // [B] MC68040UM-1993 §9.6.2: a packed destination format is an
+        //     unsupported data type.
+        // [F] Which of the two the 68040 applies first (ruling D25; the
+        //     oracle takes the data-type trap). Settled by: FMOVE.P FP0,D0
+        //     on a real 68040.
+        // POM68K: packed output to Dn is an invalid EA (ordinary Line-F),
+        // not a software-datatype operation. Memory packed output is
+        // handled below.
         if (fpuModel == FPUModel::M68040 && (size == 3 || size == 7))
             return 0;
         if (fpuModel == FPUModel::M68040 &&
@@ -2083,6 +2091,8 @@ Moira::execFBcc(u16 opcode)
         u32 newpc = U32_ADD(oldpc, SEXT<S>(disp));
 
         // [B] MC68030UM-1989 §8.1.3: an odd prefetch is vector 3.
+        // [B] MC68040UM-1993 §8.2.2: the same on the 68040 (ruling D28;
+        //     the oracle's FPU branches lack the test).
         // POM68K O4 slice 4 pattern: 68030 odd instruction-flow target —
         // vector 3 with a format $B frame (see execBcc)
         if constexpr (C == Core::C68020) {
@@ -2745,7 +2755,13 @@ Moira::execFGen(u16 opcode)
     // [D] WinUAE table68k @ Hatari e77819f7 lists no such EA for FPP, so
     //     the opcode never reaches fpp.c. The 68020/68030 keep their
     //     historic path: there the coprocessor, not the CPU, decides
-    //     whether the EA is ever evaluated.
+    //     whether the EA is ever evaluated (ruling D29):
+    // [B] MC68030UM-1989 §10.5.2.2: at decode the 030 refuses only
+    //     bits [8:6] = 110/111 and unmapped coprocessor words;
+    // [B] MC68030UM-1989 §10.4.9: the EA is checked against the class a
+    //     transfer primitive names, when the coprocessor issues it;
+    // [B] MC68881UM-1989 §2.3.3: the FPCP clears EXC at the start of most
+    //     operations — so a memory form clears it before the Line-F.
     // Gate: sst68040 (fline and fpuraw cells).
     if constexpr (M == Mode::IP) {
         if (cpuModel >= Model::M68EC040) {
@@ -3292,6 +3308,11 @@ Moira::execFMovem(u16 opcode)
 
             // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // PC-relative: source only (fpp.c:3320-3324)
+            // [B] MC68040UM-1993 Table 8-4: an F-line exception begins
+            //     before the instruction executes — no EA evaluation.
+            // [B] MC68030UM-1989 §10.4.9: the 030 aborts on the EA's class,
+            //     before calculating it. The oracle evaluates the EA first
+            //     (ruling D27).
             if (toEa) {
                 execLineF<C, I, M, S>(opcode);
                 return;
