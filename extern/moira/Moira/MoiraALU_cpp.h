@@ -377,7 +377,10 @@ Moira::bcd(u32 op1, u32 op2)
             }
 
             // Set V flag
-            // POM68K Q2: 68040 leaves V/N untouched (see ABCD above)
+            // [B] M68000PRM-1992 SBCD: N and V undefined.
+            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
+            // POM68K Q2: the 68040 leaves V/N untouched (cpuemu_31.c
+            // op_8100_31_ff: no SET_VFLG/SET_NFLG), as for ABCD above
             if constexpr (C != Core::C68020) {
                 reg.sr.v = ((tmp & 0x80) == 0x80) && ((result & 0x80) == 0);
             } else if (cpuModel < Model::M68EC040) {
@@ -927,8 +930,9 @@ Moira::divlsMoira(i64 a, u32 src)
         if ((quotient & u64(0xffffffff80000000)) != 0
             && (quotient & u64(0xffffffff80000000)) != u64(0xffffffff80000000)) {
 
-            // POM68K O4 slice 4: also reachable in the 32/32 form
-            // ($80000000 / -1); the caller keeps the registers unchanged
+            // [B] M68000PRM-1992 DIVS: on overflow "the operands are
+            // unaffected". POM68K O4 slice 4: also reachable in the 32/32
+            // form ($80000000 / -1); the caller keeps the registers.
             reg.sr.v = 1;
             return { u32(0), u32(0) };
 
@@ -1147,7 +1151,7 @@ Moira::cyclesDiv(u32 op1, u16 op2) const
         i16 divisor  = (i16)op2;
         int mcycles  = (dividend < 0) ? 7 : 6;
 
-        // POM68K (ported from NeoST 74b2f2d): absolute values in UNSIGNED
+        // POM68K (host) (ported from NeoST 74b2f2d): absolute values in UNSIGNED
         // arithmetic. abs(INT32_MIN) is undefined behaviour, and GCC and
         // clang took different branches for $80000000 / $8000 (NeoST's
         // cpu_div_ram bench: +136 cycles on one compiler only).
@@ -1217,7 +1221,7 @@ Moira::cyclesDiv(u32 op1, u16 op2) const
         i32 dividend = (i32)op1;
         i16 divisor  = (i16)op2;
         int mcycles  = (dividend < 0) ? 120 : 118;
-        // POM68K (ported from NeoST 74b2f2d): unsigned absolute values, as
+        // POM68K (host) (ported from NeoST 74b2f2d): unsigned absolute values, as
         // in the 68000 case above — abs(INT32_MIN) is undefined.
         const u32 adividend = dividend < 0 ? 0u - (u32)dividend : (u32)dividend;
         const u32 adivisor  = divisor  < 0 ? 0u - (u32)(i32)divisor : (u32)divisor;
@@ -1393,7 +1397,7 @@ Moira::setUndefinedDIVU(u32 dividend, u16 divisor)
 template <Core C, Size S> void
 Moira::setUndefinedDIVS(i32 dividend, i16 divisor)
 {
-    // POM68K (ported from NeoST 74b2f2d): std::abs(INT32_MIN) is undefined
+    // POM68K (host) (ported from NeoST 74b2f2d): std::abs(INT32_MIN) is undefined
     // behaviour; negate in unsigned arithmetic. This one IS reached: a
     // 68020/030 DIVS.W of $80000000 always overflows and lands here.
     auto uDividend = dividend < 0 ? 0u - u32(dividend) : u32(dividend);

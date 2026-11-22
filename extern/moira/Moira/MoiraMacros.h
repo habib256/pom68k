@@ -14,7 +14,7 @@
 #endif
 #define fatalError      assert(false); unreachable
 
-// POM68K: the cycle budget (syncCp) exists to spend the fractional discounts
+// POM68K (host): the cycle budget (syncCp) exists to spend the fractional discounts
 // of the 68020 i-cache. Without the cache the charge stays sync(c + cp),
 // exactly as before 426e4a3: syncCp holds back odd cycles and borrows after
 // four stalled instructions, which would move the timing of every model on

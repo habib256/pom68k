@@ -619,6 +619,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-22 — Ungraded core rules become a ratchet; the first batch sourced, and a 68010 claim that was wrong](#2026-11-22-grades-ratchet)
 - [2026-11-21 (thirteenth) — What a present FPU answers on the FC = 7 CIR probe: no ROM looks](#2026-11-21-cir-read-unobserved)
 - [2026-11-21 (twelfth) — SonoraCpu joins RbvCpu and VaspCpu on one 68030 base, its pacing kept](#2026-11-21-sonora-on-moira030)
 - [2026-11-21 (eleventh) — The 68020/68030 follow: a PC-relative operand read is in program space, and still an operand cycle](#2026-11-21-pc-relative-020-030)
@@ -1436,6 +1437,36 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-22-grades-ratchet"></a>
+## 2026-11-22 — Ungraded core rules become a ratchet; the first batch sourced, and a 68010 claim that was wrong
+
+**The convention.** 303 of the core's 576 `POM68K` comment units carried no
+evidence grade, but many state no hardware rule at all: seams, host and
+save-state contracts, C++ undefined behaviour. Such a comment is now written
+`POM68K (host)`. `tools/core_grades.py --check` (in `core_grades_test`)
+counts the other ungraded units and fails above `UNGRADED_CEILING`;
+`--ungraded` lists them. The rule lives in `POM68K_VENDOR.md`, beside the
+other grade rules (`CLAUDE.md` is at its size ceiling).
+
+**The first batch: the 39 units outside the five large files.** 32 are host
+contracts and say so. Seven are hardware rules and now cite their source:
+SBCD's N/V on the 68040 ([B] M68000PRM-1992 SBCD p. 274: undefined; [D]
+WinUAE `cpuemu_31.c op_8100_31_ff`: unchanged), DIVS.L overflow keeping the
+registers ([B] PRM DIVS p. 196, "the operands are unaffected"), the odd
+instruction-flow target as vector 3 (MoiraDataflow.h, FBcc and FDBcc: [B]
+MC68030UM-1989 §8.1.3; the 68040's format $2 stays the oracle's [D]), the
+level-7 acknowledge ([B] §8.1.9), and the frame written at an odd SP ([B]
+§7.2.2, p. 333: no alignment restriction on data operands). That last
+comment said the 68010 also writes such frames byte-exact; a 68010 has the
+68000's word bus and takes the address error in `write<>`, which is what
+the code does — the text is corrected, the behaviour was right.
+`SBCD` and `§7.2.2` are added to `tests/core_manuals.lock`.
+
+**Left.** 264 ungraded units, all in `MoiraExec_cpp.h`,
+`MoiraExecMMU_cpp.h`, `Moira.h`, `MoiraDataflow_cpp.h` and `Moira.cpp`
+(`TODO.md` § Surface). Comments only: no executable token changed
+(`moira_rules_test` rebuilt and green).
 
 <a id="2026-11-21-cir-read-unobserved"></a>
 ## 2026-11-21 (thirteenth) — What a present FPU answers on the FC = 7 CIR probe: no ROM looks

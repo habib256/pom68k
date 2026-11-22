@@ -58,7 +58,7 @@ pair):
 | | | how to re-measure |
 |---|---|---|
 | distinct `pom*` extension identifiers | **121** (65 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
-| `POM68K`-marked lines | **631** | `grep -rn POM68K Moira/ \| wc -l` |
+| `POM68K`-marked lines | **632** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **22 of 33** | `grep -rln POM68K Moira/ \| wc -l` |
 | patch groups in the inventory below | **157** | this file |
 | files POM68K *adds* outright | `MoiraCache040.h`, `MoiraState.h`, `MoiraMmu030Walk.h` | — |
@@ -189,6 +189,11 @@ find.
   with a `Settled by:` witness. Historical Musashi comparisons whose
   patched local tree was lost are F, not unpinned D. The remaining pass is
   over hardware claims without any source (`TODO.md` § Moteur › Surface).
+  Since 2026-11-22 a `POM68K` comment that makes no hardware claim — a
+  seam, a host or save-state contract, C++ undefined behaviour — is written
+  `POM68K (host)`, and `tools/core_grades.py --check` ratchets the number of
+  other `POM68K` comment units with no grade (`UNGRADED_CEILING`;
+  `--ungraded` lists them). Each reviewed batch lowers the ceiling.
 - Sections are never rewritten when superseded, only annotated. § *Model support
   in this copy* (last section) is the current state; the journal is history.
 - The vector counts quoted throughout (`sst68000` 1 000 058, `sst68030` 3 082,

@@ -7,7 +7,7 @@
 
 #pragma once
 
-// POM68K: optional acceleration seam. Define to 0 in EVERY translation
+// POM68K (host): optional acceleration seam. Define to 0 in EVERY translation
 // unit embedding an interpreter-only core. Default preserves existing hosts;
 // CPU/MMU/FPU, architectural caches and their timing remain available.
 #ifndef MOIRA_ENABLE_JIT
@@ -26,7 +26,7 @@
  *
  * Enable to improve accuracy, disable it to enhance performance.
  */
-// POM68K: the three settings that upstream ships differently can be set by
+// POM68K (host): the three settings that upstream ships differently can be set by
 // the build; moira_upstream_config_test compiles the core with upstream's.
 #ifndef MOIRA_PRECISE_TIMING
 #define MOIRA_PRECISE_TIMING true // POM68K: cycle-exact Mac Plus (see POM68K_VENDOR.md)
@@ -77,7 +77,7 @@
  *
  * Enable to improve accuracy, disable to gain speed.
  */
-// POM68K: on, as upstream ships it, and overridable by the build like the
+// POM68K (host): on, as upstream ships it, and overridable by the build like the
 // settings above (#ifndef). It applies to the 68020/EC020 only: the
 // 68030/68040 keep their own cache models (PomIcache, MoiraCache040.h), the
 // EC030 has none, and dynamic bus sizing (busSizing) is asked of those two

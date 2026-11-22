@@ -2083,7 +2083,7 @@ Moira::createJumpTable12(Model model, bool regDasm)
     // Floating-Point Unit
     //
 
-    // POM68K O5: the coprocessor-id-1 window is also populated when a
+    // POM68K (host) O5: the coprocessor-id-1 window is also populated when a
     // 6888x is attached to a 020/030 through the coprocessor interface
     // (setFPUModel). fpuModel == NONE keeps the stock table (Line-F),
     // preserving the FPU-less SST030 corpus byte-for-byte. The block is

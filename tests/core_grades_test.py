@@ -60,6 +60,22 @@ class EvidenceCheckerTest(unittest.TestCase):
             self.assertEqual(source.read_text(), wrong)
             self.assertTrue(grades.comment_problems(wrong))
 
+    def test_ungraded_ratchet_counts_marked_units_without_grade(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "Moira.cpp"
+            source.write_text("    // POM68K: a rule with no source\n"
+                              "    x();\n"
+                              "    // POM68K: a rule with its source\n"
+                              "    // [B] MC68030UM-1989 §2\n"
+                              "    y();\n"
+                              "    // upstream comment, no marker\n"
+                              "    z();\n"
+                              "    // POM68K (host): a save-state contract\n")
+            with patch.object(grades, "core_files", return_value=[str(source)]):
+                units = grades.ungraded_units()
+            self.assertEqual([(u[1], u[2].splitlines()[0].strip()) for u in units],
+                             [(1, "// POM68K: a rule with no source")])
+
     def test_each_source_needs_its_own_pin(self):
         for text in (
             "// SingleStepTests/680x0 v1 — same bus order",

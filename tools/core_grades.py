@@ -73,6 +73,14 @@ MANUAL_FAMILY = re.compile(
     r"(?:-\d{4})?\b")
 MANUAL_HEAD = re.compile(r"^\s*//\s*\[([BF])\]\s+([^\n]*)", re.MULTILINE)
 # A section is numbered (§3.5) or lettered for an appendix (§B.3.2).
+# The review of POM68K rules with no source (TODO.md § Moteur › Surface) is a
+# ratchet. A comment that states no hardware claim — a seam, a host or
+# save-state contract, C++ undefined behaviour — carries `POM68K (host)`;
+# every other POM68K comment unit needs an evidence grade. The units with
+# neither are claims still to be sourced or marked [F]: their count may only
+# fall; lower the ceiling with each reviewed batch.
+GRADE_ANY = re.compile(r"\[[A-F]\]")
+UNGRADED_CEILING = 264
 LOCATOR = re.compile(r"§\s*((?:[A-Z]\.)?\d+(?:\.\d+)*)|\b((?:Table|Figure)\s+[A-Z0-9]+-\d+)\b")
 
 
@@ -270,6 +278,29 @@ def upstream(name):
     return _upstream_cache[name]
 
 
+def ungraded_units():
+    """(relative path, first line, text) of every POM68K comment unit with
+    no evidence grade."""
+    out = []
+    for f in core_files():
+        lines = open(f).read().split("\n")
+        rel = os.path.relpath(f, ROOT)
+        for a, b, inline in comment_units(lines):
+            text = comment_text(lines, a, b, inline)
+            if ("POM68K" in text and "POM68K (host)" not in text
+                    and not GRADE_ANY.search(text)):
+                out.append((rel, a + 1, text))
+    return out
+
+
+def ungraded():
+    units = ungraded_units()
+    for rel, line, text in units:
+        print(f"{rel}:{line}: {text.splitlines()[0].strip()[:100]}")
+    print(f"{len(units)} ungraded POM68K comment unit(s), ceiling {UNGRADED_CEILING}")
+    return 0
+
+
 def check():
     with open(os.path.join(ROOT, "tests", "fetch_sst_68000.sh")) as f:
         fetcher = f.read()
@@ -299,8 +330,16 @@ def check():
                 if not (1 <= lo <= hi <= len(up)):
                     problems.append(f"{rel}:{a + 1}: {m.group(0)} — outside {m.group(1)} "
                                     f"({len(up)} lines)")
+    ungraded_count = len(ungraded_units())
+    if ungraded_count > UNGRADED_CEILING:
+        problems.append(f"{ungraded_count} ungraded POM68K comment units, ceiling "
+                        f"{UNGRADED_CEILING}: grade the new rule ([B]/[C]/[D] @ rev/[F]) "
+                        f"(--ungraded lists them)")
     for p in problems:
         print("FAIL", p)
+    if ungraded_count < UNGRADED_CEILING:
+        print(f"note {ungraded_count} ungraded POM68K comment units: lower "
+              f"UNGRADED_CEILING ({UNGRADED_CEILING}) in tools/core_grades.py")
     print(f"{'ok  ' if not problems else 'FAIL'} {blocks} WinUAE-citing comment blocks in the "
           f"core, {sst_blocks} SingleStepTests blocks, {manual_blocks} manual blocks, "
           f"{len(problems)} problem(s)")
@@ -379,8 +418,10 @@ if __name__ == "__main__":
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--check", action="store_true")
     g.add_argument("--report", action="store_true")
+    g.add_argument("--ungraded", action="store_true")
     g.add_argument("--apply", action="store_true")
     g.add_argument("--verify-manual-files", metavar="DIRECTORY")
     a = ap.parse_args()
     sys.exit(verify_manual_files(a.verify_manual_files) if a.verify_manual_files
-             else check() if a.check else report() if a.report else apply())
+             else check() if a.check else report() if a.report
+             else ungraded() if a.ungraded else apply())

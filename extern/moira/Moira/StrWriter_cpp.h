@@ -597,7 +597,7 @@ StrWriter::operator<<(Cn cn)
             case 0x001: *this << (upper ? "DFC"   : "dfc");   break;
             case 0x002: *this << (upper ? "CACR"  : "cacr");  break;
             case 0x003: *this << (upper ? "TC"    : "tc");    break;
-            // POM68K: the MC68EC040's ACR names (StrWriter.h, struct Cn)
+            // POM68K (host): the MC68EC040's ACR names (StrWriter.h, struct Cn)
             case 0x004: *this << (cn.acu ? (upper ? "IACR0" : "iacr0") : (upper ? "ITT0" : "itt0")); break;
             case 0x005: *this << (cn.acu ? (upper ? "IACR1" : "iacr1") : (upper ? "ITT1" : "itt1")); break;
             case 0x006: *this << (cn.acu ? (upper ? "DACR0" : "dacr0") : (upper ? "DTT0" : "dtt0")); break;

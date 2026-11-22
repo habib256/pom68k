@@ -57,7 +57,7 @@ template <Core C, Mode M, Size S, Flags F = 0> u32 computeEAfull(u32 an);
 // POM68K O4 slice 3: 68030 extended EA with WinUAE disp-store semantics
 template <Core C, Mode M, Size S, Flags F = 0> u32 computeEAdisp030(u32 base);
 
-// POM68K O4 slice 3: PC skip that still logs the consumed word (68030)
+// POM68K (host) O4 slice 3: PC skip that still logs the consumed word (68030)
 template <Core C> void skipExt();
 
 /* Reads an operand
@@ -102,11 +102,11 @@ template <Core C, Mode M, Size S, Flags F = 0> u32 readM(u32 addr);
 template <Core C, AddrSpace AS, Size S, Flags F = 0> u32 read(u32 addr);
 
 // Reads an instruction word, either from memory or the instruction cache
-// POM68K: without the cache (MOIRA_EMULATE_ICACHE false, or a model other
+// POM68K (host): without the cache (MOIRA_EMULATE_ICACHE false, or a model other
 // than the 68020/EC020) this is read<C, AddrSpace::PROG, Word, F>, unchanged.
 template <Core C, Flags F = 0> u16 readInstr(u32 addr);
 
-// POM68K: whether read<>/write<> split an access by the port width dsack()
+// POM68K (host): whether read<>/write<> split an access by the port width dsack()
 // reports. Upstream does it unconditionally on the 68020 core; the fork
 // compiles it with the 68020 i-cache only (MoiraConfig.h), so that with the
 // cache off the host sees the access sequence it saw before a4c273b and
@@ -160,8 +160,11 @@ template <Core C, Size S, Flags F = 0> u32 pop();
 // Checks whether the provided address should trigger an address error
 template <Core C, Size S = Word> bool misaligned(u32 addr);
 
+// [B] MC68030UM-1989 §8.1.3: a prefetch at an odd address is an address
+// error, vector 3, short or long bus fault frame.
+// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
 // POM68K: an odd instruction-flow target on the 68030/68040 (vector 3,
-// format $B / $2). Gated like misaligned(): MOIRA_EMULATE_ADDRESS_ERROR
+// format $B / $2; the 68040's format $2 is the oracle's, execAddressError040). Gated like misaligned(): MOIRA_EMULATE_ADDRESS_ERROR
 // false removes every such check, as upstream does for the 68000/68010.
 static constexpr bool oddFlowTarget(u32 addr) {
     return MOIRA_EMULATE_ADDRESS_ERROR && (addr & 1);

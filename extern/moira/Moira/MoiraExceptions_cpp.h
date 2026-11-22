@@ -58,10 +58,13 @@ Moira::writeStackFrame0000(u16 sr, u32 pc, u16 nr)
 
             } else {
 
+                // [B] MC68030UM-1989 §7.2.2: no alignment restriction on
+                // data operands; a misaligned one takes extra bus cycles.
                 // POM68K (LC II, 2026-07-17): write the frame at the TRUE
                 // stack addresses — no `& ~1`. The A0 masking is 68000 bus
-                // behaviour; the 010/020/030 write misaligned frames
-                // byte-exact (the mode-5 mmuWrite splits odd accesses),
+                // behaviour; the 020/030 write misaligned frames byte-exact
+                // (the mode-5 mmuWrite splits odd accesses), while a 68010,
+                // a 68000 bus, takes the address error in write<>,
                 // and execRte reads back at the true addresses. With the
                 // masking, an interrupt taken while SP is odd (QuickDraw's
                 // 3-byte-per-pixel stack temps make odd SPs routine)
@@ -462,7 +465,7 @@ Moira::execMmuBusError()
 
     u32 currpc;
 
-    // POM68K: AVAILABILITY seeds plain-020 restart state before the
+    // POM68K (host): AVAILABILITY seeds plain-020 restart state before the
     // handler can prefetch and advance pc0. Roll back the replay's CCR/EA
     // adjustments before exposing the exception handler; no 030 private
     // fixup encoding is needed in this model's frame.
@@ -515,7 +518,7 @@ Moira::execMmuBusError()
     if (mode5 && (mmuState[1] & 0x0100)) {      // stale latch on plain core
         writeStackFrameShortBusFault<C>(status, currpc);
     } else {
-        // POM68K: retain the original PC in each plain-020 frame's private
+        // POM68K (host): retain the original PC in each plain-020 frame's private
         // internal words, including nested faults. A handler that redirects
         // the stacked PC must not lend its completed cycle to a new opcode.
         if (mmuPlain020()) mmuDispStore[0] = currpc;
@@ -526,7 +529,7 @@ Moira::execMmuBusError()
 
     reg.pc = reg.pc0 = newpc;
 
-    // POM68K Phase C (Mac LC, 2026-07-24): the mode-5 loops (M68030 via
+    // POM68K (host) Phase C (Mac LC, 2026-07-24): the mode-5 loops (M68030 via
     // mmuExecuteStart, ≥M68EC040 via mmu040InstrStart) refetch the opcode
     // from reg.pc at every instruction, so the handler jump lands there.
     // The plain-queue models (68020/EC020/EC030) kept executing the STALE
@@ -881,7 +884,7 @@ Moira::execInterrupt(u8 level)
 {
     assert(level < 8);
 
-    // POM68K O4 slice 3: see execException
+    // POM68K (host) O4 slice 3: see execException
     mmuLogging = false;
 
     // Notify delegate
@@ -893,6 +896,7 @@ Moira::execInterrupt(u8 level)
     // Recover from stop state and terminate loop mode
     flags &= ~(State::STOPPED | State::LOOPING);
 
+    // [B] MC68030UM-1989 §8.1.9: level 7 is transition sensitive.
     // POM68K: this acknowledge answers the pending level-7 transition
     // (Moira.h, nmiLatch); a later one needs a new transition or a mask
     // lowered below 7.
@@ -960,7 +964,7 @@ Moira::execInterrupt(u8 level)
 
             queue.ird = getIrqVector(level);
 
-            // POM68K (2026-07-17): pass the RAW vector — the frame writers
+            // POM68K (host) (2026-07-17): pass the RAW vector — the frame writers
             // scale by 4 themselves (`4 * nr` / `nr << 2`, as every
             // execException call site relies on). Passing 4*queue.ird
             // double-scaled the stacked vector-offset word ($190 instead

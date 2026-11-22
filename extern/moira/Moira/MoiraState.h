@@ -1,4 +1,4 @@
-// POM68K — portable instruction-boundary CPU state visitor.
+// POM68K (host) — portable instruction-boundary CPU state visitor.
 // VERHILLE Arnaud — Copyright (C) 2026 — MIT (see LICENSE-MIT)
 //
 // Included by Moira.h after the complete class. The host supplies an archive
@@ -39,7 +39,8 @@ template<class Ar> void Moira::pomVisitState(Ar& ar)
     // The level-7 transition latch (Moira.h, nmiLatch). Format v35.
     ar(nmiLatch);
 
-    // budget.cp is a per-instruction EA penalty, reset by AVAILABILITY on C68020.
+    // POM68K (host): budget.cp is a per-instruction EA penalty, reset by
+    // AVAILABILITY on C68020.
     // It is not maintained by the JIT. Leaving it out keeps snapshots
     // independent of engine (POM68K format v9; q605_savestate_etalon).
     // The debugger's request bits in `flags` are host state, not guest
@@ -67,7 +68,7 @@ template<class Ar> void Moira::pomVisitState(Ar& ar)
     if constexpr (Ar::loading) fcl = fclCanonical;
     if constexpr (Ar::loading) {
         flags = (guestFlags & ~kDebugFlags) | liveDebug;
-        // POM68K: TRACING0 mirrors SR.T0 (MoiraTypes.h). A state saved before
+        // POM68K (host): TRACING0 mirrors SR.T0 (MoiraTypes.h). A state saved before
         // 2026-11-20 has the bit without the flag; derive it, so that a
         // guest saved with T0 set is traced after the load.
         if (reg.sr.t0) flags |= State::TRACING0; else flags &= ~State::TRACING0;
@@ -170,7 +171,7 @@ template<class Ar> void Moira::pomVisitState(Ar& ar)
         pomFlushAtcs();
     }
 
-    // POM68K: the 040 I/D caches can contain bytes newer OR older than RAM.
+    // POM68K (host): the 040 I/D caches can contain bytes newer OR older than RAM.
     // Saving must not push them onto the guest bus or change guest time.
     // The execution mode travels too, so a host constructed with the cache
     // model off can restore a cache-active snapshot faithfully.
@@ -181,7 +182,7 @@ template<class Ar> void Moira::pomVisitState(Ar& ar)
     }
 
 #if MOIRA_EMULATE_ICACHE
-    // POM68K: the 68020 i-cache of upstream Moira (MoiraCache.h). Its lines
+    // POM68K (host): the 68020 i-cache of upstream Moira (MoiraCache.h). Its lines
     // and its latch decide whether the next fetches touch the bus, and the
     // cycle budget holds cycles charged but not yet synced (Moira::syncCp),
     // so all three are guest state. budget.cp is not: it is zeroed above

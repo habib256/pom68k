@@ -84,7 +84,7 @@ static constexpr int portSize(u8 dsack)
 // CPU variants
 enum class Model
 {
-    // POM68K: what each model executes in this fork (POM68K_SURFACE.md § 1).
+    // POM68K (host): what each model executes in this fork (POM68K_SURFACE.md § 1).
     M68000,                 // Cycle-exact (sst68000: bus cycle order and time)
     M68010,                 // Cycle-exact
     M68EC020,               // Table-timed; no MMU
@@ -105,7 +105,7 @@ enum class Core
     C68020                  // Used by all other models
 };
 
-// POM68K O5: FPU variants attachable through the coprocessor interface.
+// POM68K (host) O5: FPU variants attachable through the coprocessor interface.
 // Follows the CPU-model mechanism: setFPUModel() rebuilds the jump table,
 // so a detached FPU (NONE, the default) leaves the table byte-identical
 // to stock Moira (F-line traps, gated by the FPU-less SST030 corpus).
@@ -386,7 +386,7 @@ struct Registers {
     u32 mmusr040;               // MMU Status Register (PTEST)      (68040)
 };
 
-// POM68K O5: one 80-bit extended-precision FPU data register, mirroring
+// POM68K (host) O5: one 80-bit extended-precision FPU data register, mirroring
 // softfloat's floatx80 layout ({u16 high = sign|15-bit exponent; u64 low =
 // mantissa with explicit integer bit}) so MoiraExecFPU_cpp.h can bit-copy.
 // Kept softfloat-free here: Moira.h must not depend on extern/softfloat.
@@ -538,7 +538,7 @@ static constexpr int CHECK_WP       = (1 << 8);
 // Enables checking for catchpoints.
 static constexpr int CHECK_CP       = (1 << 9);
 
-// POM68K: a 68030 RTE from a format-$B frame armed the access-log replay of
+// POM68K (host): a 68030 RTE from a format-$B frame armed the access-log replay of
 // the next instruction (Moira.h, mmuReplayArmed). Set, it routes that one
 // instruction through execute() — never generated code, which keeps no log.
 // A 68040 RTE into a format-$7 frame sets it too when a trace is pending:
@@ -546,7 +546,7 @@ static constexpr int CHECK_CP       = (1 << 9);
 // (MoiraExec_cpp.h, execRte).
 static constexpr int RTE_REPLAY     = (1 << 10);
 
-// POM68K: reflects the T0 flag from the status register on the 68020 and up
+// POM68K (host): reflects the T0 flag from the status register on the 68020 and up
 // (trace on change of flow). It carries no behaviour of its own: a non-zero
 // `flags` keeps the instruction in execute(), out of generated code, where
 // traceFlow() can stage the trace exception.
@@ -589,7 +589,7 @@ static constexpr u64 AE_SET_IF      = (1 << 13);  // Set bit 13 in the special s
 // Timing flags
 static constexpr u64 IMPL_DEC       = (1 << 14);  // Omit 2 cycle delay in -(An) mode
 
-// POM68K O4 slice 3 (68030 MMU bus layer)
+// POM68K (host) O4 slice 3 (68030 MMU bus layer)
 static constexpr u64 MMU_NOFIXUP    = (1 << 15);  // Suppress (An)± fixup arming (MOVEM)
 static constexpr u64 MMU_RAWBUF     = (1 << 16);  // 030 write buffer holds the value as passed (FScc, ADD/SUB)
 static constexpr u64 FLOW           = (1 << 17);  // fullPrefetch after a change of flow (T0 trace)

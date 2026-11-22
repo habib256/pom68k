@@ -339,7 +339,7 @@ void Moira::fpuFromPackedV(const FpuExtended &v, u32 wrd[3], int kfactor)
         u32 packInt = 0;
         u64 packFrac = 0;
         i32 len = kf;               // softfloat saved len into kfactor
-        // POM68K: SoftFloat returns zero before replacing kfactor with
+        // POM68K (host): SoftFloat returns zero before replacing kfactor with
         // its digit count. Any remaining zero digits need no shift.
         while (len > 0 && significand != 0) {
             len--;
@@ -2082,6 +2082,7 @@ Moira::execFBcc(u16 opcode)
 
         u32 newpc = U32_ADD(oldpc, SEXT<S>(disp));
 
+        // [B] MC68030UM-1989 §8.1.3: an odd prefetch is vector 3.
         // POM68K O4 slice 4 pattern: 68030 odd instruction-flow target —
         // vector 3 with a format $B frame (see execBcc)
         if constexpr (C == Core::C68020) {
@@ -2155,6 +2156,7 @@ Moira::execFDbcc(u16 opcode)
 
         if (takeBranch) {
 
+            // [B] MC68030UM-1989 §8.1.3: an odd prefetch is vector 3.
             // POM68K O4 slice 4 pattern (see execDbcc): odd target after
             // the counter update, stacked PC = the odd target
             if constexpr (C == Core::C68020) {

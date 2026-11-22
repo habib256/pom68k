@@ -59,7 +59,7 @@ struct Cache040 {
     // Gate observables — counters, not architecture
     u64 fills = 0, hits = 0, pushes = 0;
 
-    // POM68K: data-bearing caches are not reconstructible from RAM. Keep
+    // POM68K (host): data-bearing caches are not reconstructible from RAM. Keep
     // the replacement phase and every valid line, including clean stale
     // instruction bytes and retained lines while the cache is disabled.
     // Invalid tags/data and diagnostic counters have no architectural use.

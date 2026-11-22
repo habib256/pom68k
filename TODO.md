@@ -851,8 +851,13 @@ compilation et dans la documentation.
   vérifiés ; les comparaisons Musashi perdues sont `[F]` avec leur témoin
   manquant et les alias Clock Signal sans preuve indépendante sont retirés.
   `core_grades_test` tient ces sources (`CHANGELOG` 2026-11-08, huitième).
-  Restent les règles sans citation, à relier à une preuve ou à étiqueter
-  `[F]` avec ce qui les trancherait ; le gate de citations ne les détecte pas.
+  Depuis le 2026-11-22 un commentaire sans affirmation matérielle s'écrit
+  `POM68K (host)` et `core_grades.py --check` tient un cliquet sur les autres
+  (`--ungraded` les liste) : 264 restent, à relier à une preuve ou à
+  étiqueter `[F]` avec ce qui les trancherait, lot par lot, en baissant
+  `UNGRADED_CEILING` ; les cinq gros fichiers du cœur (`MoiraExec_cpp.h`,
+  `MoiraExecMMU_cpp.h`, `Moira.h`, `MoiraDataflow_cpp.h`, `Moira.cpp`)
+  n'ont pas encore été relus.
 - [ ] **Unifier le softfloat 80 bits avec NeoST.** POM68K utilise
   `extern/softfloat` avec un contexte par CPU, y compris les captures
   intermédiaires (`fpu_context_test`, `CHANGELOG` 2026-11-10, quatrième).

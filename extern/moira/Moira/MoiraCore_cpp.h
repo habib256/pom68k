@@ -36,7 +36,7 @@
 #include <vector>
 #include <stdexcept>
 
-// POM68K: the FPU handlers instantiated here call softfloat, so this file
+// POM68K (host): the FPU handlers instantiated here call softfloat, so this file
 // sees the same C declarations Moira.cpp does (see the note there).
 extern "C" {
 #include "softfloat.h"
