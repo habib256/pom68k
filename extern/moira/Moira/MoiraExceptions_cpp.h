@@ -920,8 +920,9 @@ Moira::execInterrupt(u8 level)
         case Core::C68000:
         {
             // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-            // NEOST : diag cycle-exact de la séquence d'exception (setPomExceptionDiag) —
-            // horloge à chaque étape, pour le diff pas-à-pas avec WinUAE Exception_ce000.
+            // NEOST: cycle-exact diagnostic of the exception sequence
+            // (setPomExceptionDiag) — the clock at each step, for a step-by-step
+            // diff against WinUAE Exception_ce000.
             const bool excDiag = pomExceptionDiag;
             i64 t0 = excDiag ? getClock() : 0;
 
@@ -930,9 +931,10 @@ Moira::execInterrupt(u8 level)
             write<C, AddrSpace::DATA, Word>(reg.sp + 4, reg.pc & 0xFFFF);
             i64 t1 = excDiag ? getClock() : 0;
 
-            // NEOST : cycles d'IACK délégués (stock = 4/4). Permet le port fidèle
-            // de Hatari `iack_cycle` : E-clock (avant) + bloc IACK/idle (après),
-            // calculés au point d'IACK réel — cf. Moira.h iackSyncBefore/After.
+            // NEOST: IACK cycles delegated (stock = 4/4). Lets a host port Hatari's
+            // `iack_cycle` faithfully: E-clock (before) + the IACK/idle block
+            // (after), computed at the real IACK point — see Moira.h
+            // iackSyncBefore/After.
             SYNC(iackSyncBefore(level));
             queue.ird = getIrqVector(level);
 

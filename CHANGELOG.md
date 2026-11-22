@@ -619,6 +619,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-22 (fourth) — The core and NEOST_VENDOR.md are in English, for the release to Dirk Hoffmann](#2026-11-22-core-in-english)
 - [2026-11-22 (third) — The 68030 JIT reads PC-relative operands natively again, in program space](#2026-11-22-jit-pc-relative-native)
 - [2026-11-22 (second) — The core's grade review is complete: every POM68K rule has its source or says it is host](#2026-11-22-grades-review-complete)
 - [2026-11-22 — Ungraded core rules become a ratchet; the first batch sourced, and a 68010 claim that was wrong](#2026-11-22-grades-ratchet)
@@ -1439,6 +1440,21 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-22-core-in-english"></a>
+## 2026-11-22 (fourth) — The core and NEOST_VENDOR.md are in English, for the release to Dirk Hoffmann
+
+The release archive is read by upstream's author, and the project writes its
+documentation in English; 28 comment units inherited from NeoST (the
+`NEOST`/`NEOST_IPLFETCH` patches: deferred IPL, level-sensitive STOP, guarded
+reset and exception paths, 24-bit watchpoint mask, exception diagnostics,
+IACK cycles) and the body of `extern/moira/NEOST_VENDOR.md` were in French.
+They are translated; the markers stay, so `grep -rn NEOST` still finds every
+inherited line. Two references are corrected on the way: the comments
+pointed at NeoST's `docs/MOIRA_WINUAE_CONVERGENCE.md` as if it were in this
+tree, and one cross-reference named `peekM`, which does not exist here (the masking it
+describes is `read<>`'s). Stripped of comments, the five core files are
+identical to their previous revision.
 
 <a id="2026-11-22-jit-pc-relative-native"></a>
 ## 2026-11-22 (third) — The 68030 JIT reads PC-relative operands natively again, in program space

@@ -334,10 +334,11 @@ Moira::reset()
     SYNC(16);
 
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // NEOST : gardé — une bus/address error pendant le fetch des vecteurs de
-    // reset (SSP/PC à $0-$7 absents, ex. ROM invalide) est une double faute
-    // pour le 68000 → HALT (cpu_halt(CPU_HALT_DOUBLE_FAULT) chez WinUAE/Hatari),
-    // pas un abort C++ de l'émulateur (« terminate » observé sur ROM tronquée).
+    // NEOST: guarded — a bus or address error while fetching the reset
+    // vectors (SSP/PC at $0-$7 missing, e.g. an invalid ROM) is a double
+    // fault on the 68000 → HALT (cpu_halt(CPU_HALT_DOUBLE_FAULT) in
+    // WinUAE/Hatari), not a C++ abort of the emulator ("terminate" was
+    // observed on a truncated ROM).
     try {
 
         // Read the initial (supervisor) stack pointer from memory
@@ -679,10 +680,11 @@ Moira::execute()
             }
 
             // Process pending trace exception (if any)
-            // NEOST : gardé par processException — un vecteur TRACE IMPAIR fait
-            // jeter AddressError depuis jumpToVector ; sur 68000 c'est une
-            // ADDRESS ERROR (groupe 0) à prendre, pas un abort de l'émulateur
-            // (crash « terminate » observé sur Beyond the Ice Palace, bureau TOS).
+            // NEOST: guarded by processException — an ODD trace vector makes
+            // jumpToVector throw AddressError; on the 68000 that is an
+            // ADDRESS ERROR (group 0) to take, not an emulator abort (a
+            // "terminate" crash was observed on Beyond the Ice Palace, TOS
+            // desktop).
             if ((flags & TRACE_EXC) && !rteContinues && !traceAfterRerun) {
 
                 // The previous instruction began with T1 set: its trace
@@ -759,10 +761,10 @@ Moira::execute()
         }
 
         // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // NEOST_IPLFETCH : applique le niveau DIFFÉRÉ (changement de broche vu <2 cyc
-        // avant l'échantillon) — il devient la valeur pollée pour la frontière
-        // SUIVANTE, ≙ la rotation `ipl[0] = ipl[1]` de la run loop WinUAE
-        // (newcpu.c:5693, APRÈS do_specialties). No-op quand la feature est OFF.
+        // NEOST_IPLFETCH: apply the DEFERRED level (a pin change seen less than
+        // 2 cycles before the sample) — it becomes the polled value for the
+        // NEXT boundary, ≙ the `ipl[0] = ipl[1]` rotation of WinUAE's run loop
+        // (newcpu.c:5693, AFTER do_specialties). A no-op when the feature is off.
         if (iplDeferred >= 0) {
             reg.ipl = u8(iplDeferred);
             iplDeferred = -1;
@@ -773,8 +775,8 @@ Moira::execute()
         if (flags & STOPPED) {
 
             // Initiate a privilege exception if the supervisor bit is cleared
-            // NEOST : gardé par processException (même raison que TRACE ci-dessus —
-            // vecteur PRIVILEGE impair → AddressError à prendre, pas à laisser fuir).
+            // NEOST: guarded by processException (same reason as TRACE above —
+            // an odd PRIVILEGE vector → an AddressError to take, not to leak).
             if (!reg.sr.s) {
                 sync(4);
                 reg.pc -= 2;
@@ -788,13 +790,14 @@ Moira::execute()
             }
 
             POLL_IPL;
-            // NEOST : le STOP du 68000 est NIVEAU-sensible — il compare IPL au masque
-            // en continu, pas seulement sur un CHANGEMENT de broche. Si le niveau
-            // pollé dépasse déjà le masque (IRQ levée AVANT le stop, masquée par le
-            // SR d'alors, démasquée par l'opérande du stop), il faut re-armer
-            // CHECK_IRQ : sans ça, checkForIrq() ne re-testerait jamais et le CPU
-            // dormirait malgré une IRQ présentée (cas mesuré : raster « stop #$2100 »
-            // de Super Hang-On, réveil ~350 cyc trop tard sur un événement tiers).
+            // NEOST: the 68000 STOP is LEVEL-sensitive — it compares IPL with the
+            // mask continuously, not only on a pin CHANGE. If the polled level
+            // already exceeds the mask (IRQ raised BEFORE the stop, masked by the
+            // SR of the time, unmasked by the stop's operand), CHECK_IRQ must be
+            // re-armed: without it checkForIrq() would never test again and the
+            // CPU would sleep through a presented IRQ (measured case: Super
+            // Hang-On's "stop #$2100" raster, woken ~350 cycles late by an
+            // unrelated event).
             if (irqEligible())
                 flags |= State::CHECK_IRQ;
             sync(MOIRA_MIMIC_MUSASHI ? 1 : 2);
@@ -818,8 +821,8 @@ Moira::execute()
 
         if (flags & LOOPING) {
 
-            // NEOST : gardé par processException (cohérence avec le chemin exec —
-            // mode loop 68010, un accès impair y jetterait AddressError).
+            // NEOST: guarded by processException (consistent with the exec path —
+            // in the 68010 loop mode an odd access would throw AddressError).
             assert(loop[queue.ird]);
             try {
                 (this->*loop[queue.ird])(queue.ird);
@@ -957,9 +960,9 @@ Moira::processException(const std::exception &exc)
 
         if (auto df = dynamic_cast<const DoubleFault *>(&exc); df) {
 
-            // NEOST : l'upstream faisait `throw df` (un POINTEUR) que le
-            // catch (DoubleFault &) ci-dessous NE rattrape PAS → fuite hors de
-            // l'émulateur. Double faute = HALT du 68000, directement.
+            // NEOST: upstream did `throw df` (a POINTER), which the
+            // catch (DoubleFault &) below does NOT catch → it escaped the
+            // emulator. A double fault is the 68000's HALT, directly.
             halt();
             return;
         }
@@ -972,16 +975,16 @@ Moira::processException(const std::exception &exc)
     } catch (AddressError &ae) {
 
         willProcessFault(ae.stackFrame);  // POM68K (host) (ported from NeoST ce1cc52)
-        // NEOST : erreur d'adresse PENDANT le traitement d'une exception groupe 0
-        // (ex. vecteur BUS ERROR impair) = double faute → HALT, comme le vrai 68000.
+        // NEOST: an address error WHILE processing a group-0 exception (e.g. an
+        // odd BUS ERROR vector) is a double fault → HALT, as on a real 68000.
         halt();
         return;
 
     } catch (BusError &be) {
 
         willProcessFault(be.stackFrame);  // POM68K (host) (ported from NeoST ce1cc52)
-        // NEOST : bus error pendant l'empilement d'une exception groupe 0
-        // (pile dans une zone bus-error) = double faute → HALT.
+        // NEOST: a bus error while stacking a group-0 exception (a stack in a
+        // bus-error area) is a double fault → HALT.
         halt();
         return;
     }
@@ -1449,9 +1452,9 @@ Moira::setIPL(u8 val)
     if (ipl != val) {
 
         // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // NEOST_IPLFETCH : historise la broche (≙ WinUAE update_ipl, newcpu.c:5006) —
-        // le changement PRÉCÉDENT (valeur + horloge) est conservé pour le seuil
-        // « cdp » de pollIpl. Sans effet quand la feature est OFF (iplDelay4 == 0).
+        // NEOST_IPLFETCH: keep the pin history (≙ WinUAE update_ipl, newcpu.c:5006)
+        // — the PREVIOUS change (value + clock) is kept for pollIpl's "cdp"
+        // threshold. No effect when the feature is off (iplDelay4 == 0).
         iplChangeClockPrev = iplChangeClock;
         iplPrev = ipl;
         iplChangeClock = clock;
@@ -1459,8 +1462,9 @@ Moira::setIPL(u8 val)
         ipl = val;
         flags |= State::CHECK_IRQ;
 
-        // NEOST : diag cycle-exact (setPomExceptionDiag) — instant où la BROCHE change,
-        // en horloge cœur (`clock`), à corréler avec [EXC]/[HBLD] (horloge bus).
+        // NEOST: cycle-exact diagnostic (setPomExceptionDiag) — the instant the PIN
+        // changes, in core clock (`clock`), to correlate with [EXC]/[HBLD] (bus
+        // clock).
         if (pomExceptionDiag) [[unlikely]]
             fprintf(stderr, "[PIN] ipl=%d clk=%lld\n", val, (long long)clock);
     }
@@ -1482,18 +1486,18 @@ Moira::pollIpl()
 
 #endif
 
-    // Feature OFF (défaut) : comportement Moira d'origine, byte-identique
-    // (étalons 19/0 vérifiés). POLL_IPL ≡ reg.ipl = ipl.
+    // Feature off (the default): upstream Moira's behaviour, byte-identical
+    // (NeoST's etalons, 19/0, checked). POLL_IPL ≡ reg.ipl = ipl.
     if (iplDelay4 == 0) { reg.ipl = ipl; return; }
 
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // NEOST_IPLFETCH : port FIDÈLE de WinUAE ipl_fetch_next (newcpu.c:4996-5011).
-    // L'échantillon se fait ~4 cyc avant la FIN de l'instruction (placement des
-    // POLL_IPL de Moira). Trois cas, comme WinUAE :
-    //   cd  = clock − dernier changement  ≥ 4 → broche stabilisée → nouvelle valeur
-    //   cdp = clock − changement PRÉCÉDENT ≥ 2 → latch pas à jour → valeur PRÉCÉDENTE
-    //   sinon → DIFFÉRÉ (≙ regs.ipl[1]) : la valeur devient pollée à la frontière
-    //   SUIVANTE (applyDeferredIpl, rotation ipl[0]=ipl[1] de la run loop WinUAE).
+    // NEOST_IPLFETCH: a FAITHFUL port of WinUAE ipl_fetch_next (newcpu.c:4996-5011).
+    // The sample is taken ~4 cycles before the END of the instruction (where
+    // Moira places its POLL_IPL). Three cases, as in WinUAE:
+    //   cd  = clock − last change      ≥ 4 → pin settled → the new value
+    //   cdp = clock − PREVIOUS change  ≥ 2 → latch not updated → the PREVIOUS value
+    //   otherwise → DEFERRED (≙ regs.ipl[1]): the value is polled at the NEXT
+    //   boundary (applyDeferredIpl, the ipl[0]=ipl[1] rotation of WinUAE's run loop).
     const i64 cd  = clock - iplChangeClock;
     const i64 cdp = clock - iplChangeClockPrev;
     if (cd >= iplDelay4)       { reg.ipl = ipl;     iplDeferred = -1; }

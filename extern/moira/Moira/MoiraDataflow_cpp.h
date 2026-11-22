@@ -864,9 +864,10 @@ Moira::read(u32 addr)
     }
 
     // Check if a watchpoint has been reached
-    // NEOST : on masque l'adresse au BUS 24 bits (addrMask, comme l'accès réel plus bas)
-    // AVANT le test — sinon un accès I/O en court absolu ($8001.w → EA $FFFF8001) ne
-    // matcherait jamais un watchpoint posé sur $FF8001. Cohérent avec le décodage du Bus.
+    // NEOST: mask the address to the 24-bit BUS (addrMask, as the real access below)
+    // BEFORE the test — otherwise an I/O access in absolute short ($8001.w → EA
+    // $FFFF8001) would never match a watchpoint set on $FF8001. Consistent with
+    // the bus decoding.
     if ((flags & State::CHECK_WP) && debugger.watchpointMatches(addr & addrMask<C>(), S)) {
         pomDidReachWatchpoint(addr & addrMask<C>(), S, false,
                               AS == AddrSpace::PROG);
@@ -1105,7 +1106,7 @@ Moira::write(u32 addr, u32 val)
     }
 
     // Check if a watchpoint has been reached
-    // NEOST : adresse masquée au bus 24 bits avant le test (cf. peekM ci-dessus).
+    // NEOST: address masked to the 24-bit bus before the test (see read<> above).
     if ((flags & State::CHECK_WP) && debugger.watchpointMatches(addr & addrMask<C>(), S)) {
         pomDidReachWatchpoint(addr & addrMask<C>(), S, true,
                               AS == AddrSpace::PROG);
@@ -1609,8 +1610,9 @@ Moira::jumpToVector(int nr)
     SYNC(2);
     prefetch<C, POLL>();
 
-    // NEOST : diag cycle-exact (setPomExceptionDiag) — horloge en FIN de jumpToVector,
-    // à corréler avec [EXC] (execInterrupt) et le timestamp Tracer du handler.
+    // NEOST: cycle-exact diagnostic (setPomExceptionDiag) — the clock at the END of
+    // jumpToVector, to correlate with [EXC] (execInterrupt) and the handler's
+    // Tracer timestamp.
     if (pomExceptionDiag) [[unlikely]]
         fprintf(stderr, "[JTV] nr=%d clk=%lld\n", nr, (long long)getClock());
 

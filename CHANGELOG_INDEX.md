@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 877 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 878 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -17,7 +17,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 27 |
 | [Save states](#save-states) | 11 |
 | [Machine bring-ups](#machine-bring-ups) | 102 |
-| [Build, packaging and release](#build-packaging-and-release) | 28 |
+| [Build, packaging and release](#build-packaging-and-release) | 29 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 44 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 10 |
 | [Cross-cutting](#cross-cutting) | 182 |
@@ -694,6 +694,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-20 (seventh)** — [The release for Dirk Hoffmann, cut on his master and accepted by his Runner](CHANGELOG.md#2026-11-20-release-on-upstream-master)
 - **2026-11-21 (fourth)** — [The release recut once more, for two comment lines](CHANGELOG.md#2026-11-21-release-recut-comments)
 - **2026-11-21 (sixth)** — [The release follows the tree: recut from e6012cbb after the FSAVE BUSY marker](CHANGELOG.md#2026-11-21-release-recut-fsave)
+- **2026-11-22 (fourth)** — [The core and NEOST_VENDOR.md are in English, for the release to Dirk Hoffmann](CHANGELOG.md#2026-11-22-core-in-english)
 
 ## Tests, gates and measurement
 

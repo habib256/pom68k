@@ -73,9 +73,10 @@
 #define CYCLES_IP(b0,b1,b2,w0,w1,w2,l0,l1,l2)     CYCLES_MBWL(Mode::IP,   b0,b1,b2,w0,w1,w2,l0,l1,l2)
 
 // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-// NEOST_IPLFETCH : reconnaissance IPL différée (port fidèle WinUAE ipl_fetch_next).
-// pollIpl() ≡ reg.ipl = ipl quand la feature est OFF (iplDelay4 == 0, défaut).
-// Edit dans le sous-module → cf. docs/MOIRA_WINUAE_CONVERGENCE.md (clobbérable).
+// NEOST_IPLFETCH: deferred IPL recognition (a faithful port of WinUAE
+// ipl_fetch_next). pollIpl() ≡ reg.ipl = ipl when the feature is off
+// (iplDelay4 == 0, the default). NeoST's design note: its
+// docs/MOIRA_WINUAE_CONVERGENCE.md (not part of this tree).
 #define POLL_IPL pollIpl()
 
 #define REVERSE_8(x) (u8)(((x) * 0x0202020202ULL & 0x010884422010ULL) % 1023)

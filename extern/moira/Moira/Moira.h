@@ -128,20 +128,20 @@ protected:
     }
 
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // NEOST_IPLFETCH : historique de la broche IPL pour reconnaissance différée
-    // (port fidèle de WinUAE ipl_fetch_next). iplDelay4 == 0 ⇒ feature OFF, donc
-    // pollIpl() ≡ reg.ipl = ipl. Réglé via setIplDelay(). Edit dans le sous-module
-    // → cf. docs/MOIRA_WINUAE_CONVERGENCE.md (clobbérable au submodule update).
-    u8  iplPrev {};            // valeur précédente de la broche (≙ regs.ipl_pin_p)
-    i64 iplChangeClock {};     // horloge (cycles) du dernier changement (≙ ipl_pin_change_evt)
-    i64 iplChangeClockPrev {-1000};  // horloge du changement PRÉCÉDENT (≙ ipl_pin_change_evt_p)
-    i64 iplDelay4 {0};         // seuil « broche stabilisée » (cyc) ; 0 ⇒ OFF
-    i64 iplDelay2 {0};         // seuil « ancienne valeur » (cyc)
+    // NEOST_IPLFETCH: IPL pin history for deferred recognition (a faithful port
+    // of WinUAE ipl_fetch_next). iplDelay4 == 0 ⇒ feature off, so
+    // pollIpl() ≡ reg.ipl = ipl. Set through setIplDelay(). NeoST's design note
+    // is its docs/MOIRA_WINUAE_CONVERGENCE.md (not part of this tree).
+    u8  iplPrev {};            // previous pin value (≙ regs.ipl_pin_p)
+    i64 iplChangeClock {};     // clock (cycles) of the last change (≙ ipl_pin_change_evt)
+    i64 iplChangeClockPrev {-1000};  // clock of the PREVIOUS change (≙ ipl_pin_change_evt_p)
+    i64 iplDelay4 {0};         // "pin settled" threshold (cycles); 0 ⇒ off
+    i64 iplDelay2 {0};         // "old value" threshold (cycles)
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // Report « différé » de WinUAE (regs.ipl[1]) : un changement de broche vu <2 cyc
-    // avant l'échantillon n'est PAS pris pour la frontière qui vient, mais devient
-    // la valeur POLLÉE à la frontière SUIVANTE (rotation ipl[0]=ipl[1] de la run
-    // loop, newcpu.c:5693). −1 = rien en attente.
+    // WinUAE's "deferred" report (regs.ipl[1]): a pin change seen less than 2
+    // cycles before the sample is NOT taken for the coming boundary but becomes
+    // the POLLED value at the NEXT one (the ipl[0]=ipl[1] rotation of the run
+    // loop, newcpu.c:5693). −1 = nothing pending.
     int iplDeferred {-1};
     // [D] fx68k @ 0602ee46 (rInterrupt latched at the same T3 as pswI);
     //     Hatari @ f0736b24, generated STOP handler (checkint() before
@@ -1383,12 +1383,13 @@ protected:
     virtual void willInterrupt(u8 level) { }
 
     // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // NEOST : cycles idle autour du CYCLE D'IACK du 68000 (execInterrupt<C68000>,
-    // entre l'empilement de PClo et celui de SR/PChi). Stock Moira = SYNC(4) avant
-    // la lecture du vecteur et SYNC(4) après. Un sous-classeur (NeoST) peut y porter
-    // le modèle Hatari/WinUAE `iack_cycle` (newcpu.c) : attente E-clock (avant) +
-    // bloc IACK→DTACK + idle (après), calculés À CE POINT précis — la phase
-    // d'horloge y est déjà quantifiée par l'alignement bus du push PClo.
+    // NEOST: idle cycles around the 68000's IACK CYCLE (execInterrupt<C68000>,
+    // between the PClo push and the SR/PChi pushes). Stock Moira = SYNC(4) before
+    // the vector read and SYNC(4) after. A subclass (NeoST) can carry the
+    // Hatari/WinUAE `iack_cycle` model (newcpu.c) there: E-clock wait (before) +
+    // the IACK→DTACK block + idle (after), computed AT THIS exact point — the
+    // clock phase is already quantised there by the bus alignment of the PClo
+    // push.
     virtual int iackSyncBefore(u8 level) { return 4; }
     virtual int iackSyncAfter(u8 level) { return 4; }
 
@@ -3017,11 +3018,11 @@ public:
     // Sets the value on the Interrupt Priority Level (IPL) pins
     void setIPL(u8 val);
 
-    // NEOST_IPLFETCH : règle les seuils (cyc) de reconnaissance IPL différée.
-    // d4 == 0 désactive la feature (POLL_IPL ≡ reg.ipl = ipl, défaut).
+    // NEOST_IPLFETCH: set the thresholds (cycles) of deferred IPL recognition.
+    // d4 == 0 disables the feature (POLL_IPL ≡ reg.ipl = ipl, the default).
     void setIplDelay(i64 d4, i64 d2) { iplDelay4 = d4; iplDelay2 = d2; }
 
-    // NEOST_IPLFETCH : applique la règle d'échantillonnage de l'IPL (≡ POLL_IPL).
+    // NEOST_IPLFETCH: apply the IPL sampling rule (≡ POLL_IPL).
     void pollIpl();
 
 private:
