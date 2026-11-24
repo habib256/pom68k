@@ -2105,11 +2105,9 @@ Moira::createJumpTable12(CPUModel model, bool regExec, bool regDasm)
      * their line F handlers. The condition only depends on the CPU model
      * (which is the emulated model or the disassembler model, depending on the
      * pass) and the selected coprocessor. The jump table is rebuilt whenever
-     * the selection changes. Hosts may also opt into software floating
-     * point for the LC040 by using the 68882 implementation.
+     * the selection changes (see setCPModel).
      */
-    if (model == CPUModel::M68040 || (moira::hasCPI(model) && cpModel != CPModel::NONE) ||
-        (model == CPUModel::M68LC040 && lc040SoftFpu)) {
+    if (model == CPUModel::M68040 || (moira::hasCPI(model) && cpModel != CPModel::NONE)) {
 
         opcode = parse("1111 0010 100- ----");
         ___________XXXXX(opcode, Instr::FBcc, Mode::IP, Word, FBcc, CIMS)

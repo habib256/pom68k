@@ -1,0 +1,23 @@
+# The patch queue against patches/BASE, one row per patch; checked by tools/moira_queue.py check.
+# state: local|proposed|merged|dropped; relation of the upstream PR to the patch: identical|same-behaviour|partial|diverged
+# repro: case of tools/dirk_moira/findings_repro.cpp; evidence: manual locators cited by the patch message, none, sst-only or inferred
+num	file	state	pr	pr_head	relation	repro	evidence	gates	note
+1	0001-68020-complete-the-special-status-word-of-a-host-bus.patch	proposed	42	b9bafabc6e5c04910f0a5808acf494cc6bef89b5	diverged	1	MC68020UM 6.2.1	lc_boot_etalon	PR #42 differs: it also tells a 68020 instruction fetch from a PC-relative data cycle (instructionFetch argument) and adds a unit test
+2	0002-68020-68030-do-not-count-instruction-cache-hits-twic.patch	proposed	45	5a836cc6696b4619356d1485aca5756a2a78b887	same-behaviour	3	MC68020UM 8.2	icache020_test,lc3plus_boot_etalon	PR #45 charges the fill on a miss instead of removing the per-hit subtraction
+3	0003-68020-68030-serve-discarded-program-reads-from-the-i.patch	proposed	43	ae7c7cdd00a91073cde39d54e4ff87af9936f62f	partial	4	MC68020UM 8.2.7	icache020_test	PR #43 covers MOVE to SR/CCR only; ANDI/ORI/EORI to SR/CCR, expired DBcc and TRAPV stay local
+4	0004-Cache-let-a-host-save-and-restore-the-cache-contents.patch	local					none	icache020_test,lcii_savestate_etalon	host interface for save states, not CPU behaviour
+5	0005-68040-FSAVE-stores-the-unimplemented-instruction-sta.patch	local				5	MC68040UM 9.6.1, Table 9-16, Figure 9-10 d	q605_boot_etalon,centris650_boot_etalon	the Quadra 605's FPSP crashed without it
+6	0006-68020-68030-do-not-rerun-a-data-cycle-a-handler-has-.patch	local				2	MC68030UM 8.2.1-8.2.2; MC68020UM 6.2.1	berr030_test	the LC II slot-probe recovery ran 28.8 million times without it
+7	0007-Halt-on-a-double-bus-fault-during-reset-or-a-trace-e.patch	local					MC68030UM 8.1.1-8.1.2	machinehost_test,q605_boot_etalon	a host BusError escaped to the caller instead of halting
+8	0008-Report-the-kind-of-access-to-a-watchpoint-delegate.patch	local					none	debug_session_test	debugger interface, not CPU behaviour
+9	0009-Re-arm-catchpoints-after-a-reset.patch	local					none	debug_session_test	debugger defect, not CPU behaviour
+10	0010-FMOVE.P-a-zero-with-a-k-factor-above-17-is-an-operan.patch	proposed	44	77f7b42dfbfed92db4be7560dc175d43c54f6992	identical		MC68881UM Table 6-2	fpu_sanity	PR #44 carries the same Moira/ change plus unit tests
+11	0011-FRESTORE-refuse-a-state-frame-the-FPU-does-not-recog.patch	local					MC68881UM 6.2.8; MC68040UM 9.8, Figure 9-10 a	fpu_sanity	also gives the 68040 busy frame its size $60
+12	0012-68040-an-FMOVE-to-an-integer-takes-SNAN-and-OPERR-un.patch	local					MC68040UM 9.7.2.2, 9.7.3.2	fpu040_test	trapVector() takes a nonmaskable mask for integer destinations
+13	0013-FPU-a-restarted-arithmetic-instruction-starts-from-i.patch	local					none	fault_transparency_test	message cites no manual passage; the restart contract is Moira's own
+14	0014-Completed-cycles-the-second-word-of-a-split-long-wor.patch	local					MC68030UM 8.2.2	berr020_test	extends patch 6's completed-cycle record
+15	0015-68020-the-long-bus-fault-frame-carries-the-data-outp.patch	local					MC68020UM 6.2.2	berr020_test	the 68020 frame stacked 0 at SP+$18
+16	0016-68020-68030-report-the-size-of-the-faulted-cycle-of-.patch	local					inferred	berr020_test	read from MC68020UM 6.2.1, MC68030UM 8.2.1-8.2.2 and MC68040UM 8.4.6.2 together; settled by a 68030 on a 16-bit port
+17	0017-68040-the-fault-address-is-the-first-byte-of-the-fau.patch	local					MC68040UM 8.4.6.4, 8.4.6.5	fault_transparency_test	a handler completing WB3 wrote two bytes too far
+18	0018-Restore-68000-address-error-frame-timing-in-DEFAULT.patch	local					sst-only	sst68000,system_boot_etalon,se_boot_etalon,classic_boot_etalon	not upstreamable as written: evidence is SingleStepTests 68000/v1 only
+19	0019-Restore-68000-divide-overflow-in-DEFAULT.patch	local					sst-only	sst68000	not upstreamable as written: commit body empty, evidence is SingleStepTests 68000/v1 only (inventory row)

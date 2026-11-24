@@ -18,6 +18,12 @@
 // The harness replaces only the oracle's declared frame bytes with their
 // manual-defined values and then compares the entire final state. A stale
 // oracle frame or any unrelated difference fails instead of being excused.
+//
+// `@SR <hex manual SR> | <name>` (sst68000 only, which accepts nothing
+// else): the corpus's final SR must differ from the manual's in X and C
+// only; the harness puts the manual's value in its place and compares the
+// entire final state. A vector listed so is counted as ruled when it then
+// passes and fails otherwise; the core is held to the manual, not excused.
 #pragma once
 
 #include <cstdio>
@@ -48,7 +54,16 @@ public:
                                      line.back() == '\t'))
                 line.pop_back();
             if (line.empty() || line[0] == '#') continue;
-            if (line[0] == '@') {
+            if (line.rfind("@SR ", 0) == 0) {
+                std::istringstream row(line.substr(4));
+                std::string separator, name;
+                unsigned sr = 0;
+                if (!(row >> std::hex >> sr) || sr > 0xFFFF ||
+                    !(row >> separator) || separator != "|") return false;
+                std::getline(row >> std::ws, name);
+                if (name.empty() || !names_.insert(name).second) return false;
+                sr_.emplace(name, uint16_t(sr));
+            } else if (line[0] == '@') {
                 std::istringstream row(line);
                 std::string tag, separator, name;
                 uint64_t frame = 0, instruction = 0;
@@ -78,17 +93,25 @@ public:
             if (rule.kind == FrameKind::ExternalFpu) return true;
         return false;
     }
+    // Only @SR lines: the one form sst68000 takes.
+    bool onlySrRules() const { return loaded_ && sr_.size() == names_.size(); }
+    std::optional<uint16_t> srRule(const std::string& name) const {
+        const auto it = sr_.find(name);
+        if (it == sr_.end()) return std::nullopt;
+        return it->second;
+    }
     std::optional<FrameRule> frameRule(const std::string& name) const {
         const auto it = frames_.find(name);
         if (it == frames_.end()) return std::nullopt;
         return it->second;
     }
 
-    // Whether `name` is listed; a listed name is remembered as met.
+    // Whether `name` is listed; a listed name is remembered as met. An @SR
+    // name answers false: it excuses nothing, its SR is substituted instead.
     bool listed(const std::string& name) {
         if (!loaded_ || !names_.count(name)) return false;
         seen_.insert(name);
-        return true;
+        return !sr_.count(name);
     }
 
     // Listed names the run never met; prints up to `examples` of them.
@@ -108,6 +131,7 @@ public:
 private:
     std::set<std::string> names_, seen_;
     std::map<std::string, FrameRule> frames_;
+    std::map<std::string, uint16_t> sr_;
     bool loaded_ = false;
 };
 

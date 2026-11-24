@@ -186,9 +186,11 @@ conflict, preserve the reproducer and record the ruling in `CHANGELOG.md`.
 `extern/moira/Moira` is Dirk Hoffmann's Moira (`master`, the commit in
 `extern/moira/patches/BASE`) plus POM68K's patch queue, one commit each in
 `extern/moira/patches/`, written in his style for upstream pull requests
-(discussion #36); the Macintosh layer lives above it, in `src/MoiraCompat.h`
-and the CPU wrappers. Before any patch, fetch his `master`, read his new
-commits and drop a patch he covers. Branch `main_old` (`0139930a`) freezes
+(discussion #36); `tools/moira_queue.py check` (`moira_queue_test`) proves
+that composition, and `extern/moira/patches/queue.tsv` tracks each patch's
+evidence and pull request. The Macintosh layer lives above it, in
+`src/MoiraCompat.h` and the CPU wrappers. Before any patch, fetch his
+`master`, read his new commits and drop a patch he covers. Branch `main_old` (`0139930a`) freezes
 the previous POM68K (the NeoST fork, JIT on): a reference to compare against
 and the source for rebuilding the JIT, never a branch to develop on. `main`
 proves the interpreter first, then rebuilds the JIT on it piece by piece

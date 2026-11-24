@@ -18,7 +18,7 @@
 //
 // Usage: sst68000 <dir> [--max N] [--only NAME,..] [--skip NAME,..]
 //                 [--no-cycles] [--verbose] [--examples K]
-//                 [--no-transactions]
+//                 [--no-transactions] [--known FILE]
 // Exit 0 = all matched / no data (soft skip); 1 = mismatch; 2 = usage.
 //
 // Bus cycles are part of the verdict since 2026-11-06. The corpus records
@@ -29,8 +29,14 @@
 // if its bus sequence and each cycle's start match too. --no-transactions
 // restores the state-only comparison (it is what 68010/020 experiments on
 // this corpus need).
+//
+// --known FILE holds `@SR` lines only (tests/SstKnown.h): vectors on which
+// the core follows the manual's condition codes against the corpus. Each is
+// compared in full with the manual's SR in place of the corpus's, and
+// counted as ruled; tests/sst68000.known says which ruling and why.
 
 #include "MoiraCompat.h"
+#include "SstKnown.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -383,10 +389,11 @@ std::set<std::string> parseNameList(const char* s) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    if (argc < 2) { std::fprintf(stderr,"usage: %s <dir> [--max N] [--only NAME,..] [--skip NAME,..] [--no-cycles] [--no-transactions] [--verbose] [--examples K]\n",argv[0]); return 2; }
+    if (argc < 2) { std::fprintf(stderr,"usage: %s <dir> [--max N] [--only NAME,..] [--skip NAME,..] [--no-cycles] [--no-transactions] [--known FILE] [--verbose] [--examples K]\n",argv[0]); return 2; }
     const std::string dir = argv[1];
     long maxPerFile=-1; int examples=3; bool verbose=false, checkCycles=true;
     std::set<std::string> only, skip;
+    sstknown::List known;
     for (int i=2;i<argc;++i){ std::string a=argv[i];
         if      (a=="--max"&&i+1<argc) maxPerFile=std::strtol(argv[++i],nullptr,10);
         else if (a=="--examples"&&i+1<argc) examples=int(std::strtol(argv[++i],nullptr,10));
@@ -396,6 +403,9 @@ int main(int argc, char** argv) {
         else if (a=="--verbose") verbose=true;
         else if (a=="--dump") gDump=true;
         else if (a=="--no-transactions") gTxOn=false;
+        else if (a=="--known"&&i+1<argc) {
+            if (!known.load(argv[++i]) || !known.onlySrRules()) { std::fprintf(stderr,"cannot load --known '%s' (@SR lines only)\n",argv[i]); return 2; }
+        }
         else { std::fprintf(stderr,"unknown arg '%s'\n",a.c_str()); return 2; }
     }
 
@@ -409,7 +419,7 @@ int main(int argc, char** argv) {
     TestCpu cpu;
     std::printf("[sst68000] dir=%s files=%zu cycles=%s bus=%s\n", dir.c_str(), files.size(), checkCycles?"on":"off", gTxOn?"on":"off");
 
-    long grandTotal=0, grandPass=0, filesRun=0; bool anyFail=false;
+    long grandTotal=0, grandPass=0, grandRuled=0, filesRun=0; bool anyFail=false;
     long txSeqAll=0, txTimedAll=0;
     for (const fs::path& f : files) {
         const std::string stem=f.stem().string();
@@ -419,21 +429,31 @@ int main(int argc, char** argv) {
         if (!in){ std::fprintf(stderr,"  %-12s: cannot open\n",stem.c_str()); anyFail=true; continue; }
         std::string buf((std::istreambuf_iterator<char>(in)),std::istreambuf_iterator<char>());
         const char* p=buf.c_str(); eat(p,'[');
-        long total=0,passed=0; std::vector<std::pair<std::string,std::string>> firstFew; Vector v;
+        long total=0,passed=0,ruled=0; std::vector<std::pair<std::string,std::string>> firstFew; Vector v;
         long txSeq=0, txTimed=0;
         while (true) {
             skipWs(p); if (*p==']'||*p=='\0') break;
             if (!parseVector(p,v)) break;
             if (knownBad(v.name)) { skipWs(p); if (*p==','){++p;} continue; }
-            std::string why; const bool ok=runVector(cpu,v,checkCycles,why);
-            ++total; if (ok)++passed; else if (int(firstFew.size())<examples) firstFew.push_back({v.name,why});
+            std::string why; bool ruleOk=true;
+            const auto manualSr = known.srRule(v.name);
+            if (manualSr) {
+                known.listed(v.name);
+                const unsigned delta = unsigned(v.fin.sr ^ *manualSr);
+                ruleOk = delta && !(delta & ~0x11u);  // X and C only
+                if (ruleOk) v.fin.sr = *manualSr;
+            }
+            bool ok=runVector(cpu,v,checkCycles,why);
+            if (!ruleOk) { ok=false; why="@SR must differ from the corpus in X/C only (stale or invalid rule)"; }
+            ++total; if (ok&&manualSr) ++ruled; else if (ok) ++passed; else if (int(firstFew.size())<examples) firstFew.push_back({v.name,why});
             if (gTxOn) { if (gLastTx.seq) ++txSeq; if (gLastTx.timed) ++txTimed; }
             if (maxPerFile>0&&total>=maxPerFile) break;
             skipWs(p); if (*p==','){++p;continue;} if (*p==']'){++p;break;}
         }
-        ++filesRun; grandTotal+=total; grandPass+=passed;
-        const bool fileOk=(passed==total); if (!fileOk) anyFail=true;
-        std::printf("  %-12s : %6ld/%-6ld %s\n",stem.c_str(),passed,total,fileOk?"OK":"FAIL");
+        ++filesRun; grandTotal+=total; grandPass+=passed; grandRuled+=ruled;
+        const bool fileOk=(passed+ruled==total); if (!fileOk) anyFail=true;
+        std::printf("  %-12s : %6ld/%-6ld %s%s\n",stem.c_str(),passed,total,fileOk?"OK":"FAIL",
+                    ruled?(" (+"+std::to_string(ruled)+" ruled)").c_str():"");
         if (gTxOn) {
             txSeqAll+=txSeq; txTimedAll+=txTimed;
             if (verbose || txSeq!=total || txTimed!=total)
@@ -441,7 +461,12 @@ int main(int argc, char** argv) {
         }
         if (!fileOk||verbose) for (auto& mm:firstFew) std::printf("        x \"%s\"  %s\n",mm.first.c_str(),mm.second.c_str());
     }
-    std::printf("[sst68000] %s: %ld/%ld across %ld file(s)%s\n", anyFail?"FAIL":"OK", grandPass, grandTotal, filesRun, anyFail?"  <<< MISMATCH":"");
+    // A listed vector the corpus no longer holds fails a whole-corpus run.
+    if (known.active() && only.empty() && skip.empty() && maxPerFile<0 && filesRun>0 &&
+        known.reportMissing(examples)) anyFail=true;
+    const std::string ruledNote = !known.active() ? std::string()
+        : " (+" + std::to_string(grandRuled) + " ruled by --known)";
+    std::printf("[sst68000] %s: %ld/%ld%s across %ld file(s)%s\n", anyFail?"FAIL":"OK", grandPass, grandTotal, ruledNote.c_str(), filesRun, anyFail?"  <<< MISMATCH":"");
     if (gTxOn)
         std::printf("[sst68000] bus cycles: order %ld/%ld, timing %ld/%ld; "
                     "%ld PC-relative operand read(s) in program space where "

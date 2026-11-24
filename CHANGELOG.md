@@ -40,6 +40,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"in `DEFAULT` mode the 68000 … clears C and X when ASR shifts beyond the operand width (20)" (2026-11-24) — reversed the same day: the manual's last bit shifted out is the sign; 3 736 SingleStepTests vectors are listed against it and no 68000 machine gate moved** → [The 68000 ASR goes back to the manual](#2026-11-24-softfpu-asr-manual)
+
 - **"`MOIRA_EMULATE_ICACHE` is false here… the Macintosh II and LC boot gates pin today's timing" (2026-11-20 (sixth)) — the cache is on since the next day: once a hit stops being discounted, a warm loop costs what the tables always charged, and no boot gate moved** → [Upstream's 68020 instruction cache is on](#2026-11-21-icache-020-on)
 
 - **"A re-sync [with upstream Moira] is no longer a merge with conflicts; it is a port" (2026-08-09) and "the fork changed too much of upstream's design to merge back" (release README, 2026-11-17) — the port was done in one session, and the fork is now based on upstream's master** → [The Moira fork is rebased onto upstream's master](#2026-11-20-rebase-on-upstream)
@@ -619,6 +621,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-24 (second) — The LC040 soft FPU leaves Dirk's core for the Mac layer, and the 68000 ASR goes back to the manual: nineteen patches](#2026-11-24-softfpu-asr-manual)
 - [2026-11-24 — POM68K runs on Dirk Hoffmann's Moira: twenty-one fixes in a patch queue, the Quadras' FPSP and the Mac slot probes restored](#2026-11-24-dirk-moira-base)
 - [2026-11-22 (sixth) — The 68040 FBcc/FDBcc with an odd displacement faults as the manual says: after the predicate, taken or not](#2026-11-22-fbcc-odd-040)
 - [2026-11-22 (fifth) — D27, D29 and the 68030 half of D28 settled by the manuals, D25/D26 narrowed; the continuation and CIR sentences of the surface contract](#2026-11-22-d25-d29-by-manual)
@@ -1444,14 +1447,86 @@ Newest first.
 
 ---
 
+<a id="2026-11-24-softfpu-asr-manual"></a>
+## 2026-11-24 (second) — The LC040 soft FPU leaves Dirk's core for the Mac layer, and the 68000 ASR goes back to the manual: nineteen patches
+
+Two decisions of the owner on the queue of the entry below; it now holds
+**nineteen** patches (old 19 → 18, old 21 → 19; old 18 and old 20 gone).
+
+**Patch 18 was configuration, not CPU behaviour.** It let a host give the
+68LC040 Dirk's 68882 while keeping its identity: the product default of the
+LC 475/575/580 and Centris 610/650 profiles (`Moira040Cpu::selectIdentity`)
+and of `q605_nofpu_boot_etalon`. No board has that combination. It is now
+built in `src/MoiraCompat.h` from his API alone: `fpu.setModel(M68882)` on
+his public FPU, and the jump table his protected `createJumpTable()` builds
+for the 68040, while `cpuModel` stays `M68LC040`. The two models' tables
+differ only by the FPU block (`MoiraInit_cpp.h`: the 68040 MMU and
+CINV/CPUSH/MOVE16 entries test both models alike) and every handler reads
+`cpuModel` at run time. A scratch probe compared, on the patched tree, the
+core path with the Mac-layer path: `exec`, `loop`, `dasm`, `info` (65 536
+entries each), FPU model and models, 0 differences on enabling and on
+disabling (the soft-FPU table differs from a plain LC040's in 259 entries,
+from a 68040's in none). His `setModel()` rebuilds the table, so MoiraCompat
+shadows both overloads (nothing in his core calls them) and `hasFPU()`
+(nothing calls it). Measured before/after: `q605_nofpu_boot_etalon` and
+`q605_barefpu_boot_etalon` reach the Finder at the same clock
+(9 601 725 880 and 9 601 725 798) with the same SCSI count and screen
+statistics; `q605_boot_etalon` and `lc475_boot_etalon` keep pin
+`eefb49d126a73732`.
+
+**Patch 20 is reversed: a 68000 ASR past the operand width keeps the
+manual's C and X.** [B] M68000PRM-1992, ASR (PDF p. 126, p. 4-22): "X — Set
+according to the last bit shifted out of the operand; unaffected for a shift
+count of zero", "C — Set according to the last bit shifted out of the
+operand; cleared for a shift count of zero"; the sign is shifted into the
+high-order bit and a register count is taken modulo 64 (p. 125). No sentence
+covers a count beyond the width; past it every bit shifted out is the sign.
+Table 3-18 (PDF p. 90) gives C = D(r−1), which is undefined there. History:
+the fork applied the corpus rule to every CPU until ruling D10
+(2026-07-15), when both 68030 oracles kept the sign and the clear became
+68000/68010-only, held by `sst68000` alone; `oracle/README.md` listed it
+among the rulings taken against a manual. Patch 20 carried it for the
+68000 on Dirk's core, with no source above grade D.
+
+Measured with the patch dropped (Dirk's code for this case):
+- `sst68000` (corpus present, 124 files): 860 357 → 856 621 / 1 000 058.
+  Exactly 3 736 vectors change, all register-form ASR with a negative
+  operand and a count beyond the width (1 642 `.b`, counts 9-63; 1 063
+  `.w`, 17-63; 1 031 `.l`, 33-63), all on SR alone (`$2719` against
+  `$2708`: X and C). Every other file's output is identical. The gate was
+  already red on Dirk's core (address-error and bus-order vectors, 139 701
+  failures, unchanged here).
+- The 68000 machines, 25 gates run before and after (128K, 512K, 512Ke,
+  Plus with System 3.3 and `Disk605.dsk`, SE, SE FDHD, Classic floppy and
+  SCSI, Portable, PB100 with sleep, slicing, deadline, timing, TeachText,
+  input and MOOF): every one executed its assets and passed, and their whole
+  outputs are identical, pins and IWM poll counts included.
+- No other CPU test asserts a 68000 ASR flag; `moira_rules_test` passes.
+
+So the tree stays on the manual. `sst68000` takes `--known
+tests/sst68000.known`: 3 736 `@SR` lines, written from the corpus by
+`tools/sst68000_asr_known.py` (it never runs the core). For each listed
+vector the corpus's SR must differ from the manual's in X and C only; the
+harness substitutes it and compares the whole final state, so a listed
+vector counts as ruled only when the core matches the manual. Checked: the
+list against the patched core fails all 3 736; a plain-name list is refused;
+an `@SR` value differing in another flag fails; a listed name missing from
+the corpus fails the run. `[F]` What a real 68000 does is not settled by any
+source here. Settled by: a capture of `ASR Dn,Dm` with Dn ≥ 9 on a negative
+byte on a real 68000.
+
+---
+
 <a id="2026-11-24-dirk-moira-base"></a>
 ## 2026-11-24 — POM68K runs on Dirk Hoffmann's Moira: twenty-one fixes in a patch queue, the Quadras' FPSP and the Mac slot probes restored
 
 **The base.** `extern/moira/Moira` is Dirk's `master` (`450b15ae`, his `FPU`
 branch merged) plus a queue of twenty-one commits exported to
 `extern/moira/patches/` (`POM68K_VENDOR.md` § Inventory). Each one is in his
-style, reproduced on his unmodified tree by
-`tools/dirk_moira/findings_repro.cpp` and checked in the locked manuals; Dirk
+style. Patches 1, 2, 3, 5 and 6 are reproduced on his unmodified tree by
+`tools/dirk_moira/findings_repro.cpp` (it prints, it asserts nothing); the
+others rest on POM68K's gates, and not every one cites a manual
+(`extern/moira/patches/queue.tsv` records each one's evidence); Dirk
 agreed to receive them as small pull requests against `master` (discussion
 #36, 2026-11-23). His own `58e0405b` fixed the 68030/68040 host-bus-error SSW
 in parallel and replaced ours: the queue is rebased before each patch.

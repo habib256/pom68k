@@ -580,14 +580,14 @@ target_link_libraries(llap_two_system_etalon PRIVATE pom68k_core)
 add_test(NAME llap_two_system_etalon COMMAND llap_two_system_etalon
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
-# M4.5 gate: SingleStepTests/680x0 68000 vectors against bare Moira.
-# Data is user-fetched (~1 GB): tests/fetch_sst_68000.sh <dir>.
-# Soft-skips when absent.
+# M4.5 gate: SingleStepTests/680x0 68000 vectors (fetch: tests/fetch_sst_68000.sh;
+# soft-skips when absent); tests/sst68000.known lists those ruled for the manual.
 add_executable(sst68000 tests/sst68000.cpp)
 target_link_libraries(sst68000 PRIVATE moira)
 set(POM68K_SST_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/sst68000"
     CACHE PATH "Directory of SingleStepTests/680x0 68000 .json vectors")
-add_test(NAME sst68000 COMMAND sst68000 "${POM68K_SST_DIR}")
+add_test(NAME sst68000 COMMAND sst68000 "${POM68K_SST_DIR}"
+         --known "${CMAKE_CURRENT_SOURCE_DIR}/tests/sst68000.known")
 
 # Phase-2 gate (O4): oracle-agreed SST030 vectors against Moira M68030.
 # Corpus is generated locally: oracle/fuzz/fuzz030.py (see oracle/README.md).

@@ -60,10 +60,11 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Pom68kSstGates.cmake)
 add_test(NAME core_grades_test
          COMMAND python3 tests/core_grades_test.py
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-# moira_release_test (the standalone release of the fork, 2026-11-22) is
-# retired: since 2026-11-23 the core is Dirk Hoffmann's Moira and POM68K's
-# changes go to him as pull requests (extern/moira/patches). The tool stays
-# to rebuild that release from its commit (main @ 228e63a5).
+# Since 2026-11-23 the core is Dirk Hoffmann's Moira (moira_release_test, the
+# fork's release, is retired; its tool rebuilds it from main @ 228e63a5). This
+# proves Moira/ == patches/BASE + the queue, and queue.tsv against the roster.
+add_test(NAME moira_queue_test COMMAND python3 tools/moira_queue.py check
+         --build-dir ${CMAKE_CURRENT_BINARY_DIR} WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
 # Corpus identity: present files must match tests/sst_corpora.lock; absent ones skip.
 add_test(NAME sst_corpora_lock_test

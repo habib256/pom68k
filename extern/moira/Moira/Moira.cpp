@@ -137,20 +137,6 @@ Moira::setCPModel(CPModel model)
 }
 
 void
-Moira::setLC040SoftFpu(bool enabled)
-{
-    if (lc040SoftFpu == enabled) return;
-
-    lc040SoftFpu = enabled;
-    if (cpuModel == CPUModel::M68LC040) {
-        configureUnits();
-        fpu.reset();
-    }
-    if (cpuModel == CPUModel::M68LC040 || dasmModel == CPUModel::M68LC040)
-        createJumpTable(cpuModel, dasmModel);
-}
-
-void
 Moira::setDasmStyle(const DasmStyle &style)
 {
     style.validate();
@@ -437,7 +423,6 @@ Moira::configureUnits()
         case CPUModel::M68LC040:
 
             mmu.setModel(MMUModel::M68040);
-            if (lc040SoftFpu) fpu.setModel(FPUModel::M68882);
             break;
 
         case CPUModel::M68040:

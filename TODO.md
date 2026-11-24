@@ -127,6 +127,10 @@ défaut CPU, dans cet ordre :
   partent un par un selon la boucle ci-dessus ; le 18 (FPU logicielle
   optionnelle d'un LC040) rétablit une configuration POM68K : décider avec
   lui s'il entre chez lui ou s'il reste une option de la couche Macintosh.
+  Ouvertes le 2026-11-24 : #42 (correctif 1, implémentation différente),
+  #43 (correctif 3, MOVE vers SR/CCR seulement), #44 (correctif 10,
+  identique), #45 (correctif 2, même comportement, autre code) ; l'état de
+  chaque correctif et sa PR se suivent dans `extern/moira/patches/queue.tsv`.
 - [ ] **Trier ce qui reste dans la couche de POM68K.** `src/MoiraCompat.h`
   garde des membres inertes du fork (couture `pomJit*`, surcouche
   `pomIcache`, verrous `mmuPipeCnt`/`trace040Pending`/`irqDelay`) et les
@@ -224,8 +228,9 @@ Chaque ligne d'une liste se corrige (correctif de la file), se tranche
 - [ ] **Décider l'hybride 68LC040 + 68882 logiciel.** Défaut produit des
   LC 475/575/580 et Centris 610/650, combinaison qui n'existe pas en
   matériel ; un vrai `NONE` boote déjà le Quadra 605
-  (`q605_barefpu_boot_etalon`) ; l'option repose désormais sur le
-  correctif 18.
+  (`q605_barefpu_boot_etalon`) ; l'option est de la configuration POM68K,
+  hors de la file depuis le 2026-11-24 (`src/MoiraCompat.h`,
+  `setLC040SoftFpu`).
 
 ### Temps — le modèle de débit 030/040
 
@@ -314,10 +319,13 @@ avec le cœur ; les grands corpus sont épinglés dans
 - [ ] **Rejuger les décisions prises contre un manuel, là où aucun gate ne
   tombe.** Exceptions connues (`oracle/README.md § Rulings taken against a
   manual`) : D30 (trappe de type de donnée immédiate), D44 (CAS2 `Dn:Dn`
-  sur 68040), et deux règles 68000 (sortie anticipée de DIVS, ASR au-delà
-  de la largeur), désormais tenues par les correctifs 20 et 21 en mode
-  `DEFAULT`. La renverser demande une preuve de grade A, ou une divergence
-  déclarée sans perdre de vecteur. Reste aussi à passer au crible les
+  sur 68040), et la sortie anticipée de DIVS sur 68000, tenue par le
+  correctif 19 en mode `DEFAULT`. La renverser demande une preuve de
+  grade A, ou une divergence déclarée sans perdre de vecteur. L'ASR 68000
+  au-delà de la largeur suit le manuel depuis le 2026-11-24 (C et X = le
+  signe ; les 3 736 vecteurs du corpus qui disent 0 sont listés dans
+  `tests/sst68000.known`) : *reste à trancher par une capture sur un vrai
+  68000* (`ASR Dn,Dm`, Dn ≥ 9, octet négatif). Reste aussi à passer au crible les
   règles 6888x que l'audit soupçonne : FPIAR, vecteur d'exception gardé
   armé, longs internes de FSAVE IDLE, PTEST niveau 0, PMOVE TC invalide
   (le bit 9 du SSW est tranché réservé, `CHANGELOG` 2026-11-24).
@@ -863,7 +871,8 @@ Le juge commun du 68000 est `sst68000` (ordre et date de chaque cycle bus).
   DIVS/DIVU/CMPM/CHK, la sortie anticipée de DIVS en débordement, le
   drapeau Z de la division par zéro, ADDQ/SUBQ.l sur An, FC « data » des
   lectures relatives au PC (tranché programme, `CHANGELOG` 2026-11-21
-  (ninth)). Les correctifs 19 à 21 portent trois de ces règles chez Dirk ;
+  (ninth)). Les correctifs 18 et 19 portent l'attente de l'erreur
+  d'adresse et la division chez Dirk ;
   la transcription du microcode est le témoin à consulter pour chacune. Le
   harnais `tests/sst68000.cpp` se porte tel quel.
 - [ ] **Trancher STOP+8 avant de le porter.** NeoST `993ce5e` puis

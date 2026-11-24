@@ -41,6 +41,28 @@ public:
     // ── Models ──────────────────────────────────────────────────────────
     // The LC040 can use the optional soft 68882 while retaining its CPU
     // identity. Call after setModel().
+    //
+    // That combination is POM68K configuration, not CPU behaviour (no
+    // board has it), so it is built here from Dirk's API alone: the 68882
+    // model on his public FPU, and the jump table his protected
+    // createJumpTable() registers for the 68040. The two models' tables
+    // differ only by the FPU block (MoiraInit_cpp.h: the 68040 MMU and
+    // CINV/CPUSH/MOVE16 entries test both models alike), and every handler
+    // reads cpuModel at run time, so the CPU keeps the 68LC040's identity,
+    // frames and MMU. His setModel() rebuilds the table, hence the two
+    // shadows below; nothing in his core calls setModel().
+    void setModel(moira::CPUModel cpu, moira::CPUModel dasm) {
+        const bool changed = cpu != cpuModel || dasm != dasmModel;
+        moira::Moira::setModel(cpu, dasm);
+        if (changed && lc040SoftFpu) applyLC040SoftFpu(false);
+    }
+    void setModel(moira::CPUModel model) { setModel(model, model); }
+    // His hasFPU() answers by CPU model and coprocessor only.
+    bool hasFPU() const {
+        return moira::Moira::hasFPU() ||
+               (cpuModel == moira::CPUModel::M68LC040 && lc040SoftFpu);
+    }
+
     void setFPUModel(MoiraFpu f) {
         using moira::CPUModel;
         if (moira::hasCPI(cpuModel)) {
@@ -66,6 +88,30 @@ public:
         }
     }
     moira::CPUModel getModel() const { return cpuModel; }
+
+private:
+    bool lc040SoftFpu = false;
+    void setLC040SoftFpu(bool enabled) {
+        if (lc040SoftFpu == enabled) return;
+        lc040SoftFpu = enabled;
+        applyLC040SoftFpu(true);
+    }
+    // Selecting the soft FPU resets it; a model change keeps its registers,
+    // as his setModel() does for an FPU it keeps.
+    void applyLC040SoftFpu(bool resetFpu) {
+        using moira::CPUModel;
+        if (cpuModel == CPUModel::M68LC040) {
+            if (lc040SoftFpu) fpu.setModel(moira::FPUModel::M68882);
+            if (resetFpu) fpu.reset();
+        }
+        if (cpuModel != CPUModel::M68LC040 && dasmModel != CPUModel::M68LC040) return;
+        const auto table = [&](CPUModel m) {
+            return lc040SoftFpu && m == CPUModel::M68LC040 ? CPUModel::M68040 : m;
+        };
+        createJumpTable(table(cpuModel), table(dasmModel));
+    }
+
+public:
 
     // ── Registers the fork exposed directly ─────────────────────────────
     moira::u8 readFC() const { return getFC(); }

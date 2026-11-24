@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 884 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 885 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -9,7 +9,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | Subsystem | Entries |
 |---|---:|
 | [JIT — the second execution engine](#jit--the-second-execution-engine) | 117 |
-| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 172 |
+| [CPU cores, MMU, FPU and the WinUAE oracle](#cpu-cores-mmu-fpu-and-the-winuae-oracle) | 173 |
 | [MCU firmware LLE — Egret, Cuda, PIC, PG&E](#mcu-firmware-lle--egret-cuda-pic-pge) | 38 |
 | [Storage — SCSI, IWM, SWIM, media](#storage--scsi-iwm-swim-media) | 106 |
 | [Video — decoders, the raster beam, DAFB](#video--decoders-the-raster-beam-dafb) | 32 |
@@ -318,6 +318,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-22 (ninth)** — [Dirk's Moira becomes the base: the fork's 158 changes sorted against his rewrite, and the first findings sent to him](CHANGELOG.md#2026-11-22-moira-convergence-inventory)
 - **2026-11-22 (sixth)** — [The 68040 FBcc/FDBcc with an odd displacement faults as the manual says: after the predicate, taken or not](CHANGELOG.md#2026-11-22-fbcc-odd-040)
 - **2026-11-24** — [POM68K runs on Dirk Hoffmann's Moira: twenty-one fixes in a patch queue, the Quadras' FPSP and the Mac slot probes restored](CHANGELOG.md#2026-11-24-dirk-moira-base)
+- **2026-11-24 (second)** — [The LC040 soft FPU leaves Dirk's core for the Mac layer, and the 68000 ASR goes back to the manual: nineteen patches](CHANGELOG.md#2026-11-24-softfpu-asr-manual)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E
 

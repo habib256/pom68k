@@ -192,11 +192,6 @@ Moira::shift(int cnt, u64 data) {
                 data = shifted;
             }
 
-            // SingleStepTests shows C/X cleared beyond the width on 68000.
-            if constexpr (C == Core::C68000 && compat == Compatibility::DEFAULT) {
-                if (cnt > 8 * int(S)) carry = false;
-            }
-
             if (cnt) reg.sr.x = carry;
             reg.sr.c = carry;
             reg.sr.v = NBIT<S>(changed);

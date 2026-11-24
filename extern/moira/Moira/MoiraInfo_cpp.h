@@ -23,8 +23,7 @@ Moira::hasMMU() const
 bool
 Moira::hasFPU() const
 {
-    return hasInternalFPU() || hasExternalFPU() ||
-           (cpuModel == CPUModel::M68LC040 && lc040SoftFpu);
+    return hasInternalFPU() || hasExternalFPU();
 }
 
 bool

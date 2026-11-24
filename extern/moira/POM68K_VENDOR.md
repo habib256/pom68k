@@ -16,12 +16,18 @@ Dirk's rewrite).
 | distinct `pom*` extension identifiers | **0** (0 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
 | `POM68K`-marked lines | **0** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **0 of 48** | `grep -rln POM68K Moira/ \| wc -l` |
-| patches in the queue below | **21** | `ls extern/moira/patches/*.patch` |
+| patches in the queue below | **19** | `ls extern/moira/patches/*.patch` |
 
 Each patch is one commit on top of the base, with its gate or reproducer
-listed below. The CPU conformance fixes cite the manual passages they
-implement. Dirk agreed to small PRs against `master` (discussion #36,
-2026-11-23). The optional LC040 software FPU restores a POM68K configuration.
+listed below. Patches 1-3, 5-7, 10-12, 14, 15 and 17 cite the manual passages
+they implement; 16 infers its rule from three passages; 4, 8, 9 and 13
+cite none; 18 and 19 rest on SingleStepTests only. `patches/queue.tsv` records
+each patch's evidence, upstream pull request and gates, and
+`tools/moira_queue.py check` (`moira_queue_test`) proves that `Moira/` is
+`patches/BASE` plus this queue. Dirk agreed to small PRs against `master`
+(discussion #36, 2026-11-23). The optional LC040 software FPU is POM68K
+configuration, not CPU behaviour: it left the queue on 2026-11-24 and lives
+in `src/MoiraCompat.h` (`setLC040SoftFpu`), built from Dirk's API alone.
 A patch leaves the queue when his `master` covers it.
 
 **Updating the base.** Fetch his `master`, read every new commit touching
@@ -51,10 +57,16 @@ on the pristine and the patched tree, then the machine tiers.
 | 15 | 68020: the long bus fault frame carries the data output buffer | `MoiraExceptions.h`, `MoiraExceptions_cpp.h` | MC68020UM 6.2.2 | `berr020_test` |
 | 16 | 68020/68030: report the size of the faulted cycle of a split long word | `MoiraDataflow.h`, `MoiraDataflow_cpp.h` | read from MC68020UM 6.2.1, MC68030UM 8.2.1-8.2.2 and MC68040UM 8.4.6.2 together (not one sentence) | `berr020_test` |
 | 17 | 68040: the fault address is the first byte of the faulted access | `MoiraDataflow_cpp.h` | MC68040UM 8.4.6.4 | `fault_transparency_test` |
-| 18 | Allow a host to opt into software floating point on an LC040 | `Moira.h`, `Moira.cpp`, `MoiraInfo_cpp.h`, `MoiraInit_cpp.h` | Keep the 68LC040 CPU identity with the optional software 68882 | `q605_nofpu_boot_etalon`, `q605_barefpu_boot_etalon` |
-| 19 | Restore 68000 address error frame timing in DEFAULT mode | `MoiraExceptions_cpp.h` | SingleStepTests/680x0 68000/v1 measures the idle before the group-0 frame writes | `sst68000`, Plus, SE and Classic boot etalons |
-| 20 | Clear 68000 ASR carry and extend beyond the operand width | `MoiraALU_cpp.h` | SingleStepTests/680x0 68000/v1, see ruling D10 for the later CPUs | `sst68000 --only ASR.b,ASR.w,ASR.l` |
-| 21 | Restore 68000 divide overflow flags and signed timing in DEFAULT mode | `MoiraALU_cpp.h` | SingleStepTests/680x0 68000/v1 checks the preserved N/Z flags and the 16/18-clock signed overflow path | `sst68000 --only DIVS,DIVU` |
+| 18 | Restore 68000 address error frame timing in DEFAULT mode | `MoiraExceptions_cpp.h` | SingleStepTests/680x0 68000/v1 measures the idle before the group-0 frame writes | `sst68000`, `system_boot_etalon`, `se_boot_etalon`, `classic_boot_etalon` |
+| 19 | Restore 68000 divide overflow flags and signed timing in DEFAULT mode | `MoiraALU_cpp.h` | SingleStepTests/680x0 68000/v1 checks the preserved N/Z flags and the 16/18-clock signed overflow path | `sst68000` |
+
+Patch 19 is exercised alone by `sst68000 --only DIVS,DIVU` on the
+SingleStepTests 68000/v1 corpus; `system_boot_etalon` is the Plus boot
+etalon. The 68000 ASR past the operand width follows the manual (C and X
+take the last bit shifted out, the sign) since 2026-11-24: the patch that
+cleared them for the corpus left the queue, and the 3 736 corpus vectors
+it held are listed in `tests/sst68000.known` (`CHANGELOG` 2026-11-24
+(second)).
 
 ## Fork history
 

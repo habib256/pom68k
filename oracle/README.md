@@ -106,9 +106,12 @@ both (`extern/moira/POM68K_VENDOR.md` row 50, gate `sst68040_fpu2`).
 Two 68000 rules of the same kind predate the 68030 oracle and are flagged
 in `extern/moira/POM68K_VENDOR.md` § *SingleStepTests/680x0 convergence
 patches*: the early exit of every DIVS overflow at 16/18 cycles, and ASR
-past the operand width clearing C and X. Both follow SingleStepTests (D)
-and are held by `sst68000`; NeoST's copy disagrees on the first
-(`TODO.md § Moteur › Convergence`).
+past the operand width clearing C and X. The first follows SingleStepTests
+(D), is held by `sst68000` (queue patch 19), and NeoST's copy disagrees with
+it (`TODO.md § Moteur › Convergence`). The second was reversed on
+2026-11-24: the 68000 now takes the manual's last bit shifted out, the
+sign, and the 3 736 corpus vectors that say 0 are listed in
+`tests/sst68000.known`; a capture on a real 68000 would settle it.
 
 Rulings where the manual is silent — D13-D15 (undefined CCR), D20 (sign of a
 created NaN) and their like — are not exceptions: nothing of a higher grade

@@ -78,10 +78,6 @@ protected:
     // The emulated coprocessor (if any)
     CPModel cpModel = CPModel::NONE;
 
-    // Host opt-in for software floating point on an LC040.
-    bool lc040SoftFpu = false;
-    void setLC040SoftFpu(bool enabled);
-
     // Instruction set used by the disassembler
     CPUModel dasmModel = CPUModel::M68000;
     
