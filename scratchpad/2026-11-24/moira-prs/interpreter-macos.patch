@@ -1,0 +1,267 @@
+diff --git a/extern/moira/Moira/Moira.h b/extern/moira/Moira/Moira.h
+--- a/extern/moira/Moira/Moira.h
++++ b/extern/moira/Moira/Moira.h
+@@ -78,6 +78,10 @@
+     // The emulated coprocessor (if any)
+     CPModel cpModel = CPModel::NONE;
+ 
++    // Host opt-in for software floating point on an LC040.
++    bool lc040SoftFpu = false;
++    void setLC040SoftFpu(bool enabled);
++
+     // Instruction set used by the disassembler
+     CPUModel dasmModel = CPUModel::M68000;
+     
+diff --git a/extern/moira/Moira/Moira.cpp b/extern/moira/Moira/Moira.cpp
+--- a/extern/moira/Moira/Moira.cpp
++++ b/extern/moira/Moira/Moira.cpp
+@@ -137,6 +137,20 @@
+ }
+ 
+ void
++Moira::setLC040SoftFpu(bool enabled)
++{
++    if (lc040SoftFpu == enabled) return;
++
++    lc040SoftFpu = enabled;
++    if (cpuModel == CPUModel::M68LC040) {
++        configureUnits();
++        fpu.reset();
++    }
++    if (cpuModel == CPUModel::M68LC040 || dasmModel == CPUModel::M68LC040)
++        createJumpTable(cpuModel, dasmModel);
++}
++
++void
+ Moira::setDasmStyle(const DasmStyle &style)
+ {
+     style.validate();
+@@ -423,6 +437,7 @@
+         case CPUModel::M68LC040:
+ 
+             mmu.setModel(MMUModel::M68040);
++            if (lc040SoftFpu) fpu.setModel(FPUModel::M68882);
+             break;
+ 
+         case CPUModel::M68040:
+diff --git a/extern/moira/Moira/MoiraInfo_cpp.h b/extern/moira/Moira/MoiraInfo_cpp.h
+--- a/extern/moira/Moira/MoiraInfo_cpp.h
++++ b/extern/moira/Moira/MoiraInfo_cpp.h
+@@ -23,7 +23,8 @@
+ bool
+ Moira::hasFPU() const
+ {
+-    return hasInternalFPU() || hasExternalFPU();
++    return hasInternalFPU() || hasExternalFPU() ||
++           (cpuModel == CPUModel::M68LC040 && lc040SoftFpu);
+ }
+ 
+ bool
+diff --git a/extern/moira/Moira/MoiraInit_cpp.h b/extern/moira/Moira/MoiraInit_cpp.h
+--- a/extern/moira/Moira/MoiraInit_cpp.h
++++ b/extern/moira/Moira/MoiraInit_cpp.h
+@@ -2105,9 +2105,11 @@
+      * their line F handlers. The condition only depends on the CPU model
+      * (which is the emulated model or the disassembler model, depending on the
+      * pass) and the selected coprocessor. The jump table is rebuilt whenever
+-     * the selection changes (see setCPModel).
++     * the selection changes. Hosts may also opt into software floating
++     * point for the LC040 by using the 68882 implementation.
+      */
+-    if (model == CPUModel::M68040 || (moira::hasCPI(model) && cpModel != CPModel::NONE)) {
++    if (model == CPUModel::M68040 || (moira::hasCPI(model) && cpModel != CPModel::NONE) ||
++        (model == CPUModel::M68LC040 && lc040SoftFpu)) {
+ 
+         opcode = parse("1111 0010 100- ----");
+         ___________XXXXX(opcode, Instr::FBcc, Mode::IP, Word, FBcc, CIMS)
+diff --git a/extern/moira/POM68K_VENDOR.md b/extern/moira/POM68K_VENDOR.md
+--- a/extern/moira/POM68K_VENDOR.md
++++ b/extern/moira/POM68K_VENDOR.md
+@@ -16,13 +16,13 @@
+ | distinct `pom*` extension identifiers | **0** (0 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
+ | `POM68K`-marked lines | **0** | `grep -rn POM68K Moira/ \| wc -l` |
+ | source files carrying a marker | **0 of 48** | `grep -rln POM68K Moira/ \| wc -l` |
+-| patches in the queue below | **17** | `ls extern/moira/patches/*.patch` |
+-
+-Each patch is one commit on top of the base, written in Dirk's style, with
+-the manual passage it implements and the gate or reproducer that holds it.
+-None is Macintosh-specific; each is a pull request to offer upstream (Dirk
+-agreed to small PRs against `master`, discussion #36, 2026-11-23). A patch
+-leaves the queue when his `master` covers it.
++| patches in the queue below | **18** | `ls extern/moira/patches/*.patch` |
++
++Each patch is one commit on top of the base, with its gate or reproducer
++listed below. The CPU conformance fixes cite the manual passages they
++implement. Dirk agreed to small PRs against `master` (discussion #36,
++2026-11-23). The optional LC040 software FPU restores a POM68K configuration.
++A patch leaves the queue when his `master` covers it.
+ 
+ **Updating the base.** Fetch his `master`, read every new commit touching
+ `Moira/` (he fixes things in parallel: his `58e0405b` made one of ours
+@@ -51,6 +51,7 @@
+ | 15 | 68020: the long bus fault frame carries the data output buffer | `MoiraExceptions.h`, `MoiraExceptions_cpp.h` | MC68020UM 6.2.2 | `berr020_test` |
+ | 16 | 68020/68030: report the size of the faulted cycle of a split long word | `MoiraDataflow.h`, `MoiraDataflow_cpp.h` | read from MC68020UM 6.2.1, MC68030UM 8.2.1-8.2.2 and MC68040UM 8.4.6.2 together (not one sentence) | `berr020_test` |
+ | 17 | 68040: the fault address is the first byte of the faulted access | `MoiraDataflow_cpp.h` | MC68040UM 8.4.6.4 | `fault_transparency_test` |
++| 18 | Allow a host to opt into software floating point on an LC040 | `Moira.h`, `Moira.cpp`, `MoiraInfo_cpp.h`, `MoiraInit_cpp.h` | Keep the 68LC040 CPU identity with the optional software 68882 | `q605_nofpu_boot_etalon`, `q605_barefpu_boot_etalon` |
+ 
+ ## Fork history
+ 
+diff --git a/extern/moira/patches/0018-Allow-host-opt-in-for-LC040-software-floating-point.patch b/extern/moira/patches/0018-Allow-host-opt-in-for-LC040-software-floating-point.patch
+new file mode 100644
+--- /dev/null
++++ b/extern/moira/patches/0018-Allow-host-opt-in-for-LC040-software-floating-point.patch
+@@ -0,0 +1,95 @@
++From 09ba3e14850aea4c8bb56fca1c14bd85865f668a Mon Sep 17 00:00:00 2001
++From: VERHILLE Arnaud <gist974@gmail.com>
++Date: Tue, 24 Nov 2026 07:29:17 +0400
++Subject: [PATCH] Allow a host to opt into software floating point on an LC040
++
++---
++ Moira/Moira.cpp       | 15 +++++++++++++++
++ Moira/Moira.h         |  4 ++++
++ Moira/MoiraInfo_cpp.h |  3 ++-
++ Moira/MoiraInit_cpp.h |  6 ++++--
++ 4 files changed, 25 insertions(+), 3 deletions(-)
++
++diff --git a/Moira/Moira.cpp b/Moira/Moira.cpp
++index f1371b5..7132730 100644
++--- a/Moira/Moira.cpp
+++++ b/Moira/Moira.cpp
++@@ -136,6 +136,20 @@ Moira::setCPModel(CPModel model)
++     if (moira::hasCPI(cpuModel) || moira::hasCPI(dasmModel)) createJumpTable(cpuModel, dasmModel);
++ }
++ 
+++void
+++Moira::setLC040SoftFpu(bool enabled)
+++{
+++    if (lc040SoftFpu == enabled) return;
+++
+++    lc040SoftFpu = enabled;
+++    if (cpuModel == CPUModel::M68LC040) {
+++        configureUnits();
+++        fpu.reset();
+++    }
+++    if (cpuModel == CPUModel::M68LC040 || dasmModel == CPUModel::M68LC040)
+++        createJumpTable(cpuModel, dasmModel);
+++}
+++
++ void
++ Moira::setDasmStyle(const DasmStyle &style)
++ {
++@@ -423,6 +437,7 @@ Moira::configureUnits()
++         case CPUModel::M68LC040:
++ 
++             mmu.setModel(MMUModel::M68040);
+++            if (lc040SoftFpu) fpu.setModel(FPUModel::M68882);
++             break;
++ 
++         case CPUModel::M68040:
++diff --git a/Moira/Moira.h b/Moira/Moira.h
++index 462045c..435edf7 100644
++--- a/Moira/Moira.h
+++++ b/Moira/Moira.h
++@@ -78,6 +78,10 @@ protected:
++     // The emulated coprocessor (if any)
++     CPModel cpModel = CPModel::NONE;
++ 
+++    // Host opt-in for software floating point on an LC040.
+++    bool lc040SoftFpu = false;
+++    void setLC040SoftFpu(bool enabled);
+++
++     // Instruction set used by the disassembler
++     CPUModel dasmModel = CPUModel::M68000;
++     
++diff --git a/Moira/MoiraInfo_cpp.h b/Moira/MoiraInfo_cpp.h
++index 649ebd7..25ed054 100644
++--- a/Moira/MoiraInfo_cpp.h
+++++ b/Moira/MoiraInfo_cpp.h
++@@ -23,7 +23,8 @@ Moira::hasMMU() const
++ bool
++ Moira::hasFPU() const
++ {
++-    return hasInternalFPU() || hasExternalFPU();
+++    return hasInternalFPU() || hasExternalFPU() ||
+++           (cpuModel == CPUModel::M68LC040 && lc040SoftFpu);
++ }
++ 
++ bool
++diff --git a/Moira/MoiraInit_cpp.h b/Moira/MoiraInit_cpp.h
++index 7840eb4..9ee70b0 100644
++--- a/Moira/MoiraInit_cpp.h
+++++ b/Moira/MoiraInit_cpp.h
++@@ -2105,9 +2105,11 @@ Moira::createJumpTable12(CPUModel model, bool regExec, bool regDasm)
++      * their line F handlers. The condition only depends on the CPU model
++      * (which is the emulated model or the disassembler model, depending on the
++      * pass) and the selected coprocessor. The jump table is rebuilt whenever
++-     * the selection changes (see setCPModel).
+++     * the selection changes. Hosts may also opt into software floating
+++     * point for the LC040 by using the 68882 implementation.
++      */
++-    if (model == CPUModel::M68040 || (moira::hasCPI(model) && cpModel != CPModel::NONE)) {
+++    if (model == CPUModel::M68040 || (moira::hasCPI(model) && cpModel != CPModel::NONE) ||
+++        (model == CPUModel::M68LC040 && lc040SoftFpu)) {
++ 
++         opcode = parse("1111 0010 100- ----");
++         ___________XXXXX(opcode, Instr::FBcc, Mode::IP, Word, FBcc, CIMS)
++-- 
++2.54.0 (Apple Git-157)
++
+diff --git a/src/MoiraCompat.h b/src/MoiraCompat.h
+--- a/src/MoiraCompat.h
++++ b/src/MoiraCompat.h
+@@ -39,8 +39,8 @@
+ class MoiraCompat : public moira::Moira {
+ public:
+     // ── Models ──────────────────────────────────────────────────────────
+-    // A Macintosh with an LC040 and an FPU is a full 68040; a 68040 without
+-    // one is an LC040. Call after setModel().
++    // The LC040 can use the optional soft 68882 while retaining its CPU
++    // identity. Call after setModel().
+     void setFPUModel(MoiraFpu f) {
+         using moira::CPUModel;
+         if (moira::hasCPI(cpuModel)) {
+@@ -49,13 +49,15 @@
+                                              : moira::CPModel::M68882);
+             return;
+         }
++        setLC040SoftFpu(cpuModel == CPUModel::M68LC040 && f == MoiraFpu::M68882);
+         if (cpuModel == CPUModel::M68040 && f == MoiraFpu::NONE)
+             setModel(CPUModel::M68LC040);
+-        else if (cpuModel == CPUModel::M68LC040 && f != MoiraFpu::NONE)
++        else if (cpuModel == CPUModel::M68LC040 && f == MoiraFpu::M68040)
+             setModel(CPUModel::M68040);
+     }
+     MoiraFpu getFPUModel() const {
+         if (cpuModel == moira::CPUModel::M68040) return MoiraFpu::M68040;
++        if (cpuModel == moira::CPUModel::M68LC040 && lc040SoftFpu) return MoiraFpu::M68882;
+         if (!moira::hasCPI(cpuModel)) return MoiraFpu::NONE;
+         switch (cpModel) {
+             case moira::CPModel::M68881: return MoiraFpu::M68881;
+diff --git a/tests/lc575_boot_etalon.cpp b/tests/lc575_boot_etalon.cpp
+--- a/tests/lc575_boot_etalon.cpp
++++ b/tests/lc575_boot_etalon.cpp
+@@ -232,7 +232,11 @@
+                 cpu.runCycles(kFrameCycles);
+         },
+         [&] { return mem.scsi().commands; },
+-        screen.width, screen.height, /*menuRows=*/20);
++        screen.width, screen.height, /*menuRows=*/20,
++        // The first Finder menu can sit over a bare desktop while the
++        // startup work is still in progress. At 120 frames that screen
++        // can appear stable before the icons and desktop picture load.
++        /*tries=*/8, /*framesBetween=*/600);
+     ok = pixelpin::check("lc575_boot_etalon", pin) && ok;
+     std::printf("%s\n", ok ? "PASSED — LC 575 Finder in 256 colors" : "FAILED");
+     ok = agentboot::check(mem, cpu, kFrameCycles, ok);
+diff --git a/tests/q605_beyond_etalon.cpp b/tests/q605_beyond_etalon.cpp
+--- a/tests/q605_beyond_etalon.cpp
++++ b/tests/q605_beyond_etalon.cpp
+@@ -392,7 +392,7 @@
+         const int untypeable = guestkbd::type(
+             kTypedName, /*azertyGuest=*/true,
+             [&](uint8_t code, bool down) { mem.keyEvent(code, down); },
+-            [&](long frames) { runFrames(frames); });
++            [&](long frames) { runFrames(frames); }, /*hold=*/12, /*gap=*/12);
+         keyHold(0x24, 150);                  // Return — commit it
+         runFrames(900);
+         const long typedAfter = folderprobe::count(disk, kTypedName);

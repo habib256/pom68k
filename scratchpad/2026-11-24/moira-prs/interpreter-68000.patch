@@ -1,0 +1,144 @@
+diff --git a/extern/moira/Moira/MoiraExceptions_cpp.h b/extern/moira/Moira/MoiraExceptions_cpp.h
+--- a/extern/moira/Moira/MoiraExceptions_cpp.h
++++ b/extern/moira/Moira/MoiraExceptions_cpp.h
+@@ -388,7 +388,13 @@
+ 
+     // Interrupts are taken at an instruction boundary
+     reg.pc = reg.pc0;
+-    SYNC(8);
++    if constexpr (C == Core::C68000 && compat == Compatibility::DEFAULT) {
++        // The 68000 group-0 address-error idle depends on the I/N bit.
++        // SingleStepTests/680x0 measures the start of each frame write.
++        SYNC((frame.code & 0x8) ? 4 : 2);
++    } else {
++        SYNC(8);
++    }
+ 
+     // A misaligned stack pointer will cause a double fault
+     if (misaligned<C>(reg.sp)) throw DoubleFault();
+@@ -396,8 +402,7 @@
+     // Write stack frame
+     if constexpr (C == Core::C68000) {
+ 
+-        // MAME delays the stack frame instead of the vector fetch
+-        SYNC(2);
++        if constexpr (compat != Compatibility::DEFAULT) SYNC(2);
+         writeStackFrameAEBE<C>(frame);
+ 
+     } else if constexpr (C == Core::C68010) {
+diff --git a/extern/moira/Moira/MoiraALU_cpp.h b/extern/moira/Moira/MoiraALU_cpp.h
+--- a/extern/moira/Moira/MoiraALU_cpp.h
++++ b/extern/moira/Moira/MoiraALU_cpp.h
+@@ -190,6 +190,11 @@
+                 u64 shifted = SEXT<S>(data) >> 1;
+                 changed |= (u32)(data ^ shifted);
+                 data = shifted;
++            }
++
++            // SingleStepTests shows C/X cleared beyond the width on 68000.
++            if constexpr (C == Core::C68000 && compat == Compatibility::DEFAULT) {
++                if (cnt > 8 * int(S)) carry = false;
+             }
+ 
+             if (cnt) reg.sr.x = carry;
+diff --git a/extern/moira/POM68K_VENDOR.md b/extern/moira/POM68K_VENDOR.md
+--- a/extern/moira/POM68K_VENDOR.md
++++ b/extern/moira/POM68K_VENDOR.md
+@@ -16,7 +16,7 @@
+ | distinct `pom*` extension identifiers | **0** (0 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
+ | `POM68K`-marked lines | **0** | `grep -rn POM68K Moira/ \| wc -l` |
+ | source files carrying a marker | **0 of 48** | `grep -rln POM68K Moira/ \| wc -l` |
+-| patches in the queue below | **18** | `ls extern/moira/patches/*.patch` |
++| patches in the queue below | **20** | `ls extern/moira/patches/*.patch` |
+ 
+ Each patch is one commit on top of the base, with its gate or reproducer
+ listed below. The CPU conformance fixes cite the manual passages they
+@@ -52,6 +52,8 @@
+ | 16 | 68020/68030: report the size of the faulted cycle of a split long word | `MoiraDataflow.h`, `MoiraDataflow_cpp.h` | read from MC68020UM 6.2.1, MC68030UM 8.2.1-8.2.2 and MC68040UM 8.4.6.2 together (not one sentence) | `berr020_test` |
+ | 17 | 68040: the fault address is the first byte of the faulted access | `MoiraDataflow_cpp.h` | MC68040UM 8.4.6.4 | `fault_transparency_test` |
+ | 18 | Allow a host to opt into software floating point on an LC040 | `Moira.h`, `Moira.cpp`, `MoiraInfo_cpp.h`, `MoiraInit_cpp.h` | Keep the 68LC040 CPU identity with the optional software 68882 | `q605_nofpu_boot_etalon`, `q605_barefpu_boot_etalon` |
++| 19 | Restore 68000 address error frame timing in DEFAULT mode | `MoiraExceptions_cpp.h` | SingleStepTests/680x0 68000/v1 measures the idle before the group-0 frame writes | `sst68000`, Plus, SE and Classic boot etalons |
++| 20 | Clear 68000 ASR carry and extend beyond the operand width | `MoiraALU_cpp.h` | SingleStepTests/680x0 68000/v1, see ruling D10 for the later CPUs | `sst68000 --only ASR.b,ASR.w,ASR.l` |
+ 
+ ## Fork history
+ 
+diff --git a/extern/moira/patches/0019-Restore-68000-address-error-frame-timing-in-DEFAULT.patch b/extern/moira/patches/0019-Restore-68000-address-error-frame-timing-in-DEFAULT.patch
+new file mode 100644
+--- /dev/null
++++ b/extern/moira/patches/0019-Restore-68000-address-error-frame-timing-in-DEFAULT.patch
+@@ -0,0 +1,42 @@
++From 52d3a39bf81ee2e36bd0353e6d77b0f2759c17c8 Mon Sep 17 00:00:00 2001
++From: VERHILLE Arnaud <gist974@gmail.com>
++Date: Tue, 24 Nov 2026 07:53:08 +0400
++Subject: [PATCH] Restore 68000 address error frame timing in DEFAULT mode
++
++SingleStepTests/680x0 68000/v1 times the idle before the group-0 frame. Keep the previously qualified 2/4-clock split by I/N in the default configuration.
++---
++ Moira/MoiraExceptions_cpp.h | 11 ++++++++---
++ 1 file changed, 8 insertions(+), 3 deletions(-)
++
++diff --git a/Moira/MoiraExceptions_cpp.h b/Moira/MoiraExceptions_cpp.h
++index db70dc9..ab52313 100644
++--- a/Moira/MoiraExceptions_cpp.h
+++++ b/Moira/MoiraExceptions_cpp.h
++@@ -388,7 +388,13 @@ Moira::execAddressError(StackFrame frame, int delay)
++ 
++     // Interrupts are taken at an instruction boundary
++     reg.pc = reg.pc0;
++-    SYNC(8);
+++    if constexpr (C == Core::C68000 && compat == Compatibility::DEFAULT) {
+++        // The 68000 group-0 address-error idle depends on the I/N bit.
+++        // SingleStepTests/680x0 measures the start of each frame write.
+++        SYNC((frame.code & 0x8) ? 4 : 2);
+++    } else {
+++        SYNC(8);
+++    }
++ 
++     // A misaligned stack pointer will cause a double fault
++     if (misaligned<C>(reg.sp)) throw DoubleFault();
++@@ -396,8 +402,7 @@ Moira::execAddressError(StackFrame frame, int delay)
++     // Write stack frame
++     if constexpr (C == Core::C68000) {
++ 
++-        // MAME delays the stack frame instead of the vector fetch
++-        SYNC(2);
+++        if constexpr (compat != Compatibility::DEFAULT) SYNC(2);
++         writeStackFrameAEBE<C>(frame);
++ 
++     } else if constexpr (C == Core::C68010) {
++-- 
++2.54.0 (Apple Git-157)
++
+diff --git a/extern/moira/patches/0020-Clear-68000-ASR-carry-and-extend-beyond-the-operand.patch b/extern/moira/patches/0020-Clear-68000-ASR-carry-and-extend-beyond-the-operand.patch
+new file mode 100644
+--- /dev/null
++++ b/extern/moira/patches/0020-Clear-68000-ASR-carry-and-extend-beyond-the-operand.patch
+@@ -0,0 +1,28 @@
++From 2ddae712b9953198f26eb8f9587bb71516e613d8 Mon Sep 17 00:00:00 2001
++From: VERHILLE Arnaud <gist974@gmail.com>
++Date: Tue, 24 Nov 2026 07:55:28 +0400
++Subject: [PATCH] Clear 68000 ASR carry and extend beyond the operand width
++
++---
++ Moira/MoiraALU_cpp.h | 5 +++++
++ 1 file changed, 5 insertions(+)
++
++diff --git a/Moira/MoiraALU_cpp.h b/Moira/MoiraALU_cpp.h
++index 5c87dcc..c792799 100644
++--- a/Moira/MoiraALU_cpp.h
+++++ b/Moira/MoiraALU_cpp.h
++@@ -192,6 +192,11 @@ Moira::shift(int cnt, u64 data) {
++                 data = shifted;
++             }
++ 
+++            // SingleStepTests shows C/X cleared beyond the width on 68000.
+++            if constexpr (C == Core::C68000 && compat == Compatibility::DEFAULT) {
+++                if (cnt > 8 * int(S)) carry = false;
+++            }
+++
++             if (cnt) reg.sr.x = carry;
++             reg.sr.c = carry;
++             reg.sr.v = NBIT<S>(changed);
++-- 
++2.54.0 (Apple Git-157)
++
