@@ -48,10 +48,6 @@ struct ResolvedConfig {
     bool cache040LinePairs = true;
     bool cache040LineReadStats = false;
     bool cache040LatePoll = false;
-    // NeoST's exception trace inside the core (Moira::setPomExceptionDiag).
-    // Not a JIT option: it rides here because this is the one configuration
-    // every CPU wrapper receives (MoiraCpu.h).
-    bool exceptionDiag = false;
     // Dispatch-cache slots (power of two >= 4096); runtime so two sizes
     // compare ABBA in one binary (CHANGELOG 2026-09-17). 0 = compiled default.
     int dispatchCacheSlots = 0;

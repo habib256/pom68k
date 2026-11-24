@@ -9,7 +9,6 @@ CentrisCpu::CentrisCpu(CentrisMemory& mem, const jit::ResolvedConfig& jitConfig,
     // Centris 610/650 = 68LC040. Default to the LC040 identity + Moira's
     // soft 68882 (Finder-usable, the Q605 no-FPU precedent);
     // POM68K_CENTRIS_FPU=1 the full 68040 (the Quadra 610/650 identity).
-    selectIdentity(!cpuConfig.centrisFull040, cpuConfig.centrisBareFpu,
-                   cpuConfig.mmu040Walk);
+    selectIdentity(!cpuConfig.centrisFull040, cpuConfig.centrisBareFpu);
     setCacheBoost(cpuConfig.centrisCacheBoost);
 }

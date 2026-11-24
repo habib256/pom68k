@@ -1400,8 +1400,7 @@ int main() {
         }
         check(policyLeaks.empty(),
               "only ProcessEnvironment may read process-global configuration in src");
-        // The CPU core is held to the same rule since 2026-11-07: its last
-        // three reads (NEOST_EXC_DIAG) became Moira::setPomExceptionDiag.
+        // The CPU core is held to the same rule since 2026-11-07.
         std::vector<std::string> coreLeaks;
         const std::filesystem::path coreRoot =
             sourceRoot.parent_path() / "extern" / "moira" / "Moira";

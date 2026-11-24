@@ -138,8 +138,6 @@ concept IntegerStartupOption =
       startup_policy::NumericBoolean)                                        \
     X(DuoEvent, "POM68K_DUO_EVENT", StartupDomain::Core,                   \
       startup_policy::NumericBoolean)                                        \
-    X(Mmu040Walk, "POM68K_MMU040_WALK", StartupDomain::Core,               \
-      startup_policy::Presence)                                              \
     X(Q605CacheBoost, "POM68K_Q605_CACHE_BOOST", StartupDomain::Core,      \
       startup_policy::autoBounded(1, 64))                                    \
     X(CentrisFpu, "POM68K_CENTRIS_FPU", StartupDomain::Core,               \
@@ -286,8 +284,6 @@ concept IntegerStartupOption =
       startup_policy::JitBoolean)                                            \
     X(Jit040LatePoll, "POM68K_JIT_040_LATE_POLL", StartupDomain::Jit,      \
       startup_policy::JitBoolean)                                            \
-    X(MoiraExceptionDiag, "NEOST_EXC_DIAG", StartupDomain::Jit,            \
-      startup_policy::Presence)                                              \
     X(JitFpuMember, "POM68K_JIT_FPU_MEMBER", StartupDomain::Jit,           \
       startup_policy::JitBoolean)                                            \
     X(JitLinks, "POM68K_JIT_LINKS", StartupDomain::Jit,                    \

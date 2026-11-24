@@ -80,7 +80,6 @@ inline jit::ResolvedConfig resolveJitConfig(const StartupSnapshot& values) {
     c.cache040LineWrites = envBool(option::Jit040LineWrite, !conservative);
     c.cache040LinePairs = envBool(option::Jit040LinePair, !conservative);
     c.cache040LineReadStats = envBool(option::Jit040LineStats, instrumented);
-    c.exceptionDiag = present(option::MoiraExceptionDiag);
     // Opt-in: the cache-active 040 late-IPL-poll admission. Conformant
     // (locksteps identical with it on) but measured −6.3 % wall on the
     // cache-on fixed-budget Q605 bench (2026-09-03): the admitted class is

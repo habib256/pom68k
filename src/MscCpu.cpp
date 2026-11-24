@@ -10,9 +10,6 @@ MscCpu::MscCpu(MscMemory& mem, const jit::ResolvedConfig& jitConfig,
     : MoiraCpu(mem, mem.is040() ? jit::kGuest68040 : jit::kGuest68030, jitConfig) {
     setModel(mem.is040() ? moira::CPUModel::M68LC040 : moira::CPUModel::M68030);
     setFPUModel(withFpu && !mem.is040() ? MoiraFpu::M68882 : MoiraFpu::NONE);
-    if (mem.is040()) {
-        if (cpuConfig.mmu040Walk) setMmu040AtcArmed(false);
-    }
     if (cpuConfig.cacheBoost) cacheBoost_ = *cpuConfig.cacheBoost;
     boost_ = cacheBoost_;
     floppyGate_ = cpuConfig.floppyBoostGate.value_or(true);

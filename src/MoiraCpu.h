@@ -84,10 +84,7 @@ public:
 protected:
     MoiraCpu(Memory& mem, jit::GuestFamily family,
              const jit::ResolvedConfig& jitConfig)
-        : mem_(mem), jit_(*this, makeJitMemoryHooks(mem), family, jitConfig) {
-        // Moira reads no process environment: its switches arrive here, typed.
-        setPomExceptionDiag(jitConfig.exceptionDiag);
-    }
+        : mem_(mem), jit_(*this, makeJitMemoryHooks(mem), family, jitConfig) {}
 
     // pomBusAddr: the address a host bus error reports (MoiraCompat.h).
     moira::u8  read8(moira::u32 addr)  const override { this->pomBusAddr = addr; return mem_.read8(addr); }

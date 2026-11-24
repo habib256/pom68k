@@ -195,8 +195,6 @@ public:
     mutable moira::u32 pomBusAddr = 0;
 
     // ── Inert fork hooks (see the header comment) ───────────────────────
-    void setPomExceptionDiag(bool) {}
-    void setMmu040AtcArmed(bool) {}
     void pomJitDisarm() {}
     void pomJitMapMoved() {}
     void pomJitDtlbFlush() {}

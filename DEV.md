@@ -735,8 +735,8 @@ and the `q605_*` rigs (`tests/Q605Profile.h`, the Quadra 605) both read it.
   040 exception frames, TTRs, three-level URP/SRP translation, MMUSR/PTEST
   and restartable MMU faults. `sst68040` pins **7 200/7 200** vectors
   across integer, random and MMU families. Q8 adds separate I/D ATCs (64
-  entries each in sixteen four-way sets since vendor row 75;
-  `POM68K_MMU040_WALK` disables them), the `cacheBoost_` throughput scaler,
+  entries each in sixteen four-way sets since vendor row 75), the
+  `cacheBoost_` throughput scaler,
   and data-bearing 4 KB I/D caches with WT/CB/NC modes, dirty writeback,
   CPUSH/CINV, snooping and bus-transaction timing. Pin-level BCLK/TA
   waveforms are not modelled.
@@ -2204,7 +2204,7 @@ diagnostic or test row names the source file that owns it; a chantier row names
 the document and closeout topic that decides its removal or graduation.
 
 Knobs that test only for *presence* — `POM68K_NOFPU`, `POM68K_FLOPPY_RO`,
-`POM68K_MMU040_WALK`, `POM68K_Q605_NOFPU`, `POM68K_CENTRIS_FPU` /
+`POM68K_Q605_NOFPU`, `POM68K_CENTRIS_FPU` /
 `_BAREFPU`, `POM68K_Q630_LC040` / `_BAREFPU`, `POM68K_Q700_LC040` /
 `_BAREFPU`, `POM68K_LTOUDP`, `POM68K_CENTRIS610`, `POM68K_PERIPH_STATS`,
 `POM68K_NO_CDBAY`, `POM68K_NO_AGENT_AUTOSTART`, `POM68K_JIT_REQUIRE_NATIVE`,
@@ -2279,7 +2279,6 @@ defaulted policy parameter. Only the Q605 pair was documented before 2026-07-31:
 | `POM68K_Q630_LC040` / `_BAREFPU` / `_CACHE_BOOST` | …and for `Q630Cpu` |
 | `POM68K_CACHE_BOOST` | the **five** 030 CPUs — `Cpu030`, `SonoraCpu`, `VaspCpu`, `RbvCpu`, `MscCpu`. Boost 1-64 default 4; the per-class defaults live in the headers (`Cpu030.h` `cacheBoost_` and siblings) |
 | `POM68K_FLOPPY_BOOST_GATE` | `=0` disables the floppy boost gate on the `Swim1` 030s (`Cpu030`, `RbvCpu`, `VaspCpu` — **not** `SonoraCpu` or `MscCpu`, which never read it) — the boost then compresses the Sony denibble path below the IWM's 14-tick hold and GCR mounts fail with badDCksum (the pre-2026-08-05 defect, kept reproducible for `lcii_sony_trace`) |
-| `POM68K_MMU040_WALK` | disable the 040 ATC (walk per access) |
 | `POM68K_JIT_040_LINE_READ` | `=0` disables only native reads from published physical 040 D-cache lines; attribution control, default on when the architectural cache is active |
 | `POM68K_JIT_040_LINE_WRITE` | `=0` disables native sole-access copyback write hits (including BSR return-address pushes) while retaining native line reads; exact-path attribution control, default on when the architectural cache is active |
 | `POM68K_JIT_040_LINE_PAIR` | `=0` disables the atomic two-proof native path for hot longword MOVE pairs (`$2F38`/`$21DF`) while leaving independent line reads/writes enabled; attribution control, default on |
@@ -2463,11 +2462,9 @@ attribution arm; it is not a product-speed result. The reproducible Pi/GUI
 protocol is in `docs/RASPBERRY_PI.md` § 3.
 `POM68K_PERF_HOST_PROFILE` (performance-policy identity written to JIT
 metrics, `src/jit/JitMetrics.h:27` — semantics in `POM68K_JIT.md` § 6).
-Four legacy non-prefixed diagnostics predate the namespace and are kept
+Three legacy non-prefixed diagnostics predate the namespace and are kept
 as-is: `EGRET_CMD_LOG`, `RTCDBG` and `SCCDBG`, declared with the rest in
-`StartupOptions.h:229-231`, and `NEOST_EXC_DIAG` (Moira exception trace),
-declared there too since 2026-11-07 and handed to the core through
-`Moira::setPomExceptionDiag` — the core itself reads no environment.
+`StartupOptions.h`. The core itself reads no environment.
 
 **Test-only knobs** — read by a gate, never by the emulator; listed so the
 next person greps once instead of twice: `POM68K_AIO_EGRET`,

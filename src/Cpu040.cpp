@@ -24,8 +24,7 @@ Cpu040::Cpu040(Q605Memory& mem, const jit::ResolvedConfig& jitConfig,
     // own FPU probe must then conclude "absent" and select the no-FPU
     // UniversalInfo, like a real LC 475.
     selectIdentity(cpuConfig.q605Fpu != pom68k::Q605FpuMode::Integrated,
-                   cpuConfig.q605Fpu == pom68k::Q605FpuMode::None,
-                   cpuConfig.mmu040Walk);
+                   cpuConfig.q605Fpu == pom68k::Q605FpuMode::None);
     setCacheBoost(cpuConfig.q605CacheBoost);
 }
 

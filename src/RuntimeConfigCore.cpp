@@ -58,7 +58,6 @@ pom68k::CoreConfig parseCoreStartup(
         values.boolean(startup_option::MacIiEvent, false);
     options.cpu.duoEventDriven =
         values.boolean(startup_option::DuoEvent, false);
-    options.cpu.mmu040Walk = values.present(startup_option::Mmu040Walk);
 
     if (const auto noFpu = values.text(startup_option::Q605NoFpu))
         options.cpu.q605Fpu = (!noFpu->empty() &&

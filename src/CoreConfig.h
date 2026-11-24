@@ -25,7 +25,6 @@ struct CoreCpuConfig {
     std::optional<bool> cacr030Flush;
     bool macIiEventDriven = false;
     bool duoEventDriven = false;
-    bool mmu040Walk = false;
 
     Q605FpuMode q605Fpu = Q605FpuMode::Integrated;
     std::optional<int> q605CacheBoost;

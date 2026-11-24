@@ -174,7 +174,7 @@ protected:
     // real board has, kept as the Finder-usable default of the LC040
     // profiles until TODO.md § Moteur › Justesse 68040 decides it) or no FPU
     // at all (architectural vector-11 format-$4 F-line — the silicon).
-    void selectIdentity(bool lc040, bool bareFpu, bool mmu040Walk) {
+    void selectIdentity(bool lc040, bool bareFpu) {
         if (lc040) {
             this->setModel(moira::CPUModel::M68LC040);
             this->setFPUModel(bareFpu ? MoiraFpu::NONE
@@ -183,8 +183,6 @@ protected:
             this->setModel(moira::CPUModel::M68040);
             this->setFPUModel(MoiraFpu::M68040);
         }
-        // Q8: walk-per-access comparison mode (disables the I/D ATC overlay).
-        if (mmu040Walk) this->setMmu040AtcArmed(false);
     }
 
     // Throughput ceiling (the Cpu030 pattern). Was pinned at 1 for a long
