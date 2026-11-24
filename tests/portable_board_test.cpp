@@ -41,7 +41,7 @@ void bus() {
     m.write8(0xf90281,0x69);
     check(m.read8(0xf90000)==0x69,"NCR register mirror does not accidentally select pseudo-DMA");
     uint32_t span=1;check(!m.codeSpan(0xf70000,span) && !span,"instruction windows exclude I/O");
-    bool fault=false;try {m.read8(0xf90260);} catch(const moira::MmuBusError&) {fault=true;}
+    bool fault=false;try {m.read8(0xf90260);} catch(const moira::BusError&) {fault=true;}
     check(fault,"SCSI pseudo-DMA without DRQ faults instead of transferring a fake byte");
     m.pmu().loadFirmware(firmware());m.pmu().reset();m.tick(10000);
     std::vector<uint32_t> pixels;m.decode(pixels);

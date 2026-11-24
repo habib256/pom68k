@@ -104,8 +104,8 @@ inline bool check(MscMemory& mem, MscCpu& cpu, pom68k::SnapMachine profile,
                 state.size(), refused ? "isolated" : "WRONG",
                 restored ? "exact" : "FAILED", resumed ? "running" : "STUCK");
     return input && floppy && clockReadable && restored && resumed && refused && !cpu.isHalted()
-        && cpu.getModel() == (mem.is040() ? moira::Model::M68LC040 : moira::Model::M68030)
-        && cpu.getFPUModel() == moira::FPUModel::NONE;
+        && cpu.getModel() == (mem.is040() ? moira::CPUModel::M68LC040 : moira::CPUModel::M68030)
+        && cpu.getFPUModel() == MoiraFpu::NONE;
 }
 
 } // namespace duosession

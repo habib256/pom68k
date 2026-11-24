@@ -204,8 +204,8 @@ public:
     }
 
     bool setRegister(Reg reg, std::uint64_t v64, std::string& why) override {
-        const bool has010 = model() != moira::Model::M68000;
-        const bool has020 = has010 && model() != moira::Model::M68010;
+        const bool has010 = model() != moira::CPUModel::M68000;
+        const bool has020 = has010 && model() != moira::CPUModel::M68010;
         const std::uint32_t v = std::uint32_t(v64);
         const int r = int(reg);
         if (reg >= Reg::CACR && reg < Reg::Count) return setControl(reg, v64, why);
@@ -242,8 +242,8 @@ public:
     // CACR and the MMU registers (DebugTypes.h Target::setRegister).
     bool setControl(Reg reg, std::uint64_t v64, std::string& why) {
         const std::uint32_t v = std::uint32_t(v64);
-        const bool has020 = model() != moira::Model::M68000 &&
-                            model() != moira::Model::M68010;
+        const bool has020 = model() != moira::CPUModel::M68000 &&
+                            model() != moira::CPUModel::M68010;
         const bool mmu = reg == Reg::CACR ? has020
                        : reg <= Reg::TT1 ? isMmu030() : isMmu040();
         if (!mmu) {
@@ -455,31 +455,31 @@ private:
         }
     };
 
-    moira::Model model() const { return cpu_.getModel(); }
-    bool isMmu030() const { return model() == moira::Model::M68030; }
+    moira::CPUModel model() const { return cpu_.getModel(); }
+    bool isMmu030() const { return model() == moira::CPUModel::M68030; }
     bool isMmu040() const {
-        return model() == moira::Model::M68040 ||
-               model() == moira::Model::M68LC040;
+        return model() == moira::CPUModel::M68040 ||
+               model() == moira::CPUModel::M68LC040;
     }
     bool narrowBus() const {
-        return model() == moira::Model::M68000 ||
-               model() == moira::Model::M68010 ||
-               model() == moira::Model::M68EC020;
+        return model() == moira::CPUModel::M68000 ||
+               model() == moira::CPUModel::M68010 ||
+               model() == moira::CPUModel::M68EC020;
     }
     std::uint32_t physMask(std::uint32_t a) const {
         return narrowBus() ? (a & 0x00FFFFFFu) : a;
     }
     const char* modelName() const {
         switch (model()) {
-        case moira::Model::M68000:   return "68000";
-        case moira::Model::M68010:   return "68010";
-        case moira::Model::M68EC020: return "68EC020";
-        case moira::Model::M68020:   return "68020";
-        case moira::Model::M68EC030: return "68EC030";
-        case moira::Model::M68030:   return "68030";
-        case moira::Model::M68EC040: return "68EC040";
-        case moira::Model::M68LC040: return "68LC040";
-        case moira::Model::M68040:   return "68040";
+        case moira::CPUModel::M68000:   return "68000";
+        case moira::CPUModel::M68010:   return "68010";
+        case moira::CPUModel::M68EC020: return "68EC020";
+        case moira::CPUModel::M68020:   return "68020";
+        case moira::CPUModel::M68EC030: return "68EC030";
+        case moira::CPUModel::M68030:   return "68030";
+        case moira::CPUModel::M68EC040: return "68EC040";
+        case moira::CPUModel::M68LC040: return "68LC040";
+        case moira::CPUModel::M68040:   return "68040";
         }
         return "68k";
     }
@@ -570,7 +570,7 @@ private:
     // except the 68000's group-0 frame (bus/address error), whose PC
     // follows the access address and instruction register (SP+10).
     void readFrame(StopDetail& d) {
-        const bool group0 = model() == moira::Model::M68000 &&
+        const bool group0 = model() == moira::CPUModel::M68000 &&
                             (d.vector == 2 || d.vector == 3);
         std::uint8_t b[4];
         ByteState st[4];

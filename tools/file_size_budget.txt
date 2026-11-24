@@ -6,22 +6,22 @@
 #
 # Regenerate with: tools/check_file_sizes.sh --update
 
-CLAUDE.md                                258
+CLAUDE.md                                268
 cmake/Pom68kAfpGates.cmake               27
 cmake/Pom68kAgentGates.cmake             76
 cmake/Pom68kAudioGates.cmake             12
-cmake/Pom68kComponentGates.cmake         693
+cmake/Pom68kComponentGates.cmake         700
 cmake/Pom68kCorpusGates.cmake             12
-cmake/Pom68kCpuGates.cmake                  121
+cmake/Pom68kCpuGates.cmake                  123
 cmake/Pom68kDaynaGates.cmake             36
 cmake/Pom68kDevTools.cmake               161
 cmake/Pom68kFloppyGates.cmake            19
-cmake/Pom68kGatePolicy.cmake             416
-cmake/Pom68kInterpGates.cmake             60
+cmake/Pom68kGatePolicy.cmake             437
+cmake/Pom68kInterpGates.cmake             68
 cmake/Pom68kJitFuzzGates.cmake           280
 cmake/Pom68kJitGates.cmake               698
 cmake/Pom68kLlapGates.cmake              13
-cmake/Pom68kMachineGates.cmake           1082
+cmake/Pom68kMachineGates.cmake           1084
 cmake/Pom68kMoofGates.cmake              33
 cmake/Pom68kOracleGates.cmake            28
 cmake/Pom68kProductRegistry.cmake        23
@@ -30,7 +30,7 @@ cmake/Pom68kProfileGates.cmake           31
 cmake/Pom68kProtectedFloppyGates.cmake     9
 cmake/Pom68kSerialGates.cmake            9
 cmake/Pom68kStorageGates.cmake           27
-CMakeLists.txt                           649
+CMakeLists.txt                           675
 src/AfpServer.cpp                        1128
 src/GuiHostServices.cpp                  222
 src/GuiMachineRuntime.cpp                49

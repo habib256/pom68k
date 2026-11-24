@@ -1,0 +1,94 @@
+From 8b0290d76c8069393f7774fbf07208ee3f93e978 Mon Sep 17 00:00:00 2001
+From: VERHILLE Arnaud <gist974@gmail.com>
+Date: Tue, 24 Nov 2026 00:47:16 +0400
+Subject: [PATCH 08/17] Report the kind of access to a watchpoint delegate
+
+didReachWatchpoint(u32) carries the address only, so a debugger cannot tell
+a read from a write or an instruction fetch, nor see the size: a write
+watchpoint stops on reads too. A second delegate,
+didReachWatchpoint(u32 addr, Size size, bool write, bool program), is called
+at the same places with the access the CPU is about to make. Its default
+implementation calls didReachWatchpoint(u32), so existing hosts are
+unaffected.
+---
+ Moira/MoiraDataflow_cpp.h | 10 +++++-----
+ Moira/MoiraInterface.h    | 14 ++++++++++++++
+ 2 files changed, 19 insertions(+), 5 deletions(-)
+
+diff --git a/Moira/MoiraDataflow_cpp.h b/Moira/MoiraDataflow_cpp.h
+index 1f9686f..943cfdb 100644
+--- a/Moira/MoiraDataflow_cpp.h
++++ b/Moira/MoiraDataflow_cpp.h
+@@ -796,7 +796,7 @@ try
+ 
+     // Check if a watchpoint has been reached
+     if ((flags & State::CHECK_WP) && debugger.watchpointMatches(addr, S)) {
+-        didReachWatchpoint(addr);
++        didReachWatchpoint(addr, S, false, false);
+     }
+ 
+     if constexpr (S == Byte) {
+@@ -875,7 +875,7 @@ Moira::readInstr(u32 addr)
+ 
+         // The caches are addressed logically. The MMU is only involved on a miss.
+         if ((flags & State::CHECK_WP) && debugger.watchpointMatches(addr, Word)) {
+-            didReachWatchpoint(addr);
++            didReachWatchpoint(addr, Word, false, true);
+         }
+         if constexpr (F & POLL) POLL_IPL;
+ 
+@@ -924,7 +924,7 @@ Moira::readInstr(u32 addr)
+ 
+         // Check if a watchpoint has been reached
+         if ((flags & State::CHECK_WP) && debugger.watchpointMatches(addr, Word)) {
+-            didReachWatchpoint(addr);
++            didReachWatchpoint(addr, Word, false, true);
+         }
+ 
+         if constexpr (F & POLL) POLL_IPL;
+@@ -1010,7 +1010,7 @@ try
+ 
+     // Check if a watchpoint has been reached
+     if ((flags & State::CHECK_WP) && debugger.watchpointMatches(addr, S)) {
+-        didReachWatchpoint(addr);
++        didReachWatchpoint(addr, S, true, false);
+     }
+ 
+     if constexpr (S == Byte) {
+@@ -1095,7 +1095,7 @@ Moira::readDataCache(u32 addr)
+ 
+     // Check if a watchpoint has been reached
+     if ((flags & State::CHECK_WP) && debugger.watchpointMatches(addr, S)) {
+-        didReachWatchpoint(addr);
++        didReachWatchpoint(addr, S, false, false);
+     }
+ 
+     if constexpr (F & POLL) POLL_IPL;
+diff --git a/Moira/MoiraInterface.h b/Moira/MoiraInterface.h
+index f16b6fa..cd8fd71 100644
+--- a/Moira/MoiraInterface.h
++++ b/Moira/MoiraInterface.h
+@@ -330,6 +330,20 @@ MOIRA_DELEGATE(void didReachBreakpoint(u32 addr))
+  */
+ MOIRA_DELEGATE(void didReachWatchpoint(u32 addr))
+ 
++/** @brief Called when a watchpoint is hit, with the kind of access
++ *
++ * Like didReachWatchpoint(u32), with the size of the access, its direction
++ * and whether it is an instruction fetch. A debugger needs them to stop on a
++ * write watchpoint only for writes, or to ignore opcode fetches. The default
++ * implementation calls didReachWatchpoint(u32).
++ *
++ * @param addr     The accessed (physical) address
++ * @param size     The size of the access
++ * @param write    true for a write access
++ * @param program  true for an instruction fetch
++ */
++MOIRA_DEFAULT(void didReachWatchpoint(u32 addr, Size size, bool write, bool program), didReachWatchpoint(addr);)
++
+ /** @brief Called when a catchpoint is hit
+  *
+  * The delegate is called when the CPU takes an exception for which a
+-- 
+2.54.0 (Apple Git-157)
+

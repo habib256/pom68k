@@ -5,8 +5,8 @@
 Pb030Cpu::Pb030Cpu(Pb030Memory& mem,const jit::ResolvedConfig& jit,
                    const pom68k::CoreCpuConfig& config,bool fpu)
     :MoiraCpu(mem,jit::kGuest68030,jit) {
-    setModel(moira::Model::M68030);
-    setFPUModel(fpu?moira::FPUModel::M68882:moira::FPUModel::NONE);
+    setModel(moira::CPUModel::M68030);
+    setFPUModel(fpu?MoiraFpu::M68882:MoiraFpu::NONE);
     nominalBoost_=config.cacheBoost.value_or(4);boost_=nominalBoost_;
     floppyGate_=config.floppyBoostGate.value_or(true);
     if(config.cacr030Flush) cacrFlushPolicy_=*config.cacr030Flush?1:0;
@@ -80,10 +80,10 @@ void Pb030Cpu::flushTicks() {
 // Like the LC II, this ROM tests the external FPU's response register
 // using MOVES/SFC=7. An empty socket must fault in CPU space, not expose RAM.
 void Pb030Cpu::checkCoprocessorBus(moira::u32 a) const {
-    if((a&0xffffe000u)==0x22000u && getFPUModel()==moira::FPUModel::NONE && readFC()==7)
+    if((a&0xffffe000u)==0x22000u && getFPUModel()==MoiraFpu::NONE && readFC()==7)
         const_cast<Pb030Cpu*>(this)->extBusError();
 }
-moira::u8 Pb030Cpu::read8(moira::u32 a) const {checkCoprocessorBus(a);return mem_.read8(a);}
-moira::u16 Pb030Cpu::read16(moira::u32 a) const {checkCoprocessorBus(a);return mem_.read16(a);}
-void Pb030Cpu::write8(moira::u32 a,moira::u8 v) const {checkCoprocessorBus(a);mem_.write8(a,v);}
-void Pb030Cpu::write16(moira::u32 a,moira::u16 v) const {checkCoprocessorBus(a);mem_.write16(a,v);}
+moira::u8 Pb030Cpu::read8(moira::u32 a) const {pomBusAddr=a;checkCoprocessorBus(a);return mem_.read8(a);}
+moira::u16 Pb030Cpu::read16(moira::u32 a) const {pomBusAddr=a;checkCoprocessorBus(a);return mem_.read16(a);}
+void Pb030Cpu::write8(moira::u32 a,moira::u8 v) const {pomBusAddr=a;checkCoprocessorBus(a);mem_.write8(a,v);}
+void Pb030Cpu::write16(moira::u32 a,moira::u16 v) const {pomBusAddr=a;checkCoprocessorBus(a);mem_.write16(a,v);}

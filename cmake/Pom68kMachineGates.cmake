@@ -980,16 +980,18 @@ set_tests_properties(cclassic_asc_chime_etalon PROPERTIES TIMEOUT 900)
 # ROM's address-map probe and the SCSI pseudo-DMA timeout rely on it).
 add_executable(berr030_test tests/berr030_test.cpp)
 target_link_libraries(berr030_test PRIVATE moira)
-add_test(NAME berr030_test COMMAND berr030_test)
+pom68k_known_test(berr030_test berr030_test berr030_test)
 
 # AArch64 68030 gate: train a native MOVE.B-to-memory block, inject an
 # external /BERR only after it is cached, and compare the complete short
 # restartable-write frame with a pure-interpreter oracle. Soft-skips on
 # hosts where the AArch64 backend is not available.
+if(POM68K_JIT)   # JIT gates: not registered while the engine is compiled out (POM68K_JIT=OFF)
 add_executable(jit_restart_write_030_test tests/jit_restart_write_030_test.cpp)
 target_link_libraries(jit_restart_write_030_test PRIVATE pom68k_core)
 add_test(NAME jit_restart_write_030_test COMMAND jit_restart_write_030_test)
 set_tests_properties(jit_restart_write_030_test PROPERTIES LABELS "jit;unit")
+endif()
 
 # Mac II gates: declaration ROM, NuBus, Toby video HLE.
 # declrom_test is the synthetic ROM alone (asset-none); toby_declrom_test is

@@ -1,4 +1,69 @@
-# Moira — vendored copy (POM68K)
+# Moira — Dirk Hoffmann's core and POM68K's patch queue
+
+**Since 2026-11-23 `extern/moira/Moira/` is Dirk W. Hoffmann's Moira**
+(<https://github.com/dirkwhoffmann/Moira>, MIT), branch `master`, at the
+commit recorded in `patches/BASE`, plus the short queue of patches in
+`extern/moira/patches/`. POM68K's own needs live above the core, in
+`src/MoiraCompat.h` and the CPU wrappers; the fork that preceded this base is
+kept below as history (`docs/MOIRA_CONVERGENCE.md` sorts its 158 rows against
+Dirk's rewrite).
+
+## The base and the queue
+
+| | | how to re-measure |
+|---|---|---|
+| base | Dirk's `master` @ `patches/BASE` | `cat extern/moira/patches/BASE` |
+| distinct `pom*` extension identifiers | **0** (0 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
+| `POM68K`-marked lines | **0** | `grep -rn POM68K Moira/ \| wc -l` |
+| source files carrying a marker | **0 of 48** | `grep -rln POM68K Moira/ \| wc -l` |
+| patches in the queue below | **21** | `ls extern/moira/patches/*.patch` |
+
+Each patch is one commit on top of the base, with its gate or reproducer
+listed below. The CPU conformance fixes cite the manual passages they
+implement. Dirk agreed to small PRs against `master` (discussion #36,
+2026-11-23). The optional LC040 software FPU restores a POM68K configuration.
+A patch leaves the queue when his `master` covers it.
+
+**Updating the base.** Fetch his `master`, read every new commit touching
+`Moira/` (he fixes things in parallel: his `58e0405b` made one of ours
+redundant), rebase the queue (`git am` the patches on a clone at the new
+commit), drop what he covered, rerun `tools/dirk_moira/findings_repro.cpp`
+on the pristine and the patched tree, then the machine tiers.
+
+## Inventory of local patches
+
+| # | Patch | Files | Why | Gate |
+|---|---|---|---|---|
+| 1 | 68020: complete the special status word of a host bus error | `MoiraDataflow_cpp.h`, `MoiraExceptions_cpp.h` | MC68020UM 6.2.1: DF, RW, SIZE, FC; the 68020 stacked `$60 \| FC` | `findings_repro` case 1, `lc_boot_etalon` |
+| 2 | 68020/68030: do not count instruction cache hits twice | `MoiraDataflow_cpp.h` | MC68020UM 8.2: the tables are the cache-only case; 8 x NOP + DBF cost 4.5 clocks instead of 22 | `findings_repro` case 3, `icache020_test`, `lc3plus_boot_etalon` |
+| 3 | 68020/68030: serve discarded program reads from the instruction cache | `MoiraDataflow.h`, `MoiraDataflow_cpp.h`, `MoiraExec_cpp.h` | MC68020UM 8.2.7: `MOVE EA,SR 8(0/0/0)`, no instruction access in the cache | `findings_repro` case 4, `icache020_test` |
+| 4 | Cache: let a host save and restore the cache contents | `Cache/Cache.h` | save states otherwise flush the caches and change the timing after a restore | `icache020_test` (save state), `lcii_savestate_etalon` |
+| 5 | 68040: FSAVE stores the unimplemented instruction state frame | `FPU/FPU.h`, `FPU/FPU.cpp`, `MoiraExecFPU_cpp.h` | MC68040UM 9.6.1, Table 9-16, Figure 9-10 d: the FPSP reads its operands there; the Quadra 605 crashed | `findings_repro` case 5, `q605_boot_etalon`, `centris650_boot_etalon` |
+| 6 | 68020/68030: do not rerun a data cycle a handler has completed | `MoiraTypes.h`, `Moira.h`, `Moira.cpp`, `MoiraExec_cpp.h`, `MoiraDataflow_cpp.h`, `MoiraExceptions_cpp.h` | MC68030UM 8.2.1-8.2.2: DF cleared by the handler; Mac OS slot-probe recovery entered 28.8 million times without it | `findings_repro` case 2, `berr030_test` |
+| 7 | Halt on a double bus fault during reset or a trace exception | `Moira.cpp` | MC68030UM 8.1.1-8.1.2: the processor halts; the BusError escaped to the host | `machinehost_test`, `q605_boot_etalon` |
+| 8 | Report the kind of access to a watchpoint delegate | `MoiraInterface.h`, `MoiraDataflow_cpp.h` | a debugger must tell reads, writes and opcode fetches apart; the old delegate stays the default | `debug_session_test` |
+| 9 | Re-arm catchpoints after a reset | `MoiraDebugger.cpp` | `Debugger::reset()` set CHECK_BP and CHECK_WP again, not CHECK_CP | `debug_session_test` |
+| 10 | FMOVE.P: a zero with a k-factor above +17 is an operand error | `FPU/FpuFormats.cpp` | MC68881UM Table 6-2 | `fpu_sanity` |
+| 11 | FRESTORE: refuse a state frame the FPU does not recognize; 68040 busy frame size $60 | `MoiraExecFPU_cpp.h`, `FPU/FPU.cpp` | MC68881UM 6.2.8; MC68040UM 9.8, Figure 9-10 a | `fpu_sanity` |
+| 12 | 68040: an FMOVE to an integer takes SNAN and OPERR unconditionally | `FPU/FPU.h`, `FPU/FPU.cpp`, `MoiraExecFPU_cpp.h` | MC68040UM 9.7.2.2, 9.7.3.2 | `fpu040_test` |
+| 13 | FPU: a restarted arithmetic instruction starts from its own operands | `MoiraExecFPU_cpp.h` | a fault on the final prefetch reran FADD on its own result | `fault_transparency_test` |
+| 14 | Completed cycles: the second word of a split long word | `MoiraDataflow_cpp.h` | MC68030UM 8.2.2: the handler completes that word through the buffers | `berr020_test` |
+| 15 | 68020: the long bus fault frame carries the data output buffer | `MoiraExceptions.h`, `MoiraExceptions_cpp.h` | MC68020UM 6.2.2 | `berr020_test` |
+| 16 | 68020/68030: report the size of the faulted cycle of a split long word | `MoiraDataflow.h`, `MoiraDataflow_cpp.h` | read from MC68020UM 6.2.1, MC68030UM 8.2.1-8.2.2 and MC68040UM 8.4.6.2 together (not one sentence) | `berr020_test` |
+| 17 | 68040: the fault address is the first byte of the faulted access | `MoiraDataflow_cpp.h` | MC68040UM 8.4.6.4 | `fault_transparency_test` |
+| 18 | Allow a host to opt into software floating point on an LC040 | `Moira.h`, `Moira.cpp`, `MoiraInfo_cpp.h`, `MoiraInit_cpp.h` | Keep the 68LC040 CPU identity with the optional software 68882 | `q605_nofpu_boot_etalon`, `q605_barefpu_boot_etalon` |
+| 19 | Restore 68000 address error frame timing in DEFAULT mode | `MoiraExceptions_cpp.h` | SingleStepTests/680x0 68000/v1 measures the idle before the group-0 frame writes | `sst68000`, Plus, SE and Classic boot etalons |
+| 20 | Clear 68000 ASR carry and extend beyond the operand width | `MoiraALU_cpp.h` | SingleStepTests/680x0 68000/v1, see ruling D10 for the later CPUs | `sst68000 --only ASR.b,ASR.w,ASR.l` |
+| 21 | Restore 68000 divide overflow flags and signed timing in DEFAULT mode | `MoiraALU_cpp.h` | SingleStepTests/680x0 68000/v1 checks the preserved N/Z flags and the 16/18-clock signed overflow path | `sst68000 --only DIVS,DIVU` |
+
+## Fork history
+
+The rest of this file is the record of the fork POM68K kept from 2026-07 to
+2026-11-23 (NeoST lineage, then upstream `ce28239`), unchanged: its rows are
+still cited by number across the documentation. The code it describes is at
+main @ `0139930a`.
+
+### Provenance of the fork
 
 Provenance: copied from **NeoST** (`/home/gistarcade/src/neost/extern/moira`,
 NeoST commit lineage `0b96cab` → `47d6c39`), itself vendored from upstream
@@ -8,7 +73,7 @@ included: deferred IPL recognition (`setIplDelay`/`pollIpl`), STOP
 level-sensitive IRQ re-check, exception-handling robustness, watchpoint
 24-bit address masking.
 
-## Status: this is a permanent fork (decided 2026-08-09)
+### Status of the fork (2026-08-09 to 2026-11-23)
 
 **The copy in `extern/moira/` is no longer a vendored library with a re-sync
 path. It is a fork, and the project owns it.** Said explicitly because the
@@ -213,7 +278,7 @@ find.
 `NEOST_VENDOR.md` first, then re-apply patch group by patch group, running the
 gate in the last column of each row.
 
-## Inventory of local patches
+### Fork inventory (historical, main @ `0139930a`)
 
 | # | Patch | Vendored files | Why | Gate |
 |---|---|---|---|---|

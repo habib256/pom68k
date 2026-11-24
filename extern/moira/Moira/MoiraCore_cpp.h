@@ -24,26 +24,16 @@
 #include "MoiraConfig.h"
 #include "Moira.h"
 #include "MoiraMacros.h"
-#include "MoiraMmu030Walk.h"
 
 #include <cassert>
 #include <cstdio>
-#include <cstdlib>
-#include <cstring>
 #include <algorithm>
 #include <cmath>
 #include <bit>
 #include <vector>
 #include <stdexcept>
 
-// POM68K (host): the FPU handlers instantiated here call softfloat, so this file
-// sees the same C declarations Moira.cpp does (see the note there).
-extern "C" {
-#include "softfloat.h"
-#include "softfloat-specialize.h"
-}
-
-namespace moira {
+namespace MOIRA_NAMESPACE {
 
 using namespace Flag;
 
@@ -59,6 +49,6 @@ using namespace Flag;
  * for which the declaration in MoiraInit.h is enough.
  */
 
-template void Moira::createJumpTable<MOIRA_CORE>(Model, bool);
+template void Moira::createJumpTable<MOIRA_CORE>(CPUModel, bool, bool);
 
 }

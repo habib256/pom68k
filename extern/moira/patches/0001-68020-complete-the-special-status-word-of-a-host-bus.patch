@@ -1,0 +1,57 @@
+From 12c655778e563d00d0223c511044f7c4723cbc1f Mon Sep 17 00:00:00 2001
+From: VERHILLE Arnaud <gist974@gmail.com>
+Date: Mon, 23 Nov 2026 20:44:27 +0400
+Subject: [PATCH 01/17] 68020: complete the special status word of a host bus
+ error
+
+A bus error raised by the host with BusError(addr) reached the 68020 frame
+with SSW = $60 | FC: no DF, a word size and RW set even on a write.
+The 68020 SSW has the 68030 layout (MC68020UM 6.2.1: DF, RM, RW, SIZE,
+FC2-FC0), so completeBusError() now covers the 68020 too, and execBusError()
+stacks the completed word. (Seen on the Mac LC, a 68020 machine, which
+probes its I/O space with bus errors and boots once this is fixed.)
+---
+ Moira/MoiraDataflow_cpp.h   | 5 +++--
+ Moira/MoiraExceptions_cpp.h | 3 ++-
+ 2 files changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/Moira/MoiraDataflow_cpp.h b/Moira/MoiraDataflow_cpp.h
+index 8cd25c4..70e1b55 100644
+--- a/Moira/MoiraDataflow_cpp.h
++++ b/Moira/MoiraDataflow_cpp.h
+@@ -1177,7 +1177,7 @@ Moira::completeBusError(BusError &e)
+      * word, which is built here like for a fault detected by the MMU. Faults
+      * detected by the MMU and frames supplied by the host are left untouched.
+      */
+-    if (e.complete || cpuModel < CPUModel::M68EC030) return;
++    if (e.complete || cpuModel < CPUModel::M68EC020) return;
+ 
+     u8 fc = getFC();
+ 
+@@ -1191,7 +1191,8 @@ Moira::completeBusError(BusError &e)
+ 
+     } else {
+ 
+-        // On the 68030, a fault in program space belongs to the instruction pipe
++        // On the 68020 and 68030, a fault in program space belongs to the
++        // instruction pipe. Both use this layout (MC68020UM 6.2.1, MC68030UM 8.2.1).
+         u16 size = S == Byte ? SSW030::SIZ_B : S == Word ? SSW030::SIZ_W : SSW030::SIZ_L;
+         bool prog = (fc & 3) == 2;
+ 
+diff --git a/Moira/MoiraExceptions_cpp.h b/Moira/MoiraExceptions_cpp.h
+index 8cd9867..a507f5b 100644
+--- a/Moira/MoiraExceptions_cpp.h
++++ b/Moira/MoiraExceptions_cpp.h
+@@ -443,7 +443,8 @@ template <Core C> void
+ Moira::execBusError(StackFrame frame, int delay, const Registers *saved)
+ {
+     u16 status = getSR();
+-    u16 ssw = 0x60 | (getFC() & 7);
++    // A completed fault carries its special status word (DF or FB/RB, RW, size, FC)
++    u16 ssw = frame.ssw ? frame.ssw : u16(0x60 | (getFC() & 7));
+ 
+     // Inform the delegate
+     willExecute(M68kException::BUS_ERROR, 2);
+-- 
+2.54.0 (Apple Git-157)
+

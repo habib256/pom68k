@@ -1,0 +1,36 @@
+From 00eee9650ad186836a7b2cb725b61eb254fdfc1c Mon Sep 17 00:00:00 2001
+From: VERHILLE Arnaud <gist974@gmail.com>
+Date: Tue, 24 Nov 2026 00:50:07 +0400
+Subject: [PATCH 10/17] FMOVE.P: a zero with a k-factor above +17 is an operand
+ error
+
+MC68881UM Table 6-2 lists OPERR for FMOVE to P when the "k-Factor > +17",
+whatever the value. toPacked() returned for a zero before digitCount(),
+which raises the flag, was reached.
+---
+ Moira/FPU/FpuFormats.cpp | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/Moira/FPU/FpuFormats.cpp b/Moira/FPU/FpuFormats.cpp
+index 1944bc6..7560442 100644
+--- a/Moira/FPU/FpuFormats.cpp
++++ b/Moira/FPU/FpuFormats.cpp
+@@ -377,8 +377,13 @@ FpuFormats::toPacked(FpuEnv &env, const MFloat80 &value, int k, u32 (&w)[3])
+         return;
+     }
+ 
+-    // Zero
+-    if (value.isZero()) { w[0] = sign; return; }
++    // Zero. A k-factor above +17 is an operand error for a zero too
++    // (MC68881UM, Table 6-2: "k-Factor > +17" for FMOVE to P).
++    if (value.isZero()) {
++        if (k > 17) env.raiseFlags(FloatFlags::INVALID);
++        w[0] = sign;
++        return;
++    }
+ 
+     u64 sig = value.mantissa();
+     i32 exp = (i32)value.biasedExponent();
+-- 
+2.54.0 (Apple Git-157)
+

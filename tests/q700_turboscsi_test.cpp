@@ -48,10 +48,10 @@ int main() {
     // ── DRQ-check clear (reset scsiCtrl = 0): blind access, no /BERR ────
     bool threw = false;
     uint8_t d = 0xEE;
-    try { d = mem.read8(0x5000F100); } catch (moira::MmuBusError&) { threw = true; }
+    try { d = mem.read8(0x5000F100); } catch (moira::BusError&) { threw = true; }
     check(!threw && berrs == 0, "PDMA read, check bit clear: no bus error");
     check(d == 0x00, "blind pop of an idle 53C96 reads 0");
-    try { mem.write8(0x5000F100, 0xAA); } catch (moira::MmuBusError&) { threw = true; }
+    try { mem.write8(0x5000F100, 0xAA); } catch (moira::BusError&) { threw = true; }
     check(!threw && berrs == 0, "PDMA write, check bit clear: no bus error");
 
     // ── DRQ Check Read (bit 7): hold-off, then timeout /BERR ────────────
@@ -59,23 +59,23 @@ int main() {
     check(mem.read8(0xF9800027) == 0x80 && !(mem.read8(0xF9800026) & 0x02),
           "scsiCtrl readback: bit 7 latched, live DRQ bit 9 low");
     threw = false;
-    try { (void)mem.read8(0x5000F100); } catch (moira::MmuBusError&) { threw = true; }
+    try { (void)mem.read8(0x5000F100); } catch (moira::BusError&) { threw = true; }
     check(threw && berrs == 1 && berrAddr == 0x5000F100,
           "PDMA read, check bit set, DRQ never: timeout bus error");
 
     // ── DRQ Check Write (bit 8) ─────────────────────────────────────────
     writeScsiCtrl(mem, 0x100);
     threw = false;
-    try { mem.write8(0x5000F100, 0x55); } catch (moira::MmuBusError&) { threw = true; }
+    try { mem.write8(0x5000F100, 0x55); } catch (moira::BusError&) { threw = true; }
     check(threw && berrs == 2, "PDMA write, check bit set: timeout bus error");
     // ...and the read side must now be blind again (its bit is clear).
     threw = false;
-    try { (void)mem.read8(0x5000F100); } catch (moira::MmuBusError&) { threw = true; }
+    try { (void)mem.read8(0x5000F100); } catch (moira::BusError&) { threw = true; }
     check(!threw && berrs == 2, "read gate independent of the write gate");
 
     // ── Register PIO path is never gated (dafb.cpp:972-991) ─────────────
     threw = false;
-    try { (void)mem.read8(0x5000F000); } catch (moira::MmuBusError&) { threw = true; }
+    try { (void)mem.read8(0x5000F000); } catch (moira::BusError&) { threw = true; }
     check(!threw, "53C96 register read unaffected by the DRQ gates");
 
     // ── Finding #55: registers below $200 are 12-bit (dafb.cpp:435,625) ──

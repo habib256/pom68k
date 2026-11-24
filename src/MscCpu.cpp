@@ -8,8 +8,8 @@ MscCpu::MscCpu(MscMemory& mem, const jit::ResolvedConfig& jitConfig,
                const pom68k::CoreCpuConfig& cpuConfig,
                bool withFpu)
     : MoiraCpu(mem, mem.is040() ? jit::kGuest68040 : jit::kGuest68030, jitConfig) {
-    setModel(mem.is040() ? moira::Model::M68LC040 : moira::Model::M68030);
-    setFPUModel(withFpu && !mem.is040() ? moira::FPUModel::M68882 : moira::FPUModel::NONE);
+    setModel(mem.is040() ? moira::CPUModel::M68LC040 : moira::CPUModel::M68030);
+    setFPUModel(withFpu && !mem.is040() ? MoiraFpu::M68882 : MoiraFpu::NONE);
     if (mem.is040()) {
         icacheMiss_ = 0;
         if (cpuConfig.mmu040Walk) setMmu040AtcArmed(false);

@@ -1,0 +1,45 @@
+From 1b40dcf6bf9b399c6d38553e9b528f84f768c012 Mon Sep 17 00:00:00 2001
+From: VERHILLE Arnaud <gist974@gmail.com>
+Date: Mon, 23 Nov 2026 20:44:57 +0400
+Subject: [PATCH 04/17] Cache: let a host save and restore the cache contents
+
+An emulator with save states otherwise has to flush the caches on load,
+which changes the timing of a restored machine. visitEntries() hands each
+entry (data, tag, valid bit) and visitLatch() the i-cache latch to a
+visitor; the layout and the active/frozen flags follow from the CPU model
+and the CACR and are not saved.
+---
+ Moira/Cache/Cache.h | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/Moira/Cache/Cache.h b/Moira/Cache/Cache.h
+index 561fbd3..50b015a 100644
+--- a/Moira/Cache/Cache.h
++++ b/Moira/Cache/Cache.h
+@@ -161,6 +161,13 @@ public:
+     // Selects whether this cache is part of the emulated CPU
+     void setEmulated(bool value) { emulated = value; refresh(); }
+ 
++    // Hands every entry (data, tag, valid bit) to a save-state visitor. The
++    // layout and the active/frozen flags are not state: they follow from the
++    // CPU model and the CACR (refresh()).
++    template <class F> void visitEntries(F &&f) {
++        for (int i = 0; i < capacity; i++) f(data[i], tags[i], valid[i]);
++    }
++
+     // Derives the active and frozen flags from the CACR (call whenever it changes)
+     virtual void refresh() = 0;
+ 
+@@ -268,6 +275,9 @@ public:
+     // Forgets the longword that has been fetched last
+     void flushLatch() { latch = { 0xffffffff, 0xffffffff }; }
+ 
++    // Hands the latch to a save-state visitor
++    template <class F> void visitLatch(F &&f) { f(latch.addr, latch.data); }
++
+     // Reads an instruction word via the latch and the cache
+     u16 fetch(u32 addr, bool &busAccess, u32 &phys);
+ 
+-- 
+2.54.0 (Apple Git-157)
+

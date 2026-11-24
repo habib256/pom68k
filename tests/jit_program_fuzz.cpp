@@ -830,15 +830,15 @@ Program build(uint64_t seed, uint32_t len, uint32_t rawPermille) {
     return p;
 }
 
-moira::FPUModel fpuModelFor(moira::Model model) {
-    return !gFpu || model == moira::Model::M68000 || model == moira::Model::M68LC040
-               ? moira::FPUModel::NONE
-         : model == moira::Model::M68030 || model == moira::Model::M68020
-             ? moira::FPUModel::M68882
-                                         : moira::FPUModel::M68040;
+MoiraFpu fpuModelFor(moira::CPUModel model) {
+    return !gFpu || model == moira::CPUModel::M68000 || model == moira::CPUModel::M68LC040
+               ? MoiraFpu::NONE
+         : model == moira::CPUModel::M68030 || model == moira::CPUModel::M68020
+             ? MoiraFpu::M68882
+                                         : MoiraFpu::M68040;
 }
 
-void load(FuzzCpu& cpu, moira::Model model, const Program& p, uint32_t ramSeed) {
+void load(FuzzCpu& cpu, moira::CPUModel model, const Program& p, uint32_t ramSeed) {
     std::fill(cpu.mem.begin(), cpu.mem.end(), 0);
     cpu.portReads = 0;          // --devport: one divergence must not leak into later seeds
     auto put16 = [&](uint32_t a, uint16_t v) { cpu.mem[a] = uint8_t(v >> 8); cpu.mem[a + 1] = uint8_t(v); };
@@ -864,7 +864,7 @@ void load(FuzzCpu& cpu, moira::Model model, const Program& p, uint32_t ramSeed) 
         uint32_t h = kBerrHandler;
         put16(h, 0x53B9); put32(h + 2, kCounter + 8); h += 6;         // SUBQ.L #1,budget
         put16(h, 0x6B00); put16(h + 2, uint16_t(kHandler - (h + 2))); h += 4;  // BMI.W JMP head
-        if (model == moira::Model::M68030) {
+        if (model == moira::CPUModel::M68030) {
             put16(h, 0xF039); put16(h + 2, 0x0800);                   // PMOVE (abs).L,TT0
             put32(h + 4, kCounter + 12); h += 8;
             put32(kCounter + 12, 0x00008114);   // $00xxxxxx, R/W both, user+super data
@@ -932,7 +932,7 @@ void load(FuzzCpu& cpu, moira::Model model, const Program& p, uint32_t ramSeed) 
     cpu.pomCache040Data().rot = 0;   // one divergence must not leak into later seeds
     cpu.pomCache040Inst().rot = 0;
     cpu.pomJitCache040Bump();
-    cpu.setCACR(gDcache && model >= moira::Model::M68EC040 ? 0x80008000 : 0);
+    cpu.setCACR(gDcache && model >= moira::CPUModel::M68EC040 ? 0x80008000 : 0);
     if (gMmu) {
         // Identity map of the 16 MB bus through real descriptors, so every
         // access goes through the ATC, table walks and U/M write-backs.
@@ -978,7 +978,7 @@ void load(FuzzCpu& cpu, moira::Model model, const Program& p, uint32_t ramSeed) 
             if (m040 && roll < 4) return 0x80;               // S: supervisor only
             return 0;
         };
-        if (model == moira::Model::M68030) {
+        if (model == moira::CPUModel::M68030) {
             // TC: E, PS 4 KB, IS 8, TIA 4, TIB 8 (8+4+8+12 = 32). Level A:
             // sixteen short table descriptors; level B: 256 short page
             // descriptors of 4 KB each. Seed parity picks one 1 MB
@@ -1243,10 +1243,10 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "bad --model/--slices\n");
         return 2;
     }
-    const moira::Model m = model == 0 ? moira::Model::M68000
-                         : model == 20 ? moira::Model::M68020
-                         : model == 30 ? moira::Model::M68030
-                         : gFpu && !gLc040 ? moira::Model::M68040 : moira::Model::M68LC040;
+    const moira::CPUModel m = model == 0 ? moira::CPUModel::M68000
+                         : model == 20 ? moira::CPUModel::M68020
+                         : model == 30 ? moira::CPUModel::M68030
+                         : gFpu && !gLc040 ? moira::CPUModel::M68040 : moira::CPUModel::M68LC040;
     // --lc040: the Quadra 605 / LC 475 CPU. --fpu still generates the FPU
     // templates, and every one of them takes the 68LC040's F-line (vector
     // 11, format $4 with the EA) — inside blocks, under the MMU, across

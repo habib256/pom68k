@@ -91,10 +91,11 @@ protected:
         setPomExceptionDiag(jitConfig.exceptionDiag);
     }
 
-    moira::u8  read8(moira::u32 addr)  const override { return mem_.read8(addr); }
-    moira::u16 read16(moira::u32 addr) const override { return mem_.read16(addr); }
-    void write8(moira::u32 addr, moira::u8 v)   const override { mem_.write8(addr, v); }
-    void write16(moira::u32 addr, moira::u16 v) const override { mem_.write16(addr, v); }
+    // pomBusAddr: the address a host bus error reports (MoiraCompat.h).
+    moira::u8  read8(moira::u32 addr)  const override { this->pomBusAddr = addr; return mem_.read8(addr); }
+    moira::u16 read16(moira::u32 addr) const override { this->pomBusAddr = addr; return mem_.read16(addr); }
+    void write8(moira::u32 addr, moira::u8 v)   const override { this->pomBusAddr = addr; mem_.write8(addr, v); }
+    void write16(moira::u32 addr, moira::u16 v) const override { this->pomBusAddr = addr; mem_.write16(addr, v); }
 
     // Moira's disassembler falls back to read16() unless this is overridden,
     // which sent every disassembly read through the LIVE bus: device registers

@@ -232,7 +232,11 @@ int main() {
                 cpu.runCycles(kFrameCycles);
         },
         [&] { return mem.scsi().commands; },
-        screen.width, screen.height, /*menuRows=*/20);
+        screen.width, screen.height, /*menuRows=*/20,
+        // The first Finder menu can sit over a bare desktop while the
+        // startup work is still in progress. At 120 frames that screen
+        // can appear stable before the icons and desktop picture load.
+        /*tries=*/8, /*framesBetween=*/600);
     ok = pixelpin::check("lc575_boot_etalon", pin) && ok;
     std::printf("%s\n", ok ? "PASSED — LC 575 Finder in 256 colors" : "FAILED");
     ok = agentboot::check(mem, cpu, kFrameCycles, ok);

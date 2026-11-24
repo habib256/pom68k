@@ -22,7 +22,7 @@
 // The gate fails if the cache is compiled out or ignored: a hit must make
 // no bus cycle, which a cache-less core (every fetch on the bus) cannot do.
 
-#include "Moira.h"
+#include "MoiraCompat.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -32,6 +32,7 @@
 #include <vector>
 
 using namespace moira;
+using Model = moira::CPUModel;
 
 namespace {
 
@@ -50,7 +51,7 @@ struct Step {
 
 // Port width by address (dsack):
 //   $00000-$3FFFF 32 bits, $40000-$7FFFF 16 bits, $80000-$BFFFF 8 bits.
-class TestCpu : public Moira {
+class TestCpu : public MoiraCompat {
 public:
     std::vector<u8> mem = std::vector<u8>(kMemSize, 0);
     mutable std::vector<Access> bus;
@@ -64,8 +65,8 @@ public:
     // Drops the lines and the latch behind the core's back (not through
     // CACR.C, which the gate tests): the save-state control below.
     void dropCache() {
-        for (auto &line : iCache.cache) line.valid = false;
-        iCache.latch.addr = 0xffffffff;
+        iCache.flush();
+        iCache.flushLatch();
     }
     // The cycle budget's balance (Moira::syncCp): below zero it is a debt.
     int balance() const { return budget.accumulated; }
@@ -506,7 +507,7 @@ void checkManualLoops(Model model)
     }
 }
 
-// ── Save state: lines, latch and cycle budget travel (MoiraState.h) ─────
+// ── Save state: lines, latch and cycle budget travel (MoiraCompat.h) ────
 struct Writer {
     static constexpr bool loading = false;
     std::vector<u8> &buf;

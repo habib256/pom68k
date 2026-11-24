@@ -44,7 +44,7 @@ void Pb030Memory::reset() {
 }
 void Pb030Memory::busError() const {
     if(cpu_) cpu_->extBusError();
-    throw moira::MmuBusError{};
+    throw moira::BusError(0u);
 }
 int Pb030Memory::iplLevel() const {
     if(scc_.irqAsserted()) return 4;

@@ -1,6 +1,6 @@
 // A software-completed format-$B data cycle must not repeat after RTE.
 // MC68020/MC68EC020 User's Manual (1992), §§6.2.2-6.2.3.
-#include "Moira.h"
+#include "MoiraCompat.h"
 #include "../src/SaveState.h"
 
 #include <cstdio>
@@ -14,18 +14,19 @@ constexpr uint32_t operand = 0x40000, code = 0x1000, handler = 0x3000;
 // reports a 32-bit port (src/Cpu020.h), the LC a 16-bit one (the default).
 // The matrix runs under both.
 bool gPort32 = false;
-class Cpu : public moira::Moira {
+class Cpu : public MoiraCompat {
 public:
     std::vector<moira::u8> mem = std::vector<moira::u8>(1 << 20);
     uint32_t fault = ~0u;
     bool writeFault = false, programFault = false;
     mutable unsigned faults = 0, operandReads = 0, operandWrites = 0;
-    explicit Cpu(moira::Model model) { setModel(model); }
+    explicit Cpu(moira::CPUModel model) { setModel(model); }
     void word(uint32_t a, uint16_t v) { mem[a] = uint8_t(v >> 8); mem[a + 1] = uint8_t(v); }
     void lng(uint32_t a, uint32_t v) { word(a, uint16_t(v >> 16)); word(a + 2, uint16_t(v)); }
     uint16_t word(uint32_t a) const { return uint16_t(mem[a] << 8 | mem[a + 1]); }
     uint32_t lng(uint32_t a) const { return uint32_t(word(a)) << 16 | word(a + 2); }
     void observe(uint32_t a, bool write) const {
+        pomBusAddr = a;     // the address extBusError() reports (MoiraCompat.h)
         if (a >= operand && a < operand + 4)
             ++(write ? operandWrites : operandReads);
         if (a == fault && write == writeFault && (programFault || (readFC() & 1))) {
@@ -55,7 +56,7 @@ void check(bool ok, const char* what) {
     if (!ok) { ++failures; std::printf("  FAIL %s\n", what); }
 }
 
-void run(moira::Model model, unsigned bytes, bool write, unsigned mode,
+void run(moira::CPUModel model, unsigned bytes, bool write, unsigned mode,
          bool completed, bool restore, bool second = false, bool user = false) {
     ++cases;
     Cpu c(model);
@@ -135,7 +136,7 @@ void run(moira::Model model, unsigned bytes, bool write, unsigned mode,
               "DF still set reruns and faults the same operand");
     }
 }
-void aliasAndReset(moira::Model model, bool resetPending) {
+void aliasAndReset(moira::CPUModel model, bool resetPending) {
     ++cases;
     Cpu c(model);
     c.lng(0, 0x80000); c.lng(4, code); c.lng(8, handler);
@@ -164,7 +165,7 @@ void aliasAndReset(moira::Model model, bool resetPending) {
     check(c.getD(0) == 0x4e71, "alias: a later execution reads the real operand");
 }
 
-void cpuSpace(moira::Model model, bool write) {
+void cpuSpace(moira::CPUModel model, bool write) {
     ++cases;
     Cpu c(model);
     c.lng(0, 0x80000); c.lng(4, code); c.lng(8, handler);
@@ -185,7 +186,7 @@ void cpuSpace(moira::Model model, bool write) {
           "MOVES: software-completed FC=7 cycle is not repeated");
     if (!write) check(c.getD(0) == 0xdead1234, "MOVES: FC=7 read uses the saved input");
 }
-void lockedFault(moira::Model model, unsigned kind) {
+void lockedFault(moira::CPUModel model, unsigned kind) {
     ++cases;
     Cpu c(model);
     c.lng(0, 0x80000); c.lng(4, code); c.lng(8, handler);
@@ -203,7 +204,7 @@ void lockedFault(moira::Model model, unsigned kind) {
     check(c.getPC0() == handler && c.faults == 2,
           "locked fault with DF set reruns the operation");
 }
-void lockedPrefetch(moira::Model model) {
+void lockedPrefetch(moira::CPUModel model) {
     ++cases;
     Cpu c(model);
     c.lng(0, 0x80000); c.lng(4, code); c.lng(8, handler);
@@ -216,7 +217,7 @@ void lockedPrefetch(moira::Model model) {
     check(c.getPC0() == handler && !(ssw & 0x0180) && (ssw & 7) == 6,
           "TAS prefetch fault is an instruction cycle, not locked data");
 }
-void redirectedPc(moira::Model model) {
+void redirectedPc(moira::CPUModel model) {
     ++cases;
     Cpu c(model);
     c.lng(0, 0x80000); c.lng(4, code); c.lng(8, handler);
@@ -232,7 +233,7 @@ void redirectedPc(moira::Model model) {
           "redirected PC: identical next opcode must issue a new data access");
 }
 
-void nestedFaults(moira::Model model) {
+void nestedFaults(moira::CPUModel model) {
     ++cases;
     Cpu c(model);
     c.lng(0, 0x80000); c.lng(4, code); c.lng(8, handler);
@@ -260,7 +261,7 @@ void nestedFaults(moira::Model model) {
 
 int main() {
     for (bool port32 : {false, true})
-    for (auto model : {moira::Model::M68EC020, moira::Model::M68020})
+    for (auto model : {moira::CPUModel::M68EC020, moira::CPUModel::M68020})
         for (unsigned bytes : {1u, 2u, 4u})
             for (bool write : {false, true})
                 for (unsigned mode = 0; mode < 3; ++mode)
@@ -273,7 +274,7 @@ int main() {
                                     run(model, bytes, write, mode, completed, restore, second, user);
                             }
     gPort32 = false;
-    for (auto model : {moira::Model::M68EC020, moira::Model::M68020}) {
+    for (auto model : {moira::CPUModel::M68EC020, moira::CPUModel::M68020}) {
         aliasAndReset(model, false); aliasAndReset(model, true);
         cpuSpace(model, false); cpuSpace(model, true);
         for (unsigned kind = 0; kind < 3; ++kind) lockedFault(model, kind);

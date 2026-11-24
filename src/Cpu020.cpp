@@ -11,10 +11,10 @@ Cpu020::Cpu020(MacIIMemory& mem, const jit::ResolvedConfig& jitConfig,
       // has not run yet at member-init time, and sampling it is exactly the
       // mistake JitEngine.h documents (it cost the Quadra its x64 backend).
     : MoiraCpu(mem, is030 ? jit::kGuest68030 : jit::kGuest68020, jitConfig) {
-    setModel(is030 ? moira::Model::M68030 : moira::Model::M68020);
-    setFPUModel(withFpu ? (is030 ? moira::FPUModel::M68882
-                                 : moira::FPUModel::M68881)
-                        : moira::FPUModel::NONE);
+    setModel(is030 ? moira::CPUModel::M68030 : moira::CPUModel::M68020);
+    setFPUModel(withFpu ? (is030 ? MoiraFpu::M68882
+                                 : MoiraFpu::M68881)
+                        : MoiraFpu::NONE);
     eventDriven_ = cpuConfig.macIiEventDriven;
     if (cpuConfig.cacr030Flush)
         cacrFlushPolicy_ = *cpuConfig.cacr030Flush ? 1 : 0;

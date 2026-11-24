@@ -138,7 +138,7 @@ void IIfxMemory::reset() {
 
 void IIfxMemory::busError() const {
     if (cpu_) cpu_->extBusError();
-    throw moira::MmuBusError{};
+    throw moira::BusError(0u);
 }
 
 // ── OSS (`maciifx.cpp:329-398`) ───────────────────────────────────────────

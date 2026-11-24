@@ -1,0 +1,42 @@
+From 52d3a39bf81ee2e36bd0353e6d77b0f2759c17c8 Mon Sep 17 00:00:00 2001
+From: VERHILLE Arnaud <gist974@gmail.com>
+Date: Tue, 24 Nov 2026 07:53:08 +0400
+Subject: [PATCH] Restore 68000 address error frame timing in DEFAULT mode
+
+SingleStepTests/680x0 68000/v1 times the idle before the group-0 frame. Keep the previously qualified 2/4-clock split by I/N in the default configuration.
+---
+ Moira/MoiraExceptions_cpp.h | 11 ++++++++---
+ 1 file changed, 8 insertions(+), 3 deletions(-)
+
+diff --git a/Moira/MoiraExceptions_cpp.h b/Moira/MoiraExceptions_cpp.h
+index db70dc9..ab52313 100644
+--- a/Moira/MoiraExceptions_cpp.h
++++ b/Moira/MoiraExceptions_cpp.h
+@@ -388,7 +388,13 @@ Moira::execAddressError(StackFrame frame, int delay)
+ 
+     // Interrupts are taken at an instruction boundary
+     reg.pc = reg.pc0;
+-    SYNC(8);
++    if constexpr (C == Core::C68000 && compat == Compatibility::DEFAULT) {
++        // The 68000 group-0 address-error idle depends on the I/N bit.
++        // SingleStepTests/680x0 measures the start of each frame write.
++        SYNC((frame.code & 0x8) ? 4 : 2);
++    } else {
++        SYNC(8);
++    }
+ 
+     // A misaligned stack pointer will cause a double fault
+     if (misaligned<C>(reg.sp)) throw DoubleFault();
+@@ -396,8 +402,7 @@ Moira::execAddressError(StackFrame frame, int delay)
+     // Write stack frame
+     if constexpr (C == Core::C68000) {
+ 
+-        // MAME delays the stack frame instead of the vector fetch
+-        SYNC(2);
++        if constexpr (compat != Compatibility::DEFAULT) SYNC(2);
+         writeStackFrameAEBE<C>(frame);
+ 
+     } else if constexpr (C == Core::C68010) {
+-- 
+2.54.0 (Apple Git-157)
+

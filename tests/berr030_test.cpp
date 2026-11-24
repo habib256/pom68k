@@ -8,7 +8,7 @@
 // unmapped LC II I/O and the SCSI pseudo-DMA timeout:
 //
 //   1. data READ fault   → vector 2, format $B frame, fault address and
-//      SSW (DF|DF2|RW|fc5) stacked; handler fixes the stacked PC, RTE
+//      SSW (DF|RW|fc5) stacked; handler fixes the stacked PC, RTE
 //      resumes (the LC II ROM address-map-probe pattern).
 //   2. last-WRITE fault  → format $A frame, stacked PC = next
 //      instruction; plain RTE continues (exercises the new RTE-$A path).
@@ -18,7 +18,7 @@
 //
 // Exit 0 = pass, 1 = fail.
 
-#include "Moira.h"
+#include "MoiraCompat.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -32,9 +32,9 @@ constexpr uint32_t PHYS0 = 0x80000, PHYS1 = 0xA0000;
 constexpr uint32_t TC_32K = (1u << 31) | (15u << 20) | (8u << 16) | (9u << 12);
 constexpr uint64_t CRP_32K = (uint64_t(0x7FFF0002u) << 32) | MMU_TABLE;
 
-class BerrCpu : public moira::Moira {
+class BerrCpu : public MoiraCompat {
 public:
-    BerrCpu() : mem(1 << 24, 0) { setModel(moira::Model::M68030); }
+    BerrCpu() : mem(1 << 24, 0) { setModel(moira::CPUModel::M68030); }
     std::vector<uint8_t> mem;
     int readFaultsRemaining = -1;
     int writeFaultsRemaining = -1;
@@ -44,14 +44,27 @@ public:
     std::vector<moira::u32> readLog;
 
     bool inHole(moira::u32 a) const { return a >= HOLE_LO && a < HOLE_HI; }
+    // Dirk Hoffmann's 68030 i-cache: 16 lines of four longwords, line n in
+    // slots 4n to 4n + 3 (Cache.h). Seeded and read through its save-state
+    // visitor (patch 4 of extern/moira/patches).
     void seedIcacheLine(int line) {
-        pomIcache.tag[line & 15] = 0;
-        pomIcache.valid[line & 15] = 0xF;
+        int i = 0;
+        iCache.visitEntries([&](moira::u32&, moira::u32& tag, bool& valid) {
+            if (i / 4 == (line & 15)) { tag = 0; valid = true; }
+            i++;
+        });
     }
-    moira::u8 icacheValidMask(int line) const { return pomIcache.valid[line & 15]; }
+    moira::u8 icacheValidMask(int line) {
+        moira::u8 mask = 0;
+        int i = 0;
+        iCache.visitEntries([&](moira::u32&, moira::u32&, bool& valid) {
+            if (i / 4 == (line & 15) && valid) mask |= moira::u8(1 << (i % 4));
+            i++;
+        });
+        return mask;
+    }
 
 private:
-    void didChangeCACR(moira::u32 value) override { pomInvalidateIcache030(value); }
     void didJumpToVector(int nr, moira::u32) override {
         if (nr == 2) ++vector2Count;
         if (nr == 31) ++vector31Count;
@@ -72,23 +85,27 @@ private:
     // caller); const_cast as in Cpu68k::applyContention — the bus API is
     // const but a fault is real state.
     moira::u8 read8(moira::u32 a) const override {
+        pomBusAddr = a;                       // the address a /BERR reports
         const_cast<BerrCpu*>(this)->recordRead(a);
         if (inHole(a) && const_cast<BerrCpu*>(this)->faultNow(false))
             const_cast<BerrCpu*>(this)->extBusError();
         return mem[a & 0xFFFFFF];
     }
     moira::u16 read16(moira::u32 a) const override {
+        pomBusAddr = a;                       // the address a /BERR reports
         const_cast<BerrCpu*>(this)->recordRead(a);
         if (inHole(a) && const_cast<BerrCpu*>(this)->faultNow(false))
             const_cast<BerrCpu*>(this)->extBusError();
         return moira::u16((mem[a & 0xFFFFFF] << 8) | mem[(a + 1) & 0xFFFFFF]);
     }
     void write8(moira::u32 a, moira::u8 v) const override {
+        pomBusAddr = a;                       // the address a /BERR reports
         if (inHole(a) && const_cast<BerrCpu*>(this)->faultNow(true))
             const_cast<BerrCpu*>(this)->extBusError();
         const_cast<BerrCpu*>(this)->mem[a & 0xFFFFFF] = v;
     }
     void write16(moira::u32 a, moira::u16 v) const override {
+        pomBusAddr = a;                       // the address a /BERR reports
         if (inHole(a) && const_cast<BerrCpu*>(this)->faultNow(true))
             const_cast<BerrCpu*>(this)->extBusError();
         auto &m = const_cast<BerrCpu*>(this)->mem;
@@ -179,7 +196,7 @@ int main() {
         check(m.r16(0x2000) == 0x1234, "read fault: handler RTE resumed past the probe");
         check((m.r16(0x2004) >> 12) == 0xB, "read fault: frame format $B");
         check(m.r32(0x2008) == HOLE_LO, "read fault: stacked fault address = $F00000");
-        check(m.r16(0x200C) == 0x0345, "read fault: SSW = DF|DF2|RW|long|fc5 ($0345)");
+        check(m.r16(0x200C) == 0x0145, "read fault: SSW = DF|RW|long|fc5 ($0145)");
     }
 
     // ── 2. last-write fault: $A frame replays the pending bus cycle ────
@@ -396,13 +413,20 @@ int main() {
 
         m.at(0x3340);                                   // 2nd fault: give up
         m.w16(0x33FC); m.w16(0x0001); m.w32(0x2038);    // MOVE.W #1,$2038.L
+        emitSaveL(m, 0x2C, 0x203C);                     // the stacked data input buffer
         m.w16(0x08AF); m.w16(0x0000); m.w16(0x000A);    // BCLR #0,($A,A7) = DF
         m.w16(0x4E73);                                  // RTE → continue
 
         m.run();
-        check(m.r16(0x2036) == 0x0355, "probe: SSW = DF|DF2|RW|byte|fc5 ($0355)");
+        check(m.r16(0x2036) == 0x0155, "probe: SSW = DF|RW|byte|fc5 ($0155)");
         check(m.r16(0x2038) == 1, "probe: RTE with DF set re-ran and re-faulted");
-        check(m.cpu.mem[0x2030] == 0xAB, "probe: DF cleared -> read = data input buffer byte");
+        // [B] MC68030UM-1989 §8.2.2: with DF cleared the read completes with
+        // the frame's data input buffer, which the handler is to fill; this
+        // one leaves it as stacked. Ruling 2026-11-24: the fork expected $AB,
+        // WinUAE's buffer contents for a failed read, which the manual does
+        // not define.
+        check(m.cpu.mem[0x2030] == (m.r32(0x203C) & 0xFF),
+              "probe: DF cleared -> read = the stacked data input buffer byte");
         check(m.r16(0x2032) == 0xAAAA, "probe: execution continued past the probe");
     }
 
@@ -500,8 +524,10 @@ int main() {
         std::snprintf(what, sizeof(what), "PMOVE %s: stacked PC identifies PMOVE", direction);
         check(r32(spPhys + 2) == 0x1000, what);
     };
-    checkPmoveFault(0x0800, 0x0345, "(A0),TT0");
-    checkPmoveFault(0x0A00, 0x0305, "TT0,(A0)");
+    // [B] MC68020UM-1992 §6.2.1 / MC68030UM-1989 §8.2.1: SSW bits 11-9 are
+    // reserved; the fork stacked WinUAE's private bit 9 (DF2). Ruling 2026-11-24.
+    checkPmoveFault(0x0800, 0x0145, "(A0),TT0");
+    checkPmoveFault(0x0A00, 0x0105, "TT0,(A0)");
 
     // ── 8. FMOVEM memory-indirect EA read order ────────────────────────
     // WinUAE get_disp_ea_020_mmu030 resolves the pointer first, then
@@ -519,7 +545,7 @@ int main() {
         w32(cpu, PHYS0 + 0x3000, 0x40000000);   // raw extended 2.x image
         w32(cpu, PHYS0 + 0x3004, 0x80000000);
         w32(cpu, PHYS0 + 0x3008, 0x12345678);
-        cpu.setFPUModel(moira::FPUModel::M68882);
+        cpu.setFPUModel(MoiraFpu::M68882);
         start030(cpu, 0x1000, 0xF230, 0xC080);
         cpu.setA(0, 0x2000);
         cpu.readLog.clear();

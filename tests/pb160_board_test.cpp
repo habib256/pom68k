@@ -47,7 +47,7 @@ int main() {
         Pb030Cpu siblingCpu(sibling,jit::defaultResolvedConfig(),core.cpu,board.fpu);
         sibling.setCpu(&siblingCpu);sibling.loadRom(rom);siblingCpu.hardReset();sibling.read8(0x40000000);
         check(sibling.read8(0x50fb6000)==3 && sibling.read8(0x50f20001)==5 &&
-              siblingCpu.getFPUModel()==(profile==pom68k::SnapMachine::Pb180?moira::FPUModel::M68882:moira::FPUModel::NONE),
+              siblingCpu.getFPUModel()==(profile==pom68k::SnapMachine::Pb180?MoiraFpu::M68882:MoiraFpu::NONE),
               "33 MHz Niagra speed register and real CPU FPU model distinguish 165/180");
         std::vector<uint8_t> session;pom68k::save(sibling,siblingCpu,profile,session);
         sibling.write8(0x1234,0xa5);

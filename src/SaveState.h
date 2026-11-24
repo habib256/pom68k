@@ -326,7 +326,12 @@ inline constexpr char     kMagic[8]  = {'P','O','M','6','8','K','S','S'};
 // the cycle budget (MoiraState.h), carried since the cache is compiled into
 // POM68K's configuration (POM68K_VENDOR.md row 147). A v37 reader would
 // read the next chunk's bytes as cache lines.
-inline constexpr u32      kVersion   = 38;
+// v39 (2026-11-24): the CPU payload is Dirk Hoffmann's Moira (MoiraCompat.h
+// pomVisitState): his registers, MMU, FPU and 020/030 cache contents, the
+// 68020 restart record and the data cycle a bus error handler completed
+// (patch 6 of extern/moira/patches). Nothing of the fork's layout remains,
+// so a v38 snapshot cannot be read.
+inline constexpr u32      kVersion   = 39;
 
 struct Header {
     u32 version     = kVersion;

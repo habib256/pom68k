@@ -163,7 +163,7 @@ void Q630Memory::reset() {
 void Q630Memory::busError(uint32_t addr, bool write) const {
     if (onBusError) onBusError(addr, write);
     if (cpu_) cpu_->extBusError040();
-    throw moira::MmuBusError{};
+    throw moira::BusError(0u);
 }
 
 int Q630Memory::iplLevel() const {

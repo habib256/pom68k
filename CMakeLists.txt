@@ -314,7 +314,10 @@ endif()
 # non-templated in Moira.cpp. Every library built from Moira lists them all.
 set(MOIRA_SOURCES ${MOIRA_DIR}/Moira.cpp ${MOIRA_DIR}/MoiraCore68000.cpp
     ${MOIRA_DIR}/MoiraCore68010.cpp ${MOIRA_DIR}/MoiraCore68020.cpp
-    ${MOIRA_DIR}/MoiraDebugger.cpp)
+    ${MOIRA_DIR}/MoiraDebugger.cpp ${MOIRA_DIR}/Cache/Cache.cpp
+    ${MOIRA_DIR}/FPU/MFloat80.cpp ${MOIRA_DIR}/FPU/FpuEnv.cpp
+    ${MOIRA_DIR}/FPU/FpuEnvMath.cpp ${MOIRA_DIR}/FPU/FpuFormats.cpp
+    ${MOIRA_DIR}/FPU/FPU.cpp ${MOIRA_DIR}/MMU/MMU030.cpp ${MOIRA_DIR}/MMU/MMU040.cpp)
 add_library(moira STATIC ${MOIRA_SOURCES})
 # SYSTEM: our own TUs include Moira.h, and 756 of the 798 warnings the first
 # -Wall -Wextra pass produced came from its inlines. The fork is edited
@@ -322,6 +325,16 @@ add_library(moira STATIC ${MOIRA_SOURCES})
 # rewriting upstream's unused-parameter style is not one of those edits.
 target_include_directories(moira SYSTEM PUBLIC ${MOIRA_DIR})
 target_link_libraries(moira PUBLIC softfloat68k)
+# Dirk's MoiraConfig.h guards every option with #ifndef, so the Macintosh
+# settings arrive here and his tree stays as published. PUBLIC: Moira.h is
+# compiled into every wrapper, and the class layout depends on them.
+# Mac software relies on address and bus errors (NuBus slot probing, the
+# ROMs' RAM sizing); the compact Macs need the 68000's exact timing.
+set(POM68K_MOIRA_DEFS
+    MOIRA_PRECISE_TIMING=true
+    MOIRA_EMULATE_ADDRESS_ERROR=true
+    MOIRA_EMULATE_BUS_ERROR=true)
+target_compile_definitions(moira PUBLIC ${POM68K_MOIRA_DEFS})
 if(EMSCRIPTEN)   # bus/MMU faults are C++ exceptions; default wasm drops `catch`
     target_compile_options(moira PUBLIC -fwasm-exceptions)
     target_link_options(moira PUBLIC -fwasm-exceptions)
@@ -343,6 +356,13 @@ endif()
 set(POM68K_JIT_BACKENDS "auto" CACHE STRING
     "JIT backends to compile: auto | threaded | x64 | a64")
 set_property(CACHE POM68K_JIT_BACKENDS PROPERTY STRINGS auto threaded x64 a64)
+# POM68K_JIT=OFF compiles the engine out: the wrappers keep a jit::Engine
+# whose executeUntil() is the interpreter's (src/jit/JitEngineStub.cpp).
+# It is how the Mac layer is first brought up on Dirk Hoffmann's Moira,
+# whose core carries none of the fork's pomJit* seam.
+# OFF until the engine is rebuilt on that core (TODO.md): every machine and
+# every CI tier runs on the interpreter meanwhile.
+option(POM68K_JIT "Compile the JIT engine (OFF: interpreter only)" OFF)
 set(POM68K_JIT_SOURCES
     src/jit/JitEngine.cpp src/jit/JitEngineCensus.cpp src/jit/JitBlockCache.cpp src/jit/JitShiftVersions.cpp # layer 1
     src/jit/JitBackend.cpp       # layer 2 — backend registry and selection
@@ -389,6 +409,12 @@ else()
         message(FATAL_ERROR "Emscripten supports only the threaded JIT backend")
     endif()
     set(POM68K_JIT_HOST "portable only")
+endif()
+if(NOT POM68K_JIT)
+    set(POM68K_JIT_SOURCES src/jit/JitEngineStub.cpp)
+    set(POM68K_JIT_DEFS POM68K_NO_JIT)
+    set(POM68K_JIT_NATIVE_BACKEND "")
+    set(POM68K_JIT_HOST "none (POM68K_JIT=OFF)")
 endif()
 message(STATUS "POM68K JIT: threaded backend + ${POM68K_JIT_HOST}")
 

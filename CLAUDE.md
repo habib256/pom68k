@@ -146,6 +146,11 @@ Focused research notes under `docs/`:
 
 ## CPU and JIT policy
 
+**Since 2026-11-23 the JIT is compiled out (`POM68K_JIT=OFF`, the default)**
+while it is rebuilt on Dirk Hoffmann's core; every machine runs on the
+interpreter and the JIT gates are recorded absent. The policy below is the
+one to restore with it.
+
 The engine and backend are separate decisions:
 
 - 68030/68040 default to the accelerated engine; 68000/68020 run on the
@@ -249,10 +254,14 @@ ruling in `CHANGELOG.md` or the relevant research note.
 
 ## Moira: Dirk's core is the base
 
-`extern/moira/` came through NeoST; based on upstream `ce28239` since
-2026-11-20. **Direction (owner, 2026-11-22):** Dirk's rewritten Moira (`FPU`
-branch), corrected and improved, is the base; POM68K's CPUs add on top only
-what the Macintosh needs (`docs/MOIRA_CONVERGENCE.md`, `tools/dirk_moira/`).
-Until that rebase, cherry-pick upstream one change at a time; never revendor.
-`extern/moira/POM68K_VENDOR.md` owns the patch inventory and resync procedure;
-the WinUAE/Hatari oracle (`oracle/`) stays the 030/040 differential reference.
+`extern/moira/Moira` is Dirk Hoffmann's Moira (`master`, the commit in
+`extern/moira/patches/BASE`) plus POM68K's patch queue, one commit each in
+`extern/moira/patches/`, written in his style for upstream pull requests
+(discussion #36). POM68K's Macintosh layer lives above it: `src/MoiraCompat.h`
+and the CPU wrappers. Before any patch, fetch his `master` and read his new
+commits; drop a patch he covers. `extern/moira/POM68K_VENDOR.md` holds the
+queue's inventory and the fork's history; `docs/MOIRA_CONVERGENCE.md` sorts
+the fork's 158 changes against his rewrite; `tools/dirk_moira/` replays the
+oracle vectors and the reproducers on his tree. The WinUAE/Hatari oracle
+(`oracle/`) stays the 030/040 differential reference; the CPU tests written
+for the fork run against classified known lists (`tests/known/`).

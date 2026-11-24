@@ -1,0 +1,4 @@
+cache040_test	unit,asset-none,host-any,scope-component,tier-daily
+callm_rtm_test	unit,asset-none,host-any,scope-component,tier-daily
+mmu040_atc_test	unit,asset-none,host-any,scope-component,tier-daily
+moira_interp_callm_rtm_test	unit,interp-only,asset-none,host-any,scope-component,tier-daily

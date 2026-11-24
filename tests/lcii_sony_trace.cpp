@@ -203,7 +203,7 @@ int main(int argc, char** argv) {
     };
     auto safeDasm = [&](char* out, uint32_t a) -> int {
         try { return cpu.disassemble(out, a); }
-        catch (moira::MmuBusError&) { std::snprintf(out, 16, "<bus error>"); return 2; }
+        catch (moira::BusError&) { std::snprintf(out, 16, "<bus error>"); return 2; }
     };
 
     const int64_t kFrame = 640 * 407;        // 60.15 Hz @ 15.6672 MHz

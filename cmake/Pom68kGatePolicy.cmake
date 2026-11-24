@@ -136,9 +136,11 @@ endforeach()
 # The x64-pinned lockstep pair is host-conditional (2026-09-03, the
 # PRODUCT_LLE impostor audit) — on other hosts it lives in the absent
 # roster, and a set_property on an unregistered TEST is a configure error.
-set(pom68k_smoke_gates jit_backend_test jit_lockstep_test
-    jit_lockstep_blocks_test jit_lockstep_noaccess_test
-    q605_boot_etalon interp_q605_boot_etalon)
+set(pom68k_smoke_gates q605_boot_etalon interp_q605_boot_etalon)
+if(POM68K_JIT)
+    list(APPEND pom68k_smoke_gates jit_backend_test jit_lockstep_test
+         jit_lockstep_blocks_test jit_lockstep_noaccess_test)
+endif()
 if(POM68K_JIT_NATIVE_BACKEND STREQUAL "x64")
     list(APPEND pom68k_smoke_gates jit_lockstep_x64_test jit_lockstep_x64_fine_test)
 endif()
@@ -154,20 +156,16 @@ endif()
 # environment/document surfaces coherent. TIMEOUT is the deliberately
 # coarse CI performance budget; semantic budgets (zero fallback, native
 # cache-hit/fallback counters, bounded IR size) live inside the gates.
-set_property(TEST jit_backend_test
-                  jit_asset_free_lockstep_test
-                  jit_copyback_write_040_test
-                  jit_copyback_bsr_040_test
-                  jit_copyback_pair_040_test
-                  docs_test config_test store_inventory_test
-             APPEND PROPERTY LABELS jit-fast)
-set_tests_properties(jit_backend_test
-                     jit_asset_free_lockstep_test
-                     jit_copyback_write_040_test
-                     jit_copyback_bsr_040_test
-                     jit_copyback_pair_040_test
-                     docs_test config_test store_inventory_test
-                     PROPERTIES TIMEOUT 45)
+# With the engine compiled out (POM68K_JIT=OFF) the tier keeps its three
+# standalone checkers, so CI's jit-fast step still runs and still fails on them.
+set(pom68k_jit_fast_gates docs_test config_test store_inventory_test)
+if(POM68K_JIT)
+    list(APPEND pom68k_jit_fast_gates jit_backend_test
+         jit_asset_free_lockstep_test jit_copyback_write_040_test
+         jit_copyback_bsr_040_test jit_copyback_pair_040_test)
+endif()
+set_property(TEST ${pom68k_jit_fast_gates} APPEND PROPERTY LABELS jit-fast)
+set_tests_properties(${pom68k_jit_fast_gates} PROPERTIES TIMEOUT 45)
 # One measured exception, set AFTER the blanket that would overwrite it
 # (a TIMEOUT set at add_test time in Pom68kJitGates.cmake was silently
 # stomped here — nightly 33683370177 timed the gate out at 45.04 s
@@ -175,11 +173,13 @@ set_tests_properties(jit_backend_test
 # AppleClang ASan and past 45 s under GCC ASan on a CI runner. 300 is
 # the instrumentation's honest ×7-8 with margin, not a loosened budget
 # for the native tier, whose other gates stay within the blanket.
-set_tests_properties(jit_asset_free_lockstep_test PROPERTIES TIMEOUT 300)
-# Grown since: 66 s under AppleClang ASan (2026-11-12), past 300 s under
-# GCC ASan in the nightly (run 43222539870). Instrumented builds only.
-if(POM68K_SANITIZE)
-    set_tests_properties(jit_asset_free_lockstep_test PROPERTIES TIMEOUT 900)
+if(POM68K_JIT)
+    set_tests_properties(jit_asset_free_lockstep_test PROPERTIES TIMEOUT 300)
+    # Grown since: 66 s under AppleClang ASan (2026-11-12), past 300 s under
+    # GCC ASan in the nightly (run 43222539870). Instrumented builds only.
+    if(POM68K_SANITIZE)
+        set_tests_properties(jit_asset_free_lockstep_test PROPERTIES TIMEOUT 900)
+    endif()
 endif()
 
 # ── Every gate is BOUNDED, declared or derived ───────────────────────
@@ -400,17 +400,38 @@ elseif(EMSCRIPTEN)
     string(APPEND pom68k_absent_gates
         "print_queues_test\tunit\nscc_serial_host_test\tunit\n")
 endif()
+# With the engine compiled out, the JIT gates are recorded absent from the
+# list a POM68K_JIT=ON configuration registers (cmake/pom68k_jit_gates.tsv),
+# so the documentation keeps describing the whole union. Regenerate it when
+# a JIT gate is added: configure once with -DPOM68K_JIT=ON and once with OFF,
+# and keep the rows of pom68k_gates.tsv + pom68k_gates_absent.tsv that only
+# the ON configuration has.
+if(NOT POM68K_JIT)
+    file(READ ${CMAKE_CURRENT_SOURCE_DIR}/cmake/pom68k_jit_gates.tsv pom68k_jit_gates)
+    string(APPEND pom68k_absent_gates "${pom68k_jit_gates}")
+endif()
+# CPU gates waiting for an equivalent on Dirk's core (Pom68kCpuGates.cmake).
+file(READ ${CMAKE_CURRENT_SOURCE_DIR}/cmake/pom68k_pending_gates.tsv pom68k_pending_gates)
+string(APPEND pom68k_absent_gates "${pom68k_pending_gates}")
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/pom68k_gates_absent.tsv
      "${pom68k_absent_gates}")
 # `make jitdev` builds ONLY what `ctest -L smoke` needs. The tree-wide LTO
 # makes a full `make` relink ~90 binaries after any core change; this is
 # three. Pair them: `make -j4 jitdev && ctest -L smoke`.
-add_custom_target(jitdev DEPENDS
-                  jit_backend_test jit_lockstep_test q605_boot_etalon)
+if(POM68K_JIT)
+    add_custom_target(jitdev DEPENDS
+                      jit_backend_test jit_lockstep_test q605_boot_etalon)
+else()
+    add_custom_target(jitdev DEPENDS q605_boot_etalon)
+endif()
 
 # Pair with `ctest -L jit-fast`: eight registrations, six small binaries,
 # no ROM/disk/SST corpus and no GUI dependency.
-add_custom_target(jitfast DEPENDS
-                  jit_backend_test jit_asset_free_lockstep_test
-                  jit_copyback_write_040_test
-                  docs_test config_test store_inventory_test)
+if(POM68K_JIT)
+    add_custom_target(jitfast DEPENDS
+                      jit_backend_test jit_asset_free_lockstep_test
+                      jit_copyback_write_040_test
+                      docs_test config_test store_inventory_test)
+else()
+    add_custom_target(jitfast DEPENDS docs_test config_test store_inventory_test)
+endif()

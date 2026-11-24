@@ -9,32 +9,61 @@
 
 #include "MoiraConfig.h"
 #include "MoiraTypes.h"
-#include "MoiraCache040.h"
 #include "MoiraDebugger.h"
+#include "Cache/Cache.h"
+#include "FPU/FPU.h"
+#include "MMU/MMU.h"
 
-#include <algorithm>
-#include <memory>
+namespace MOIRA_NAMESPACE {
 
-struct float_status;
-
-namespace moira {
-
+/// Version of this release
 namespace Version {
 
-inline constexpr int major = 5;
+inline constexpr int major = 6;
 inline constexpr int minor = 0;
 inline constexpr int patch = 0;
 inline constexpr int beta  = 1;
 
 }
 
+/** The Motorola 68k CPU emulator
+ *
+ * %Moira emulates the 68000, 68010, 68020, 68030 and 68040 (including the
+ * 68EC and 68LC variants) together with an optional FPU and MMU. The class is
+ * abstract. To use it, derive your own CPU class and implement the memory
+ * access functions (see the protected functions below):
+ *
+ * ```cpp
+ * class CPU : public moira::Moira {
+ *
+ *     u8 read8(u32 addr) const override;
+ *     u16 read16(u32 addr) const override;
+ *     u32 read32(u32 addr) const override;
+ *     void write8(u32 addr, u8 val) const override;
+ *     void write16(u32 addr, u16 val) const override;
+ *     void write32(u32 addr, u32 val) const override;
+ * };
+ * ```
+ *
+ * The remaining virtual functions are optional delegates that inform the
+ * application about events such as breakpoints, exceptions or cache register
+ * changes.
+ *
+ * The interface functions are only virtual if the configuration option
+ * MOIRA_VIRTUAL_API is enabled (the default). Otherwise, they are expected to
+ * be provided by the application at compile time.
+ */
 class Moira {
     
     friend class Debugger;
     friend class Breakpoints;
     friend class Watchpoints;
     friend class Catchpoints;
-    friend struct PomAtcProbe;      // POM68K (host): gate seam (tests/moira_rules_test.cpp)
+    friend class MMU030;
+    friend class MMU040;
+    friend class Cache;
+    friend class ICache;
+    friend class DCache;
     
     
     //
@@ -43,16 +72,18 @@ class Moira {
     
 protected:
     
-    // Emulated CPU model
-    Model cpuModel = Model::M68000;
+    // The emulated CPU model
+    CPUModel cpuModel = CPUModel::M68000;
+
+    // The emulated coprocessor (if any)
+    CPModel cpModel = CPModel::NONE;
+
+    // Host opt-in for software floating point on an LC040.
+    bool lc040SoftFpu = false;
+    void setLC040SoftFpu(bool enabled);
 
     // Instruction set used by the disassembler
-    Model dasmModel = Model::M68000;
-
-    // POM68K (host) O5: FPU attached through the coprocessor interface (68882 on
-    // the Mac LC II PDS card). NONE keeps the jump table byte-identical to
-    // stock Moira (F2xx = Line-F). Configured via setFPUModel().
-    FPUModel fpuModel = FPUModel::NONE;
+    CPUModel dasmModel = CPUModel::M68000;
     
     // Visual style for disassembled instructions
     DasmStyle instrStyle;
@@ -67,14 +98,22 @@ protected:
     
 public:
     
-    // POM68K (host): visit only between instructions, with the same CPU/FPU and
-    // timing configuration on load. Host owns RAM, models and code guards.
-    // See MoiraState.h and POM68K_SURFACE.md, save-state contract.
-    template<class Ar> void pomVisitState(Ar& ar);
+    /// The memory management unit
+    MMU mmu = MMU(*this);
 
-    // Debugger handling breakpoints, watchpoints, catchpoints, and instruction tracing
+    /// The floating-point unit
+    FPU fpu = FPU();
+
+    /// Debugger (breakpoints, watchpoints, catchpoints, tracing)
     Debugger debugger = Debugger(*this);
-    
+
+    /// Instruction cache (68020+)
+    ICache iCache = ICache(*this);
+
+    /// Data cache (68030+)
+    DCache dCache = DCache(*this);
+
+
     
     //
     // Internals
@@ -91,126 +130,40 @@ protected:
     // Prefetch queue for fetching instructions
     PrefetchQueue queue {};
 
-    // Instruction cache (68020 only)
-    InstructionCache iCache {};
-
     // Speed trackers (68020 only)
     CycleBudget budget {};
-
-    // Interrupt mode
-    IrqMode irqMode {IrqMode::AUTO};
     
     // Current value on the IPL (Interrupt Priority Level) pins
     u8 ipl {};
 
-    // POM68K: level 7 is transition sensitive on the 68020 and later.
-    // [B] MC68020UM-1992 §6.1.9 — level 7 transition sensitive (Fig. 6-3).
-    // [B] MC68030UM-1989 §8.1.9 — the same rule, in the same words.
-    // [B] MC68040UM-1993 §8.2.9 — the same rule (Fig. 8-3).
-    // "The processor recognizes an interrupt request each time the
-    // external interrupt request level changes from some lower level to
-    // level 7, regardless of the value in the mask"; a level 7 held under
-    // mask 7 raises no second interrupt, but a mask lowered below 7
-    // recognises it by level comparison. The
-    // latch records a PIN transition to 7 (setIPL) and is consumed by the
-    // level-7 interrupt that answers it. The sampled level cannot serve:
-    // execInterrupt zeroes it, so every resample would look like an edge.
-    // Upstream Moira took a held level 7 again after every instruction —
-    // on the 68020 core, whose interrupt sequence bills no cycle, a stall
-    // at constant clock (tests/jit_program_fuzz.cpp --model 20 --irq-timed,
-    // seed 3, before the harness fell back to level 6). The 68000/68010
-    // keep the upstream behaviour (no primary source consulted for them).
-    bool nmiLatch {};
-    bool irqEligible() const {
-        if (reg.ipl > reg.sr.ipl) return true;
-        if (reg.ipl != 7) return false;
-        return cpuModel < Model::M68EC020 || nmiLatch;
-    }
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // NEOST_IPLFETCH: IPL pin history for deferred recognition (a faithful port
-    // of WinUAE ipl_fetch_next). iplDelay4 == 0 ⇒ feature off, so
-    // pollIpl() ≡ reg.ipl = ipl. Set through setIplDelay(). NeoST's design note
-    // is its docs/MOIRA_WINUAE_CONVERGENCE.md (not part of this tree).
-    u8  iplPrev {};            // previous pin value (≙ regs.ipl_pin_p)
-    i64 iplChangeClock {};     // clock (cycles) of the last change (≙ ipl_pin_change_evt)
-    i64 iplChangeClockPrev {-1000};  // clock of the PREVIOUS change (≙ ipl_pin_change_evt_p)
-    i64 iplDelay4 {0};         // "pin settled" threshold (cycles); 0 ⇒ off
-    i64 iplDelay2 {0};         // "old value" threshold (cycles)
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // WinUAE's "deferred" report (regs.ipl[1]): a pin change seen less than 2
-    // cycles before the sample is NOT taken for the coming boundary but becomes
-    // the POLLED value at the NEXT one (the ipl[0]=ipl[1] rotation of the run
-    // loop, newcpu.c:5693). −1 = nothing pending.
-    int iplDeferred {-1};
-    // [D] fx68k @ 0602ee46 (rInterrupt latched at the same T3 as pswI);
-    //     Hatari @ f0736b24, generated STOP handler (checkint() before
-    //     regs.sr = sr) — both as NeoST read them.
-    // POM68K (back-port of NeoST 993ce5e / 2fc53a8): a 68000 STOP tests the
-    // interrupt BEFORE it writes the new mask, then re-executes every
-    // 4 cycles, so an interrupt unmasked by the operand leaves at STOP+8,
-    // not STOP+4. Clock until which checkForIrq is held after a STOP, and
-    // the phase its 4-cycle iterations are counted from; -1 = none.
-    // [F] Hatari takes it at STOP+12; the two readings of the silicon
-    //     disagree on this segment. Settled by: a capture on a 68000.
-    i64 stopGraceUntil {-1};
-
-    // [F] Interrupt-recognition delay after a mask-lowering SR-write,
-    //     68020+ only: two instructions here (irqDelay = 2), where the PRM
-    //     reads as one — POM68K_VENDOR.md row 13, moira_rules_test
-    //     irqDelayAfterMaskLowering. Settled by: a capture. (This comment
-    //     said "one-instruction" until 2026-11-22.)
-    int irqDelay {0};
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K Q2 — 68040 trace machinery (WinUAE MakeFromSR_x one-shot +
-    // do_trace): trace040Pending fires vector 9 AFTER the current
-    // instruction (armed by an SR write whose OLD Tx bits were set, even
-    // if the write cleared them, or by a staged TRACE_EXC on the 040);
-    // tracePc040 is WinUAE's regs.trace_pc — the format-$2 frame's
-    // address field (0 unless the staged path latched it). The 68020 and
-    // 68030 use the same field: execute() latches the traced
-    // instruction's address when it stages TRACE_EXC.
-    bool trace040Pending {false};
-    u32 tracePc040 {0};
-
+    // Set when a level 7 interrupt is taken; cleared when the pins leave level 7
+    bool nmiTaken {};
+    
     // Value on the lower two function code pins (FC1|FC0)
     u8 fcl {2};
     
     // Source of the function code pins
     u8 fcSource {};
     
-    // Remembers the vector number of the most recent exception
-    int exception {};
-
     // Controls exact timing of instructions running in loop mode (68010 only)
     int loopModeDelay {2};
     
     // Read buffer (appears in 68010 exception frames)
     u16 readBuffer {};
-
+    
     // Write buffer (appears in 68010 exception frames)
     u16 writeBuffer {};
-
-    // POM68K (host): the two buffers above are architectural on the 68010 ONLY (its
-    // format-$8 frame is the single consumer, writeStackFrame1000). They are
-    // serialized in the save state, and maintaining them on every core made
-    // the snapshot fingerprint depend on which engine executed recent
-    // accesses — the JIT does not maintain them — so restore-then-run
-    // diverged from run (savestate_040_test § determinism, 2026-08-12).
-    // These setters keep the 68010 exact and compile to nothing elsewhere;
-    // the argument is still evaluated, so a side-effectful source (the
-    // address-error dummy readM) keeps its bus access on every core.
-    template <Core C> void pomSetRB(u16 v) {
-        if constexpr (C == Core::C68010) readBuffer = v;
-    }
-    template <Core C> void pomSetWB(u16 v) {
-        if constexpr (C == Core::C68010) writeBuffer = v;
-    }
     
-    // State flags used internally
+
+    // Internal state flags
     int flags {};
     
+    // Restart information of a faulted instruction (68020+)
+    Restart restart {};
+
+    // A data cycle that a bus error handler has completed (68020, 68030)
+    CompletedCycle completed {};
+
     
     //
     // Lookup tables
@@ -218,1946 +171,855 @@ protected:
     
 private:
     
-    // Jump table holding the instruction handlers
+    // Function pointer types
     typedef void (Moira::*ExecPtr)(u16);
+    typedef void (Moira::*DasmPtr)(StrWriter&, u32&, u16, Instr, Mode, Size) const;
+
+    // Jump table holding the instruction handlers
     ExecPtr *exec = nullptr;
     
     // Jump table holding the loop mode instruction handlers (68010 only)
     ExecPtr *loop = nullptr;
     
-    /* Jump table holding the disassembler handlers.
-     *
-     * Since the handlers are not templated, the instruction, addressing mode
-     * and size attributes that used to be template arguments are passed in at
-     * call time. They are read from the InstrInfo table, which is built
-     * alongside this one.
-     */
-    typedef void (Moira::*DasmPtr)(StrWriter&, u32&, u16, Instr, Mode, Size) const;
+    // Jump table holding the disassembler handlers of the emulated CPU model
     DasmPtr *dasm = nullptr;
     
-    // Table holding instruction information
+    // Info table holding instruction descriptions of the emulated CPU model
     InstrInfo *info = nullptr;
+
+    // Tables of the disassembler model (only allocated if it differs from the CPU model)
+    DasmPtr *dasmAlt = nullptr;
+    InstrInfo *infoAlt = nullptr;
+
     
-    
+    //
+    // Public API
+    //
+
+public:
+
     //
     // Constructing
     //
-    
-public:
-    
-    // Constructs and initializes a Moira instance
+
+    /** @brief Constructs and initializes a Moira instance
+     *
+     * The new instance emulates a Motorola 68000 and uses the default
+     * disassembler style. The jump tables are created here. Call setModel()
+     * to select a different CPU and reset() to bring the CPU into a defined
+     * state before executing the first instruction.
+     */
     Moira();
     
-    //  Destroys the Moira instance
     virtual ~Moira();
+    Moira(const Moira &) = delete;
+    Moira &operator=(const Moira &) = delete;
     
-    // Returns a version string for this release
+    /** @brief Returns a version string for this release
+     *
+     * @return A string of the form `major.minor[.patch][bN]`, e.g., "5.0",
+     *         "5.0.1" or "5.1b2" for the second beta of release 5.1.
+     */
     static std::string version();
 
-    // Returns a build number string for this release
-    static std::string build();
-    
-protected:
-    
-    // Creates or updates the jump tables for execution and disassembly
-    void createJumpTable(Model cpuModel, Model dasmModel);
-    void createJumpTable(Model model) { createJumpTable(model, model); }
-    
-private:
-    
-    /* Core routines for creating jump tables
+    /** @brief Returns a build number string for this release
      *
-     * Jump table creation is deliberately split into several parts.
-     * As a single function it expands into several hundred kilobytes of
-     * straight-line code per core, which drives the compiler's memory
-     * consumption far beyond what some environments provide.
+     * @return The version string, followed by the marker `[DEBUG BUILD]` if
+     *         assertions are enabled, followed by the date and time the
+     *         library was compiled.
      */
-    
-    template <Core C> void createJumpTable(Model model, bool registerDasm);
-    template <Core C> void createJumpTable1(Model model, bool registerDasm);
-    template <Core C> void createJumpTable2(Model model, bool registerDasm);
-    template <Core C> void createJumpTable3(Model model, bool registerDasm);
-    template <Core C> void createJumpTable4(Model model, bool registerDasm);
-    template <Core C> void createJumpTable5(Model model, bool registerDasm);
-    template <Core C> void createJumpTable6(Model model, bool registerDasm);
-    template <Core C> void createJumpTable7(Model model, bool registerDasm);
-    template <Core C> void createJumpTable8(Model model, bool registerDasm);
-    template <Core C> void createJumpTable9(Model model, bool registerDasm);
-    template <Core C> void createJumpTable10(Model model, bool registerDasm);
-    template <Core C> void createJumpTable11(Model model, bool registerDasm);
-    template <Core C> void createJumpTable12(Model model, bool registerDasm);
-    
-    
+    static std::string build();
+
+
     //
     // Configuring
     //
-    
-public:
-    
-    // Sets the emulated CPU models
-    void setModel(Model cpuModel, Model dasmModel);
-    void setModel(Model model) { setModel(model, model); }
 
-    // [B] MC68881UM-1989 §6.4.2.1: reset state; attachment is a host API.
-    // POM68K O5: attaches or detaches an FPU (rebuilds the jump table and
-    // resets the FPU to its power-up state, MC68881UM-1989 § 6.4.2.1)
-    void setFPUModel(FPUModel model);
-    FPUModel getFPUModel() const { return fpuModel; }
-    Model getModel() const { return cpuModel; }
+    /** @brief Sets the emulated CPU model and the model used by the disassembler
+     *
+     * The CPU model determines which instructions and addressing modes are
+     * available, how long they take, and which exceptions and stack frames
+     * are generated. The disassembler model determines which instructions are
+     * recognized when disassembling. Both models are independent of each
+     * other. For example, a 68000 can be emulated while the disassembler
+     * recognizes the complete 68040 instruction set.
+     *
+     * Changing a model rebuilds the jump tables, reconfigures the built-in
+     * MMU and FPU, masks the CACR to the bits supported by the new model, and
+     * resets the caches. The call has no effect if both models are unchanged.
+     *
+     * @note  The registers are not modified. Call reset() after changing the
+     *        CPU model to bring the CPU into a defined state.
+     *
+     * @param cpu   The CPU model to emulate
+     * @param dasm  The CPU model the disassembler is based on
+     */
+    void setModel(CPUModel cpu, CPUModel dasm);
     
-    // Configures the syntax style for disassembly output
-    void setDasmSyntax(Syntax value);
+    /** @brief Sets the emulated CPU model (the disassembler uses the same model)
+     *  @param model  The CPU model
+     *  @see setModel(CPUModel, CPUModel)
+     */
+    void setModel(CPUModel model) { setModel(model, model); }
+
+    /// @brief Returns the emulated CPU model
+    CPUModel getModel() const { return cpuModel; }
+
+    /// @brief Returns the CPU model used by the disassembler
+    CPUModel getDasmModel() const { return dasmModel; }
+
+    /** @brief Sets the CPU model used by the disassembler
+     *
+     * The emulated CPU model is not changed.
+     *
+     * @param model  The CPU model the disassembler is based on
+     */
+    void setDasmModel(CPUModel model) { setModel(cpuModel, model); }
+
+    /** @brief Returns the selected coprocessor
+     *
+     * The returned value is the selection made with setCPModel(). It does not
+     * tell whether the coprocessor is effective. Use hasExternalFPU() for that.
+     */
+    CPModel getCPModel() const { return cpModel; }
     
-    // Sets the number format for disassembly output
-    void setDasmNumberFormat(DasmNumberFormat value) { setNumberFormat(instrStyle, value); }
+    /** @brief Selects the coprocessor that is connected to the coprocessor interface
+     *
+     * The built-in units are determined by the CPU model: The 68040 has an FPU
+     * and an MMU, the 68030 and the 68LC040 have an MMU, and the EC variants
+     * have neither. A coprocessor (68881 or 68882) can be connected to CPUs
+     * with a coprocessor interface (68EC020, 68020, 68EC030, 68030). For other
+     * CPU models, the selection is remembered but has no effect. It is not
+     * changed when the CPU model changes, so the order of setModel and
+     * setCPModel does not matter.
+     *
+     * @param model  The coprocessor to connect, or CPModel::NONE
+     */
+    void setCPModel(CPModel model);
     
-    // Sets the letter case for disassembly output
-    void setDasmLetterCase(LetterCase value);
-    
-    // Sets the indentation for disassembly output
-    void setDasmIndentation(int value) { instrStyle.tab = value; }
-    
-    // Sets the number format for data dumps
-    void setDumpNumberFormat(DasmNumberFormat value) { setNumberFormat(instrStyle, value); }
-    
-    // Sets the indentation for data dumps
-    void setDumpIndentation(int value) { dataStyle.tab = value; }
-    
-private:
-    
-    // Helper function
-    void setNumberFormat(DasmStyle &style, const DasmNumberFormat &value);
-    
-    
+    /** @brief Returns the visual style of the disassembler output
+     *
+     * The style controls the syntax (Moira, MIT, GNU, ...), the letter case
+     * of mnemonics and registers, the number format of immediate values and
+     * displacements, and the indentation between the mnemonic and its
+     * operands.
+     */
+    DasmStyle getDasmStyle() const { return instrStyle; }
+
+    /** @brief Sets the visual style of the disassembler output
+     *
+     * The style affects the instruction text (`%i` in format strings). It does
+     * not affect addresses, instruction words or registers, which are
+     * formatted with the data style.
+     *
+     * @param style  The new style
+     * @throws std::runtime_error if the number format is invalid, i.e., if
+     *         the prefix is a null pointer or the radix is neither 10 nor 16.
+     */
+    void setDasmStyle(const DasmStyle &style);
+
+    /** @brief Returns the style used for data
+     *
+     * The data style controls how addresses (`%p`), instruction words (`%b`)
+     * and register values (`%Nd`, `%Na`) are printed.
+     */
+    DasmStyle getDataStyle() const { return dataStyle; }
+
+    /** @brief Sets the style used for data
+     *
+     * @note  Only the number format and the indentation between multiple words
+     *        matter.
+     *
+     * @param style  The new style
+     * @throws std::runtime_error if the number format is invalid, i.e., if
+     *         the prefix is a null pointer or the radix is neither 10 nor 16.
+     */
+    void setDataStyle(const DasmStyle &style);
+
+
     //
-    // Querying CPU properties
+    // Querying the model
     //
-    
-public:
-    
-    // Checks if the emulated CPU model has a coprocessor interface
+
+    /** @brief Checks if the emulated CPU has a coprocessor interface (CPI)
+     *
+     * Only the 68020 and the 68030 (including their EC variants) can be
+     * connected to a coprocessor.
+     */
     bool hasCPI() const;
     
-    // Checks if the emulated CPU model has a memory management unit (MMU)
+    /** @brief Checks if the emulated CPU has a memory management unit (MMU)
+     *
+     * If an MMU is present, it is accessible via the public member `mmu`.
+     */
     bool hasMMU() const;
     
-    // Checks if the emulated CPU model has a floating-point unit (FPU)
+    /** @brief Checks if the emulated system has a floating-point unit
+     *
+     * @return true if the CPU has a built-in FPU or an external FPU is
+     *         attached (see hasInternalFPU() and hasExternalFPU()).
+     */
     bool hasFPU() const;
     
-    // Returns the cache register mask, indicating the accessible CACR bits
-    u32 cacrMask() const;
+    /// @brief Checks if the emulated CPU has a built-in floating-point unit (68040)
+    bool hasInternalFPU() const;
+
+    /** @brief Checks if an external FPU (68881 or 68882) is attached
+     *
+     * An external FPU is attached if the CPU has a coprocessor interface and
+     * a coprocessor has been selected with setCPModel().
+     */
+    bool hasExternalFPU() const;
+
+    /** @brief Checks if a CPU model supports an instruction
+     *
+     * The function does not depend on the emulated CPU. It can be used to
+     * query the instruction set of any model.
+     *
+     * @param model  The CPU model
+     * @param I      The instruction (mnemonic)
+     */
+    bool isAvailable(CPUModel model, Instr I) const;
+
+    /** @brief Checks if a CPU model supports an instruction with the given addressing mode and size
+     *
+     * @param model  The CPU model
+     * @param I      The instruction (mnemonic)
+     * @param M      The addressing mode
+     * @param S      The operand size
+     */
+    bool isAvailable(CPUModel model, Instr I, Mode M, Size S) const;
+
+    /** @brief Checks if a CPU model supports an instruction with the given addressing mode, size and extension word
+     *
+     * For some instructions, the availability depends on the extension word.
+     * For example, MOVEC is available on different models depending on the
+     * control register that is accessed.
+     *
+     * @param model  The CPU model
+     * @param I      The instruction (mnemonic)
+     * @param M      The addressing mode
+     * @param S      The operand size
+     * @param ext    The first extension word
+     */
+    bool isAvailable(CPUModel model, Instr I, Mode M, Size S, u16 ext) const;
+
+    /** @brief Returns the address bus mask
+     *
+     * The mask defines the addressable memory range. It is 0x00FFFFFF for
+     * CPUs with a 24-bit address bus (68000, 68010 and 68EC020) and
+     * 0xFFFFFFFF for all other models.
+     */
+    u32 getAddrMask() const;
     
-    // Returns the address bus mask, which defines the CPU's addressable memory range
-    u32 addrMask() const;
-    
-protected:
-    
-    // Returns the address bus mask for a specific CPU core type
-    template <Core C> u32 addrMask() const;
-    
-    
+    /** @brief Returns the cache register mask
+     *
+     * The mask indicates which bits of the CACR can be set on the emulated
+     * CPU. All other bits read as 0. The mask is 0x0003 for the 68020, 0x3313
+     * for the 68030 and 0x80008000 for the 68040 family. For CPUs without
+     * caches, the value has no meaning.
+     */
+    u32 getCacrMask() const;
+
+
     //
     // Running the CPU
     //
-    
-public:
-    
-    // Performs a hard reset, simulating the native power-up sequence
+
+    /** @brief Performs a hard reset, simulating the native power-up sequence
+     *
+     * The registers are cleared, the CPU enters supervisor mode with the
+     * interrupt mask set to 7, the caches are flushed, and the MMU, the FPU
+     * and the debugger are reset. Then, the initial supervisor stack pointer
+     * and the initial program counter are read from addresses 0 and 4 (via
+     * read16OnReset()), and the prefetch queue is filled. Finally, the
+     * delegate didResetCPU() is called.
+     *
+     * The clock is not cleared. It keeps counting from its current value. Use
+     * setClock() to change it.
+     */
     void reset();
     
-    // Executes a single instruction
-    void execute();
+    /** @brief Executes a single instruction
+     *
+     * Depending on the state of the CPU, the function processes the next
+     * instruction, a pending exception (interrupt, trace, ...), or merely
+     * lets time pass if the CPU is halted or stopped. Memory accesses and
+     * timing are reported to the application via read8() ... write32() and
+     * sync().
+     *
+     * @return The number of cycles that have elapsed
+     */
+    i64 execute();
 
-    // Executes instructions for the given number of cycles.
-    //
-    // Note: Since the emulartor cannot stop in the middle of an instruction,
-    // the number of actually elapsed cycles may exceed the specified cycle
-    // budget.
-    void execute(i64 cycles);
+    /** @brief Executes instructions for a given number of cycles
+     *
+     * Since the emulator cannot stop in the middle of an instruction, the
+     * number of cycles that actually elapse may exceed the cycle budget by
+     * the duration of the last instruction.
+     *
+     * @param cycles  The cycle budget
+     * @return The number of cycles that have actually elapsed
+     */
+    i64 execute(i64 cycles);
     
-    // Executes instructions until a specific cycle count is reached.
-    void executeUntil(i64 cycle);
+    /** @brief Executes instructions until a specific cycle count is reached
+     *
+     * Like execute(i64), the function may overshoot by the duration of the
+     * last instruction.
+     *
+     * @param cycle  The target value of the clock (see getClock())
+     * @return The number of cycles that have actually elapsed
+     */
+    i64 executeUntil(i64 cycle);
+
+    /** @brief Continues program execution at the specified address
+     *
+     * Unlike setPC, this function refills the prefetch queue (which causes
+     * bus accesses and advances the clock), so that the next call to
+     * execute() runs the instruction at the given address. Odd addresses are
+     * rounded down.
+     *
+     * @param addr  The address of the next instruction
+     */
+    void jump(u32 addr);
     
-    // Checks if the CPU is in a HALT state
+    /** @brief Checks if the CPU is in a HALT state
+     *
+     * The CPU halts if an unrecoverable error occurs, e.g., a bus error while
+     * processing a bus error. While halted, execute() only advances the clock.
+     * Only reset() leaves this state. The delegate didHaltCPU() is called when
+     * the CPU enters it.
+     */
     bool isHalted() const { return flags & State::HALTED; }
 
-    // POM68K (host): checks if the CPU sits in a STOP instruction (waiting for
-    // an interrupt) — the diagnostic that separates "spinning" from
-    // "stopped on an IPL that never rises" (tests/lcii_trace.cpp)
+    /** @brief Checks if the CPU is in the STOP state
+     *
+     * The CPU enters this state by executing the STOP instruction. It
+     * remains there until an interrupt with a sufficiently high priority
+     * occurs or the CPU is reset.
+     */
     bool isStopped() const { return flags & State::STOPPED; }
 
 
-#if MOIRA_ENABLE_JIT
     //
-    // POM68K (host) JIT seam (src/jit/POM68K_JIT.md)
+    // Accessing registers
     //
-    // POM68K's second execution engine lives OUTSIDE this vendored core, in
-    // src/jit/, and drives this object. It needs four things Moira does not
-    // otherwise expose. They are public rather than protected on purpose:
-    // jit::Engine holds a `moira::Moira&`, not a machine wrapper, so that
-    // one engine serves every 68040 machine profile — and a public,
-    // non-virtual member call is the only shape that stays a DIRECT call.
-    // (POM68K_VENDOR.md § "willFetchInstr … Folded inline": a per-instruction
-    // indirect call once measured ~11% of the whole emulator.)
+
+    /** @brief Gets the value of a data register
+     *  @param n  The register number (0 - 7)
+     */
+    u32 getD(int n) const { return readD(n); }
+
+    /** @brief Sets the value of a data register
+     *  @param n  The register number (0 - 7)
+     *  @param v  The new value
+     */
+    void setD(int n, u32 v) { writeD(n, v); }
+    
+    /** @brief Gets the value of an address register
+     *
+     * A7 is the active stack pointer, i.e., the USP, the ISP or the MSP
+     * depending on the operation mode (see getSP()).
+     *
+     * @param n  The register number (0 - 7)
+     */
+    u32 getA(int n) const { return readA(n); }
+
+    /** @brief Sets the value of an address register
+     *  @param n  The register number (0 - 7)
+     *  @param v  The new value
+     */
+    void setA(int n, u32 v) { writeA(n, v); }
+
+    /** @brief Returns a read-only view of the complete register set
+     *
+     * The returned reference stays valid for the lifetime of the Moira
+     * instance and always reflects the live state. Copy the object to take
+     * a snapshot.
+     */
+    const Registers &getRegisters() const { return reg; }
+
+    // Program counter
+
+    /** @brief Gets the address of the next instruction (at an instruction boundary)
+     *
+     * Internally, the program counter follows the hardware: it always holds
+     * the address of the word in IRC, which is two bytes ahead of the
+     * instruction to be executed next. This function hides the offset.
+     *
+     * @note  Inside a delegate, the value depends on how far the current
+     *        instruction has progressed. Use getPC0() to get the address of
+     *        the instruction that is currently executed.
+     */
+    u32 getPC() const { return reg.pc - 2; }
+
+    /** @brief Sets the address of the next instruction (see getPC)
+     *
+     * This function only changes the program counter. It neither refills the
+     * prefetch queue nor updates pc0. To redirect program execution, use
+     * jump().
+     */
+    void setPC(u32 val) { reg.pc = val + 2; }
+
+    /** @brief Gets the address of the start of the current instruction
+     *
+     * While an instruction executes (e.g., inside a delegate), this is the
+     * address of the instruction being executed. Between instructions, it is
+     * the address of the next instruction to execute. This is what debuggers
+     * need to display the current position.
+     */
+    u32 getPC0() const { return reg.pc0; }
+
+    /// @brief Gets the address of the instruction that executed before the current one
+    u32 getPrevPC0() const { return reg.prev_pc0; }
+
+    /** @brief Sets the address of the start of the current instruction
+     *
+     * This function only changes the bookkeeping value. To redirect program
+     * execution, use jump(), which keeps the program counter, pc0 and the
+     * prefetch queue consistent.
+     */
+    void setPC0(u32 val) { reg.pc0 = val; }
+
+    // Prefetch queue
+
+    /** @brief Gets the IRC register
+     *
+     * IRC (instruction register capture) is the second stage of the
+     * prefetch queue. It holds the word that follows the instruction word.
+     */
+    u16 getIRC() const { return queue.irc; }
+    
+    /** @brief Gets the IRD register
+     *
+     * IRD (instruction register decode) is the first stage of the prefetch
+     * queue. It holds the opcode of the instruction that is executed next.
+     */
+    u16 getIRD() const { return queue.ird; }
+
+    /** @brief Gets the data latch that holds the most recently fetched word
+     *  @note  The latch is the 68000 pipeline stage in front of IRC.
+     */
+    u16 getEDB() const { return queue.edb; }
+    
+    // Status register and stack pointers
+
+    /** @brief Gets the value of the Condition Code Register (CCR)
+     *
+     * The CCR is the lower byte of the status register. It contains the flags
+     * C (bit 0), V (bit 1), Z (bit 2), N (bit 3) and X (bit 4).
+     */
+    u8 getCCR() const;
+
+    /** @brief Sets the value of the Condition Code Register (CCR)
+     *
+     * Only the lower five bits are used.
+     */
+    void setCCR(u8 val);
+    
+    /** @brief Gets the value of the Status Register (SR)
+     *
+     * The register consists of the trace bits (T1 in bit 15, T0 in bit 14),
+     * the supervisor bit (S, bit 13), the master bit (M, bit 12), the
+     * interrupt priority mask (bits 8 - 10), and the CCR (bits 0 - 4). The
+     * bits T0 and M exist on the 68020 and later models only.
+     */
+    u16 getSR() const;
+
+    /** @brief Sets the value of the Status Register (SR)
+     *
+     * Besides setting the flags, the function updates the trace mode,
+     * switches the stack pointer if the operation mode changes (see
+     * setSupervisorFlags()), and makes the CPU re-evaluate pending
+     * interrupts. The bits T0 and M are ignored on the 68000 and 68010.
+     */
+    void setSR(u16 val);
+    
+    /** @brief Gets the current value of the stack pointer (SP)
+     *
+     * This is the active stack pointer, i.e., the value of A7. Depending on
+     * the S and M bits, it is the USP, the ISP or the MSP.
+     */
+    u32 getSP() const { return reg.sp; }
+
+    /// @brief Sets the current value of the stack pointer (SP, A7)
+    void setSP(u32 val) { reg.sp = val; }
+    
+    /** @brief Gets the User Stack Pointer (USP)
+     *
+     * The function returns the correct value regardless of whether the USP is
+     * currently active (user mode) or banked out (supervisor mode).
+     */
+    u32 getUSP() const { return !reg.sr.s ? reg.sp : reg.usp; }
+
+    /// @brief Sets the User Stack Pointer (USP), regardless of whether it is currently active
+    void setUSP(u32 val) { if (!reg.sr.s) reg.sp = val; else reg.usp = val; }
+    
+    /** @brief Gets the Interrupt Stack Pointer (ISP)
+     *
+     * The ISP is the supervisor stack pointer. On the 68020 and later models
+     * it is used if the M bit is clear.
+     */
+    u32 getISP() const { return (reg.sr.s && !reg.sr.m) ? reg.sp : reg.isp; }
+
+    /// @brief Sets the Interrupt Stack Pointer (ISP), regardless of whether it is currently active
+    void setISP(u32 val) { if (reg.sr.s && !reg.sr.m) reg.sp = val; else reg.isp = val; }
+    
+    /** @brief Gets the Master Stack Pointer (MSP)
+     *
+     * The MSP exists on the 68020 and later models. It is used in supervisor
+     * mode if the M bit is set.
+     */
+    u32 getMSP() const { return (reg.sr.s && reg.sr.m) ? reg.sp : reg.msp; }
+
+    /// @brief Sets the Master Stack Pointer (MSP), regardless of whether it is currently active
+    void setMSP(u32 val) { if (reg.sr.s && reg.sr.m) reg.sp = val; else reg.msp = val; }
+    
+    /// @brief Gets the Vector Base Register (VBR), which exists on the 68010 and later models
+    u32 getVBR() const { return reg.vbr; }
+
+    /// @brief Sets the Vector Base Register (VBR)
+    void setVBR(u32 val) { reg.vbr = val; }
+    
+    /** @brief Gets the Source Function Code register (SFC)
+     *
+     * The SFC (68010 and later) provides the function code for source
+     * operands of the MOVES instruction.
+     */
+    u8 getSFC() const { return reg.sfc; }
+
+    /// @brief Sets the Source Function Code register (SFC); only the lower three bits are used
+    void setSFC(u8 val) { reg.sfc = val & 0b111; }
+    
+    /** @brief Gets the Destination Function Code register (DFC)
+     *
+     * The DFC (68010 and later) provides the function code for destination
+     * operands of the MOVES instruction.
+     */
+    u8 getDFC() const { return reg.dfc; }
+
+    /// @brief Sets the Destination Function Code register (DFC); only the lower three bits are used
+    void setDFC(u8 val) { reg.dfc = val & 0b111; }
+    
+    /** @brief Gets the Cache Control Register (CACR)
+     *
+     * The CACR (68020 and later) controls the on-chip caches. Bits that are
+     * not supported by the emulated model read as 0 (see getCacrMask()).
+     */
+    u32 getCACR() const { return reg.cacr; }
+
+    /** @brief Sets the Cache Control Register (CACR)
+     *
+     * The value is masked with getCacrMask(). If one of the clear bits is
+     * set, the corresponding cache (entry) is invalidated. The delegate
+     * didChangeCACR() is called.
+     */
+    void setCACR(u32 val);
+    
+    /** @brief Gets the Cache Address Register (CAAR)
+     *
+     * The CAAR (68020 and 68030) selects the cache entry that is cleared if
+     * one of the clear-entry bits in the CACR is set.
+     */
+    u32 getCAAR() const { return reg.caar; }
+
+    /** @brief Sets the Cache Address Register (CAAR)
+     *
+     * The delegate didChangeCAAR() is called.
+     */
+    void setCAAR(u32 val);
+
+    /** @brief Sets or clears supervisor mode
+     *
+     * The active stack pointer is swapped accordingly: The value of A7 is
+     * saved in the stack pointer register that was active before and
+     * replaced by the one that becomes active.
+     *
+     * @param value  true to enter supervisor mode, false to enter user mode
+     */
+    void setSupervisorMode(bool value);
+    
+    /** @brief Sets or clears master mode
+     *
+     * The M bit selects between the ISP and the MSP in supervisor mode. It
+     * only exists on the 68020 and later models. The active stack pointer is
+     * swapped accordingly.
+     *
+     * @param value  true to set the M bit, false to clear it
+     */
+    void setMasterMode(bool value);
+    
+    /** @brief Sets or clears the supervisor and master flags
+     *
+     * This function changes both flags at once. The active stack pointer is
+     * swapped accordingly, so that A7 refers to the USP, the ISP or the MSP
+     * depending on the new mode.
+     *
+     * @param s  The new value of the S bit
+     * @param m  The new value of the M bit
+     */
+    void setSupervisorFlags(bool s, bool m);
+
+
     //
-    // MOIRA_ENABLE_JIT=0 removes this API, its storage and its fetch/data
-    // paths. With it enabled, either an Engine or the interpreter-owned
-    // window can arm the accelerators; no engine object is required.
-
-public:
-
-    // Instruction-fetch code window. While armed, the 68040 opcode, the
-    // lookahead at pc+2 and every extension word whose LOGICAL address falls
-    // inside [base, base+len) are served straight from `host` instead of
-    // walking the ATC and re-entering the machine's memory map.
+    // Accessing the clock
     //
-    // `host` points INTO the guest RAM/ROM buffer. On the 040 every fetched
-    // byte, and the whole embedded range before native block entry, is
-    // verified against resident I-cache data; translation changes
-    // additionally ride in `super` and `gen`.
-    struct PomJitWindow {
-        const u8 *host = nullptr;   // host bytes for logical address `base`
-        u32  base = 0;
-        u32  phys = 0;              // physical address corresponding to base
-        u32  len  = 0;              // >= 4 whenever armed (ird + irc)
-        u32  gen  = 0;              // pomJitMmuGen at validation time
-        bool armed = false;
-        bool super = false;         // sr.s the translation was validated for
-        bool atc040 = false;        // an architectural instruction ATC hit is bypassed
-    };
-    PomJitWindow pomJitWindow;
-    using PomCodeSpanFn = const u8 *(*)(void *ctx, u32 physPage, u32 &len);
-    bool pomInterpWindowOn {false};         // pomSetInterpWindow
-    PomCodeSpanFn pomCodeSpanFn {nullptr};
-    void *pomCodeSpanCtx {nullptr};
-    int pomInterpBackoff {0};
-    void pomInterpArm(u32 pc);
 
-    // Bumped by every event that can change a logical→physical mapping:
-    // ATC flushes (PFLUSH family), TC/URP/SRP writes and TTR writes. A
-    // window whose `gen` no longer matches is refused without any further
-    // check — the one thing an address-range test cannot detect.
-    u32 pomJitMmuGen = 0;
+    /** @brief Returns the current CPU clock cycle count
+     *
+     * The clock counts the cycles that have elapsed since power-up (or the
+     * last call to setClock()). It advances whenever the CPU calls sync().
+     */
+    i64 getClock() const { return clock; }
+    
+    /** @brief Sets the CPU clock cycle count
+     *
+     * Only the counter is changed. No other state is affected.
+     */
+    void setClock(i64 val) { clock = val; }
 
-    // Every site that can change a logical→physical mapping goes through
-    // here. The generation counter alone is enough for the code window,
-    // which re-checks it on every fetch; the data TLB is read by GENERATED
-    // code that checks nothing but the tag, so it has to be emptied at the
-    // source instead.
-    void pomJitMapMoved() { pomJitMmuGen++; pomJitDtlbFlush(); }
 
-    // ── J3b: derived state dies WITH the ATC entry it derives from ──────
-    // The windows and the data TLB serve accesses without re-walking, which
-    // is exactly what an ATC hit does — so a hit through them is bit-exact
-    // as long as the backing ATC entry is still resident. Once that entry
-    // is EVICTED, the interpreter's next access re-walks and re-sets the
-    // descriptor's U bit; an entry that outlived the eviction would skip
-    // that guest-visible write. Invisible for weeks — until Mac OS VM
-    // started READING the U bits for page aging (it does, on 8 KB pages,
-    // once the System is up), at which point each engine's different
-    // survival pattern turned into a different guest EXECUTION: three
-    // engines, three futures, all "correct" and none comparable. Called on
-    // both eviction sites (replacement in mmu040AtcFill, the write-M
-    // invalidate in mmu040AtcLookup): kills the derived slices, the hot
-    // pair and the code window for THAT page only, in O(slices).
-    // `code` says WHICH derived state the evicted entry backed: the fetch
-    // window derives from instruction-space residency and the data TLB from
-    // data-space residency, and killing both on either eviction (the first
-    // cut) threw the code window away every time a DATA page sharing its
-    // logical page churned — pure waste, since the I-side entry that
-    // justifies the window was still resident. The exactness argument is
-    // per-space: a window hit skips a FETCH walk, so it must die with the
-    // I-entry; a TLB hit skips a DATA walk, so it dies with the D-entry.
-    void pomJitAtcEvict(u32 logicalPage, u32 pageLen, bool code) {
-        if (code) {
-            if (pomJitWindow.armed &&
-                pomJitWindow.base >= logicalPage &&
-                pomJitWindow.base < logicalPage + pageLen)
-                pomJitDisarm();
-            return;
-        }
-        // A native 040 cache-line entry also derives from the DATA ATC
-        // residency: after eviction the next architectural access owes a
-        // walk (and its descriptor U-bit update), even if the physical
-        // cache line itself is still resident. Epoch invalidation makes
-        // that O(1); scanning one entry per 16-byte line would be 256 tests
-        // for every 4 KB ATC eviction.
-        if (pomCache040On) pomJitCache040Bump();
-        for (u32 off = 0; off < pageLen; off += 4096) {
-            const u32 slice = (logicalPage + off) >> 12;
-            for (PomJitDtlb *t : { &pomJitDtlbR, &pomJitDtlbW }) {
-                PomJitDtlbEntry &e = t->e[slice & (PomJitDtlb::kEntries - 1)];
-                if ((e.tag & 0x7FFFFFFFu) == slice) {
-                    e.tag = PomJitDtlb::kEmpty; e.host = nullptr; e.codeMask = 0;
-                }
-            }
-            if ((pomJitDataR1.tag & 0x7FFFFFFFu) == slice) pomJitDataR1 = {};
-            if ((pomJitDataW1.tag & 0x7FFFFFFFu) == slice) pomJitDataW1 = {};
-        }
-    }
-
-    void pomJitArm(const u8 *host, u32 base, u32 phys, u32 len, bool super) {
-        pomJitWindow.host  = host;
-        pomJitWindow.base  = base;
-        pomJitWindow.phys  = phys;
-        pomJitWindow.len   = len;
-        pomJitWindow.gen   = pomJitMmuGen;
-        pomJitWindow.super = super;
-        pomJitWindow.atc040 = pomJitAtcBacked040(base, false, super);
-        pomJitWindow.armed = host != nullptr && len >= 4;
-    }
-    void pomJitDisarm() { pomJitWindow.armed = false; pomJitWindow.host = nullptr; }
-
-    // POM68K (host): the INTERPRETER arms the fetch window itself when no engine
-    // does. The window, its fetch path and its eviction hooks are Moira's
-    // already (above); only the decision to arm lived in jit::Engine, so a
-    // host that runs execute() with the engine off — POM68K_CPU_ENGINE=interp,
-    // a bare host such as NeoST — paid a translated bus read for every
-    // opcode word (INTERP_PROFILE.md 2026-11-07: a third of the 68040
-    // interpreter after the hot translation). `fn` answers a PHYSICAL page
-    // with a host pointer and the contiguous plain-memory span from it, or
-    // nullptr (I/O, VRAM, a hole, the boot overlay): the engine's codeSpan
-    // hook. jit::Engine switches this on when it is disabled and off when
-    // it runs, so exactly one of the two arms at any time.
-    void pomSetInterpWindow(bool on, PomCodeSpanFn fn, void *ctx) {
-        pomInterpWindowOn = on && fn != nullptr;
-        pomCodeSpanFn = fn;
-        pomCodeSpanCtx = ctx;
-        pomInterpBackoff = 0;
-        if (!pomInterpWindowOn) pomJitDisarm();
-    }
-    bool pomInterpWindowArmed() const { return pomInterpWindowOn; }
-
-    // True when `addr` and the three bytes after it can be fetched from the
-    // window under the CURRENT privilege level and MMU generation.
-    bool pomJitCovers(u32 addr) const {
-        const PomJitWindow &w = pomJitWindow;
-        return w.armed && w.gen == pomJitMmuGen && w.super == bool(reg.sr.s) &&
-               u32(addr - w.base) <= w.len - 4 && pomJitCache040Match(addr, 4);
-    }
-
-    // Reads a word out of the window without touching the bus. The caller
-    // must have established pomJitCovers(addr).
-    u16 pomJitPeek(u32 addr) const {
-        const u8 *p = pomJitWindow.host + (addr - pomJitWindow.base);
-        return u16(u16(p[0]) << 8 | p[1]);
-    }
-
-    bool pomJitIdle()  const { return flags == 0; }
-    bool pomJitSuper() const { return bool(reg.sr.s); }
-    u16  pomJitIrd()   const { return queue.ird; }
-
-    // Runs exactly one instruction on the 68040 fast path. The CALLER must
-    // have established pomJitIdle(); everything else — the per-instruction
-    // MMU state reset, POLL_IPL, the handler dispatch, exception processing
-    // and the staged trace — happens here, in the same single copy
-    // execute() uses. Returns false when the instruction did not retire
-    // normally, which is always a "go back through execute()" signal.
-    bool pomJitExecOne() { return executeFastOne(); }
-
-    // Detailed timing for one instruction while the JIT tracer is recording.
-    // The probe is deliberately opt-in: normal interpreter execution pays
-    // only one predictable false branch in pomJitExecOne(). `baseCycles`
-    // includes the instruction's data-bus activity, but excludes the 68030
-    // instruction-cache overlay and exception/trace processing performed
-    // after the handler stopped.
-    struct PomJitTiming {
-        i64 baseCycles = 0;
-        i64 icacheCycles = 0;
-        i64 postExceptionCycles = 0;
-        // Number of architectural POLL_IPL sites crossed by the traced
-        // instruction. 68030/040 loop heads contribute the first one;
-        // selected handlers contribute another around their data phase.
-        // A cache-active native backend needs this distinction because a
-        // data-cache stall can change the pin between those two sites.
-        i64 iplPolls = 0;
-        // Where those polls sat relative to the instruction's DATA
-        // accesses: dataAccesses counts completed mmu040Read/mmu040Write
-        // calls with data == true, and each POLL_IPL packs that count
-        // (saturated at 15) into its own nibble of iplPollPositions —
-        // first eight polls only. Position 0 is the loop head or any
-        // pre-access site; position k is a poll that fired after the k-th
-        // data access. 040-only by construction: the 030's later polls
-        // ride INSIDE mmuRead/mmuWrite and are not separable this way.
-        i64 dataAccesses = 0;
-        u32 iplPollPositions = 0;
-        // Instruction-stream words the run fetched through mmuFetchWord
-        // (pomIcache.fetches delta; the counter runs whenever armed, cache
-        // enabled or not). NOT derivable from the instruction length: a
-        // SKIP_LAST_RD form consumes its last extension without a refetch,
-        // so it fetches `words`, not `words + 1` — the emitted 030 i-cache
-        // charge needs the real count (POM68K (host) JIT, 2026-08-19).
-        i64 fetchWords = 0;
-        u32 fetchWords040 = 0; // opcode/lookahead/extension words, not target reads
-        bool valid = false;
-    };
-    void pomJitBeginTiming() {
-        pomJitTiming = {};
-        pomJitTimingProbe = true;
-        pomJitTimingFetch0 = pomIcache.fetches;
-    }
-    PomJitTiming pomJitEndTiming() {
-        pomJitTimingProbe = false;
-        pomJitTiming.fetchWords = pomIcache.fetches - pomJitTimingFetch0;
-        return pomJitTiming;
-    }
-
-    // Side-effect-free translation probe for a CODE address. TTR match,
-    // MMU-disabled identity, then a read-only scan of the instruction ATC.
-    // It deliberately does NOT walk the page tables: a walk writes the U/M
-    // descriptor bits back into guest RAM (MoiraExecMMU_cpp.h mmu040Walk)
-    // and can throw, neither of which may happen outside an instruction.
-    // A miss simply returns false — the interpreter then fetches normally,
-    // fills the ATC, and the next probe succeeds.
-    bool pomJitProbeCode(u32 logical, bool super,
-                         u32 &phys, u32 &pageBase, u32 &pageLen) const;
-
-    // POM68K (host) patch 32 (2026-08-29): true while the pre-switch fetch pipe
-    // is serving linear fetches after a PMOVE to TC/CRP/SRP. A fetch served
-    // from the pipe RETURNS BEFORE the i-cache overlay counters
-    // (mmuFetchWord's first branch), so the interpreter counts NOTHING in a
-    // PMOVE's shadow — while a native block's folded charge counts its
-    // traced fetchWords unconditionally. The engine therefore refuses to
-    // arm while the pipe is live and lets the interpreter run the (at most
-    // three-word) shadow: symmetry by construction, including the
-    // not-counting. Found as a +2-fetches/+2-hits/0-miss/0-cycle lockstep
-    // divergence in the System's self-patched MMU-init loop.
-
-    // ── J2: the data-side twin of the code window ────────────────────────
-    // Generated host code cannot call mmu040Read: that path throws on a
-    // fault, and a C++ exception may not cross a JIT frame (there is no
-    // unwind information for machine code we emitted ourselves). So the
-    // x86-64 backend translates data addresses through this direct-mapped
-    // cache instead, entirely inline, and BAILS OUT of the compiled block —
-    // at an instruction boundary, before committing anything — whenever the
-    // lookup misses. The interpreter then runs that one instruction and
-    // takes the fault, fills the ATC, or touches the I/O register, exactly
-    // as it always did.
     //
-    // An entry is only ever created for an address the engine has PROVEN
-    // (jit::Engine::fillDtlb) to be plain guest memory with the access
-    // already permitted by a resident ATC entry — no page-table walk, no
-    // descriptor U/M write-back, no I/O side effect can hide behind a hit.
-    // Read and write are separate caches because a page can be readable and
-    // write-protected, and because a write to an unmodified page has to
-    // re-walk so the table search sets M (mmu040AtcLookup).
-    // 16 bytes so that generated code reaches an entry with a single
-    // lea reg, [cpu + index*16 + table] — the tag and the host pointer then
-    // sit at +0 and +8 of one cache line's worth of addressing.
-    struct PomJitDtlbEntry {
-        u32 tag;                        // logical page number (addr >> 12)
-        // POM68K (host) 2026-08-10 — WRITE table only, zero everywhere else. One bit
-        // per 256-byte slice of this 4 KB page: set = some cached block was
-        // translated from there, so a store into that slice MUST go through
-        // the memory map, where jit::CodeGuard can see it.
-        //
-        // Before this field the whole ENTRY was refused when the page held
-        // any code at all, because an entry maps 4 KB while the guard works
-        // at 256 bytes — a 16x mismatch, and 68k code and its stack share
-        // pages constantly. That single refusal was 95.6 % of every
-        // remembered data-TLB refusal on an idle Finder (63 998 of 66 922),
-        // and removing it unsafely was worth -9.8 % of wall clock. The mask
-        // buys the same thing safely: three host instructions on the write
-        // path, of which the branch is never taken on a page with no code.
-        //
-        // It cannot go stale: jit::Engine::markPages() flushes both tables
-        // whenever a slice gains its first block. Losing one (serviceGuard's
-        // 1 -> 0 direction) leaves the mask conservative, which costs
-        // coverage and never correctness.
-        u16 codeMask;
-        bool atc040 = false;        // exact translation provenance, independent of code slices
-        u8 reserved = 0;
-        u8* host;                       // host bytes for that page, byte 0
-    };
-    struct PomJitDtlb {
-        static constexpr u32 kEntries = 256;     // direct-mapped, 4 KB/table
-        static constexpr u32 kEmpty = 0xFFFFFFFF;  // no logical page is ~0
-        // Slices per page, and therefore bits used in codeMask. Mirrors
-        // jit::CodeGuard::kShift; the static_assert lives in JitEngine.cpp,
-        // which is the one place that can see both.
-        static constexpr u32 kSliceShift = 8;
-
-        PomJitDtlbEntry e[kEntries];
-
-        PomJitDtlb() { clear(); }
-        void clear() {
-            for (u32 i = 0; i < kEntries; i++) {
-                e[i].tag = kEmpty; e[i].host = nullptr; e[i].codeMask = 0; e[i].atc040 = false;
-            }
-        }
-    };
-    PomJitDtlb pomJitDtlbR, pomJitDtlbW;
-
-    // ── J4: native access to a resident 68040 D-cache line ──────────────
-    // The ordinary DTLB maps a logical 4 KB page to backing RAM. That is
-    // architecturally wrong while the 040 D-cache is active: copyback data
-    // can be newer than RAM, and a hit must be served from the physical
-    // 16-byte line. This small direct-mapped table instead remembers the
-    // exact Cache040::Line produced by a successful exact access. Read and
-    // write tables are separate: W is published only by a completed,
-    // write-authorized copyback access whose dirty state is already live.
+    // Accessing function code and interrupt pins
     //
-    // Generated code trusts none of it blindly. Every hit compares:
-    //   * logical line + privilege (tag),
-    //   * the current data-ATC epoch (generation),
-    //   * line.valid and the line's current physical tag.
-    // Each retired ATC-backed hit also advances the replacement counter.
-    // The per-direction last-hit memo is only a lookup accelerator.
-    // A cache eviction/reallocation therefore misses by physical tag; a
-    // CINV/CPUSH misses by valid; an ATC eviction or map/control change
-    // misses by generation. The pointer itself is stable because Cache040
-    // owns a fixed array of Line objects for the CPU lifetime.
-    // Power-of-two stride for both generated line-table indexers.
-    struct alignas(32) PomJitCache040Entry {
-        u32 tag = 0xFFFFFFFF;            // (logical >> 4) | supervisor bit
-        u32 physicalTag = 0;             // Cache040::Line::tag at publication
-        u32 generation = 0;              // pomJitCache040Gen at publication
-        u8 atcIndex = 0xFF;              // 0xFF for TTR/MMU-off identity
-        bool atc040 = false;
-        u8 pad[2] {};
-        Cache040::Line *line = nullptr;
-    };
-    struct PomJitCache040Table {
-        static constexpr u32 kEntries = 256;
-        PomJitCache040Entry e[kEntries];
-        void clear() {
-            for (auto &v : e) v = {};
-        }
-    };
-    PomJitCache040Table pomJitCache040R, pomJitCache040W;
-    u32 pomJitCache040Gen = 1;
-    u64 pomJitCache040NativeReadHits = 0; // emitted only by diagnostic builds
-    u64 pomJitCache040NativeWriteHits = 0;
-    bool pomJitCache040Consumer = false;  // set only while an Engine is enabled
 
-    u64 pomJitCache040NativeReads() const { return pomJitCache040NativeReadHits; }
-    u64 pomJitCache040NativeWrites() const { return pomJitCache040NativeWriteHits; }
+    /** @brief Gets the current value of the function code pins
+     *
+     * The function code (FC2 - FC0) tells the outside world what kind of bus
+     * cycle is performed: 1 (user data), 2 (user program), 5 (supervisor
+     * data), 6 (supervisor program) or 7 (CPU space). For the MOVES
+     * instruction, the value is taken from the SFC or DFC register.
+     *
+     * @note  Inside a delegate that is called before a bus cycle, the pins
+     *        still show the value of the previous cycle.
+     */
+    u8 getFC() const;
 
-    static u32 pomJitCache040Tag(u32 addr, bool super) {
-        return (addr >> 4) | (super ? 0x80000000u : 0u);
-    }
-    void pomJitCache040Bump() {
-        if (++pomJitCache040Gen == 0) {
-            // The wrap is fantastically remote, but stale-entry revival is
-            // a correctness bug however remote. Empty the table and reserve
-            // generation zero for never-published entries.
-            pomJitCache040R.clear();
-            pomJitCache040W.clear();
-            pomJitCache040Gen = 1;
-        }
-    }
+    /** @brief Retrieves the value on the Interrupt Priority Level (IPL) pins
+     *  @return The interrupt level (0 - 7). 0 means that no interrupt is pending.
+     */
+    u8 getIPL() const { return ipl; }
+    
+    /** @brief Sets the value on the Interrupt Priority Level (IPL) pins
+     *
+     * The CPU checks the pins at the next instruction boundary. An interrupt
+     * is taken if its level is higher than the interrupt mask in the SR.
+     * Level 7 is non-maskable: It is taken whenever the pins change to level
+     * 7, even if the mask is also 7.
+     *
+     * @param val  The interrupt level (0 - 7)
+     */
+    void setIPL(u8 val);
 
-    // Level 0 of the data window: ONE entry per direction, sitting in the
-    // hot part of the object next to the fetch window. The 256-entry table
-    // below is level 1. This split is measured, not aesthetic: consulting
-    // the 8 KB table directly from the interpreter LOST ~10 % — streaming
-    // guest data kept evicting the table's own cache lines, so every probe
-    // added an L1 miss to an access the long path would have served out of
-    // hot machine state. One 16-byte entry per direction stays resident by
-    // construction, and real 68k data traffic is page-local enough (a copy
-    // loop is one read page + one write page) that it catches most of what
-    // the big table would have.
-    struct PomJitDataPage {
-        u32 tag = 0xFFFFFFFF; bool atc040 = false; u8 *host = nullptr;
-    };
-    PomJitDataPage pomJitDataR1, pomJitDataW1;
 
-    // POM68K (host) B.2 slice 5 (2026-09-04): the 68030 half of this window is
-    // instrumented because its predecessor could not be.
-    // docs/JIT_BRINGUP.md § C.2 could only record that POM68K_DATA_WINDOW
-    // was a DEAD path on the 030 — "identical fingerprints and identical
-    // zero fills" — so a green
-    // run proved nothing either way. These two counters make the question
-    // answerable by measurement instead of by inspection: jit_bench_lcii and
-    // jit_lockstep_030_test print them, and a knob-on 68030 run whose hits
-    // are zero is a regression, not a pass. They count ACCESSES that reached
-    // pomJitData — not instructions, and not fetches, which use the separate
-    // fetch window. One increment per attempt, and the whole attempt already
-    // sits inside the knob's own branch.
-    u64 pomJitData030Hits {0};
-    u64 pomJitData030Refusals {0};
-
-    void pomJitDtlbFlush() {
-        pomJitDtlbR.clear(); pomJitDtlbW.clear();
-        pomJitDataR1 = {}; pomJitDataW1 = {};
-        pomJitCache040Bump();
-    }
-
-    // ── J3: the data window — the same DTLB, consulted by the INTERPRETER ──
-    // The fetch window took instruction fetches off the long path; this
-    // takes DATA accesses off it, for both engines at once: mmu040Read and
-    // mmu040Write try the DTLB before the ATC/translate/decode chain. The
-    // fill callback is bound by jit::Engine (which owns the refusal rules —
-    // plain RAM/ROM only, resident+permitted ATC entries only, never a page
-    // holding translated code); when no engine exists the pointer is null
-    // and the whole path is one dead branch.
     //
-    // Invalidation, exhaustively: MMU/TTR changes (pomJitMapMoved), the
-    // machine's own remaps (each map's jitMapChanged flushes the CPU DTLB
-    // directly — the overlay flip writes no ATC), privilege changes
-    // (setSupervisorFlags — entries are probed under the CURRENT privilege
-    // and carry no super bit), and every engine flush/evict.
-    uint8_t *(*pomJitDtlbFillFn)(void *, u32, int) = nullptr;
-    void *pomJitDtlbFillCtx = nullptr;
-
-    // POM68K (host) JIT: the per-access bus charge a cycle-exact wrapper applies
-    // from inside read16() (pomJitFetch000 above). A plain function pointer
-    // rather than a virtual: it sits in the fetch path, and the per-fetch
-    // virtual is exactly the cost the i-cache overlay was folded inline to
-    // avoid (Moira.h § PomIcache, ~11 % of the emulator).
-    void (*pomJitBusStallFn)(void *, u32) = nullptr;
-    void *pomJitBusStallCtx = nullptr;
-
-    // The privilege level rides in TAG BIT 31 (a page number is 20 bits),
-    // so user and supervisor entries coexist and NOTHING is flushed on an
-    // exception or an RTE. The first cut flushed the whole table from
-    // setSupervisorFlags instead — correct, and a disaster: several
-    // thousand interrupts a second each emptied the cache, the hit rate
-    // collapsed, and the "fast" path measured 15 % SLOWER than no path.
-    static u32 pomJitDataTag(u32 addr, bool super) {
-        return (addr >> 12) | (super ? 0x80000000u : 0u);
-    }
-
-    // The fill half, out of line on purpose: pomJitData is inlined into
-    // every mmu040Read/Write instantiation, and the interpreter's hot loop
-    // pays for those bytes whether the path hits or not.
-    u8 *pomJitDataSlow(u32 addr, u32 want, bool w) noexcept;
-
-    template <int N, bool W> u8 *pomJitData(u32 addr) {
-        if (pomCache040On && cpuModel >= Model::M68EC040) return nullptr;
-        if (flags & State::CHECK_WP) return nullptr;    // watchpoints see all
-        if (mmu040Moves >= 0) return nullptr;           // alternate FC space
-        if (!W && mmu040Lrmw) return nullptr;           // locked reads = writes
-        const u32 off = addr & 4095;
-        if (off > 4096u - N) return nullptr;            // page straddle
-        const u32 want = pomJitDataTag(addr, bool(reg.sr.s));
-        PomJitDataPage &c = W ? pomJitDataW1 : pomJitDataR1;
-        if (c.tag == want) [[likely]] {
-            if (c.host && c.atc040) ++mmu040AtcAccessD;
-            return c.host ? c.host + off : nullptr;     // null = remembered refusal
-        }
-        // Levels 1 and 2 (the table, then the engine's fill) out of line —
-        // and the no-engine case falls out for free: with the callback null
-        // nothing ever fills, so the level-0 tag never matches.
-        u8 *base = pomJitDataSlow(addr, want, W);
-        if (base && c.atc040) ++mmu040AtcAccessD;
-        return base ? base + off : nullptr;
-    }
-
-    // POM68K (host) B.2 slice 5 — may an M68030 access consult pomJitData at all?
-    // The 040 answers this with mmu040Read's `data` argument and the two
-    // 040-only latches pomJitData already tests; the 030 owes a WIDER set,
-    // and every one of these is a correctness refusal, not a heuristic:
+    // Disassembling
     //
-    //  * `pomJitDtlbFillFn` — the knob. Null unless jit::Engine bound it
-    //    under POM68K_DATA_WINDOW=1 (JitEngine.cpp § dataWindow). Tested
-    //    first and by hand rather than left to pomJitDataSlow's own null
-    //    test, so that with the knob OFF an 030 access pays one predictable
-    //    branch instead of an out-of-line call it can only be refused by.
-    //  * the SPACE. mmuRead/mmuWrite serve BOTH data and program accesses —
-    //    read<C, AddrSpace::PROG, ...> reaches them (prefetch, the JSR/JMP
-    //    target read, MoiraDataflow_cpp.h § read) — where mmu040Read takes
-    //    `data` as an argument. The DTLB is filled from pomJitProbeData's
-    //    DATA-space probe (fc = 1/5) and the 68030 ATC matches an entry's fc
-    //    EXACTLY (MmuAtcEntry::fc), so a program-space access served from
-    //    this table would have been translated in the wrong space.
-    //  * `fcSource` — MOVES and SFC/DFC redirect readFC() to an alternate
-    //    space; the same rule pomJitReadData already applies.
-    //  * `mmuRmw` — a locked RMW READ probes the ATC as a WRITE
-    //    (mmuTranslateAccess § lookupWrite), so the read table's permission
-    //    answer is the wrong one. Refused in both directions rather than
-    //    reasoned about per direction: TAS/CAS are rare.
-    bool pomJitData030Ok() const {
-        return pomJitDtlbFillFn && fcSource == 0 && fcl == FC::USER_DATA
-               && !mmuRmw;
-    }
 
-    // The other half of the data path: what generated code calls when the
-    // TLB refuses — an I/O register, a page the probe could not confirm, an
-    // access that straddles two pages. It performs the REAL access, through
-    // the same mmu040 path the interpreter uses, and converts the one thing
-    // a JIT frame cannot survive — a thrown fault — into `false`.
+    /** @brief Returns instruction metadata for a given opcode
+     *
+     * The result describes how the disassembler interprets the opcode, i.e.,
+     * it depends on the disassembler model (see setDasmModel()).
+     *
+     * @param op  The opcode (the first word of an instruction)
+     * @return The mnemonic, the addressing mode and the operand size
+     * @throws std::runtime_error if the library has been compiled with
+     *         MOIRA_ENABLE_DASM = false
+     */
+    InstrInfo getInstrInfo(u16 op) const;
+
+    /** @brief Disassembles an instruction according to a format string
+     *
+     * The following directives are supported:
+     *
+     *   %p  Instruction address
+     *   %b  Instruction words
+     *   %i  Instruction
+     *   %f  Status register flags
+     *   %Nd Data register DN (N = 0 ... 7)
+     *   %Na Address register AN (N = 0 ... 7)
+     *
+     * A number in front of %p, %b, %i, or %f pads the output with spaces to
+     * the given width. The register directives print the current register
+     * values. All other characters are copied to the output.
+     *
+     * Addresses, instruction words and registers are formatted with the data
+     * style, the instruction is formatted with the disassembler style (see
+     * setDataStyle() and setDasmStyle()). The instruction bytes are fetched
+     * with read16Dasm(). By default, this delegate forwards to read16().
+     * Override it if reading memory has side effects that the disassembler
+     * should avoid.
+     *
+     * Example:
+     * ```cpp
+     * int len;
+     * std::string s = cpu.disassemble("%p: %16b %i", cpu.getPC(), &len);
+     * cpu.setPC(cpu.getPC() + len);
+     * ```
+     *
+     * @param fmt   The format string
+     * @param addr  The address of the instruction
+     * @param len   If provided, receives the length of the instruction in bytes
+     * @return The formatted text
+     * @throws std::runtime_error if the format string is invalid or the
+     *         library has been compiled with MOIRA_ENABLE_DASM = false
+     */
+    std::string disassemble(const std::string &fmt, u32 addr, int *len = nullptr) const;
+
+    /** @brief Returns the length of the instruction at a given address
+     *
+     * The length is determined by the disassembler handlers of the emulated CPU
+     * model (see setModel()). It does not depend on the disassembler model.
+     *
+     * @param addr  The address of the instruction
+     * @return The length of the instruction in bytes (including all extension words)
+     * @throws std::runtime_error if the library has been compiled with
+     *         MOIRA_ENABLE_DASM = false
+     */
+    isize instrLength(u32 addr) const;
+
+
     //
-    // A false answer means NOTHING was committed on the guest side, so the
-    // caller's contract is simply to leave the instruction alone and let the
-    // interpreter re-run it from the boundary; it will fault identically and
-    // stack the frame properly.
-    bool pomJitReadData(u32 addr, int bytes, u32 &out) noexcept;
-    // [B] MC68030UM-1989 §2: a PC-relative operand read is a program
-    // reference. POM68K (ruling D46): a 68030 one — program space
-    // (FC 2/6), an operand cycle for the fault machinery (mmuPcOperand), as
-    // readM issues it. False = it would fault, or the model is not a 68030.
-    bool pomJitReadOperandProg(u32 addr, int bytes, u32 &out) noexcept;
-    bool pomJitWriteData(u32 addr, int bytes, u32 val) noexcept;
-    // POM68K (host) JIT (2026-08-23): the program-space word read execJsr makes
-    // of its target on the 030 (`queue.irc = read<C, PROG, Word>(ea)` —
-    // mode-5 has no queue, so the target's first word is what the
-    // terminal irc holds). A native JSR reproduces it at run time through
-    // this door, exactly as read<PROG> would; false = it would fault.
-    bool pomJitReadProg(u32 addr, u16 &out) noexcept;
-    // 68040 JSR commit door, with or without the cache model. The target has already been
-    // computed by generated code, but the return-address push and the
-    // subsequent program-space target read are one ordered transaction:
-    // a target fault observes the completed push and must be processed here,
-    // never replayed from a pristine JIT boundary. Returns false only after
-    // the architectural exception has been fully processed.
-    bool pomJitJsr040(u32 instructionPc, u32 returnAddress, u32 target,
-                      u16 opcode) noexcept;
-    void pomJitCache040Publish(u32 logical, int bytes, bool write);
-
-    // Charges `cycles` to the clock THROUGH the machine's sync(), which is
-    // where peripheral catch-up hangs. Generated code must not simply add
-    // to `clock`: the CPU wrapper batches VIA/ASC/SWIM/MCU time off this
-    // call, and a block that skipped it would run the guest forward while
-    // the machine around it stood still.
-    void pomJitSync(int cycles) { sync(cycles); }
-
-    // POM68K (host) JIT, peripheral-phase alignment (2026-08-21): what the 030
-    // i-cache overlay WOULD charge for this instruction's fetch stream,
-    // WITHOUT mutating it. The interpreter charges the fetch penalty at
-    // fetch time — before the instruction's data access — while generated
-    // code charges on the success path after the body (the 2026-08-19
-    // uncharge lesson). An I/O access forces a peripheral flush at the
-    // access clock, so the two engines flushed missPenalty×misses cycles
-    // apart and a device event could land one whole delivery window away —
-    // which is where its interrupt's pc comes from. The access thunks
-    // close the gap by biasing the clock with this value around the access
-    // alone; the real charge stays on the success path, untouched.
-    // Sequential walk with a one-line local override: an instruction's
-    // words are consecutive, so an earlier word's install can only be hit
-    // by a later word on the SAME line, and lines advance monotonically.
-    i64 pomJitIcachePeekPenalty(u32 pc, int words) const {
-        if (!pomIcache.armed || !(reg.cacr & 0x1) || words <= 0) return 0;
-        const u32 sup = reg.sr.s ? 0x80000000u : 0u;
-        int curLine = -1; u32 curTag = 0; u8 curValid = 0;
-        i64 misses = 0;
-        for (int w = 0; w < words; w++) {
-            const u32 addr = pc + u32(w) * 2;
-            const int line = int((addr >> 4) & 15);
-            const u32 tag = (addr >> 8) | sup;
-            const u8 bit = u8(1u << ((addr >> 2) & 3));
-            if (line != curLine) {
-                curLine = line;
-                curTag = pomIcache.tag[line];
-                curValid = pomIcache.valid[line];
-            }
-            if (curTag == tag && (curValid & bit)) continue;
-            if (curTag != tag) { curTag = tag; curValid = 0; }
-            curValid |= bit;
-            misses++;
-        }
-        return misses * pomIcache.missPenalty;
-    }
-
-    // The bias itself: a bare clock adjustment, deliberately NOT sync() —
-    // the flush the access forces must simply see the aligned value.
-    void pomJitBiasClock(i64 n) { clock += n; }
-
-    // True when POLL_IPL is the plain `reg.ipl = ipl` assignment, which is
-    // the only form generated code models. The deferred-recognition feature
-    // (NEOST_IPLFETCH, setIplDelay) is off on every Mac profile; a backend
-    // must refuse to compile if it is ever turned on.
-    bool pomJitSimpleIpl() const { return iplDelay4 == 0; }
-
-    // Side-effect-free translation probe for a DATA address, the twin of
-    // pomJitProbeCode. `write` applies the two rules a read does not have:
-    // the page must not be write-protected, and it must already be marked
-    // modified — a write to an unmodified page owes the descriptor an M-bit
-    // write-back, which is a guest-memory store a probe may not perform.
-    bool pomJitProbeData(u32 logical, bool super, bool write,
-                         u32 &phys, u32 &pageBase, u32 &pageLen,
-                         bool allowCache040 = false) const;
-
-    // ── the 020 fetch seam (2026-07-28) ─────────────────────────────────
-    // A plain 68020 has no MMU: fetches go read<PROG> → the machine's
-    // decode. The window replaces exactly that tail, but the HEAD of a
-    // read<PROG,Word> is behavioural state that must be replicated, not
-    // skipped: the POLL_IPL that rides on the prefetch (interrupt
-    // recognition), the FC pins, and the in-flight access stamp an
-    // external /BERR would read back (the Mac LC ROM's 32-bit probe pins
-    // that contract — MoiraDataflow read<> kPlain020 block). Returns false
-    // when the window cannot serve the address; the caller then takes the
-    // ordinary path, which performs those same steps itself.
-    template <bool P> bool pomJitFetch020(u32 addr, u16 &out) {
-        // With the 68020 i-cache compiled in (MoiraConfig.h) a fetch of the
-        // 68020/EC020 is a cache lookup, a line fill and a charge
-        // (readInstr): the window would bypass all three. It refuses, and
-        // jit::Engine does not translate for those models (JitEngine.cpp,
-        // cacheOwnsFetch). The EC030 on this path has no cache and keeps it.
-        if constexpr (MOIRA_EMULATE_ICACHE) {
-            if (cpuModel == Model::M68020 || cpuModel == Model::M68EC020) return false;
-        }
-        const u8 *p;
-        if (!pomJitFetch(addr, 2, p)) return false;
-        if constexpr (P) pollIpl();
-        setFC(FC::USER_PROG);
-        mmuAccAddr = addr; mmuAccSsw = 0x20;
-        mmuAccFc = readFC(); mmuAccWrite = false;
-        out = u16(u16(p[0]) << 8 | p[1]);
-        return true;
-    }
-
-    // POM68K (host) JIT, cycle-exact flavour — 68000/68010 (2026-08-06).
+    // Interfacing with other components
     //
-    // The 020 twin above can skip the whole of read<C,PROG,Word,F> because
-    // on Core::C68020 the SYNC(x) macro expands to nothing (MoiraMacros.h:
-    // `if constexpr (C != Core::C68020)`), so a windowed fetch changes NO
-    // cycle accounting. That argument does not survive on this core: SYNC
-    // is real, MOIRA_PRECISE_TIMING is on, and the compacts are the one
-    // family in POM68K whose timing claim is cycle-exact.
+
+protected:
+
+#include "MoiraInterface.h"
+
+
     //
-    // So the window here replaces the BUS READ and nothing else. Everything
-    // read<> does around that read is cycle- or state-visible and is
-    // reproduced in read<>'s own order: the leading SYNC(2), the address
-    // error, the FC pins, POLL_IPL, the machine's own bus model, and the
-    // trailing SYNC(2). What is actually saved is one virtual read16() and
-    // the machine's address decode — on a Mac Plus that is two read8()
-    // switch dispatches per opcode word, which is the whole point.
+    // Internals
     //
-    // The watchpoint hook needs no line here: pomJitFetch() already refuses
-    // outright while State::CHECK_WP is set.
-    template <Core C, bool P> bool pomJitFetch000(u32 addr, u16 &out) {
-        const u8 *p;
-        if (!pomJitFetch(addr, 2, p)) return false;
-        // read<> SYNCs before it throws on an odd address, so bail out
-        // having charged NOTHING and let the ordinary path do both.
-        if (misaligned<C, Word>(addr)) return false;
-        setFC(FC::USER_PROG);
-        sync(2);
-        if constexpr (P) pollIpl();
-        // The machine's bus model rides inside read16() on this core (the
-        // Mac Plus video/RAM contention — Cpu68k::applyContention). No
-        // read16, no contention, unless the wrapper asks for it here.
-        if (pomJitBusStallFn) pomJitBusStallFn(pomJitBusStallCtx, addr & addrMask<C>());
-        out = u16(u16(p[0]) << 8 | p[1]);
-        sync(2);
-        return true;
-    }
 
-    // Installed by a cycle-exact wrapper whose read16() carries a bus model
-    // the window would otherwise skip. Null (the default) means the machine
-    // charges nothing per access, which is every non-compact board.
-    void pomJitSetBusStall(void (*fn)(void *, u32), void *ctx) {
-        pomJitBusStallFn = fn;
-        pomJitBusStallCtx = ctx;
-    }
 
-    // Byte offsets, measured from this object's address, of every field a
-    // code generator has to touch. Returned as a struct rather than exposed
-    // as public members so the register file stays private, and computed
-    // from a live object so no offsetof() on a polymorphic type is needed.
-    // Native JIT backends consume this layout without exposing the register
-    // file itself.
-    struct PomJitLayout {
-        u32 d, a;                       // reg.d[0], reg.a[0]
-        u32 pc, pc0;
-        u32 srT1, srT0, srS, srM, srX, srN, srZ, srV, srC, srIpl;
-        u32 regIpl, iplPin;
-        u32 clock, flags;
-        u32 ird, irc;
-        u32 dtlbR, dtlbW;               // base of each PomJitDtlb::e[]
-        // 68040 D-cache windows. A generated hit still validates the logical
-        // tag, ATC epoch/replacement state, physical tag and live cache line;
-        // write hits use the stronger W publication and update dirty state.
-        u32 cache040R, cache040W, cache040Gen, cache040Hits;
-        // [B] MC68040UM-1993 §4.1: the two caches' replacement counters (u8).
-        u32 cache040IRot, cache040DRot;
-        u32 atcAccessI040, atcAccessD040, atcWindow040;
-        u32 cache040NativeReadHits, cache040NativeWriteHits;
-        bool cache040Live;
-        // POM68K (host) JIT: the public 68040 MOVEM latch. A compiled MOVEM must
-        // bail while it is set, so a host-armed restart uses the saved EA.
-        // The current RTE does not re-arm it (TODO: Justesse 68040).
-        u32 movemArmed;
+    //
+    // Constructing (internal)
+    //
 
-        // ── the 68030 instruction cache (PomIcache above) ────────────────
-        // Generated code fetches no instructions, so on an 030 guest it has
-        // to charge the overlay itself or the clock drifts from the
-        // interpreter's within one block. Everything the model needs is a
-        // compile-time constant for a known pc — the line, the tag and the
-        // longword valid bit — so all a backend needs at run time is where
-        // the four arrays live. `cacr` is here for the same emitter: bit 0
-        // gates the whole model and cannot change inside a block (MOVEC is
-        // Kind::Unsafe), so it is tested once at block entry.
-        u32 cacr;
-        u32 icTag, icValid;        // PomIcache::tag[0] / valid[0]
-        u32 icFetches, icHits, icMisses;
-        u32 icPenalty;             // PomIcache::missPenalty
-        // True only when the overlay is BOTH armed by the wrapper AND
-        // reachable, which means a 68030 guest: the charge lives inside
-        // mmuFetchWord, and that is the 030's instruction-fetch path alone.
-        // A 68040 machine can have `armed` set and never charge a thing,
-        // which is why this is not simply PomIcache::armed — a backend that
-        // read that flag would emit the model on Quadras, where it is dead
-        // code that changes the clock.
-        bool icLive;
+protected:
 
-        // The guest family, for the per-instruction contract rather than for
-        // the instruction set. On a 68030 mmuExecuteStart resets a block of
-        // MMU bookkeeping at EVERY instruction (MoiraExecMMU_cpp.h:521-529)
-        // that mmu040InstrStart has no counterpart for; generated code stands
-        // in for that function and therefore owes the same resets.
-        bool is030;
-        // …of which exactly one has to be emitted. `mmuRmw` (islrmw030)
-        // survives the instruction that set it — TAS and CAS, both
-        // Kind::Unsafe and so never inside a block — and until the next
-        // mmuExecuteStart clears it, every translation takes the locked-RMW
-        // path (mmuMatchTTAccess's RWM-only match, mmuRead's SSW RM bit).
-        // Entering generated code with it set is how a block full of
-        // ordinary loads starts translating as locked writes.
-        //
-        // The other seven are NOT emitted, and the argument is that they are
-        // read only when a bus-error frame is stacked: mmuState, mmuIdx,
-        // mmuAd, mmuFixupReg, mmuCcrSave, mmuLogging, mmuOpcodeV. A compiled
-        // instruction that faults commits nothing and hands itself back, and
-        // the interpreter's re-run enters through mmuExecuteStart — which
-        // resets all seven before executing it again. They are re-established
-        // on the only path that reads them.
-        u32 mmuRmw;
-    };
-    PomJitLayout pomJitLayout() const;
+    // Creates or updates the jump tables for execution and disassembly
+    void createJumpTable(CPUModel cpuModel, CPUModel dasmModel);
+    
+    // Computes an entry of the instruction length table
+
+    // Creates the jump tables for execution and disassembly with the same model
+    void createJumpTable(CPUModel model) { createJumpTable(model, model); }
 
 private:
 
-    // The window read shared by the three instruction-fetch sites: two on
-    // the 68040 (mmu040InstrStart, readExt) and one on the 68030
-    // (mmuFetchWord) — the seam stopped being 040-only in 2026-07-28.
-    // `n` bytes must fit; callers pass 4 (ird + irc) or 2 (extension word).
-    bool pomJitFetch(u32 addr, u32 n, const u8 *&p) {
-        const PomJitWindow &w = pomJitWindow;
-        if (!w.armed) return false;
-        if (u32(addr - w.base) > w.len - n) return false;
-        if (w.gen != pomJitMmuGen || w.super != bool(reg.sr.s)) return false;
-        // A watchpoint must still see every fetch (mmu040Read's CHECK_WP
-        // hook). CHECK_WP is a `flags` bit, so the engine is already out of
-        // the way — this is belt and braces on a cold branch.
-        if (flags & State::CHECK_WP) return false;
-        // A 040 window is usable only while every requested byte is still
-        // resident in I-cache and byte-identical to the backing host span.
-        // Native decoding therefore cannot observe memory newer than an
-        // architecturally stale line or skip a required fill.
-        if (!pomJitCache040Match(addr, n)) return false;
-        if (w.atc040) mmu040AtcAccessI += n / 2;
-        // The bypassed I-cache reads still count (one per fetched word, as
-        // mmu040FetchWord's pomCache040ReadValue does; MoiraCache040.h).
-        if (pomCache040Active()) pomCache040I.count(n / 2);
-        if (cpuModel >= Model::M68EC040 && pomJitTimingProbe)
-            pomJitTiming.fetchWords040 += n / 2;
-        p = w.host + (addr - w.base);
-        return true;
-    }
+    // Core routines for creating jump tables    
+    template <Core C> void createJumpTable(CPUModel model, bool registerExec, bool registerDasm);
+    template <Core C> void createJumpTable1(CPUModel model, bool registerExec, bool registerDasm);
+    template <Core C> void createJumpTable2(CPUModel model, bool registerExec, bool registerDasm);
+    template <Core C> void createJumpTable3(CPUModel model, bool registerExec, bool registerDasm);
+    template <Core C> void createJumpTable4(CPUModel model, bool registerExec, bool registerDasm);
+    template <Core C> void createJumpTable5(CPUModel model, bool registerExec, bool registerDasm);
+    template <Core C> void createJumpTable6(CPUModel model, bool registerExec, bool registerDasm);
+    template <Core C> void createJumpTable7(CPUModel model, bool registerExec, bool registerDasm);
+    template <Core C> void createJumpTable8(CPUModel model, bool registerExec, bool registerDasm);
+    template <Core C> void createJumpTable9(CPUModel model, bool registerExec, bool registerDasm);
+    template <Core C> void createJumpTable10(CPUModel model, bool registerExec, bool registerDasm);
+    template <Core C> void createJumpTable11(CPUModel model, bool registerExec, bool registerDasm);
+    template <Core C> void createJumpTable12(CPUModel model, bool registerExec, bool registerDasm);
 
-    // POM68K (host): the cache model is off on every product default and absent
-    // below the 68EC040; that answer must not cost a call on each fetch.
-    bool pomJitCache040Match(u32 addr, u32 n) const {
-        if (!pomCache040Active()) [[likely]] return true;
-        return pomJitCache040MatchLive(addr, n);
-    }
-    bool pomJitCache040MatchLive(u32 addr, u32 n) const {
-        const PomJitWindow &w = pomJitWindow;
-        if (!(reg.cacr & 0x8000)) return false;
-        for (u32 i = 0; i < n;) {
-            const u32 winOff = addr - w.base + i;
-            const u32 pa = w.phys + winOff;
-            const Cache040::Line *line = pomCache040I.lookup(pa);
-            if (!line) return false;
-            const u32 lineOff = pa & 15;
-            const u32 chunk = std::min(n - i, 16u - lineOff);
-            for (u32 j = 0; j < chunk; j++)
-                if (line->data[lineOff + j] != w.host[winOff + j]) return false;
-            i += chunk;
-        }
-        return true;
-    }
 
-#endif
-
-public:
-    // Architectural post-PMOVE continuation, independent of acceleration.
-    bool pomMmuPipeLive() const { return mmuPipeCnt > 0; }
-    // The 68020 i-cache serves this model's fetches (MoiraConfig.h): no
-    // fetch window and no translated block may stand in for readInstr.
-    bool pomCacheOwnsFetch() const {
-        return MOIRA_EMULATE_ICACHE &&
-               (cpuModel == Model::M68020 || cpuModel == Model::M68EC020);
-    }
+    //
+    // Configuring (internal)
+    //
 
 private:
 
-    bool executeFastOne();
+    // Configures the FPU and MMU to match the emulated CPU configuration
+    void configureUnits();
 
-#if !MOIRA_ENABLE_JIT
-    // Shared MMU/cache mutations have no derived publications in this build.
-    void pomJitMapMoved() {}
-    void pomJitDtlbFlush() {}
-    void pomJitCache040Bump() {}
-    void pomJitAtcEvict(u32, u32, bool) {}
-#endif
 
-    // Keep the in-flight fetch context of mmu040Read<C, Word> at the window
-    // boundary. Data accessors, including MOVE16, establish their own stamp
-    // before translation/bus callbacks; they do not inherit this fetch.
-    void mmu040StampFetch(u32 addr) {
-        mmu040AccBase  = addr;
-        mmu040AccAddr  = addr;
-        mmu040AccVal   = 0;
-        mmu040AccSz    = 1;                 // Word
-        mmu040AccWrite = false;
-        mmu040AccData  = false;             // instruction space
-        mmu040AccFirst = true;
-        mmu040AccSplit = false;
-    }
 
-    // Processes an exception that was caught during execution
-    void processException(const std::exception &exception);
-    
-    // Processes an exception for a specific CPU core type
-    template <Core C> void processException(const std::exception &exception);
-    
+protected:
+
+    // Returns the address bus mask for a specific CPU core type
+    template <Core C> u32 addrMask() const;
+
+
+    //
+    // Running the CPU (internal)
+    //
+
+private:
+
     // Performs a core-specific reset routine
     template <Core C> void reset();
-    
-    // Checks for a pending interrupt and handles it if necessary
-    bool checkForIrq();
+
+    // Core-specific implementation of jump()
+    template <Core C> void jump(u32 addr);
     
     // Puts the CPU into a HALT state, stopping execution
     void halt();
-    
-    
-    //
-    // Running the disassembler
-    //
-    
-public:
-    
-    // Disassembles an instruction and returns the instruction size in bytes
-    int disassemble(char *str, u32 addr) const;
-    
-    // Creates a textual representation of the status register
-    void disassembleSR(char *str) const { disassembleSR(str, reg.sr); }
-    
-    // Creates a textual representation of a given status register
-    void disassembleSR(char *str, const StatusRegister &sr) const;
-    
-    // Converts an integer value to a textual representation
-    void dump8(char *str, u8 value) const;
-    void dump16(char *str, u16 value) const;
-    void dump24(char *str, u32 value) const;
-    void dump32(char *str, u32 value) const;
-    
-    // Converts multiple 16-bit values to a textual representation
-    void dump16(char *str, u16 values[], int cnt) const;
-    void dump16(char *str, u32 addr, int cnt) const;
-    
-    // Returns instruction metadata for a given opcode
-    InstrInfo getInstrInfo(u16 op) const;
+
+    // Reads an instruction word for an exception frame (0 if the read fails)
+    u16 peekInstr(u32 addr) const;
+
+    // Returns the length of an instruction for an exception frame (2 if it cannot be read)
+    u32 peekInstrLength(u32 addr) const;
+
 
     //
-    // Advancing the clock
+    // Clock (internal)
     //
 
 protected:
 
     /* Advances the clock by the cycle count computed for a 68020 instruction.
      *
-     * Instruction fetches that hit the cache are modelled as a discount (see
-     * readInstructionWord), so the total can drop to zero or below, while the
-     * environment can only be stepped in whole bus cycles. The time is
-     * therefore accumulated and spent as soon as it amounts to at least one
-     * bus cycle, which keeps the discount fully effective. Should that not
-     * happen for CpStallMax instructions in a row, one bus cycle is borrowed:
-     * the environment is stepped from here alone, so without it the emulation
-     * would make no progress and its main loop would never terminate.
+     * Cache hits on instruction fetches are modelled as cycle discounts (see
+     * readInstructionWord), so the resulting count may be zero or negative.
+     * Since the environment can only advance in whole bus cycles, the time is
+     * accumulated until at least one bus cycle is available. This preserves the
+     * full cache discount.
+     *
+     * If no bus cycle is accumulated for maxStalled consecutive instructions,
+     * one cycle is borrowed to ensure progress. Since the environment is stepped
+     * only here, failing to do so would stall the emulation indefinitely.
      */
-    void syncCp(int cycles);
+    void syncCyclePenalty(int cycles);
 
 
     //
-    // Interfacing with other components
+    // Registers (internal)
     //
-    
-protected:
-
-    // MC68020 type-$01 CALLM/RTM access-control interface.  These hooks
-    // represent the byte-wide CAL/AS/IAL/DAL registers and the long-wide
-    // descriptor-address registers in CPU space ($10000-$1005F).  A board
-    // without external access-control hardware returns false, which the
-    // processor converts to the architected format-error exception.
-    virtual bool readModuleCpuSpace8(u32 addr, u8 &val) const {
-        (void)addr; (void)val; return false;
-    }
-    virtual bool writeModuleCpuSpace8(u32 addr, u8 val) const {
-        (void)addr; (void)val; return false;
-    }
-    virtual bool writeModuleCpuSpace32(u32 addr, u32 val) const {
-        (void)addr; (void)val; return false;
-    }
-
-    // POM68K (host) (ported from NeoST ce1cc52): the fault being processed,
-    // including one that interrupts an exception (double fault -> HALT).
-    // Called for AddressError/BusError, whose StackFrame it receives; the
-    // 68030/68040 MMU faults (MmuBusError, format $A/$B/$7) are NOT reported.
-    // Fault path only, so virtual regardless of MOIRA_VIRTUAL_API, as in NeoST.
-    virtual void willProcessFault(const StackFrame & /*frame*/) { }
-    
-#if MOIRA_VIRTUAL_API == true
-    
-    // Advances the internal clock by the specified number of cycles
-    virtual void sync(int cycles) { clock += cycles; }
-    
-    // [B] M68000PRM-1992 TAS: a locked read-modify-write transfer.
-    // POM68K (ported from NeoST ce1cc52): /RMC of the 68000 TAS read-modify-
-    // write — a bus master must not be granted the bus between the read and
-    // the write. Called with true before the read and false after the write
-    // (also on an exception out of either). TAS only: not a hot path.
-    virtual void setBusLock(bool /*locked*/) { }
-
-    // Reads a value from memory
-    virtual u8 read8(u32 addr) const = 0;
-    virtual u16 read16(u32 addr) const = 0;
-    // POM68K (host): not pure. The fork's hosts implement the 8/16-bit calls only;
-    // read32/write32 are reached only through dynamic bus sizing (a 32-bit
-    // port reported by dsack), which is compiled with MOIRA_EMULATE_ICACHE
-    // alone (MoiraDataflow.h, busSizing). The defaults compose the two word
-    // cycles in the order read<>/write<> issue them without bus sizing.
-    virtual u32 read32(u32 addr) const {
-        u32 hi = read16(addr);
-        return hi << 16 | read16(addr + 2);
-    }
-
-    // Reads a 16-bit value from memory during the reset routine
-    virtual u16 read16OnReset(u32 addr) const { return read16(addr); }
-
-    // Reads a 16-bit value from memory for disassembly purposes
-    virtual u16 read16Dasm(u32 addr) const { return read16(addr); }
-
-    // Writes a value into memory
-    virtual void write8(u32 addr, u8 val) const = 0;
-    virtual void write16(u32 addr, u16 val) const = 0;
-    // POM68K (host): not pure — see read32
-    virtual void write32(u32 addr, u32 val) const {
-        write16(addr, u16(val >> 16));
-        write16(addr + 2, u16(val));
-    }
-
-    // Returns the DSACK bits for the addressed device (68020)
-    virtual u8 dsack(u32 addr) const { return DSACK_16; }
-
-    // Provides the interrupt vector for a given interrupt level in USER mode
-    virtual u16 readIrqUserVector(u8 level) const { return 0; }
-
-    
-    //
-    // State delegates
-    //
-    
-    // Called when the CPU is reset
-    virtual void cpuDidReset() { }
-    
-    // Called when the CPU enters the HALT state
-    virtual void cpuDidHalt() { }
-    
-    
-    //
-    // Instruction delegates
-    //
-    
-    // Called before an instruction is executed
-    virtual void willExecute(const char *func, Instr I, Mode M, Size S, u16 opcode) { }
-    
-    // Called after an instruction has been executed
-    virtual void didExecute(const char *func, Instr I, Mode M, Size S, u16 opcode) { }
-    
-    
-    //
-    // Exception delegates
-    //
-    
-    // Called before an exception is executed
-    virtual void willExecute(M68kException exc, u16 vector) { }
-    
-    // Called after an exception has been executed
-    virtual void didExecute(M68kException exc, u16 vector) { }
-    
-    // Called when an interrupt is about to be processed
-    virtual void willInterrupt(u8 level) { }
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // NEOST: idle cycles around the 68000's IACK CYCLE (execInterrupt<C68000>,
-    // between the PClo push and the SR/PChi pushes). Stock Moira = SYNC(4) before
-    // the vector read and SYNC(4) after. A subclass (NeoST) can carry the
-    // Hatari/WinUAE `iack_cycle` model (newcpu.c) there: E-clock wait (before) +
-    // the IACK→DTACK block + idle (after), computed AT THIS exact point — the
-    // clock phase is already quantised there by the bus alignment of the PClo
-    // push.
-    virtual int iackSyncBefore(u8 level) { return 4; }
-    virtual int iackSyncAfter(u8 level) { return 4; }
-
-    // POM68K (host) (ported from NeoST fdbce2e): delegable illegal instruction.
-    // Called by execIllegal<C>() BEFORE the ILLEGAL exception is taken, so
-    // only when the instruction really executes (interrupts and trace have
-    // already been arbitrated by execute()). Returning true means the
-    // subclass handled the opcode: it is then consumed like a NOP
-    // (prefetch<C, POLL>: 4 cycles on the 68000/68010; nothing is charged on
-    // Core::C68020, where SYNC is empty). Default false = upstream behaviour.
-    // NeoST serves its GEMDOS host-call opcodes ($0008-$000A) through it.
-    virtual bool illegalOpcodeHook(u16 /*opcode*/) { return false; }
-
-    // Called when the CPU jumps to an exception vector
-    virtual void didJumpToVector(int nr, u32 addr) { }
-
-    
-    //
-    // Cache register delegates
-    //
-    
-    // Called when the CACR register is modified
-    virtual void didChangeCACR(u32 value) { }
-
-    // Called when the CAAR register is modified
-    virtual void didChangeCAAR(u32 value) { }
-
-    // [B] MC68030UM-1989 §6.1.1 and §6.3.1: instruction-cache geometry/control.
-    // POM68K: 68030 instruction-cache timing overlay, folded inline into
-    // mmuFetchWord. It was a virtual willFetchInstr(addr, super) hook fired
-    // per instruction word; the indirect call + out-of-line model cost ~11%
-    // of the whole emulator (TODO § Performance), and everything it needs
-    // (reg.cacr, reg.sr.s, clock) lives right here. The wrapper (Cpu030)
-    // arms it, owns the knobs and reads the stats; the model itself is the
-    // MC68030UM-1989 § 6 on-chip i-cache: 256 bytes = 16 lines × 4 longwords,
-    // LOGICAL, direct-mapped, tag = A[31:8] + supervisor(FC2), per-longword
-    // valid bits, whole-line evict on tag change, gated on CACR bit 0.
-    // A miss charges `missPenalty` cycles (the fetch bus access the real
-    // chip pays only on a miss). Zero cost when not armed.
-    // [F] missPenalty is a host-selected timing approximation.
-    // Settled by: calibrated cache-hit/miss bus timing on the target machine.
-    struct PomIcache {
-        bool armed = false;         // wrapper opted in (LC II machine)
-        i32  missPenalty = 0;       // cycles charged per i-cache miss
-        u32  tag[16] = {};
-        u8   valid[16] = {};
-        i64  fetches = 0, hits = 0, misses = 0;
-        void reset() {              // CACR clear strobes / hard reset
-            for (int i = 0; i < 16; i++) { tag[i] = 0xFFFFFFFFu; valid[i] = 0; }
-        }
-        void clearEntry(u32 caar) { // CACR.CEI: one longword in one cache line
-            const int line = int((caar >> 4) & 0xF);
-            const u8 bit = u8(1u << ((caar >> 2) & 3));
-            valid[line] &= u8(~bit);
-        }
-    };
-    PomIcache pomIcache;
-
-    // POM68K (host) B.2 slice 4: the i-cache overlay itself, for `Words` CONSECUTIVE
-    // instruction words starting at `pc`, applied in address order. ONE body
-    // serves both the single-word mmuFetchWord path and mmuExecuteStart's
-    // fused ird/irc fetch, so the tag/valid/line arithmetic exists exactly
-    // once — a second copy of it is how the 2026-08-19 retained-cache
-    // divergence presented (agreeing counters over parted cache content).
-    // Shape borrowed from pomJitIcachePeekPenalty: a sequential walk with a
-    // one-line local override. An instruction's words are consecutive, so an
-    // earlier word's install can only be hit by a later word on the SAME
-    // line and lines advance monotonically; the line arrays are therefore
-    // read and written once per line rather than once per word, and the
-    // result is bit-identical to the per-word form (down to leaving a pure
-    // hit's tag/valid untouched — the `dirty` flag).
-    // Each word's miss penalty is charged where the per-word form charged
-    // it — word 1's before word 2 is looked up. That ordering is observable
-    // only through `clock`, and `Words > 1` is used solely where the JIT code
-    // window serves every byte, so no bus access, no SYNC (empty on
-    // Core::C68020) and no POLL_IPL can sit between the two charges.
-    // Gate: jit_lockstep_030_test compares fetches/hits/misses AND
-    // tag[]/valid[]; POM68K_JIT_LOCKSTEP_ICTRACE=1 names the diverging step.
-    template <int Words> void pomIcacheFetch(u32 pc) {
-        if (!pomIcache.armed) return;
-        pomIcache.fetches += Words;         // counted whether or not CACR.EI is on
-        if (!(reg.cacr & 0x1)) return;      // System enables the i-cache
-        const u32 sup = reg.sr.s ? 0x80000000u : 0u;
-        int line = -1; u32 curTag = 0; u8 curValid = 0; bool dirty = false;
-        for (int w = 0; w < Words; w++) {
-            const u32 addr = pc + u32(w) * 2;
-            const int l    = int((addr >> 4) & 15);
-            const u32 tag  = (addr >> 8) | sup;
-            const u8  bit  = u8(1u << ((addr >> 2) & 3));
-            if (l != line) {                // crossed into the next line
-                if (dirty) { pomIcache.tag[line] = curTag; pomIcache.valid[line] = curValid; }
-                line = l; curTag = pomIcache.tag[l]; curValid = pomIcache.valid[l];
-                dirty = false;
-            }
-            if (curTag == tag && (curValid & bit)) { pomIcache.hits++; continue; }
-            if (curTag != tag) { curTag = tag; curValid = 0; }  // direct-mapped: evict on tag change
-            curValid |= bit; dirty = true;
-            pomIcache.misses++;
-            clock += pomIcache.missPenalty; // a miss pays the fetch bus cycles
-        }
-        if (dirty) { pomIcache.tag[line] = curTag; pomIcache.valid[line] = curValid; }
-    }
-
-    // CACR clear bits are write-only command strobes, so wrappers receive
-    // the raw MOVEC value in didChangeCACR(). CI has priority when both are
-    // asserted; CEI invalidates only the CAAR-selected longword entry.
-    void pomInvalidateIcache030(u32 value) {
-        if (value & 0x08) pomIcache.reset();
-        else if (value & 0x04) pomIcache.clearEntry(reg.caar);
-    }
-
-#if MOIRA_ENABLE_JIT
-    // Written only by the opt-in 68030 path in pomJitExecOne(). Keeping the
-    // storage beside the cache model makes the measured miss delta and its
-    // configured penalty part of one contract.
-    bool pomJitTimingProbe = false;
-    PomJitTiming pomJitTiming {};
-    i64 pomJitTimingFetch0 = 0;
-
-#endif
-
-    
-    //
-    // Debugger delegates
-    //
-    
-    // Called when a soft stop is reached
-    virtual void didReachSoftstop(u32 addr) { }
-    
-    // Called when a breakpoint is hit
-    virtual void didReachBreakpoint(u32 addr) { }
-    
-    // Called when a watchpoint is hit
-    virtual void didReachWatchpoint(u32 addr) { }
-
-    // POM68K (host) (debugger access stops): every watchpoint site calls this,
-    // BEFORE the access, with what the bare address lacks — the width,
-    // the direction, and whether it is a program-space access (an
-    // instruction-stream read such as an extension word or a PC-relative
-    // operand). The default keeps Moira's original delegate.
-    virtual void pomDidReachWatchpoint(u32 addr, Size S, bool write, bool program) {
-        (void)S; (void)write; (void)program;
-        didReachWatchpoint(addr);
-    }
-    
-    // Called when a catchpoint is hit
-    virtual void didReachCatchpoint(u8 vector) { }
-    
-    // Called when a software trap is hit
-    virtual void didReachSoftwareTrap(u32 addr) { }
-
-    // Called after an instruction has been appended to the log buffer
-    virtual void didLogInstruction(const Registers &reg) { }
-
-#else
-    
-    // Advances the internal clock by the specified number of cycles
-    void sync(int cycles);
-    
-    void setBusLock(bool) { }  // POM68K (host) (ported from NeoST ce1cc52)
-
-    // Reads a value from memory
-    u8 read8(u32 addr) const;
-    u16 read16(u32 addr) const;
-    u32 read32(u32 addr) const;
-
-    // Reads a 16-bit value from memory during the reset routine
-    u16 read16OnReset(u32 addr) const;
-
-    // Reads a 16-bit value from memory for disassembly purposes
-    u16 read16Dasm(u32 addr) const;
-
-    // Writes a value into memory
-    void write8(u32 addr, u8 val) const;
-    void write16(u32 addr, u16 val) const;
-    void write32(u32 addr, u32 val) const;
-
-    // Returns the DSACK bits for the addressed device (68020)
-    u8 dsack(u32 addr) const;
-
-    // Provides the interrupt vector for a given interrupt level in USER mode
-    u16 readIrqUserVector(u8 level) const;
-
-    
-    //
-    // State delegates
-    //
-    
-    // Called when the CPU is reset
-    void cpuDidReset();
-    
-    // Called when the CPU enters the HALT state
-    void cpuDidHalt();
-    
-    
-    //
-    // Instruction delegates
-    //
-    
-    // Called before an instruction is executed
-    void willExecute(const char *func, Instr I, Mode M, Size S, u16 opcode);
-    
-    // Called after an instruction has been executed
-    void didExecute(const char *func, Instr I, Mode M, Size S, u16 opcode);
-    
-    
-    //
-    // Exception delegates
-    //
-    
-    // Called before an exception is executed
-    void willExecute(M68kException exc, u16 vector);
-    
-    // Called after an exception has been executed
-    void didExecute(M68kException exc, u16 vector);
-    
-    // Called when an interrupt is about to be processed
-    void willInterrupt(u8 level);
-    
-    // Called when the CPU jumps to an exception vector
-    void didJumpToVector(int nr, u32 addr);
-    
-    
-    //
-    // Cache register delegates
-    //
-    
-    // Called when the CACR register is modified
-    void didChangeCACR(u32 value);
-    
-    // Called when the CAAR register is modified
-    void didChangeCAAR(u32 value);
-    
-    
-    //
-    // Debugger delegates
-    //
-    
-    // Called when a soft stop is reached
-    void didReachSoftstop(u32 addr);
-    
-    // Called when a breakpoint is hit
-    void didReachBreakpoint(u32 addr);
-    
-    // Called when a watchpoint is hit
-    void didReachWatchpoint(u32 addr);
-    void pomDidReachWatchpoint(u32 addr, Size, bool, bool) { didReachWatchpoint(addr); }
-    
-    // Called when a catchpoint is hit
-    void didReachCatchpoint(u8 vector);
-    
-    // Called when a software trap is hit
-    void didReachSoftwareTrap(u32 addr);
-
-    // Called after an instruction has been appended to the log buffer
-    void didLogInstruction(const Registers &reg);
-    
-#endif
-    
-    //
-    // Accessing the clock
-    //
-    
-public:
-    
-    // Returns the current CPU clock cycle count (elapsed cycles since power-up)
-    i64 getClock() const { return clock; }
-    
-    // Sets the CPU clock cycle count
-    void setClock(i64 val) { clock = val; }
-    
-    
-    //
-    // Accessing registers
-    //
-    
-public:
-    
-    // Gets or sets the value of a data register (0 - 7)
-    u32 getD(int n) const { return readD(n); }
-    void setD(int n, u32 v) { writeD(n, v); }
-    
-    // Gets or sets the value of an address register (0 - 7)
-    u32 getA(int n) const { return readA(n); }
-    void setA(int n, u32 v) { writeA(n, v); }
-    
-    // Gets or sets the value of the program counter (PC)
-    u32 getPC() const { return reg.pc; }
-    void setPC(u32 val) { reg.pc = val; }
-    
-    // Gets or sets the address of the currently executed instruction
-    u32 getPC0() const { return reg.pc0; }
-    void setPC0(u32 val) { reg.pc0 = val; }
-    
-    // Gets or sets the IRC register, which is part of the prefetch queue
-    u16 getIRC() const { return queue.irc; }
-    void setIRC(u16 val) { queue.irc = val; }
-    
-    // Gets or sets the IRD register, which is part of the prefetch queue
-    u16 getIRD() const { return queue.ird; }
-    void setIRD(u16 val) { queue.ird = val; }
-    
-    // Gets or sets the value of the Condition Code Register (CCR)
-    u8 getCCR() const;
-    void setCCR(u8 val);
-    
-    // Gets or sets the value of the Status Register (SR)
-    u16 getSR() const;
-    void setSR(u16 val);
-    
-    // Gets or sets the current value of the stack pointer (SP)
-    u32 getSP() const { return reg.sp; }
-    void setSP(u32 val) { reg.sp = val; }
-    
-    // Gets or sets the User Stack Pointer (USP)
-    u32 getUSP() const { return !reg.sr.s ? reg.sp : reg.usp; }
-    void setUSP(u32 val) { if (!reg.sr.s) reg.sp = val; else reg.usp = val; }
-    
-    // Gets or sets the Interrupt Stack Pointer (ISP)
-    u32 getISP() const { return (reg.sr.s && !reg.sr.m) ? reg.sp : reg.isp; }
-    void setISP(u32 val) { if (reg.sr.s && !reg.sr.m) reg.sp = val; else reg.isp = val; }
-    
-    // Gets or sets the Master Stack Pointer (MSP)
-    u32 getMSP() const { return (reg.sr.s && reg.sr.m) ? reg.sp : reg.msp; }
-    void setMSP(u32 val) { if (reg.sr.s && reg.sr.m) reg.sp = val; else reg.msp = val; }
-    
-    // Gets or sets the Vector Base Register (VBR)
-    u32 getVBR() const { return reg.vbr; }
-    void setVBR(u32 val) { reg.vbr = val; }
-    
-    // Gets or sets the Source Function Code (SFC)
-    u32 getSFC() const { return reg.sfc; }
-    void setSFC(u32 val) { reg.sfc = val & 0b111; }
-    
-    // Gets or sets the Destination Function Code (DFC)
-    u32 getDFC() const { return reg.dfc; }
-    void setDFC(u32 val) { reg.dfc = val & 0b111; }
-    
-    // Gets or sets the Cache Control Register (CACR)
-    u32 getCACR() const { return reg.cacr; }
-    void setCACR(u32 val);
-    
-    // Gets or sets the Cache Address Register (CAAR)
-    u32 getCAAR() const { return reg.caar; }
-    void setCAAR(u32 val);
-
-    // [B] MC68030UM-1989 §9.7: the six MMU registers.
-    // POM68K: gets or sets the 68030 MMU registers (MC68030UM-1989 § 9.7)
-    u64 getCRP() const { return reg.crp; }
-    void setCRP(u64 val) { reg.crp = val; }
-
-    u64 getSRP() const { return reg.srp; }
-    void setSRP(u64 val) { reg.srp = val; }
-
-    u32 getTC() const { return reg.tc; }
-    void setTC(u32 val) { reg.tc = val; }
-
-    u32 getTT0() const { return reg.tt0; }
-    void setTT0(u32 val) { reg.tt0 = val; }
-
-    u32 getTT1() const { return reg.tt1; }
-    void setTT1(u32 val) { reg.tt1 = val; }
-
-    u16 getMMUSR() const { return reg.mmusr; }
-    void setMMUSR(u16 val) { reg.mmusr = val; }
-
-    // [B] MC68040UM-1993 §3.1: MMU programmer model; oracle setter masks below.
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K Q2: gets or sets the 68040 MMU registers (MC68040UM-1993 § 3.1).
-    // Setter masks mirror the oracle (WinUAE newcpu_common.c m68k_move2c,
-    // 68040 rows): TC keeps E|P, ITT/DTT keep $FFFFE364, URP/SRP/MMUSR
-    // store all 32 bits.
-    // [B] MC68040UM-1993 §3.7.4: MMU register writes retain the ATCs.
-    // POM68K JIT: revoke derived mappings, including on TC.E/P changes,
-    // without losing resident I/D translations (mmu040_atc_test).
-    // The four TTR setters follow the same invalidation contract.
-    u32 getURP040() const { return reg.urp040; }
-    void setURP040(u32 val) { reg.urp040 = val; pomJitMapMoved(); }
-
-    u32 getSRP040() const { return reg.srp040; }
-    void setSRP040(u32 val) { reg.srp040 = val; pomJitMapMoved(); }
-
-    u32 getTC040() const { return reg.tc040; }
-    void setTC040(u32 val) {
-        // [B] MC68040UM-1993 §B.3.2: "The MC68EC040 does not perform
-        // table searches"; §B.6: it does not support 8-Kbyte pages.
-        // Its ACU keeps a TC opcode (§B.6) but neither E nor P can mean
-        // anything, so on the EC040 both stay clear: translation off and
-        // 4-Kbyte CINV/CPUSH pages by construction, with no model test on
-        // the access path.
-        // [F] What MOVEC TC,Rn returns on an EC040 after a write is not
-        // documented; this core reads 0. Settled by: a real MC68EC040.
-        reg.tc040 = cpuModel == Model::M68EC040 ? 0 : val & 0xC000;
-        pomJitMapMoved();
-    }
-
-    // POM68K (host) Q8: disable the 040 ATC and force walk-per-access (oracle-
-    // identical mode used for differential checks). Default is ATC on.
-    void setMmu040AtcArmed(bool on) { mmu040AtcArmed = on; }
-    bool mmu040AtcIsArmed() const { return mmu040AtcArmed; }
-
-    // POM68K (host) M2 (docs/CACHE_040.md): data-bearing 68040 caches. The flag is
-    // opt-in on 040 models with POM68K_040_DCACHE=1; the cacheless default
-    // preserves the calibrated real-ROM/JIT performance tier.
-    void setPomCache040(bool on) {
-        if (pomCache040On == on) return;
-        pomCache040On = on;
-        // Native data mappings and remembered cache-active refusals are
-        // mutually exclusive; neither may survive a runtime mode change.
-        pomJitDtlbFlush();
-    }
-    bool pomCache040Armed() const { return pomCache040On; }
-    // POM68K (host) M0 probe (docs/CACHE_040.md): histogram the descriptor CM bits
-    // per ATC fill, printed at process exit. Host-injected diagnostic.
-    void setPomCmStats040(bool on) { pomCmStats040 = on; }
-    // POM68K (host): NeoST's cycle-exact exception trace ([PIN], [EXC], [JTV] on
-    // stderr). The core read NEOST_EXC_DIAG itself, at three sites; the
-    // host now decides and says so here — the core reads no environment.
-    void setPomExceptionDiag(bool on) { pomExceptionDiag = on; }
-    bool pomCache040Active() const {
-        return pomCache040On && cpuModel >= Model::M68EC040;
-    }
-#if MOIRA_ENABLE_JIT
-    // The engine's residency proof for a native block. It must stay inside
-    // the armed window: pomJitCache040Match reads the window's host bytes.
-    bool pomCache040CodeMatches(u32 addr, u32 bytes) const {
-        const PomJitWindow &w = pomJitWindow;
-        if (!pomCache040Active()) return true;
-        if (!w.armed || u32(addr - w.base) > w.len ||
-            bytes > w.len - u32(addr - w.base)) return false;
-        return pomJitCache040Match(addr, bytes);
-    }
-#endif
-
-    Cache040 &pomCache040Data() { return pomCache040D; }
-    Cache040 &pomCache040Inst() { return pomCache040I; }
-    const Cache040 &pomCache040Data() const { return pomCache040D; }
-    const Cache040 &pomCache040Inst() const { return pomCache040I; }
-
-    struct PomCache040Timing {
-        i32 hit = 0;             // internal hit: no external bus tenure
-        i32 lineFill = 8;        // four-beat line read, zero-wait-state bus
-        i32 pushLong = 2;        // one dirty longword write beat
-    };
-    void setPomCache040Timing(PomCache040Timing v) {
-        pomCache040Timing = v;
-        // Native line reads are admitted only when hit timing is zero. Any
-        // published entry must therefore die when the timing policy moves.
-        pomJitCache040Bump();
-    }
-    PomCache040Timing getPomCache040Timing() const { return pomCache040Timing; }
-
-    // [B] MC68040UM-1993 §4.5: alternate-master snooping.
-    // Alternate-master snoop interface (MC68040UM-1993 §4.5, SC1:SC0).
-    // Reads supply dirty data and optionally invalidate it. Sink writes
-    // return true when the 040 owns a dirty hit and memory must be inhibited.
-    bool pomSnoop040Read(u32 pa, u8 *dst, int bytes, bool invalidate);
-    bool pomSnoop040Write(u32 pa, const u8 *src, int bytes, bool sink);
-
-    u32 getITT0() const { return reg.itt0; }
-    void setITT0(u32 val) { reg.itt0 = val & 0xFFFFE364; pomJitMapMoved(); }
-
-    u32 getITT1() const { return reg.itt1; }
-    void setITT1(u32 val) { reg.itt1 = val & 0xFFFFE364; pomJitMapMoved(); }
-
-    u32 getDTT0() const { return reg.dtt0; }
-    void setDTT0(u32 val) { reg.dtt0 = val & 0xFFFFE364; pomJitMapMoved(); }
-
-    u32 getDTT1() const { return reg.dtt1; }
-    void setDTT1(u32 val) { reg.dtt1 = val & 0xFFFFE364; pomJitMapMoved(); }
-
-    u32 getMMUSR040() const { return reg.mmusr040; }
-    void setMMUSR040(u32 val) { reg.mmusr040 = val; }
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K O5/Q9: 6888x/68040 programmer's model. getFP /
-    // setFP use the SST030 raw-word contract: w[0] = (sign|exp) << 16,
-    // w[1] = mantissa bits 63..32, w[2] = bits 31..0.
-    //
-    // State-restore convention (solo-corpus convergence): loading FPU
-    // state through any of these setters leaves the FPU in the NON-NULL
-    // (idle) state — the WinUAE oracle glue forces regs.fpu_state = 1
-    // after oracle_set_state, so a subsequent FSAVE emits the 68882 IDLE
-    // frame, never the 4-byte NULL frame. A freshly reset FPU that has
-    // executed nothing still FSAVEs a NULL frame.
-    void getFP(int n, u32 w[3]) const {
-        w[0] = u32(fpu.fp[n].high) << 16;
-        w[1] = u32(fpu.fp[n].low >> 32);
-        w[2] = u32(fpu.fp[n].low);
-    }
-    void setFP(int n, const u32 w[3]) {
-        fpu.fp[n].high = u16(w[0] >> 16);
-        fpu.fp[n].low = u64(w[1]) << 32 | w[2];
-        fpu.state = 1;
-    }
-
-    // 6888x FPCR bits 3-0 read zero; the integrated 68040 exposes all
-    // sixteen control bits. FPSR has the same mask on both families.
-    u32 getFPCR() const { return fpu.fpcr & (fpuModel == FPUModel::M68040 ? 0xffff : 0xfff0); }
-    void setFPCR(u32 val) {
-        fpu.fpcr = val & (fpuModel == FPUModel::M68040 ? 0xffff : 0xfff0);
-        fpu.state = 1;
-    }
-
-    u32 getFPSR() const { return fpu.fpsr & 0x0ffffff8; }
-    void setFPSR(u32 val) { fpu.fpsr = val & 0x0ffffff8; fpu.state = 1; }
-
-    u32 getFPIAR() const { return fpu.fpiar; }
-    void setFPIAR(u32 val) { fpu.fpiar = val; fpu.state = 1; }
-
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    //
-    // 6888x / integrated-040 FPU state (MoiraExecFPU_cpp.h)
-    //
-    // Execution is backed by extern/softfloat (same softfloat family as
-    // the primary oracle, WinUAE); the 6888x code is Moira's own (MIT),
-    // checked against WinUAE fpp.c / fpp_softfloat.c, whose behaviour is
-    // cited `[D]` with file:line where it settled a ruling. Nothing
-    // here is reachable while fpuModel == NONE (the jump table then holds
-    // stock Line-F handlers). See extern/moira/POM68K_VENDOR.md § FPU.
-    //
-
-protected:
-
-    struct {
-
-        // POM68K (host): value-initialised. fpuResetState() writes the reset NaNs,
-        // but a core that has not been reset yet (the Portable's, held by
-        // its Power Manager) is serialized too, and carried heap bytes here.
-        // Gate: portable_slicing_etalon (two machines, one process, frame 0).
-        FpuExtended fp[8] {};  // [B] MC68881UM-1989 §2.1: reset floating-point registers. — FP0-FP7 (reset = nonsignaling NaN, § 2.1)
-        u32 fpcr {};        // control register (enables + mode byte)
-        u32 fpsr {};        // status register (cc, quotient, exc, accrued)
-        u32 fpiar {};       // instruction address register
-
-        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // Frame micro-state (WinUAE regs.fpu_state / fpu_exp_state):
-        // state 0 = reset/null (FSAVE writes a NULL frame), 1 = idle
-        int state {};
-        int expState {};    // nonzero = exceptional state pending in frame
-        int expPend {};     // pending arithmetic exception vector (0 = none)
-        u32 fsaveCcr {};    // IDLE-frame command/condition register
-        u32 fsaveEo[3] {};  // IDLE-frame exceptional operand
-        u32 ea {};          // [D] @ Hatari e77819f7: last operand EA (WinUAE regs.fp_ea) — lands
-                            // in the format $3 post-instruction frame
-
-        // Integrated-040 FSAVE UNIMP/BUSY frame micro-state.
-        u16 cmdreg1b {}, cmdreg3b {};
-        u8 stag {}, dtag {}, wbtm66 {}, grs {}, wbte15 {};
-        bool e1 {}, e3 {}, t {};
-        u32 fpiarCu {};
-        u32 fpt[3] {}, et[3] {}, wbt[3] {};
-
-        // External 6888x operation suspended at an interruptible protocol
-        // checkpoint. The completed programmer-model image is kept out of
-        // sight until the format-$9 continuation reaches its end phase.
-        bool busy {};
-        i64 busyUntil {};
-        u16 busyOpcode {}, busyExt {};
-        u32 busyIa {};
-        FpuExtended busyFp[8] {};
-        u32 busyFpsr {};
-    } fpu;
-
-    bool fpuMidInterruptFrame {};
 
 private:
 
-    // [B] MC68881UM-1989 §6.4.2.1: programmer-model reset.
-    // Power-up / null-frame state (MC68881UM-1989 § 6.4.2.1: control registers
-    // zeroed, data registers = nonsignaling NaN $7FFF FFFF...FFFF)
-    void fpuResetState();
-    // softfloat's intermediate-result precision (high byte) and rounding
-    // mode (low byte): the only part of fpuFloatStatus that outlives an
-    // instruction (fpuResetState). Out of line: float_status is opaque here.
-    u16 pomFpuCarriedModes() const;
-    void pomSetFpuCarriedModes(u16 modes);
-    void fpuCompleteBusy(bool wait);
-    template <Core C> void fpuRunBusy(int cycles, u16 opcode, u16 ext);
+    // Called when an instruction (or exception) has been processed: pc0 moves to the next instruction
+    void advancePC0() { reg.prev_pc0 = reg.pc0; reg.pc0 = reg.pc - 2; }
 
-    // Context-bearing conversions; pure bit copies remain free helpers.
-    void fpuToSingleV(FpuExtended &v, u32 w);
-    u32 fpuFromSingleV(const FpuExtended &v);
-    void fpuToDoubleV(FpuExtended &v, u32 w1, u32 w2);
-    void fpuFromDoubleV(const FpuExtended &v, u32 *w1, u32 *w2);
-    void fpuFromExtendedV(const FpuExtended &v, u32 *w1, u32 *w2, u32 *w3);
-    i64 fpuToIntV(const FpuExtended &v, int size);
-    void fpuToPackedV(FpuExtended &v, const u32 wrd[3]);
-    void fpuFromPackedV(const FpuExtended &v, u32 wrd[3], int kfactor);
-
-    // FPCR mode byte -> softfloat rounding mode/precision (fpp_softfloat.c
-    // fp_set_mode) + the 6888x NaN/infinity special flags
-    void fpuSetMode();
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // FPSR maintenance (WinUAE fpp.c fpsr_* helpers)
-    void fpuClearStatus();                      // exc byte + host flags
-    u32  fpuMakeStatus();                       // host flags -> FPSR + accrued
-    void fpuSetResultFlags(const FpuExtended &r); // condition code byte
-    void fpuSetQuotient(u64 quot, u8 sign);
-    void fpuGetQuotient(u64 *quot, u8 *sign);
-
-    // [B] MC68881UM-1989 §4.4 and §4.8.6: conditional predicates.
-    // The 32 conditional predicates (MC68881UM-1989 § 4.4, 6888x table);
-    // sets BSUN/AIOP on the IEEE non-aware predicates, returns -2 when an
-    // enabled BSUN trap was taken
-    template <Core C> int fpuCondEval(u16 cond);
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // Pending pre-instruction exception check (WinUAE fp_exception_pending)
-    template <Core C> bool fpuCheckPending();
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // FPU exception: pre-instruction = format $0 (PC = re-executing FP
-    // instruction), post-instruction = format $3 with fp_ea (WinUAE
-    // Exception_build_stack_frame_common nr 48-55)
-    template <Core C> void execFpuException(u16 vector, bool pre);
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // FRESTORE invalid-frame format error (vector 14) — stacks WinUAE's
-    // PC (past all consumed words), ruling D21
-    template <Core C> void execFRestoreFormatError();
-    template <Core C> void execFpuIllegalOpmode040();   // POM68K (host)
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K Q4: 68LC040/68EC040 F2xx with no FPU — vector 11, format $4
-    // "FP disabled" frame {SR, PC-after-consumed-words, $402C, EA,
-    // instruction PC} (WinUAE fpu_op_illg + Exception_build_stack_frame
-    // case 0x4). The caller consumed the shape's words and passes the EA
-    // per WinUAE's fault_if_no_fpu call site (0 for most shapes).
-    template <Core C> void execFpuDisabled040(u32 ea);
-
-    // Integrated-FPU unimplemented instruction: capture the $41/$30
-    // FSAVE frame state and take vector 11 with a format-$2 frame.
-    template <Core C> void execFpuUnimplemented040(
-        u16 opcode, u16 ext, const FpuExtended &src, int dst, int size, u32 ea);
-
-    // Integrated 040 does not execute denormal/unnormal or packed-decimal
-    // operands in hardware; capture BUSY state and take vector 55.
-    template <Core C> void execFpuDatatype040(
-        u16 opcode, u16 ext, const FpuExtended &src, int dst, int size, u32 ea,
-        const u32 *packed = nullptr, bool encodedDenormal = false);
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // Arms a plain (An)± fixup for FPU operands on the 68030 (WinUAE
-    // fpp.c mmufixup arming): the register is RESTORED on a non-lastwrite
-    // bus fault, but the $A/$B frame's wb2/wb3 status byte stays 0
-    void fpuArmFixup(int n);
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // Arithmetic-exception latch + 68882 FSAVE frame data capture
-    // (WinUAE fpsr_check_arithmetic_exception, 6888x branch); ea = the
-    // operand's effective address (0 for register/immediate operands),
-    // latched into fpu.ea for the format $3 frame
-    bool fpuCheckArithException(
-        const FpuExtended &src, u16 opcode, u16 ext, u32 ea,
-        u32 nonmaskable = 0);
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // Normalizes denormal/unnormal operands (6888x supports denormals:
-    // WinUAE normalize_or_fault_if_no_denormal_support, 6888x branch)
-    void fpuNormalize(FpuExtended &v);
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // FMOVECR constant ROM incl. undefined offsets (WinUAE fpu_get_constant)
-    bool fpuGetConstant(FpuExtended &v, int cr);
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // Opmode dispatch (WinUAE fp_arithmetic); returns true when the result
-    // is to be stored in the destination register
-    bool fpuArithmetic(const FpuExtended &src, FpuExtended &dst, u16 ext);
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // Operand transfer, all 7 formats (WinUAE get_fp_value/put_fp_value2);
-    // return 1 = done, 0 = invalid encoding (Line-F); ea receives the
-    // memory operand's effective address (untouched otherwise)
-    template <Core C, Mode M> int fpuGetSource(u16 opcode, u16 ext, FpuExtended &src, u32 &ea);
-    template <Core C, Mode M> int fpuPutDest(u16 opcode, u16 ext, FpuExtended value, u32 &ea);
-
-
-    //
-    // Supervisor mode
-    //
-    
-public:
-    
-    // Sets or clears supervisor mode
-    void setSupervisorMode(bool value);
-    
-    // Sets or clears master mode
-    void setMasterMode(bool value);
-    
-    // Sets or clear the supervisor and master flags
-    void setSupervisorFlags(bool s, bool m);
-    
-    
-    //
-    // Trace Flags
-    //
-    
-private:
-    
     // Enables or disables trace mode (T1 flag)
     void setTraceFlag() { reg.sr.t1 = true; flags |= State::TRACING; }
     void clearTraceFlag() { reg.sr.t1 = false; flags &= ~State::TRACING; }
+
+    /* Trace on change of flow (T1T0 = 01, 68020 and later). Instructions that change the
+     * program counter or modify the status register call this function. A trace exception
+     * follows the instruction. If T1 is set, every instruction is traced anyway.
+     * STOP is not traced. RTE is traced if T0 was set before it started (UAE only does so
+     * when the T0, S or M bit changes). */
+    template <Core C> void changeOfFlow()
+    {
+        if constexpr (C == Core::C68020) {
+            if (reg.sr.t0 && !reg.sr.t1) flags |= State::TRACE_EXC;
+        }
+    }
     
     // Enables or disables trace mode (T0 flag)
-    void setTrace0Flag() { reg.sr.t0 = true; flags |= State::TRACING0; }
-    void clearTrace0Flag() { reg.sr.t0 = false; flags &= ~State::TRACING0; }
-
-    // POM68K: trace on change of flow (T1 = 0, T0 = 1). Called by an
-    // instruction that changed the program flow, once it can no longer
-    // fault: it takes the trace exception when it completes, like an
-    // instruction that began with T1 set.
-    // [B] MC68030UM-1989 §8.1.7 — "Instructions that are traced in this
-    //     mode include all branches, jumps, instruction traps, returns, and
-    //     coprocessor instructions that modify the program counter flow.
-    //     This mode also includes status register manipulations".
-    // [B] MC68040UM-1993 §8.2.6 — the 68040's own list.
-    // [D] WinUAE @ Hatari e77819f7 — check_t0_trace.
-    // Gate: cpu_vectors030_test, cpu_vectors040_test (trace=t0 cells).
-    void traceFlow() {
-        if (reg.sr.t0 && !reg.sr.t1) [[unlikely]] flags |= State::TRACE_EXC;
-    }
-    // An instruction trap (TRAP, TRAPcc, TRAPV, CHK, CHK2, zero divide)
-    // taken under T0 is traced once its own exception is processed, on the
-    // 68020 and 68030 — where a T1 trace stays pending over the same
-    // exceptions. `status` is the SR the trap stacked.
-    // [B] MC68030UM-1989 §8.1.7 — "instruction traps" are in the list, and
-    //     "the forced exception processing occurs before the trace
-    //     exception is processed".
-    // [D] WinUAE @ Hatari e77819f7 — the exception's pipe refill runs
-    //     check_t0_trace; on the 68040 exception_check_trace drops it.
-    // The 68040 also traces, under T0, instructions that synchronize or
-    // reload its pipeline without branching.
-    // [B] MC68040UM-1993 §8.2.6 — the list: CAS, CAS2, CINV, CPUSH, FDBcc,
-    //     FMOVEM, FRESTORE, FSAVE, MOVE USP, MOVEC, MOVES, NOP, PFLUSH,
-    //     PTEST, STOP, besides the branches, jumps, returns and SR writes.
-    // [D] WinUAE @ Hatari e77819f7 (cpuemu_31.c, fpp.c trace_t0_68040)
-    //     narrows four of them by direction: MOVEC and MOVE USP to the
-    //     register, FMOVEM to memory, and no FRESTORE. The fork follows the
-    //     oracle where the manual names only the mnemonic.
-    // [F] Whether MOVEC Rc,Rn, MOVE USP,An, FMOVEM from memory and
-    //     FRESTORE trace on silicon. Settled by: a 68040 run under T0 over
-    //     those four.
-    template <Core C> void traceFlow040() {
-        if constexpr (C == Core::C68020) {
-            if (cpuModel >= Model::M68EC040) traceFlow();
-        }
-    }
-    template <Core C> void traceInstructionTrap(u16 status) {
-        if constexpr (C == Core::C68020) {
-            if (cpuModel < Model::M68EC040 && (status & 0xC000) == 0x4000) [[unlikely]]
-                flags |= State::TRACE_EXC;
-        }
-    }
+    void setTrace0Flag() { reg.sr.t0 = true; }
+    void clearTrace0Flag() { reg.sr.t0 = false; }
     
     // Disables both trace flags (T0 and T1)
     void clearTraceFlags() { clearTraceFlag(); clearTrace0Flag(); }
-    
-    
-    //
-    // Register Access
-    //
-    
+
 protected:
-    
+
     // Reads a value from a data register (D0, D1 ... D7)
     template<Size S = Long> u32 readD(int n) const;
     
@@ -2176,26 +1038,42 @@ protected:
     // Writes a value to a register (D0, D1 ... D7, A0, A1 ... A7)
     template <Size S = Long> void writeR(int n, u32 v);
 
-    
+
     //
-    // Instruction Analysis
+    // Instruction availability (internal)
     //
-    
-public:
-    
+
+private:
+
     // Retrieves the availability mask for a given instruction
     u16 availabilityMask(Instr I) const;
     u16 availabilityMask(Instr I, Mode M, Size S) const;
     u16 availabilityMask(Instr I, Mode M, Size S, u16 ext) const;
-    
-    // Checks if a given CPU model supports a specific instruction
-    bool isAvailable(Model model, Instr I) const;
-    bool isAvailable(Model model, Instr I, Mode M, Size S) const;
-    bool isAvailable(Model model, Instr I, Mode M, Size S, u16 ext) const;
-    
-    
+
+
     //
-    // Extension Word Validation
+    // Disassembling (internal)
+    //
+
+private:
+
+    // Disassembles a single instruction into a character buffer and returns the instruction size in bytes
+    int disassembleInstr(char *str, u32 addr, bool cpuView = false) const;
+
+    // Implements the format-string disassembler
+    std::string disassemble(const std::string &fmt, u32 addr, const Registers &regs, int *len) const;
+
+    // Creates a textual representation of a status register
+    void disassembleSR(char *str, const StatusRegister &sr) const;
+
+    // Converts values to a textual representation (uses the data style)
+    void dump16(char *str, u32 addr, int cnt) const;
+    void dump24(char *str, u32 value) const;
+    void dump32(char *str, u32 value) const;
+
+
+    //
+    // Extension word validation
     //
 
 private:
@@ -2207,842 +1085,68 @@ private:
     bool isValidExtMMU(Instr I, Mode M, u16 op, u32 ext) const;
     
     // Validates extension words for FPU-related instructions
-    bool isValidExtFPU(Instr I, Mode M, u16 op, u32 ext) const;
+    bool isValidExtFPU(Instr I, Mode M, u16 op, u32 ext, CPUModel model) const;
 
 
-    // [B] MC68030UM-1989 §9: MMU architecture; oracle arbitration below.
-    // [F] Retired Musashi comparison: local patched revision unavailable.
-    // Settled by: a replay with a pinned replacement oracle.
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
     //
-    // 68030 MMU instruction support (POM68K O4, MoiraExecMMU_cpp.h)
+    // Managing the Function Code Pins (internal)
     //
-    // Two-oracle arbitrated (2026-07-15): WinUAE (oracle/uae, primary) +
-    // Musashi (oracle/musashi); rulings in oracle/fuzz/disputes/NOTES.md.
-    // Manual references MC68030UM-1989 § 9. Physical bus accesses (table
-    // walks) go through the raw read16/write16 interface.
 
 private:
 
-    // Raw 32-bit physical bus access (table walk / descriptor update)
-    u32 mmuRead32(u32 addr) const;
-    void mmuWrite32(u32 addr, u32 val) const;
-
-    // [D] WinUAE mmu_op30_helper_get_fc @ Hatari e77819f7.
-    // FC field decoding of PTEST/PFLUSH/PLOAD extension words;
-    // false = undecodable field (bits 4-3 = 11) -> Line-F.
-    bool mmuFCFromModes(u16 modes, int &fc) const;
-
-    // [B] MC68030UM-1989 §9.3: transparent translation.
-    // Transparent translation register match (§ 9.3)
-    bool mmuMatchTT(u32 tt, u32 addr, int fc, int rw, u16 &sr) const;
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // EA decode for the $F000-$F03F window (WinUAE MMUOP030 order:
-    // computed before validation, side effects survive Line-F)
-    template <Core C, Mode M> u32 mmuDecodeEA(int n);
-
-    // MMU configuration exception (vector 56, format 0 frame)
-    template <Core C> void execMmuConfigError();
-
-
-    // [B] MC68030UM-1989 §9.2 and §8.4: translation and bus-fault frames.
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    //
-    // 68030 MMU bus layer (POM68K O4 slice 3, MoiraExecMMU_cpp.h)
-    //
-    // Address translation on every bus access when cpuModel == M68030 and
-    // TC.E is set (MC68030UM-1989 § 9.2), modeled byte-for-byte on the primary
-    // oracle, WinUAE cpummu030.c (hatari e77819f7) — including the 22-entry
-    // ATC, the format $A/$B bus-fault frames and their internal-state words
-    // (access log, SSW, pending register fixups). All members and hooks are
-    // compiled out of the Core::C68000/C68010 template instantiations; the
-    // Mac Plus path is untouched. See POM68K_VENDOR.md § MMU bus layer.
-
-public:
-
-    // POM68K (host) O6 (LC II): external /BERR. A memory-system bus callback
-    // (read8/16, write8/16) calls this when the machine flags the current
-    // physical (sub-)access as a bus error — unmapped I/O (the LC II ROM's
-    // address-map probe relies on it) or the SCSI pseudo-DMA DRQ timeout.
-    // M68030 model only: funnels into mmuPageFault so the stacked $A/$B
-    // frame is exactly what a translation fault at the same point would
-    // produce. Throws MmuBusError (never returns); the per-instruction
-    // handler turns it into a vector-2 exception, a nested fault → HALT.
-    [[noreturn]] void extBusError();
-
-    // POM68K (host): external /BERR on the 68000 and 68010 cores. extBusError()
-    // above stacks a 68020/68030 frame from a stamp those cores do not keep,
-    // and processException<C68000> has no branch for the MmuBusError it
-    // throws — the exception would leave execute(). A 68000 board calls this
-    // instead, from inside the faulting bus callback, with the address and
-    // direction of the access: it throws the BusError that execBusError<C>
-    // turns into a group-0 frame. The frame recipe is NeoST's
-    // (Cpu68k::raiseBusError): status word = IR bits 15-5, R/W, function
-    // code; PC and SR as they stand at the fault.
-    [[noreturn]] void extBusError000(u32 addr, bool write);
-
-protected:
-
-    // [B] MC68030UM-1989 §9.4: ATC geometry/replacement.
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // Address translation cache — 22 fully-associative entries with a
-    // pseudo-LRU history bit (§ 9.4; WinUAE MMU030_ATC_LINE)
-    struct MmuAtcEntry {
-        u32 logical;            // page-aligned logical address
-        u32 physical;           // page-aligned physical address
-        u8  fc;                 // function code (exact match)
-        bool valid;
-        bool busError;          // invalid / supervisor-only page
-        bool writeProtect;
-        bool modified;
-        bool cacheInhibit;
-        bool mru;               // history bit
-    };
-    static constexpr int MMU_ATC_ENTRIES = 22;
-    MmuAtcEntry mmuAtcArr[MMU_ATC_ENTRIES] {};
-    // POM68K (host) perf (2026-07-17): O(1) pseudo-LRU + last-hit probe. The
-    // profile showed 38% of LC II time inside the two 22-entry scans run
-    // on EVERY memory access (mmuAtcLookup + mmuAtcTouch). mruCount
-    // mirrors the number of set history bits (every transition goes
-    // through mmuAtcTouch or the resets); mmuAtcLast[fc][rw] remembers
-    // the line of the previous hit so page-local access streams probe
-    // one entry instead of scanning — semantics and LRU updates are
-    // identical (the probe runs the same checks and the same touch).
-    int mmuAtcMruCount {0};
-    i8  mmuAtcLast[8][2] {};
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // Per-instruction restart/fault bookkeeping (WinUAE globals in
-    // comments). Values land verbatim in the $A/$B frame internal words.
-    u16 mmuState[3] {};         // mmu030_state[0..2] (MOVEM count, flags, EA words)
-    u32 mmuAd[10] {};           // mmu030_ad[].val — completed-access value log
-    u32 mmuFmovemStore[2] {};   // mmu030_fmovem_store — first two longs of the
-                                // FMOVEM register in flight (O5: $B-frame slots)
-    int mmuIdx {};              // mmu030_idx — accesses attempted
-    int mmuIdxDone {};          // mmu030_idx_done — accesses completed
-    u32 mmuDataBuffer {};       // mmu030_data_buffer_out
-    u32 mmuDispStore[2] {};     // mmu030_disp_store (extended-EA results)
-    u32 mmuOpcodeV {0xFFFFFFFF};// mmu030_opcode ($FFFFFFFF = prefetch phase)
-    u8  mmuFixupReg[2] {};      // mmufixup encodings (wb2/wb3 status bytes)
-                                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-                                // O5: bit 7 = plain (FPU) fixup — restore
-                                // active but the frame status byte reads 0
-                                // (WinUAE mmu030fixupreg returns 0 when the
-                                // fpp.c-armed reg lacks the 0x300 flags)
-    u32 mmuFixupVal[2] {};      // mmufixup .value (An before adjustment)
-    bool mmuLogging {};         // instruction-level accesses feed mmuAd
-    bool mmuRmw {};             // islrmw030 — inside a locked RMW cycle
-    // [B] MC68030UM-1989 §2: PC-relative operand reads are program
-    //     references; §8.2.1: DF marks a data cycle.
-    // POM68K (ruling D46): a 68020/68030 PC-relative operand read is in
-    // flight. Its function code is program space (FC 2/6), yet it is an
-    // operand cycle, not an instruction-stream one: a fault on it stacks
-    // DF, not FB/RB, and a DF-cleared RTE substitutes its data. Set and
-    // cleared by readM only (scoped, so an unwinding fault clears it too).
-    bool mmuPcOperand {};
-    u16 mmuCcrSave {};          // CCR at instruction start ($B fault restore)
-    u32 mmuLastWritePc {};      // next-instruction PC for $A (last-write) faults
-    // [C] LC II ROM 35C28F5F $40A416AA-$40A416B6: PMOVE (A6),CRP; NOP;
-    //     BNE; PMOVE (A3),TC; JMP (A5) — words fetched before the switch.
-    // [F] The pipe depth (~3 words) is not from a manual. Settled by: a
-    //     capture of the fetches around a PMOVE to TC.
-    // POM68K O6 (LC II): 68030 prefetch-pipe carry-over across a
-    // translation change. A PMOVE to TC/CRP/SRP captures the next words
-    // through the STILL-CURRENT mapping; mmuFetchWord serves them while
-    // execution stays linear and drops them on the first jump. The real
-    // 030 pipe holds ~3 words fetched pre-switch — Apple's ROMs bank on
-    // it ("pmove tc; nop; bne; jmp (An)", LC II ROM $A416AA-$A416B6);
-    // a start-of-instruction refetch through the NEW map reads garbage.
-    u32 mmuPipeAddr {};
-    u16 mmuPipe[4] {};
-    int mmuPipeCnt {};
-
-    // POM68K (host) O6 (LC II): context of the physical (sub-)access in flight,
-    // recorded by mmuTranslateAccess/mmuFetchWord before every read8/16
-    // and write8/16 on the M68030 model — extBusError() replays it into
-    // mmuPageFault when the machine asserts /BERR from a bus callback
-    u32 mmuAccAddr {};
-    u32 mmuAccSsw {};
-    u8  mmuAccFc {};
-    bool mmuAccWrite {};
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K O6.9: RTE of a $B fault frame whose SSW DF bit was cleared
-    // by the handler (bit 9 = "frame carried DF" marker, per WinUAE's
-    // encoding, survives; bit 8 cleared) — the faulted data cycle must
-    // NOT be re-run. Moira re-executes the faulting instruction, so a
-    // one-shot latch completes the retried access without a bus cycle:
-    // a read yields the frame's data input buffer, a write is skipped
-    // (WinUAE m68k_do_rte_mmu030 "DF not set: mark access as done").
-    // This is Mac OS's slot-probe recovery protocol (bclr #0 on the
-    // stacked SSW high byte, then RTE).
-    // POM68K: 68030 instruction continuation after RTE $B. The frame's
-    // access log (mmuAd[0 .. idxDone-1], the version word's idx_done) holds
-    // the operand accesses the faulted instruction had COMPLETED. The rerun
-    // of that instruction serves its first `mmuReplayDone` logged accesses
-    // from `mmuReplayAd` — reads return the logged value, writes are not
-    // re-issued — instead of repeating them on the bus.
-    // [B] MC68030UM-1989 §8.2.1 — on RTE from a long bus-fault frame the
-    //     processor restores its internal state and continues the
-    //     instruction; completed bus cycles are not repeated.
-    // [D] WinUAE @ Hatari e77819f7 — m68k_do_rte_mmu030 restores
-    //     mmu030_idx_done and mmu030_ad; ACCESS_CHECK_GET/PUT serve
-    //     idx < idx_done from the log.
-    // Only the very next instruction start consumes it, and execute()
-    // takes no trace or interrupt before that start (Moira.cpp,
-    // rteContinues): the continuation is not an instruction boundary.
-    bool mmuReplayArmed {};
-    bool mmuReplayActive {};
-    u8 mmuReplayDone {};
-    u32 mmuReplayPc {};
-    u32 mmuReplayAd[10] {};
-    bool mmuRteSubstArmed {};
-    bool mmuRteSubstWrite {};
-    u32 mmuRteSubstAddr {};
-    u32 mmuRteSubstData {};     // stacked data input buffer
-    u32 mmuRteSubstPc {};       // stacked PC (the faulting instruction)
-
-    // POM68K: the MMU-less 020 shares the restart model, but has no
-    // per-instruction translated-fetch loop to seed its scratch state.
-    // [F] Internal 020 frame words use the fork's replay model, not a
-    // silicon microstate image. Settled by: real 020 fault/RTE captures.
-    bool mmuPlain020() const {
-        return cpuModel == Model::M68EC020 || cpuModel == Model::M68020;
-    }
-    void mmuPreparePlain020(u16 opcode) {
-        if (!mmuPlain020()) return;
-        mmuState[0] = mmuState[1] = mmuState[2] = 0;
-        mmuIdx = mmuIdxDone = 0;
-        mmuAd[0] = 0;
-        mmuFixupReg[0] = mmuFixupReg[1] = 0;
-        mmuCcrSave = getCCR();
-        mmuOpcodeV = opcode;
-        mmuLastWritePc = reg.pc0; // start PC, before prefetch moves pc0
-        mmuRmw = false;
-    }
-    bool mmuSubstitutePlain020(u32 addr, bool write) {
-        if (!mmuPlain020() || !mmuRteSubstArmed ||
-            mmuRteSubstWrite != write || mmuRteSubstAddr != addr ||
-            mmuRteSubstPc != mmuLastWritePc) return false;
-        mmuRteSubstArmed = false;
-        return true;
-    }
-
-    // Fault capture, valid while a MmuBusError unwinds (mmu030_page_fault)
-    u32 mmuFaultAddr {};
-    u16 mmuSsw {};
-    u32 mmuStageB {};           // mm030_stageb_address
-    u32 mmuWb3Data {};          // regs.wb3_data (pending write value)
-    u16 mmuWb2Address {};       // regs.wb2_address (= mmuState[1] at fault)
-    u16 mmuWb2Status {};        // regs.wb2_status (fixup 0 encoding)
-    u16 mmuWb3Status {};        // regs.wb3_status (fixup 1 encoding)
-
-private:
-
-    // True when bus-level translation is active
-    bool mmuActive() const {
-        return cpuModel == Model::M68030 && (reg.tc & 0x80000000);
-    }
-
-    // [B] MC68030UM-1989 §9.7.2: TC.PS page size.
-    // Page masks derived from TC.PS (§ 9.7.2)
-    u32 mmuPageMask() const { return (u32(1) << (reg.tc >> 20 & 0xf)) - 1; }
-
-#if MOIRA_ENABLE_JIT
-    // POM68K (host) patch 31 (2026-08-28): an IDENTITY probe answer needs an
-    // identity-sized bound. The two 68030 probes take their page bound from
-    // mmuPageMask(), i.e. from TC.PS — and TC.PS is 0 until the OS programs
-    // TC, while the legal field values are 8..15 (256 B…32 KB). Both probes
-    // have branches that answer "identity" and return BEFORE consulting the
-    // ATC (a TT match, and TC.E off), so on an unprogrammed TC they handed
-    // the JIT a ONE-BYTE page, and no window fits in one byte: 965 013 arm
-    // refusals per LC II boot, 95.6 % of them all, every one of them before
-    // the OS enables the MMU (CHANGELOG.md 2026-08-28 (fourteenth)).
-    // Where translation is identity the honest bound is the machine's, not
-    // TC's, and 4 KB is what the plain-020 branch of the same probe already
-    // uses. The ATC paths are untouched: they are only reached with TC.E
-    // set, where the field is programmed by construction.
-    void pomIdentityProbeBound(u32 logical, u32 &pageBase, u32 &pageLen) const {
-        if ((reg.tc >> 20 & 0xf) >= 8) return;   // TC.PS programmed: keep it
-        pageBase = logical & ~4095u;
-        pageLen  = 4096;
-    }
-
-#endif
-
-    // Per-instruction state reset + mode-5-style opcode fetch; returns
-    // false when the fetch faulted (exception already processed)
-    template <Core C> bool mmuExecuteStart();
-
-    // Instruction-stream word fetch (translated, unlogged, never split)
-    u16 mmuFetchWord(u32 addr);
-
-    // Captures the prefetch pipe before a translation change (see the
-    // mmuPipe members above); never faults — a short capture just ends
-    void mmuCapturePipe();
-
-    // POM68K: deferred prefetch fault, 68030 and 68040.
-    // [B] MC68030UM-1989 §8.1.2 — a bus error on an instruction prefetch
-    // may be delayed until the processor attempts to use the prefetched
-    // information.
-    // [B] MC68040UM-1993 §8.2.1 — prefetch bus errors are deferred until
-    // the processor attempts to use the information.
-    // [D] WinUAE @ Hatari e77819f7 fetches each extension word at
-    // consumption (next_iword_mmu030_state, next_iword_mmu040), so the
-    // oracle agrees. Moira keeps `irc` one word ahead of the last consumed
-    // one; that lookahead goes through mmuLookaheadWord /
-    // mmu040LookaheadWord, which on a fault restore the fault latches and
-    // mark `irc` poisoned instead of raising. Every read of `irc` goes
-    // through ircWord(), and readExt/skipExt consume it: a poisoned word
-    // that is used is fetched again at the address it came from, which
-    // raises the fault where the instruction needs the word. Gate:
-    // sst68040/sst68030 "pagend" cells (an instruction ending on a page's
-    // last word, the next page invalid).
-    u16 mmuLookaheadWord(u32 addr);
-    template <Core C> u16 mmu040LookaheadWord(u32 addr);
-    void ircRefetch();
-    u16 ircWord() { if (ircPoison) [[unlikely]] ircRefetch(); return queue.irc; }
-    // [B] MC68040UM-1993 §3.5 — when the last word of a page is an A-line,
-    // illegal, CHK or unimplemented instruction and the next page is not
-    // resident, the 68040 reports the ATC access error, not the instruction's
-    // own exception. Called by those exception paths on the 68040.
-    void ircPoisonPreempts040() { if (ircPoison) [[unlikely]] ircRefetch(); }
-    bool ircPoison = false;
-    u32 ircPoisonAddr = 0;
-    // [D] WinUAE @ Hatari e77819f7 — next_ilong_mmu030_state and
-    // next_ilong_mmu040 read a long extension (immediate, ABS.L, 32-bit
-    // displacement) as one access: ircLong reads it and marks its
-    // address so a deferred fault inside it is raised as that long access.
-    // Leaves reg.pc on the low word, as the open-coded pairs did.
-    static constexpr u32 ircNoLong = 0xFFFFFFFF;
-    u32 ircLongAt = ircNoLong;
-    template <Core C> u32 ircLong();
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // Logs the consumption of an extension word (WinUAE next_iword_mmu030_state)
-    void mmuLogExtWord(u32 value);
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // Arms a pending (An)+/-(An) fixup (WinUAE mmufixup[])
-    template <Size S> void mmuArmFixup(int n, bool predec);
-
-    // Transparent translation match for bus accesses (OK-match only)
-    bool mmuMatchTTAccess(u32 addr, u8 fc, bool write) const;
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // Bus-level table search (WinUAE mmu030_table_search, level 0):
-    // U/M maintenance, limit checks; returns MMUSR-style status bits
-    u16 mmuBusWalk(u32 addr, u8 fc, bool write, u32 &pageAddr, bool &ci);
-    void mmuTableWalkBody(u32 addr, u8 fc, bool write, int limit,
-                          u32 &pageAddr, bool &ci, u16 &status,
-                          u32 &descriptorAddress, int &descriptorCount) const;
-    u16 mmuProbeWalk(u32 addr, u8 fc, bool write, int limit,
-                      u32 &descriptorAddress) const;
-
-    // [B] MC68030UM-1989 §9.5.2 and §9.7.4: descriptor bus errors.
-    // POM68K: true while a 68030 table search fetches descriptors (the bus
-    // walk and the PTEST walk). A host /BERR on such a fetch is not a fault
-    // of the instruction's access: it ends the search with MMUSR B|I.
-    // MC68030UM-1989 § 9.5.2 (table-search termination): "a bus error also terminates a table
-    //     search, and the MC68030 takes an exception on the retry of the
-    //     cycle"; the ATC entry's B bit (ATC bus-error bit) "is set for an entry if a
-    //     bus error ... is encountered during the table search"; Table 9-3
-    //     (§ 9.7.4): for PTEST levels 1-7, B "is set if a bus error is
-    //     encountered during the table search for the PTEST instruction",
-    //     and I with it. No exception from PTEST itself.
-    // [D] WinUAE cpummu030.c mmu030_table_search @ Hatari e77819f7: CATCH
-    //     → status |= MMUSR_BUS_ERROR|MMUSR_INVALID, descr_num-- on a read.
-    // Before 2026-11-08 extBusError() threw the access's own fault from
-    // inside the walk: the same frame for a normal access, but no B entry
-    // left in the ATC, and a PTEST/PLOAD took an exception instead of
-    // reporting. Gate: moira_rules_test § bus error during a table search.
-    // [B] M68000PRM-1992 PTEST, p. 6-71: also armed around a 040 PTEST
-    // walk, where extBusError040() reports B only (mmu040_atc_test).
-    mutable bool mmuInTableSearch = false;
-
-    // [B] MC68030UM-1989 §9.4: ATC operations.
-    // ATC operations (§ 9.4)
-    // POM68K perf (callgrind 2026-07-17): lookup/touch/translate run on
-    // EVERY memory access but GCC keeps them out of line (the 22-entry
-    // fallback scan trips its size heuristics) — ~35 Ir/access of pure
-    // call overhead, ~9% of the whole emulator. Everything lives in the
-    // Moira.cpp TU, so forcing the inline changes no behaviour.
-#if defined(__GNUC__) || defined(__clang__)
-#define MOIRA_HOT_INLINE __attribute__((always_inline)) inline
-#else
-#define MOIRA_HOT_INLINE inline
-#endif
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K: marks the store that follows as the instruction's last memory
-    // access on the 68030 — a fault there stacks the short frame $A with the
-    // next instruction's PC and keeps the updated CCR. writeOp does it for
-    // the handlers that go through it; the ones that call writeM themselves
-    // (ADD/SUB to memory, ABCD/SBCD/NBCD, ADDX/SUBX, the memory shifts, the
-    // bit operations) call this first. Gate: sst68030_rmw.
-    template <Core C> MOIRA_HOT_INLINE void pomLastWrite030() {
-        if constexpr (C == Core::C68020) {
-            if (cpuModel == Model::M68030) [[unlikely]] {
-                mmuState[1] |= 0x0100;              // LASTWRITE
-                mmuLastWritePc = reg.pc;
-            }
-        }
-    }
-    // POM68K (host): true on the models whose fault handling knows a "last write"
-    // (68030 LASTWRITE, 68040 mmu040LastWrite) — for the handlers that
-    // compute their EA themselves and hand the store to writeOp(n, ea, val).
-    template <Core C> MOIRA_HOT_INLINE bool pomStoreEndsInstruction() const {
-        if constexpr (C == Core::C68020)
-            return cpuModel == Model::M68030 || cpuModel >= Model::M68EC040;
-        else
-            return false;
-    }
-    // POM68K: the second word of the pipe refill that follows a write to SR
-    // or CCR (MOVE to SR, MOVE to CCR, ANDI/ORI/EORI to SR). Below the 68030
-    // it is the bus cycle upstream models. On the 68030 and 68040 it is a
-    // prefetch like any other: its fault waits for the word to be used.
-    // [B] MC68030UM-1989 §8.1.2 — a bus error on a prefetch is deferred
-    //     until the faulted word is needed.
-    // [D] WinUAE @ Hatari e77819f7 makes no access there: 199 and 198
-    //     directed vectors with the instruction in a page's last four
-    //     bytes and the next page invalid (2026-11-20). The fork read the
-    //     word for real and took the bus error inside the SR write; a
-    //     handler's RTE then reran MOVE to SR with the SR it had loaded.
-    // Gate: moira_rules_test (refillPrefetchFaultIsDeferred).
-    template <Core C> MOIRA_HOT_INLINE void pomRefillRead() {
-        if (!pomStoreEndsInstruction<C>())
-            (void)pomProgWord<C>(reg.pc + 2);
-    }
-    // [B] MC68020UM-1992 §8.2.7, §8.2.16, §8.2.17: MOVE EA,SR 8(0/0/0),
-    // ANDI to SR 12(0/0/0), TRAPV (Trap) 25(1/0/5), Interrupt 26(2/0/4) in
-    // the cache case: no instruction access when the code is cached.
-    // POM68K: a program-space word read that the 68020 makes as an
-    // instruction fetch. With its i-cache (MoiraConfig.h) it goes through
-    // readInstr: served by the cache when it hits, a line fill and the
-    // fetch charge when it misses. Upstream reads these words straight from
-    // the bus past the cache (the refill after an SR/CCR write, TRAPV's
-    // pc+2, the vector jump's first fetch). Every other model and
-    // configuration keeps the plain read. Gate: icache020_test (refills).
-    template <Core C> u16 pomProgWord(u32 addr) {
-        if constexpr (C == Core::C68020 && MOIRA_EMULATE_ICACHE) {
-            if (pomCacheOwnsFetch()) return readInstr<C>(addr);
-        }
-        return (u16)read<C, AddrSpace::PROG, Word>(addr);
-    }
-    MOIRA_HOT_INLINE int  mmuAtcLookup(u32 addr, u8 fc, bool write);
-    void mmuAtcFill(u32 addr, u8 fc, bool write);
-    MOIRA_HOT_INLINE void mmuAtcTouch(int i);
-    void mmuAtcFlushAll();
-    void mmuAtcFlushFc(u32 fcBase, u32 fcMask);
-    void mmuAtcFlushPage(u32 addr);
-    void mmuAtcFlushPageFc(u32 addr, u32 fcBase, u32 fcMask);
-
-protected:
-    // POM68K (host) save states: restoring a snapshot replaces RAM (and therefore
-    // the page tables) underneath a CPU whose ATCs still cache the OLD
-    // translations, so both have to be dropped. The flushes are private and
-    // no public MMU register setter flushes either ATC,
-    // hence this helper for MoiraState.h. Flushing the set the
-    // current model does not use is free — it is already empty. This also
-    // discards the target's architectural 040 lines; the state visitor
-    // restores their payload afterwards. Debugger map edits use the discard
-    // directly (those edits refuse an active architectural cache model).
-    void pomFlushAtcs() {
-        mmuAtcFlushAll(); mmu040AtcFlushAll();
-        mmu040AtcAccessI = mmu040AtcAccessD = 0;
-        pomCache040I.invalidateAll(); pomCache040D.invalidateAll();
-    }
-
-private:
-
-    // Logical → physical for one bus (sub-)access; throws MmuBusError
-    MOIRA_HOT_INLINE u32 mmuTranslateAccess(u32 addr, u8 fc, bool write, u32 sswFlags);
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // Fault capture + throw (WinUAE mmu030_page_fault)
-    [[noreturn]] void mmuPageFault(u32 addr, bool read, u32 sswFlags, u8 fc);
-
-    // Translated read/write with 68030 bus splitting + access log
-    template <Core C, Size S, Flags F> u32 mmuRead(u32 addr);
-    template <Core C, Size S, Flags F> void mmuWrite(u32 addr, u32 val);
-
-    // Bus-fault exception processing (frame $A/$B + vector 2)
-    template <Core C> void execMmuBusError();
-    template <Core C> void writeStackFrameShortBusFault(u16 sr, u32 pc);
-    template <Core C> void writeStackFrameLongBusFault(u16 sr, u32 pc, int nr = 2);
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K O4 slice 4 — 68030 odd-address instruction-fetch fault
-    // (WinUAE Exception_mmu030 vector 3: format $B frame, SSW $0066).
-    template <Core C> void execAddressError030(u32 target, u32 stackedPc);
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K Q2: 68040 odd instruction-flow target — vector 3, format $2
-    // frame (WinUAE Exception_mmu nr == 3). Call sites apply the WinUAE
-    // per-instruction A7/CCR conventions first (see the exec handlers).
-    template <Core C> void execAddressError040(u32 target, u32 stackedPc);
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    //
-    // POM68K Q3 — 68040 MMU bus translation (WinUAE cpummu.c, mmu040)
-    //
-
-public:
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // Fault capture for the format $7 frame, plus the MOVEM restart
-    // latch (WinUAE mmu040_movem) and the MOVE16 line buffer (frame
-    // PD0-3). mmu040EffAddr mirrors WinUAE regs.mmu_effective_addr:
-    // only MOVEM/MOVE16 faults set it (reset per instruction — the
-    // oracle's per-vector state load zeroes it).
-    u32 mmu040FaultAddr {};
-    u32 mmu040EffAddr {};
-    u16 mmu040Ssw {};
-    // Fault-to-frame scratch only, consumed before the instruction boundary.
-    // POM68K (host): a physical push FA must not replace a pending logical WB3A.
-    u32 mmu040Wb3Address {}, mmu040Wb3Data {};
-    u16 mmu040Wb3Status {}, mmu040Wb2Status {};
-    u32 mmu040Wb2Address {};
-    u32 mmu040Move16[4] {};
-    bool mmu040MovemArmed {};
-    u32 mmu040MovemEa {};
-
-private:
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // Context of the (possibly page-split) access in flight — later
-    // sub-accesses fault with FA = the base address and SSW.MA set
-    // (WinUAE misalignednotfirst); split write faults report the FULL
-    // value in WB3D (the unaligned CATCH overwrites wb3_data)
-    u32 mmu040AccBase {};
-    bool mmu040AccFirst {true};
-    bool mmu040AccSplit {};
-    u32 mmu040FullVal {};
-    u8 mmu040CcrSave {};
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // Last-write dichotomy (gencpu gen_set_fault_pc, mmu040 build): a
-    // fault on the instruction's LAST write stacks the NEXT instruction
-    // and skips every restore (the OS completes the write from WB3);
-    // any other fault restarts (CCR + (An)± fixups + PC = instruction).
-    bool mmu040LastWrite {};
-    u32 mmu040LastWritePc {};
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // MOVES fc override (WinUAE ismoves: SFC/DFC drive the translation
-    // and mangle the SSW fc bits); -1 = inactive
-    int mmu040Moves {-1};
-
-    // TAS/CAS locked RMW: reads translate as WRITES (TTR write check +
-    // M-bit walk) and faults carry SSW.LK with RW cleared
-    bool mmu040Lrmw {};
-
-public:
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K Q5 — external /BERR entry for the 68040 machine (the O6
-    // extBusError twin): called from INSIDE a read8/16 / write8/16 bus
-    // callback when the machine asserts /BERR (unmapped I/O). Replays
-    // the captured in-flight access into mmu040Fault with the ATC bit
-    // CLEAR (WinUAE mmu_hardware_bus_error, nonmmu = true).
-    [[noreturn]] void extBusError040();
-
-private:
-
-    // In-flight access context for extBusError040
-    u32 mmu040AccAddr {};
-    u32 mmu040AccVal {};
-    int mmu040AccSz {2};
-    bool mmu040AccWrite {};
-    bool mmu040AccData {true};
-
-    bool mmu040Enabled() const { return (reg.tc040 & 0x8000) != 0; }
-    u32 mmu040PageMaskI() const { return (reg.tc040 & 0x4000) ? 0xFFFFE000 : 0xFFFFF000; }
-
-    // [B] MC68040UM-1993 §3.3: separate 64-entry, four-way I/D ATCs.
-    // FC2 tags each translation independently of the descriptor's S bit.
-    // [F] The manual does not specify counter reset phase, clock edge,
-    // PTEST installation phase or I/D phase coupling. Model independent
-    // zero-seeded counters, a lookup debit and an installation/retry debit.
-    // Settled by: real 040 ATC traces.
-    struct Mmu040AtcEntry {
-        u32 logical = 0;            // page-aligned logical
-        u32 physical = 0;           // page-aligned physical
-        u32 status = 0;             // descriptor status (WP|G|S|CM|M|R…)
-        bool valid = false;
-        bool supervisor = false;   // FC2 tag, not supervisor protection
-    };
-    static constexpr int MMU040_ATC_WAYS = 4;
-    static constexpr int MMU040_ATC_SETS = 16;
-    static constexpr int MMU040_ATC_ENTRIES = MMU040_ATC_SETS * MMU040_ATC_WAYS;
-    Mmu040AtcEntry mmu040AtcI[MMU040_ATC_ENTRIES] {};
-    Mmu040AtcEntry mmu040AtcD[MMU040_ATC_ENTRIES] {};
-    u32 mmu040AtcAccessI {0}, mmu040AtcAccessD {0};
-    i8  mmu040AtcLastI[2] {};       // [write]
-    i8  mmu040AtcLastD[2] {};
-    bool mmu040AtcArmed {true};
-
-#if MOIRA_ENABLE_JIT
-public:
-    // [B] MC68040UM-1993 §3.3: derived ATC access phase, including hits.
-    // POM68K: native probes stage per-operand weights; only retirement or
-    // an exact access publishes them. Replay restores speculative ATC state.
-    bool pomJitAtcBacked040(u32 addr, bool data, bool super) const;
-    u32 pomJitAtcAccesses040(bool data) const {
-        return data ? mmu040AtcAccessD : mmu040AtcAccessI;
-    }
-    struct PomJitAtcReplay040 {
-        static constexpr unsigned Accesses = 4;
-        static constexpr unsigned SnapshotBytes =
-            sizeof(Mmu040AtcEntry) * MMU040_ATC_ENTRIES + sizeof(u32) + 2;
-        u32 active, fetches, routes, access;
-        alignas(8) u8 opaque[SnapshotBytes * 2];
-        // [B] MC68040UM-1993 §4.1: I-cache accesses count. The instruction's
-        // staged stream words are committed before the first exact thunk,
-        // like `fetches`; cacheRot holds the pre-commit counter while
-        // cacheSaved is set.
-        u32 cacheFetches;
-        u8 cacheRot, cacheSaved;
-        // Do not initialize opaque bytes: most blocks never call an exact
-        // thunk, and their private ATC snapshots are captured lazily.
-        PomJitAtcReplay040() noexcept : active(0), fetches(0), routes(0), access(0),
-                                        cacheFetches(0), cacheRot(0), cacheSaved(0) {}
-    };
-    void pomJitAtcReplayBegin040(PomJitAtcReplay040& replay, u32 addr,
-                                 bool data, unsigned access) noexcept;
-    void pomJitAtcReplayAbort040(PomJitAtcReplay040& replay) noexcept;
-    // POM68K (host): the entries of a begun side are copied on their first
-    // mutation, not at Begin — most exact accesses hit the ATC and change
-    // only the counter and the last-hit indices, which Begin saves. Bits
-    // 0-1 of `active`: side begun; bits 2-3: its entries are in `opaque`.
-    // Every writer of mmu040AtcI/D entries calls pomAtcCow040Touch first.
-    // Gate: tests/moira_rules_test.cpp (atcReplayCopyOnWrite040).
-    // Lifetime: Begin keeps a pointer to the replay object. An owner whose
-    // object does not outlive the engine (the x64 backend's is a local of
-    // run()) calls pomJitAtcReplayRelease040 before the object dies; a
-    // retired transaction left armed would otherwise be read, and written
-    // to, through a dead stack slot at the next ATC mutation.
-    PomJitAtcReplay040* pomAtcCow040 {nullptr};
-    void pomJitAtcReplayRelease040(const PomJitAtcReplay040& replay) noexcept {
-        if (pomAtcCow040 == &replay) pomAtcCow040 = nullptr;
-    }
-    void pomAtcCow040Save(bool side) noexcept;
-    void pomAtcCow040Touch(bool side) noexcept {
-        if (pomAtcCow040) [[unlikely]] pomAtcCow040Save(side);
-    }
-    void mmu040AtcCowBoth() noexcept { pomAtcCow040Touch(false); pomAtcCow040Touch(true); }
-
-#else
-    void pomAtcCow040Touch(bool) noexcept {}
-    void mmu040AtcCowBoth() noexcept {}
-#endif
-
-private:
-    void mmu040AtcFlushAll();
-    void mmu040AtcFlushNonGlobal();
-    // space: -1 = both (PFLUSH), 0 = instruction, 1 = data (PTEST).
-    void mmu040AtcFlushPage(u32 addr, bool nonGlobalOnly, bool super, int space = -1);
-    unsigned mmu040AtcSet(u32 addr) const {
-        return ((addr >> ((reg.tc040 & 0x4000) ? 13 : 12)) & 15) * MMU040_ATC_WAYS;
-    }
-    int  mmu040AtcLookup(bool data, u32 addr, bool write, bool super);
-    void mmu040AtcFill(bool data, u32 addr, u32 status, bool super);
-
-    // Per-instruction loop head: translated opcode/irc fetch (mode-5
-    // pattern); returns false when the fetch faulted
-    template <Core C> bool mmu040InstrStart();
-
-    // Transparent translation: 0 = no match, 1 = match, 2 = match + WP;
-    // cm (optional out) = the matched TTR's CM field (M1 cache model)
-    MOIRA_HOT_INLINE int mmu040MatchTTR(u32 addr, bool super, bool data,
-                                        u32 *cm = nullptr) const;
-
-    // POM68K (host): mmu040MatchTTR's answer for every (privilege, address MSB) —
-    // the only two inputs the test has besides the registers. Derived
-    // state: rebuilt by the first call that finds the register pair
-    // changed, so reset, MOVEC, the setters and a snapshot load need no
-    // hook, and it is never serialized. [0] = ITT0/ITT1, [1] = DTT0/DTT1.
-    // Entry: bits 1-0 = 0 / 1 / 2 (no match, match, match + WP),
-    // bits 3-2 = the matched register's CM field.
-    struct Mmu040TtrTable {
-        u32 ttr[2] { };
-        u8 entry[2][256] { };
-    };
-    mutable Mmu040TtrTable mmu040TtrTab[2];
-    void mmu040TtrRebuild(Mmu040TtrTable &tab, u32 ttr0, u32 ttr1) const;
-    static int mmu040MatchTTRPair(u32 ttr0, u32 ttr1, u32 addr, bool super,
-                                  u32 *cm);
-
-    // [B] MC68040UM-1993 §4.2: physical cache-management operands.
-    // POM68K M2 (docs/CACHE_040.md) — data-bearing cache plumbing.
-    // pomCache040Touch records the translated access attributes; the actual
-    // read/write helpers perform line fills, copyback, hit service and timing.
-    // pomCacheOp040 decodes the CINV/CPUSH cache/scope/register fields
-    // (bit 5 = push). An supplies a physical address even with paging enabled;
-    // operand selection never consults TTRs, ATCs or page tables. A CPUSH
-    // writeback still uses the host's physical bus and may fault there.
-    bool pomCache040On {false};
-    bool pomCmStats040 {false};     // POM68K (host): setPomCmStats040()
-    bool pomExceptionDiag {false};  // POM68K (host): setPomExceptionDiag()
-    Cache040 pomCache040I, pomCache040D;
-    PomCache040Timing pomCache040Timing {};
-    int pomCache040Cm {Cache040::CM_NC};
-    bool pomCache040Enabled {}, pomCache040Move16 {};
-    void pomCache040Touch(bool data, u32 pa, bool write, int cm, int szCode);
-    u32  pomCache040ReadValue(u32 pa, bool data, int bytes);
-    void pomCache040WriteValue(u32 pa, u32 val, bool data, int bytes);
-    // A read may return its completed bytes in `partial` after an unused
-    // fill beat aborts. readBytes=0 carries a pending write-allocate store.
-    Cache040::Line *pomCache040Fill(Cache040 &cache, u32 pa, int readBytes,
-                                   Cache040::Line *partial = nullptr);
-    void pomCache040Writeback(u32 base, const Cache040::Line &line);
-    void pomCache040Writeback(u32 base, const Cache040::Evicted &line);
-    void pomCache040PushHit(u32 pa);
-    void pomCacheOp040(u16 opcode);
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // 3-level table walk with U/M maintenance (WinUAE mmu_fill_atc);
-    // returns the page descriptor with accumulated WP, or 0 if invalid
-    template <Core C> u32 mmu040Walk(u32 addr, bool super, bool write);
-
-    // Logical -> physical for one (sub-)access; throws MmuBusError
-    template <Core C> u32 mmu040Translate(u32 addr, u32 val, bool super,
-                                          bool data, bool write, int szCode);
-
-    // POM68K (host): the common case of mmu040Translate, inlined at the bus
-    // accessors — same tests in the same order, same ATC bookkeeping; any
-    // case it does not finish itself is handed to mmu040Translate untouched
-    // (MoiraExecMMU_cpp.h). The two doors below are the cache-model-off
-    // branch of pomCache040ReadValue / pomCache040WriteValue.
-    template <Core C> MOIRA_HOT_INLINE u32 mmu040TranslateHot(
-        u32 addr, u32 val, bool super, bool data, bool write, int szCode);
-    MOIRA_HOT_INLINE u32 mmu040BusRead(u32 pa, bool data, int bytes);
-    // One instruction-stream word: mmu040Read<C, Word>(addr, false) with
-    // the data-space branches folded away. Watchpoints, the cache model, a
-    // word straddling two pages and MOVES go to mmu040Read itself.
-    template <Core C> MOIRA_HOT_INLINE u16 mmu040FetchWord(u32 addr);
-    MOIRA_HOT_INLINE void mmu040BusWrite(u32 pa, u32 val, bool data,
-                                         int bytes);
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // Fault capture + throw (WinUAE mmu_bus_error, 68040 branch);
-    // szCode: 0 = byte, 1 = word, 2 = long, 3 = MOVE16 line;
-    // atc = false for external /BERR (nonmmu — SSW.ATC stays clear)
-    template <Core C> [[noreturn]] void mmu040Fault(u32 addr, u32 val, int fc,
-                                                    bool write, int szCode,
-                                                    bool atc = true);
-
-    // Translated read/write with 68040 page-boundary splitting
-    template <Core C, Size S> u32 mmu040Read(u32 addr, bool data);
-    template <Core C, Size S> void mmu040Write(u32 addr, u32 val, bool data);
-
-    // MOVE16 line transfer through translation (size-16 fault reports)
-    template <Core C> void mmu040GetMove16(u32 addr);
-    template <Core C> void mmu040PutMove16(u32 addr);
-
-    // Bus-fault exception processing (format $7 frame + vector 2)
-    template <Core C> void execMmu040BusError();
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // Rebuilds the per-instruction access log so a fault frame stacks
-    // exactly what WinUAE's get_iword/get_long_mmu030_state logged
-    void mmuLogReset() { mmuIdx = mmuIdxDone = 0; for (auto &v : mmuAd) v = 0; }
-
-    // POM68K (host): the access log above is per-INSTRUCTION state.
-    // mmuExecuteStart() clears it at the head of every interpreted
-    // instruction, but generated 68030 code reaches mmuRead/mmuWrite
-    // through pomJitReadData/pomJitWriteData, which never pass through
-    // that loop head -- so under the code generator these two counters
-    // only ever grow. Both consequences are real: signed overflow is UB,
-    // and the store guard `mmuIdxDone < 10` is a SIGNED comparison, so at
-    // INT_MAX the counter wrapped to INT_MIN, the guard passed again and
-    // the next logged access stored into mmuAd[-2147483648]. That is a
-    // deterministic SIGSEGV ~285 s into jit_lockstep_030_test, found on
-    // x86-64 2026-08-28 and invisible on the AArch64 development host
-    // because those three gates are registered on x86-64 only.
-    // The ceiling is orders of magnitude above what a single instruction
-    // can log (the array holds 10 entries and the fault frame stacks four
-    // bits), so every interpreted run stays bit-identical and only the
-    // unbounded JIT path changes.
-    static constexpr int pomMmuIdxCeiling = 1 << 20;
-    void pomMmuBumpIdx()     { if (mmuIdx     < pomMmuIdxCeiling) mmuIdx++; }
-    void pomMmuBumpIdxDone() { if (mmuIdxDone < pomMmuIdxCeiling) mmuIdxDone++; }
-
-
-    //
-    // Disassembler Support
-    //
-    
-private:
-    
-    // Returns an availability string for a given instruction
-    const char *availabilityString(Instr I, Mode M, Size S, u16 ext);
-
-    
-    //
-    // Loop Mode Detection
-    //
-    
-    // Checks if an instruction is a loop mode instruction
-    template <Instr I> constexpr bool looping() {
-        return I >= Instr::ABCD_LOOP && I <= Instr::TST_LOOP;
-    }
-    
-    
-    //
-    // Managing the Function Code Pins
-    //
-    
-public:
-    
-    // Reads the current value of the function code pins
-    u8 readFC() const;
-    
-private:
-    
     // Sets the function code pins to a specific value
     void setFC(u8 value);
     
     // Sets the function code pins based on the provided addressing mode.
     template <Mode M> void setFC();
 
-    
-    //
-    // Handling Interrupts
-    //
-    
-public:
-    
-    // Retrieves the value on the Interrupt Priority Level (IPL) pins
-    u8 getIPL() const { return ipl; }
-    
-    // Sets the value on the Interrupt Priority Level (IPL) pins
-    void setIPL(u8 val);
 
-    // NEOST_IPLFETCH: set the thresholds (cycles) of deferred IPL recognition.
-    // d4 == 0 disables the feature (POLL_IPL ≡ reg.ipl = ipl, the default).
-    void setIplDelay(i64 d4, i64 d2) { iplDelay4 = d4; iplDelay2 = d2; }
-
-    // NEOST_IPLFETCH: apply the IPL sampling rule (≡ POLL_IPL).
-    void pollIpl();
+    //
+    // Handling Interrupts (internal)
+    //
 
 private:
-    
+
+    // Checks for a pending interrupt and handles it if necessary
+    bool checkForIrq();
+
     // Selects the IRQ vector based on the interrupt level
-    u16 getIrqVector(u8 level) const;
-    
+    u16 getIrqVector(u8 level);
+
+
+    //
+    // Running the coprocessor interface
+    //
+
+private:
+
+    // Announces the first cycle of the coprocessor protocol of a line-F instruction
+    void notifyCPCycle(u16 opcode, CIR cir);
+
+
+    //
+    // Running the MMU
+    //
+
+private:
+
+    // Extracts the function code from the extension word of an MMU instruction
+    u8 mmuFC(u16 ext) const;
+
+    // Checks whether MOVEC accepts a control register number
+    bool isValidMovecReg(u16 rc) const;
+
+    // Translates a logical address to a physical address
+    template <Core C, bool write, Size S> u32 translate(u32 addr, u8 fc, bool *ci = nullptr);
+
+
 private:
     
 #include "MoiraInit.h"
 #include "MoiraALU.h"
-#include "MoiraCache.h"
 #include "MoiraDataflow.h"
 #include "MoiraExceptions.h"
 #include "MoiraDasm.h"
-
-    // Per-instance arithmetic scratch, opaque to clients. Instruction-boundary
-    // archives carry only its two carried modes (pomFpuCarriedModes).
-    // Gates: fpu_context_test, moira_state_test.
-    std::unique_ptr<::float_status> fpuFloatStatus;
 };
 
 /* The jump table builders are the only place where the instruction handler
@@ -3050,11 +1154,8 @@ private:
  * own splits the instantiation work three ways and keeps the compiler's peak
  * memory usage within bounds. The definitions live in MoiraCore680x0.cpp.
  */
-extern template void Moira::createJumpTable<Core::C68000>(Model, bool);
-extern template void Moira::createJumpTable<Core::C68010>(Model, bool);
-extern template void Moira::createJumpTable<Core::C68020>(Model, bool);
-
+extern template void Moira::createJumpTable<Core::C68000>(CPUModel, bool, bool);
+extern template void Moira::createJumpTable<Core::C68010>(CPUModel, bool, bool);
+extern template void Moira::createJumpTable<Core::C68020>(CPUModel, bool, bool);
 
 }
-
-#include "MoiraState.h"

@@ -86,7 +86,7 @@ jit::MemoryHooks hooks(Cpu* cpu)
 // Heap-owned: jit::Engine is about a megabyte inline
 // (tests/jit_asset_free_lockstep_test.cpp, SyntheticCpu).
 template <class Cpu>
-void build(Pair<Cpu>& p, moira::Model model, uint32_t guestFamily)
+void build(Pair<Cpu>& p, moira::CPUModel model, uint32_t guestFamily)
 {
     static const jit::ResolvedConfig config = testjit::resolveFromEnvironment();
     p.ref = std::make_unique<Cpu>();

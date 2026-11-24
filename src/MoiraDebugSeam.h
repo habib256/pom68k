@@ -29,7 +29,7 @@
 // Gate: tests/debug_session_test.cpp, tests/debug_inspection_test.cpp.
 
 #pragma once
-#include "Moira.h"
+#include "MoiraCompat.h"
 
 namespace pom68k::dbg {
 
@@ -55,7 +55,7 @@ protected:
 
 } // namespace pom68k::dbg
 
-class MoiraDebugSeam : public moira::Moira {
+class MoiraDebugSeam : public MoiraCompat {
 public:
     void setDebugStopHook(pom68k::dbg::StopHook* hook) { debugHook_ = hook; }
 
@@ -81,7 +81,10 @@ public:
     // as a jump drops it; the fetch window is disarmed so the next fetch
     // revalidates.
     void debugSetPc(moira::u32 pc, moira::u16 ird, moira::u16 irc) {
-        reg.pc = reg.pc0 = pc;
+        // Dirk's boundary convention (Moira::jump): PC0 is the instruction,
+        // PC the word in IRC.
+        reg.pc0 = pc;
+        reg.pc = pc + 2;
         queue.ird = ird;
         queue.irc = irc;
         mmuPipeCnt = 0;
@@ -113,9 +116,11 @@ protected:
     void didReachBreakpoint(moira::u32 addr) override {
         if (debugHook_) debugHook_->cpuStopped(false, addr);
     }
-    void pomDidReachWatchpoint(moira::u32 addr, moira::Size S, bool write,
-                               bool program) override {
-        if (debugHook_) debugHook_->cpuAccess(addr, int(S), write, program);
+    // The access the CPU is about to make (patch 8 of extern/moira/patches:
+    // the size, the direction and whether it is an opcode fetch).
+    void didReachWatchpoint(moira::u32 addr, moira::Size size, bool write,
+                            bool program) override {
+        if (debugHook_) debugHook_->cpuAccess(addr, int(size), write, program);
     }
     void didReachCatchpoint(moira::u8 vector) override {
         if (debugHook_) debugHook_->cpuException(vector);

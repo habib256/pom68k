@@ -1,0 +1,19 @@
+# Known divergences of berr030_test on Dirk Hoffmann's Moira (2026-11-24).
+# Format: <count><TAB><failure line without its file:line>. Gate:
+# tools/known_failures.py. A failure outside this list fails the gate; lower
+# a count when a failure disappears. Every heading says why its rows fail.
+
+# Restart model (Dirk's design): an RTE from a format $B frame reruns the
+# instruction; the fork continued it (MC68030UM-1989 §8.2.2). Continuation is
+# on Dirk's list after his release (discussion #36).
+1	RTE continuation + IRQ: the completed (A0) read is not re-issued
+1	RTE continuation + IRQ: the interrupt follows the instruction
+1	RTE continuation: the completed (A0) read is not re-issued
+
+# WinUAE readings the fork pinned, with no manual sentence behind them: the
+# frame format of a translated PMOVE store fault, the raw FP7 image and the
+# bus order of an indirect FMOVEM. To review against MC68030UM.
+1	FMOVEM indirect: WinUAE raw FP7 image reproduced
+1	FMOVEM indirect: pointer long read before register image
+1	FMOVEM indirect: three operand longs read in ascending order
+1	PMOVE TT0,(A0): translated fault uses format $B

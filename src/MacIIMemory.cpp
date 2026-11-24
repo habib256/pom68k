@@ -261,7 +261,7 @@ void MacIIMemory::refreshVia1PortB() {
 
 void MacIIMemory::busError() const {
     if (cpu_) cpu_->extBusError();
-    throw moira::MmuBusError{};
+    throw moira::BusError(0u);
 }
 
 int MacIIMemory::iplLevel() const {

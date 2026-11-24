@@ -77,7 +77,7 @@ void PortableMemory::busError(uint32_t addr, bool write) {
     // the 68020/68030 extBusError(), whose MmuBusError a 68000 core cannot
     // process (moira_rules_test).
     if(cpu_) cpu_->extBusError000(addr, write);
-    throw moira::MmuBusError{};
+    throw moira::BusError(0u);
 }
 void PortableMemory::ioSync(uint32_t a) {
     if(!cpu_) return;

@@ -1,14 +1,17 @@
-// -----------------------------------------------------------------------------
-// This file is part of Moira - A Motorola 68k emulator
+// POM68K — Macintosh 68k emulator
+// Walker body: from the POM68K Moira fork (MIT, see LICENSE-MIT), itself
+// written on Dirk W. Hoffmann's Moira (MIT).
 //
-// Copyright (C) Dirk W. Hoffmann. www.dirkwhoffmann.de
-// Published under the terms of the MIT License
-// -----------------------------------------------------------------------------
-
+// ── 68030 table search over caller-supplied descriptor I/O ──
+// Dirk's MMU030 (extern/moira) walks through the live CPU bus (moira.read32,
+// U/M history writes). Inspection (debugger, low-memory globals on the
+// IIsi/IIci) needs the same search over side-effect-free physical peeks, so
+// POM68K keeps this algorithm on top of the core instead of in it.
+// moira_rules_test holds it against Dirk's PTEST on the same tables.
 #pragma once
 #include <cstdint>
 
-namespace moira::mmu030 {
+namespace pom68k::mmu030 {
 
 using u8 = std::uint8_t;
 using u16 = std::uint16_t;
@@ -16,7 +19,7 @@ using u32 = std::uint32_t;
 using u64 = std::uint64_t;
 
 // [B] MC68030UM-1989 §§9.5.2–9.5.5,9.7.1,9.8: table searches.
-// POM68K: shared mapping rules for bus accesses, PTEST and inspection.
+// POM68K: mapping rules for inspection and the PTEST cross-check.
 // The caller chooses descriptor I/O; this algorithm owns no CPU or board.
 // MaintainHistory permits U/M writes for a bus search (limit zero).
 // PTEST supplies a stopping level; inspection runs to the leaf without
@@ -202,4 +205,4 @@ stopSearch:
     return;
 }
 
-} // namespace moira::mmu030
+} // namespace pom68k::mmu030

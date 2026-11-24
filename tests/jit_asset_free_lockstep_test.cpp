@@ -182,7 +182,7 @@ public:
                               injectedJitConfig())
         : mem(kRamBytes, 0), jit(*this, hooks(this), jit::kGuest68040,
                                  config) {
-        setModel(moira::Model::M68040);
+        setModel(moira::CPUModel::M68040);
     }
 
     std::vector<uint8_t> mem;
@@ -3708,10 +3708,10 @@ bool runFpuMemberLockstep(FpuProgram program, bool member,
         // A full 68040 always answers hasFPU(); the FPU-less regime is the
         // 68LC040, the Quadra 605 / LC 475 die.
         if (program == FpuProgram::NoFpu) {
-            c->setModel(moira::Model::M68LC040);
-            c->setFPUModel(moira::FPUModel::NONE);
+            c->setModel(moira::CPUModel::M68LC040);
+            c->setFPUModel(MoiraFpu::NONE);
         } else {
-            c->setFPUModel(moira::FPUModel::M68040);
+            c->setFPUModel(MoiraFpu::M68040);
         }
         c->setFPCR(program == FpuProgram::DivideByZero ? 0x0400 : 0);
         c->setD(1, program == FpuProgram::DivideByZero ? 0 : 3);

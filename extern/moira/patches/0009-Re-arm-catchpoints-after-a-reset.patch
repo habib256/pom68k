@@ -1,0 +1,27 @@
+From af92e420b76435704e21f040c2eb558bdc3de29d Mon Sep 17 00:00:00 2001
+From: VERHILLE Arnaud <gist974@gmail.com>
+Date: Tue, 24 Nov 2026 00:48:37 +0400
+Subject: [PATCH 09/17] Re-arm catchpoints after a reset
+
+reset() clears the state flags and Debugger::reset() sets CHECK_BP and
+CHECK_WP again for the guards that exist, but not CHECK_CP: a catchpoint set
+before a reset was no longer checked afterwards.
+---
+ Moira/MoiraDebugger.cpp | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/Moira/MoiraDebugger.cpp b/Moira/MoiraDebugger.cpp
+index 1927d5c..cef25ce 100644
+--- a/Moira/MoiraDebugger.cpp
++++ b/Moira/MoiraDebugger.cpp
+@@ -247,6 +247,7 @@ Debugger::reset()
+ {
+     breakpoints.setNeedsCheck(breakpoints.elements() != 0);
+     watchpoints.setNeedsCheck(watchpoints.elements() != 0);
++    catchpoints.setNeedsCheck(catchpoints.elements() != 0);
+ }
+ 
+ void
+-- 
+2.54.0 (Apple Git-157)
+

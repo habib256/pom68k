@@ -1,0 +1,76 @@
+From a22f3dd371d1942644660f775a914562614d792d Mon Sep 17 00:00:00 2001
+From: VERHILLE Arnaud <gist974@gmail.com>
+Date: Tue, 24 Nov 2026 01:19:00 +0400
+Subject: [PATCH 14/17] Completed cycles: the second word of a split long word
+
+A long word access on a narrow port is two word cycles. When the second one
+faults and the handler completes it (DF cleared), the data input buffer holds
+that word right-justified (MC68030UM 8.2.2), or the write is done. The
+completed-cycle record was matched against the address of the operand only,
+so the rerun issued the second word again and faulted again. A rerun read
+now takes the first word from the bus and the second from the buffer; a
+rerun write writes the first word only.
+---
+ Moira/MoiraDataflow_cpp.h | 39 +++++++++++++++++++++++++++++++++------
+ 1 file changed, 33 insertions(+), 6 deletions(-)
+
+diff --git a/Moira/MoiraDataflow_cpp.h b/Moira/MoiraDataflow_cpp.h
+index 943cfdb..9716b8b 100644
+--- a/Moira/MoiraDataflow_cpp.h
++++ b/Moira/MoiraDataflow_cpp.h
+@@ -783,9 +783,23 @@ try
+ 
+     // A read that a bus error handler has completed is served from its frame
+     if constexpr (C == Core::C68020) {
+-        if (completed.armed && !completed.write && completed.addr == addr && completed.pc == reg.pc0) {
+-            completed.armed = false;
+-            return CLIP<S>(completed.data);
++        if (completed.armed && !completed.write && completed.pc == reg.pc0) {
++
++            if (completed.addr == addr) {
++                completed.armed = false;
++                return CLIP<S>(completed.data);
++            }
++
++            // The second word of a long word read failed: the handler supplies
++            // it right-justified in the data input buffer (MC68030UM 8.2.2) and
++            // the rerun reads the first word from the bus again
++            if constexpr (S == Long) {
++                if (completed.addr == ((addr + 2) & addrMask<C>())) {
++                    completed.armed = false;
++                    u32 hi = readBus<C, Word, F>(addr);
++                    return hi << 16 | (completed.data & 0xFFFF);
++                }
++            }
+         }
+     }
+ 
+@@ -999,9 +1013,22 @@ try
+ 
+     // A write that a bus error handler has completed is not repeated
+     if constexpr (C == Core::C68020) {
+-        if (completed.armed && completed.write && completed.addr == addr && completed.pc == reg.pc0) {
+-            completed.armed = false;
+-            return;
++        if (completed.armed && completed.write && completed.pc == reg.pc0) {
++
++            if (completed.addr == addr) {
++                completed.armed = false;
++                return;
++            }
++
++            // The second word of a long word write failed and the handler wrote
++            // it: the rerun writes the first word only
++            if constexpr (S == Long) {
++                if (completed.addr == ((addr + 2) & addrMask<C>())) {
++                    completed.armed = false;
++                    writeBus<C, Word, F>(addr, val >> 16, ci);
++                    return;
++                }
++            }
+         }
+     }
+ 
+-- 
+2.54.0 (Apple Git-157)
+

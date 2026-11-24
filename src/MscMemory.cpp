@@ -255,7 +255,7 @@ void MscMemory::busError() const {
         if (is040()) cpu_->extBusError040();
         else cpu_->extBusError();
     }
-    throw moira::MmuBusError{};
+    throw moira::BusError(0u);
 }
 
 int MscMemory::iplLevel() const {

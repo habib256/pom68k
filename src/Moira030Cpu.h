@@ -121,9 +121,9 @@ protected:
     Moira030Cpu(Memory& mem, const jit::ResolvedConfig& jitConfig,
                      const CoreCpuConfig& cpuConfig, bool withFpu)
         : Base(mem, jit::kGuest68030, jitConfig) {
-        this->setModel(moira::Model::M68030);
-        this->setFPUModel(withFpu ? moira::FPUModel::M68882
-                                  : moira::FPUModel::NONE);
+        this->setModel(moira::CPUModel::M68030);
+        this->setFPUModel(withFpu ? MoiraFpu::M68882
+                                  : MoiraFpu::NONE);
         if (cpuConfig.cacheBoost) cacheBoost_ = *cpuConfig.cacheBoost;
         if (cpuConfig.icacheMiss) icacheMiss_ = *cpuConfig.icacheMiss;
         boost_ = cacheBoost_;

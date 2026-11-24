@@ -7,7 +7,7 @@
 // supervisor protection in the descriptor is a separate attribute.
 // [B] MC68040UM-1993 §3.7.4: MMU register accesses do not flush the ATCs.
 
-#include "Moira.h"
+#include "MoiraCompat.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -27,7 +27,7 @@ constexpr uint32_t phys[2] = {0x50000, 0x40000}; // indexed by supervisor
 constexpr uint32_t changed[2] = {0x70000, 0x60000};
 constexpr uint32_t value[2] = {0xB1B2B3B4, 0xA1A2A3A4};
 
-class Cpu : public moira::Moira {
+class Cpu : public MoiraCompat {
 public:
     std::vector<uint8_t> mem = std::vector<uint8_t>(1 << 20);
     mutable unsigned busReads = 0;
@@ -36,7 +36,7 @@ public:
     bool watching = false;
     mutable unsigned tableReads = 0, tableWrites = 0, operandWrites = 0;
 
-    explicit Cpu(moira::Model model) { setModel(model); }
+    explicit Cpu(moira::CPUModel model) { setModel(model); }
     void put16(uint32_t a, uint16_t v) {
         mem[a & 0xFFFFF] = uint8_t(v >> 8);
         mem[(a + 1) & 0xFFFFF] = uint8_t(v);
@@ -127,7 +127,7 @@ void checkProbe(Cpu &cpu, bool instruction, bool super, bool resident,
     CHECK(cpu.busReads == reads, "read-only ATC probe touched the bus");
 }
 
-void dataDomains(moira::Model model, bool page8k, bool cache, bool firstSuper) {
+void dataDomains(moira::CPUModel model, bool page8k, bool cache, bool firstSuper) {
     Cpu cpu(model);
     for (unsigned i = 0; i < 4; ++i) cpu.put16(code + i * 2, 0x2010); // (A0),D0
     for (unsigned i = 4; i < 6; ++i) cpu.put16(code + i * 2, 0x2081); // D1,(A0)
@@ -161,7 +161,7 @@ void dataDomains(moira::Model model, bool page8k, bool cache, bool firstSuper) {
     }
 }
 
-void instructionDomains(moira::Model model, bool page8k, bool cache, bool firstSuper) {
+void instructionDomains(moira::CPUModel model, bool page8k, bool cache, bool firstSuper) {
     Cpu cpu(model);
     cpu.put16(code, 0x4E71); cpu.put16(code + 2, 0x4E71);
     for (bool s : {false, true}) {
@@ -189,7 +189,7 @@ void instructionDomains(moira::Model model, bool page8k, bool cache, bool firstS
     }
 }
 
-void movesDomains(moira::Model model, bool page8k, bool cache) {
+void movesDomains(moira::CPUModel model, bool page8k, bool cache) {
     Cpu cpu(model);
     for (unsigned i = 0; i < 6; ++i) {
         cpu.put16(code + i * 4, 0x0E90);    // MOVES.L (A0),D0 / D1,(A0)
@@ -213,7 +213,7 @@ void movesDomains(moira::Model model, bool page8k, bool cache) {
     }
 }
 
-void movesPublication(moira::Model model, bool page8k) {
+void movesPublication(moira::CPUModel model, bool page8k) {
     Cpu cpu(model);
     cpu.put16(code, 0x0E90); cpu.put16(code + 2, 0x1800); // MOVES.L D1,(A0)
     cpu.put16(code + 4, 0x4E71); cpu.put16(code + 6, 0x4E71);
@@ -257,7 +257,7 @@ void executeAt(Cpu &cpu, uint32_t pc) {
 // Two roots deliberately disagree on both a resident and a fresh page.
 // Resident I/D translations must survive MOVEC; misses must use the new
 // root, and an explicit PFLUSHA must finally expose it on the old page.
-void registerRetention(moira::Model model, bool page8k, bool cache,
+void registerRetention(moira::CPUModel model, bool page8k, bool cache,
                        uint16_t control) {
     Cpu cpu(model);
     cpu.put16(code, 0x2010);                        // MOVE.L (A0),D0
@@ -374,7 +374,7 @@ void seedMappings(Cpu &cpu, bool page8k, unsigned globals) {
 
 // [B] M68000PRM-1992 PFLUSH (MC68040), pp. 6-35/6-36:
 // page forms select FC2 from DFC and both ATCs; all forms ignore DFC.
-void flushEffects(moira::Model model, bool page8k, bool cache,
+void flushEffects(moira::CPUModel model, bool page8k, bool cache,
                   unsigned mode, unsigned dfc, unsigned globals) {
     const auto before = failures;
     Cpu cpu(model);
@@ -423,7 +423,7 @@ void flushEffects(moira::Model model, bool page8k, bool cache,
 // [B] M68000PRM-1992 PTEST (MC68040), pp. 6-70/6-71:
 // DFC selects one ATC/domain. Invalid searches also create an entry.
 // Cases: valid, WP, invalid, three descriptor reads, three U/M writes, TTR.
-void testEffects(moira::Model model, bool page8k, bool cache,
+void testEffects(moira::CPUModel model, bool page8k, bool cache,
                  unsigned dfc, bool write, unsigned kind, bool warm) {
     const auto before = failures;
     Cpu cpu(model);
@@ -506,7 +506,7 @@ void testEffects(moira::Model model, bool page8k, bool cache,
 // [F] Independent I/D phases are the current model; silicon coupling is unknown.
 void replacement040() {
     unsigned sequences = 0;
-    for (auto model : {moira::Model::M68LC040, moira::Model::M68040})
+    for (auto model : {moira::CPUModel::M68LC040, moira::CPUModel::M68040})
     for (bool page8k : {false, true})
     for (bool cache : {false, true})
     for (unsigned domains = 0; domains < 3; ++domains)
@@ -596,7 +596,7 @@ void replacement040() {
 // residency through read-only probes so the witness cannot change a victim.
 void geometry040() {
     unsigned sequences = 0;
-    for (auto model : {moira::Model::M68LC040, moira::Model::M68040})
+    for (auto model : {moira::CPUModel::M68LC040, moira::CPUModel::M68040})
     for (bool page8k : {false, true})
     for (bool cache : {false, true})
     for (unsigned domains = 0; domains < 3; ++domains) // user, supervisor, mixed
@@ -670,7 +670,7 @@ void failureRetention() {
     // [B] MC68040UM-1993 §§3.3/3.5: lookup retains both failed and
     // protected translations. Permission faults precede an M-bit re-walk.
     unsigned cases = 0;
-    for (auto model : {moira::Model::M68LC040, moira::Model::M68040})
+    for (auto model : {moira::CPUModel::M68LC040, moira::CPUModel::M68040})
     for (bool page8k : {false, true})
     for (unsigned cache = 0; cache < 4; ++cache) // off, NC, WT, CB
     for (bool super : {false, true})
@@ -865,7 +865,7 @@ int main(int argc, char** argv) {
     failureRetention();
     geometry040();
     replacement040();
-    for (auto model : {moira::Model::M68LC040, moira::Model::M68040})
+    for (auto model : {moira::CPUModel::M68LC040, moira::CPUModel::M68040})
     for (bool page8k : {false, true})
     for (bool cache : {false, true}) {
         for (bool firstSuper : {false, true}) {

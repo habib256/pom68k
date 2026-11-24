@@ -16,7 +16,7 @@
 // upstream, where misaligned() returns false. The 68030/68040 checks had been
 // added outside misaligned() and ignored the setting (Moira::oddFlowTarget).
 
-#include "Moira.h"
+#include "MoiraCompat.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -24,9 +24,12 @@
 
 namespace {
 
-class TestCpu : public moira::Moira {
+// The fork's MOIRA_MIMIC_MUSASHI is MOIRA_COMPATIBILITY == MUSASHI on Dirk's core.
+constexpr bool kMusashi = moira::compat == moira::Compatibility::MUSASHI;
+
+class TestCpu : public MoiraCompat {
 public:
-    explicit TestCpu(moira::Model m) : mem(1 << 20, 0) { setModel(m); }
+    explicit TestCpu(moira::CPUModel m) : mem(1 << 20, 0) { setModel(m); }
     std::vector<uint8_t> mem;
 
 private:
@@ -52,7 +55,7 @@ void p32(TestCpu& c, uint32_t a, uint32_t v) {
 }
 
 // BRA.B *+3 at $1000: the target is $1003.
-void oddBranch(moira::Model model, const char* name)
+void oddBranch(moira::CPUModel model, const char* name)
 {
     TestCpu c(model);
     p32(c, 3 * 4, 0x3000);           // address-error vector
@@ -88,7 +91,7 @@ void oddBranch(moira::Model model, const char* name)
 void divslOverflow(bool wide)
 {
     const char* name = wide ? "DIVS.L D2,D1:D0" : "DIVS.L D2,D0";
-    TestCpu c(moira::Model::M68020);
+    TestCpu c(moira::CPUModel::M68020);
     const uint16_t ext = wide ? 0x0c01 : 0x0800;
     p16(c, 0x1000, 0x4c42);
     p16(c, 0x1002, ext);
@@ -106,7 +109,7 @@ void divslOverflow(bool wide)
     const bool v = (c.getSR() & 2) != 0;
     const bool kept = c.getD(0) == (wide ? 0u : 0x80000000u) &&
                       c.getD(1) == (wide ? 0x80000000u : 0x12345678u);
-    if (c.getPC() != 0x1004 || ((wide || !MOIRA_MIMIC_MUSASHI) && (!v || !kept))) {
+    if (c.getPC() != 0x1004 || ((wide || !kMusashi) && (!v || !kept))) {
         std::printf("  FAIL %s: PC=%08X V=%d D0=%08X D1=%08X (want V=1, "
                     "registers unchanged)\n", name, c.getPC(), int(v),
                     c.getD(0), c.getD(1));
@@ -119,13 +122,13 @@ void divslOverflow(bool wide)
 int main()
 {
     std::printf("moira_upstream_config_test: PRECISE_TIMING=%d "
-                "EMULATE_ADDRESS_ERROR=%d MIMIC_MUSASHI=%d\n",
+                "EMULATE_ADDRESS_ERROR=%d COMPATIBILITY=MUSASHI:%d\n",
                 int(MOIRA_PRECISE_TIMING), int(MOIRA_EMULATE_ADDRESS_ERROR),
-                int(MOIRA_MIMIC_MUSASHI));
-    oddBranch(moira::Model::M68000, "68000");
-    oddBranch(moira::Model::M68030, "68030");
-    oddBranch(moira::Model::M68LC040, "68LC040");
-    oddBranch(moira::Model::M68040, "68040");
+                int(kMusashi));
+    oddBranch(moira::CPUModel::M68000, "68000");
+    oddBranch(moira::CPUModel::M68030, "68030");
+    oddBranch(moira::CPUModel::M68LC040, "68LC040");
+    oddBranch(moira::CPUModel::M68040, "68040");
     divslOverflow(true);
     divslOverflow(false);
     std::printf("%s (%d failure%s)\n", failures ? "FAILED" : "PASS",

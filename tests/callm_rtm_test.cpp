@@ -1,6 +1,6 @@
 // POM68K — MC68020 CALLM/RTM architectural module-support gate.
 
-#include "Moira.h"
+#include "MoiraCompat.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -9,9 +9,9 @@
 
 namespace {
 
-class TestCpu : public moira::Moira {
+class TestCpu : public MoiraCompat {
 public:
-    TestCpu() : mem(1 << 20, 0) { setModel(moira::Model::M68020); }
+    TestCpu() : mem(1 << 20, 0) { setModel(moira::CPUModel::M68020); }
     std::vector<uint8_t> mem;
     mutable std::vector<std::pair<uint32_t, uint32_t>> cpuWrites;
     uint8_t cal = 0xa6;

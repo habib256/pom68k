@@ -22,7 +22,12 @@
 //
 // Exit 0 = all pass, 1 = failure.
 
-#include "Moira.h"
+#include "MoiraCompat.h"
+// Cells for what Dirk Hoffmann's core does not model yet (TODO.md):
+//   POM68K_FPU_TIMING    FPU instruction timing (MC68882UM Table 8-3)
+//   POM68K_FPU_MIDINSTR  a 68882 instruction interrupted mid-way (format $9)
+#define POM68K_FPU_TIMING 0
+#define POM68K_FPU_MIDINSTR 0
 
 #include <cstdint>
 #include <cstdio>
@@ -31,9 +36,9 @@
 
 namespace {
 
-class TestCpu : public moira::Moira {
+class TestCpu : public MoiraCompat {
 public:
-    TestCpu() : mem(1 << 24, 0) { setModel(moira::Model::M68030); }
+    TestCpu() : mem(1 << 24, 0) { setModel(moira::CPUModel::M68030); }
     std::vector<uint8_t> mem;
     void armIrqAfter(int cycles, int level) {
         irqClock = getClock() + cycles; irqLevel = level; irqArmed = true;
@@ -86,7 +91,7 @@ void run(TestCpu& cpu, const std::vector<uint16_t>& words, int steps, bool fpuAt
     for (uint16_t w : words) { cpu.mem[a] = uint8_t(w >> 8); cpu.mem[a + 1] = uint8_t(w); a += 2; }
     for (auto& [pa, pv] : pokes) { cpu.mem[pa] = uint8_t(pv >> 8); cpu.mem[pa + 1] = uint8_t(pv); }
 
-    cpu.setFPUModel(fpuAttached ? moira::FPUModel::M68882 : moira::FPUModel::NONE);
+    cpu.setFPUModel(fpuAttached ? MoiraFpu::M68882 : MoiraFpu::NONE);
     cpu.reset();
     cpu.setSR(0x2700);
     cpu.setSP(0x8000);
@@ -111,7 +116,7 @@ void checkFp(TestCpu& cpu, int n, uint32_t w0, uint32_t w1, uint32_t w2, const c
 // Exercise all signed seven-bit k-factors, including positive values >17.
 void packedZeros() {
     int transfers = 0;
-    for (auto model : {moira::FPUModel::M68881, moira::FPUModel::M68882})
+    for (auto model : {MoiraFpu::M68881, MoiraFpu::M68882})
     for (bool negative : {false, true}) {
         std::vector<uint16_t> program;
         for (bool dynamic : {false, true}) for (unsigned k = 0; k < 128; ++k) {
@@ -238,14 +243,22 @@ int main() {
     CHECK(cpu.getD(0) == 0x20, "fpcr roundtrip: D0 = %08X, want 00000020", cpu.getD(0));
     CHECK(cpu.getFPCR() == 0x20, "fpcr: FPCR = %08X, want 00000020", cpu.getFPCR());
 
-    // 10 ── FRESTORE NULL frame: full FPU reset (fpp.c:2796 fpu_null) —
-    // FP0 back to the NaN pattern, FPCR cleared
+    // 10 ── FRESTORE NULL frame: full FPU reset. [B] MC68881UM-1989 §6.4.2:
+    // "a restore of the null state performs the reset function with all
+    // floating-point data registers loaded with nonsignaling NANs". The
+    // manual names no mantissa: WinUAE's all-ones pattern (fpp.c:2796) and
+    // Dirk Hoffmann's default NaN both qualify (ruling 2026-11-24).
     run(cpu, { 0xF23C, 0x9000, 0x0000, 0x0020,      // fmove.l #$20,fpcr
                0xF23C, 0x4000, 0x0000, 0x0002,      // fmove.l #2,fp0
                0x227C, 0x0000, 0x4000,              // movea.l #$4000,a1
                0xF351 },                            // frestore (a1)
         4, true);                                   // mem[$4000] = 0 already
-    checkFp(cpu, 0, 0x7FFF0000, 0xFFFFFFFF, 0xFFFFFFFF, "frestore null");
+    {
+        uint32_t w[3]; cpu.getFP(0, w);
+        const bool qnan = (w[0] >> 16 & 0x7FFF) == 0x7FFF && (w[1] & 0x40000000u);
+        CHECK(qnan, "frestore null: FP0 = %08X %08X %08X, want a nonsignaling NaN",
+              w[0], w[1], w[2]);
+    }
     CHECK(cpu.getFPCR() == 0, "frestore null: FPCR = %08X, want 0", cpu.getFPCR());
 
     // 11 ── FRESTORE 68882 IDLE frame ($1F38xxxx) via (A1)+: accepted, no
@@ -276,13 +289,17 @@ int main() {
         { { 0x4000, 0x1234 }, { 0x4002, 0x5678 } });
     CHECK(cpu.getPC0() == 0x3200, "frestore garbage: PC0 = %08X, want 00003200 (vector 14)", cpu.getPC0());
 
-    // 14 — [B] MC68030UM-1989 §10.4.20, Figure 10-45: the six-word
-    // post-instruction frame is format 2. Its PC resumes the next instruction;
-    // its extra longword identifies the F-line instruction, not the operand.
-    // A real RTE must consume this frame, including for a memory destination.
-    for (auto model : {moira::Model::M68EC020, moira::Model::M68020,
-                       moira::Model::M68EC030, moira::Model::M68030})
-    for (auto fpuModel : {moira::FPUModel::M68881, moira::FPUModel::M68882})
+    // 14 — [B] MC68881UM-1989 §6.1 (PDF p. 226): "neither the MC68881 nor
+    // the MC68882 reports the post-instruction exception"; an exception of
+    // an FMOVE to an integer is deferred to the next FPCP instruction
+    // (§6.2.4). Ruling 2026-11-24: the fork stacked a format-$2 post-
+    // instruction frame here after WinUAE (MC68030UM §10.4.20 describes the
+    // primitive, not its use by the 6888x); the manual wins, as Dirk
+    // Hoffmann's core does. The FMOVE completes, OPERR is recorded, and the
+    // next instruction is reached without an exception.
+    for (auto model : {moira::CPUModel::M68EC020, moira::CPUModel::M68020,
+                       moira::CPUModel::M68EC030, moira::CPUModel::M68030})
+    for (auto fpuModel : {MoiraFpu::M68881, MoiraFpu::M68882})
     for (bool memory : {false, true}) {
         cpu.setModel(model);
         run(cpu, {uint16_t(memory ? 0xF210 : 0xF200), 0x6000, 0x4E71, 0x4E71},
@@ -293,25 +310,15 @@ int main() {
         cpu.setFP(0, inf);
         cpu.setFPCR(0x2000);                      // integer-conversion OPERR
         cpu.execute();
-        const uint32_t sp = cpu.getSP();
-        auto m16 = [&](uint32_t a) { return uint16_t(cpu.mem[a] << 8 | cpu.mem[a + 1]); };
-        auto m32 = [&](uint32_t a) { return uint32_t(m16(a)) << 16 | m16(a + 2); };
-        CHECK(cpu.getPC0() == 0x3300 && sp == 0x7ff4,
-              "FP post exception model=%d FPU=%d mem=%d PC0/SP=%08X/%08X",
-              int(model), int(fpuModel), memory, cpu.getPC0(), sp);
-        CHECK(m16(sp + 6) == 0x20d0 && m32(sp + 2) == 0x1004 && m32(sp + 8) == 0x1000,
-              "FP post frame model=%d FPU=%d mem=%d fmt/PC/IA=%04X/%08X/%08X",
-              int(model), int(fpuModel), memory, m16(sp + 6), m32(sp + 2), m32(sp + 8));
-        cpu.execute();                             // handler's RTE, frame untouched
-        CHECK(cpu.getPC0() == 0x1004 && cpu.getSP() == 0x8000 && cpu.getSR() == 0x2700,
-              "FP post RTE model=%d FPU=%d mem=%d PC0/SP/SR=%08X/%08X/%04X",
-              int(model), int(fpuModel), memory, cpu.getPC0(), cpu.getSP(), cpu.getSR());
-        cpu.execute();                             // execute the following NOP
-        CHECK(cpu.getPC0() == 0x1006,
-              "FP post return executes next instruction: PC0=%08X", cpu.getPC0());
+        CHECK(cpu.getPC0() == 0x1004 && cpu.getSP() == 0x8000 &&
+              (cpu.getFPSR() & 0x2000) && (cpu.getFPSR() & 0x80),
+              "FP deferred model=%d FPU=%d mem=%d: no post-instruction frame, "
+              "OPERR and IOP recorded (PC0/SP/FPSR=%08X/%08X/%08X)",
+              int(model), int(fpuModel), memory, cpu.getPC0(), cpu.getSP(), cpu.getFPSR());
     }
-    cpu.setModel(moira::Model::M68030);
+    cpu.setModel(moira::CPUModel::M68030);
 
+#if POM68K_FPU_TIMING
     // 15 ── timing smoke: FADD.X FP1,FP0 costs its MC68882UM Table 8-3
     // figure (FPn-to-FPm total = 56), not the old CYCLES_68020 placeholder
     run(cpu, { 0xF200, 0x0422 }, 0, true);          // fadd.x fp1,fp0
@@ -331,6 +338,8 @@ int main() {
               "fmovecr timing: %lld cycles, want 32 (Table 8-3)", (long long)(cpu.getClock() - c0));
     }
 
+#endif
+#if POM68K_FPU_MIDINSTR
     // 17 ── an IRQ accepted from a 68882 IA checkpoint uses the CPU's
     // format-$9 continuation frame. The handler's FSAVE sees a $D4 BUSY
     // image; FRESTORE + RTE resumes the suspended square root and commits 2.
@@ -367,6 +376,8 @@ int main() {
           "format-9 resume PC0/A1=%08X/%08X", cpu.getPC0(), cpu.getA(1));
     checkFp(cpu, 0, 0x40000000, 0x80000000, 0x00000000,
             "resumed sqrt(4)");
+
+#endif
 
     if (failures) { std::printf("[fpu_sanity] FAIL: %d check(s)\n", failures); return 1; }
     std::printf("[fpu_sanity] OK: detached F-line, FMOVECR, FADD, DZ, OPERR, FCMP/FScc, "

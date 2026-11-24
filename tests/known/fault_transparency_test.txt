@@ -1,0 +1,518 @@
+# Known divergences of fault_transparency_test on Dirk Hoffmann's Moira (2026-11-24).
+# Format: <count><TAB><failure line without its file:line>. Gate:
+# tools/known_failures.py. A failure outside this list fails the gate; lower
+# a count when a failure disappears. Every heading says why its rows fail.
+
+# OPEN DEFECT, priority: a 68040 write fault is completed by the handler from
+# WB3 and the instruction is done (MC68040UM-1993 §8.4.6, §8.4.6.5). Dirk's
+# core restarts the instruction, which applies a read-modify-write twice once
+# the handler has written back. A virtual memory handler on a Quadra would
+# write back this way (to verify on a VM-enabled 68040 boot).
+1	68040 #100 SUB Dn,ea 9329 0016, /BERR on the write of 044816: RAM[044816] FE want D5
+1	68040 #103 EOR Dn,ea B329 001E, /BERR on the write of 044824: RAM[044824] 6D want 35
+1	68040 #106 ADDQ 5629 FFEE, /BERR on the write of 0447EE: RAM[0447EE] D6 want D3
+1	68040 #1061 ABCD -(A1),-(A2) C509, /BERR on the write of 04500F: CCR 11 want 08
+1	68040 #1062 SBCD -(A1),-(A2) 8509, /BERR on the write of 045015: CCR 11 want 00
+1	68040 #107 SUBQ 5729 FFF0, /BERR on the write of 0447F0: RAM[0447F0] C9 want CC
+1	68040 #108 ADDI 0629 00D6 0016, /BERR on the write of 044832: CCR 11 want 13
+1	68040 #109 EORI 0A29 00DA 001E, /BERR on the write of 044828: CCR 00 want 08
+1	68040 #111 NEG 4429 000C, /BERR on the write of 044816: CCR 11 want 19
+1	68040 #112 NEGX 4029 FFE4, /BERR on the write of 0447E4: CCR 11 want 19
+1	68040 #113 NOT 4629 0010, /BERR on the write of 04481C: CCR 18 want 10
+1	68040 #117 ADD Dn,ea D331 7038, /BERR on the write of 04486C: CCR 13 want 08
+1	68040 #118 SUB Dn,ea 9331 7000, /BERR on the write of 044840: RAM[044840] E0 want C6
+1	68040 #121 EOR Dn,ea B331 7024, /BERR on the write of 04484A: CCR 08 want 00
+1	68040 #124 ADDQ 5631 7030, /BERR on the write of 044860: RAM[044860] 65 want 62
+1	68040 #125 SUBQ 5731 7010, /BERR on the write of 044858: RAM[044858] 30 want 33
+1	68040 #126 ADDI 0631 0012 702E, /BERR on the write of 044842: RAM[044842] 4B want 39
+1	68040 #127 EORI 0A31 00A7 7008, /BERR on the write of 044846: CCR 08 want 00
+1	68040 #129 NEG 4431 7038, /BERR on the write of 044888: CCR 19 want 11
+1	68040 #130 NEGX 4031 7016, /BERR on the write of 044846: CCR 19 want 11
+1	68040 #131 NOT 4631 7008, /BERR on the write of 044864: CCR 18 want 10
+1	68040 #135 ADD Dn,ea D333 0151, /BERR on the write of 049000: CCR 00 want 11
+1	68040 #136 SUB Dn,ea 9333 0151, /BERR on the write of 049000: RAM[049000] 16 want 45
+1	68040 #139 EOR Dn,ea B333 0151, /BERR on the write of 049000: CCR 00 want 08
+1	68040 #142 ADDQ 5633 0151, /BERR on the write of 049000: RAM[049000] 11 want 0E
+1	68040 #143 SUBQ 5733 0151, /BERR on the write of 049000: RAM[049000] F4 want F7
+1	68040 #144 ADDI 0633 0062 0151, /BERR on the write of 049000: CCR 11 want 08
+1	68040 #145 EORI 0A33 003F 0151, /BERR on the write of 049000: RAM[049000] 4D want 72
+1	68040 #147 NEG 4433 0151, /BERR on the write of 049000: CCR 19 want 11
+1	68040 #148 NEGX 4033 0151, /BERR on the write of 049000: CCR 19 want 11
+1	68040 #149 NOT 4633 0151, /BERR on the write of 049000: CCR 18 want 10
+1	68040 #153 ADD Dn,ea D333 0152 0016, /BERR on the write of 049016: RAM[049016] 29 want 4F
+1	68040 #154 SUB Dn,ea 9333 0152 0018, /BERR on the write of 049018: CCR 02 want 08
+1	68040 #157 EOR Dn,ea B333 0152 001C, /BERR on the write of 04901C: RAM[04901C] 63 want 45
+1	68040 #160 ADDQ 5633 0152 000E, /BERR on the write of 04900E: RAM[04900E] E4 want E1
+1	68040 #161 SUBQ 5733 0152 0010, /BERR on the write of 049010: CCR 19 want 00
+1	68040 #162 ADDI 0633 006E 0152 001A, /BERR on the write of 04901A: CCR 11 want 0A
+1	68040 #163 EORI 0A33 006F 0152 0002, /BERR on the write of 049002: RAM[049002] 87 want E8
+1	68040 #165 NEG 4433 0152 0008, /BERR on the write of 049008: CCR 19 want 11
+1	68040 #166 NEGX 4033 0152 0012, /BERR on the write of 049012: CCR 11 want 19
+1	68040 #167 NOT 4633 0152 0018, /BERR on the write of 049018: CCR 08 want 00
+1	68040 #171 ADDX -(A1),-(A2) D509, /BERR on the write of 045001: RAM[045001] 1D want 15
+1	68040 #172 SUBX -(A1),-(A2) 9509, /BERR on the write of 045019: CCR 08 want 19
+1	68040 #219 ADD Dn,ea D351, /BERR on the write of 044808: CCR 11 want 13
+1	68040 #220 SUB Dn,ea 9351, /BERR on the write of 044810: CCR 19 want 1B
+1	68040 #223 EOR Dn,ea B351, /BERR on the write of 044802: CCR 08 want 00
+1	68040 #226 ADDQ 5651, /BERR on the write of 04480E: RAM[04480F] AE want AB
+1	68040 #227 SUBQ 5751, /BERR on the write of 044804: RAM[044805] D3 want D6
+1	68040 #228 ADDI 0651 43DC, /BERR on the write of 044808: CCR 11 want 08
+1	68040 #229 EORI 0A51 741E, /BERR on the write of 044800: RAM[044800] 5A want 2E
+1	68040 #231 NEG 4451, /BERR on the write of 044802: CCR 11 want 19
+1	68040 #232 NEGX 4051, /BERR on the write of 04481A: CCR 19 want 11
+1	68040 #233 NOT 4651, /BERR on the write of 04480E: CCR 00 want 08
+1	68040 #237 ADD Dn,ea D359, /BERR on the write of 04481A: RAM[04481A] 37 want 2A
+1	68040 #238 SUB Dn,ea 9359, /BERR on the write of 044812: RAM[044812] 59 want 47
+1	68040 #241 EOR Dn,ea B359, /BERR on the write of 04481E: CCR 00 want 08
+1	68040 #244 ADDQ 5659, /BERR on the write of 044810: RAM[044811] 5A want 57
+1	68040 #245 SUBQ 5759, /BERR on the write of 044812: RAM[044813] CD want D0
+1	68040 #246 ADDI 0659 C2EF, /BERR on the write of 044812: CCR 08 want 11
+1	68040 #247 EORI 0A59 C301, /BERR on the write of 04481C: CCR 10 want 18
+1	68040 #249 NEG 4459, /BERR on the write of 044806: CCR 19 want 11
+1	68040 #250 NEGX 4059, /BERR on the write of 044816: CCR 11 want 19
+1	68040 #251 NOT 4659, /BERR on the write of 044812: CCR 18 want 10
+1	68040 #255 ADD Dn,ea D361, /BERR on the write of 044800: CCR 19 want 08
+1	68040 #256 SUB Dn,ea 9361, /BERR on the write of 044800: CCR 02 want 08
+1	68040 #259 EOR Dn,ea B361, /BERR on the write of 044812: RAM[044812] F6 want A8
+1	68040 #262 ADDQ 5661, /BERR on the write of 044818: RAM[044819] 2D want 2A
+1	68040 #263 SUBQ 5761, /BERR on the write of 0447FE: RAM[0447FF] 33 want 36
+1	68040 #264 ADDI 0661 04C5, /BERR on the write of 04480E: RAM[04480E] 47 want 42
+1	68040 #265 EORI 0A61 4B41, /BERR on the write of 04480A: RAM[04480A] BC want F7
+1	68040 #267 NEG 4461, /BERR on the write of 0447FE: CCR 19 want 11
+1	68040 #268 NEGX 4061, /BERR on the write of 044802: CCR 19 want 11
+1	68040 #269 NOT 4661, /BERR on the write of 044808: CCR 00 want 08
+1	68040 #273 ADD Dn,ea D369 FFF0, /BERR on the write of 0447FA: RAM[0447FA] AA want BE
+1	68040 #274 SUB Dn,ea 9369 FFF4, /BERR on the write of 044804: CCR 00 want 02
+1	68040 #277 EOR Dn,ea B369 0014, /BERR on the write of 044824: RAM[044824] B5 want E5
+1	68040 #280 ADDQ 5669 FFF8, /BERR on the write of 04480E: RAM[04480F] EA want E7
+1	68040 #281 SUBQ 5769 000A, /BERR on the write of 04480C: RAM[04480D] 60 want 63
+1	68040 #282 ADDI 0669 8F1D FFEC, /BERR on the write of 044804: CCR 13 want 08
+1	68040 #283 EORI 0A69 6113 0014, /BERR on the write of 044830: RAM[044830] 97 want F6
+1	68040 #285 NEG 4469 0002, /BERR on the write of 04481E: CCR 11 want 19
+1	68040 #286 NEGX 4069 FFFA, /BERR on the write of 044818: CCR 19 want 11
+1	68040 #287 NOT 4669 FFF0, /BERR on the write of 0447FE: CCR 00 want 08
+1	68040 #291 ADD Dn,ea D371 700C, /BERR on the write of 04481E: CCR 13 want 08
+1	68040 #292 SUB Dn,ea 9371 700C, /BERR on the write of 044854: CCR 11 want 00
+1	68040 #295 EOR Dn,ea B371 703A, /BERR on the write of 044886: CCR 10 want 18
+1	68040 #298 ADDQ 5671 7018, /BERR on the write of 044838: RAM[044839] FC want F9
+1	68040 #299 SUBQ 5771 7038, /BERR on the write of 044874: RAM[044875] 8D want 90
+1	68040 #300 ADDI 0671 524D 7006, /BERR on the write of 044856: CCR 08 want 0A
+1	68040 #301 EORI 0A71 304D 701A, /BERR on the write of 044868: RAM[044868] 53 want 63
+1	68040 #303 NEG 4471 7036, /BERR on the write of 04485E: CCR 19 want 11
+1	68040 #304 NEGX 4071 701C, /BERR on the write of 044846: CCR 11 want 19
+1	68040 #305 NOT 4671 7010, /BERR on the write of 044838: CCR 08 want 00
+1	68040 #309 ADD Dn,ea D373 0151, /BERR on the write of 049000: CCR 08 want 11
+1	68040 #310 SUB Dn,ea 9373 0151, /BERR on the write of 049000: CCR 19 want 00
+1	68040 #313 EOR Dn,ea B373 0151, /BERR on the write of 049000: RAM[049000] 4F want 75
+1	68040 #316 ADDQ 5673 0151, /BERR on the write of 049000: RAM[049001] 06 want 03
+1	68040 #317 SUBQ 5773 0151, /BERR on the write of 049000: RAM[049001] 2A want 2D
+1	68040 #318 ADDI 0673 7D80 0151, /BERR on the write of 049000: CCR 11 want 0A
+1	68040 #319 EORI 0A73 7DE4 0151, /BERR on the write of 049000: RAM[049000] 11 want 6C
+1	68040 #321 NEG 4473 0151, /BERR on the write of 049000: CCR 19 want 11
+1	68040 #322 NEGX 4073 0151, /BERR on the write of 049000: CCR 11 want 19
+1	68040 #323 NOT 4673 0151, /BERR on the write of 049000: CCR 00 want 08
+1	68040 #327 ADD Dn,ea D373 0152 000A, /BERR on the write of 04900A: CCR 08 want 11
+1	68040 #328 SUB Dn,ea 9373 0152 0008, /BERR on the write of 049008: RAM[049008] F4 want DA
+1	68040 #331 EOR Dn,ea B373 0152 0010, /BERR on the write of 049010: RAM[049010] 20 want 74
+1	68040 #334 ADDQ 5673 0152 000E, /BERR on the write of 04900E: RAM[04900F] F4 want F1
+1	68040 #335 SUBQ 5773 0152 0018, /BERR on the write of 049018: RAM[049019] 09 want 0C
+1	68040 #336 ADDI 0673 3266 0152 0010, /BERR on the write of 049010: RAM[049010] 77 want 45
+1	68040 #337 EORI 0A73 086E 0152 0014, /BERR on the write of 049014: RAM[049014] EB want E3
+1	68040 #339 NEG 4473 0152 001A, /BERR on the write of 04901A: CCR 19 want 11
+1	68040 #340 NEGX 4073 0152 001A, /BERR on the write of 04901A: CCR 19 want 11
+1	68040 #341 NOT 4673 0152 001A, /BERR on the write of 04901A: CCR 10 want 18
+1	68040 #345 ADDX -(A1),-(A2) D549, /BERR on the write of 045018: CCR 0A want 00
+1	68040 #346 SUBX -(A1),-(A2) 9549, /BERR on the write of 045018: RAM[045018] F6 want BD
+1	68040 #393 ADD Dn,ea D391, /BERR on the write of 044806: CCR 08 want 11
+1	68040 #393 ADD Dn,ea D391, /BERR on the write of 044808: CCR 08 want 11
+1	68040 #394 SUB Dn,ea 9391, /BERR on the write of 044800: CCR 02 want 08
+1	68040 #394 SUB Dn,ea 9391, /BERR on the write of 044802: CCR 02 want 08
+1	68040 #397 EOR Dn,ea B391, /BERR on the write of 044816: CCR 08 want 00
+1	68040 #397 EOR Dn,ea B391, /BERR on the write of 044818: CCR 08 want 00
+1	68040 #400 ADDQ 5691, /BERR on the write of 04480E: RAM[044811] 0F want 0C
+1	68040 #400 ADDQ 5691, /BERR on the write of 044810: RAM[044811] 0F want 0C
+1	68040 #401 SUBQ 5791, /BERR on the write of 044800: RAM[044803] 57 want 5A
+1	68040 #401 SUBQ 5791, /BERR on the write of 044802: RAM[044803] 57 want 5A
+1	68040 #402 ADDI 0691 BA5A E42A, /BERR on the write of 044812: CCR 08 want 11
+1	68040 #402 ADDI 0691 BA5A E42A, /BERR on the write of 044814: CCR 08 want 11
+1	68040 #403 EORI 0A91 05D4 9619, /BERR on the write of 044808: RAM[044808] 53 want 56
+1	68040 #403 EORI 0A91 05D4 9619, /BERR on the write of 04480A: RAM[044808] 53 want 56
+1	68040 #405 NEG 4491, /BERR on the write of 044818: CCR 11 want 19
+1	68040 #405 NEG 4491, /BERR on the write of 04481A: CCR 11 want 19
+1	68040 #406 NEGX 4091, /BERR on the write of 04480E: CCR 11 want 19
+1	68040 #406 NEGX 4091, /BERR on the write of 044810: CCR 11 want 19
+1	68040 #407 NOT 4691, /BERR on the write of 04481E: CCR 08 want 00
+1	68040 #407 NOT 4691, /BERR on the write of 044820: CCR 08 want 00
+1	68040 #411 ADD Dn,ea D399, /BERR on the write of 04480E: CCR 11 want 13
+1	68040 #411 ADD Dn,ea D399, /BERR on the write of 044810: CCR 11 want 13
+1	68040 #412 SUB Dn,ea 9399, /BERR on the write of 044800: RAM[044800] 5E want 40
+1	68040 #412 SUB Dn,ea 9399, /BERR on the write of 044802: RAM[044800] 5E want 40
+1	68040 #415 EOR Dn,ea B399, /BERR on the write of 044802: RAM[044802] D9 want 97
+1	68040 #415 EOR Dn,ea B399, /BERR on the write of 044804: RAM[044802] D9 want 97
+1	68040 #418 ADDQ 5699, /BERR on the write of 044818: RAM[04481B] 10 want 0D
+1	68040 #418 ADDQ 5699, /BERR on the write of 04481A: RAM[04481B] 10 want 0D
+1	68040 #419 SUBQ 5799, /BERR on the write of 044800: RAM[044803] AA want AD
+1	68040 #419 SUBQ 5799, /BERR on the write of 044802: RAM[044803] AA want AD
+1	68040 #420 ADDI 0699 67D5 0132, /BERR on the write of 044804: CCR 00 want 11
+1	68040 #420 ADDI 0699 67D5 0132, /BERR on the write of 044806: CCR 00 want 11
+1	68040 #421 EORI 0A99 F278 9250, /BERR on the write of 04480C: CCR 08 want 00
+1	68040 #421 EORI 0A99 F278 9250, /BERR on the write of 04480E: CCR 08 want 00
+1	68040 #423 NEG 4499, /BERR on the write of 044812: CCR 11 want 19
+1	68040 #423 NEG 4499, /BERR on the write of 044814: CCR 11 want 19
+1	68040 #424 NEGX 4099, /BERR on the write of 044808: CCR 11 want 19
+1	68040 #424 NEGX 4099, /BERR on the write of 04480A: CCR 11 want 19
+1	68040 #425 NOT 4699, /BERR on the write of 04481C: CCR 08 want 00
+1	68040 #425 NOT 4699, /BERR on the write of 04481E: CCR 08 want 00
+1	68040 #429 ADD Dn,ea D3A1, /BERR on the write of 044802: CCR 11 want 0A
+1	68040 #429 ADD Dn,ea D3A1, /BERR on the write of 044804: CCR 11 want 0A
+1	68040 #430 SUB Dn,ea 93A1, /BERR on the write of 044804: CCR 00 want 02
+1	68040 #430 SUB Dn,ea 93A1, /BERR on the write of 044806: CCR 00 want 02
+1	68040 #433 EOR Dn,ea B3A1, /BERR on the write of 04480C: CCR 00 want 08
+1	68040 #433 EOR Dn,ea B3A1, /BERR on the write of 04480E: CCR 00 want 08
+1	68040 #436 ADDQ 56A1, /BERR on the write of 0447FE: RAM[044801] C2 want BF
+1	68040 #436 ADDQ 56A1, /BERR on the write of 044800: RAM[044801] C2 want BF
+1	68040 #437 SUBQ 57A1, /BERR on the write of 044802: RAM[044805] A2 want A5
+1	68040 #437 SUBQ 57A1, /BERR on the write of 044804: RAM[044805] A2 want A5
+1	68040 #438 ADDI 06A1 6888 2F28, /BERR on the write of 044802: CCR 11 want 0A
+1	68040 #438 ADDI 06A1 6888 2F28, /BERR on the write of 044804: CCR 11 want 0A
+1	68040 #439 EORI 0AA1 44FC 52C5, /BERR on the write of 04480E: RAM[04480E] 3A want 7E
+1	68040 #439 EORI 0AA1 44FC 52C5, /BERR on the write of 044810: RAM[04480E] 3A want 7E
+1	68040 #441 NEG 44A1, /BERR on the write of 044812: CCR 19 want 11
+1	68040 #441 NEG 44A1, /BERR on the write of 044814: CCR 19 want 11
+1	68040 #442 NEGX 40A1, /BERR on the write of 044800: CCR 11 want 19
+1	68040 #442 NEGX 40A1, /BERR on the write of 044802: CCR 11 want 19
+1	68040 #443 NOT 46A1, /BERR on the write of 0447FE: CCR 18 want 10
+1	68040 #443 NOT 46A1, /BERR on the write of 044800: CCR 18 want 10
+1	68040 #447 ADD Dn,ea D3A9 FFE6, /BERR on the write of 0447EA: CCR 0A want 00
+1	68040 #447 ADD Dn,ea D3A9 FFE6, /BERR on the write of 0447EC: CCR 0A want 00
+1	68040 #448 SUB Dn,ea 93A9 FFFA, /BERR on the write of 044802: CCR 00 want 1B
+1	68040 #448 SUB Dn,ea 93A9 FFFA, /BERR on the write of 044804: CCR 00 want 1B
+1	68040 #45 ADD Dn,ea D311, /BERR on the write of 044810: RAM[044810] C5 want CB
+1	68040 #451 EOR Dn,ea B3A9 FFE8, /BERR on the write of 0447EC: RAM[0447EC] 06 want 79
+1	68040 #451 EOR Dn,ea B3A9 FFE8, /BERR on the write of 0447EE: RAM[0447EC] 06 want 79
+1	68040 #454 ADDQ 56A9 0012, /BERR on the write of 044816: RAM[044819] 1E want 1B
+1	68040 #454 ADDQ 56A9 0012, /BERR on the write of 044818: RAM[044819] 1E want 1B
+1	68040 #455 SUBQ 57A9 FFF0, /BERR on the write of 0447F2: RAM[0447F5] BA want BD
+1	68040 #455 SUBQ 57A9 FFF0, /BERR on the write of 0447F4: RAM[0447F5] BA want BD
+1	68040 #456 ADDI 06A9 0DA7 5E4A FFF2, /BERR on the write of 04480A: RAM[04480A] 1D want 0F
+1	68040 #456 ADDI 06A9 0DA7 5E4A FFF2, /BERR on the write of 04480C: RAM[04480A] 1D want 0F
+1	68040 #457 EORI 0AA9 CF24 5A71 FFE0, /BERR on the write of 0447F2: CCR 10 want 18
+1	68040 #457 EORI 0AA9 CF24 5A71 FFE0, /BERR on the write of 0447F4: CCR 10 want 18
+1	68040 #459 NEG 44A9 001A, /BERR on the write of 04482E: CCR 11 want 19
+1	68040 #459 NEG 44A9 001A, /BERR on the write of 044830: CCR 11 want 19
+1	68040 #46 SUB Dn,ea 9311, /BERR on the write of 044818: CCR 1B want 11
+1	68040 #460 NEGX 40A9 0000, /BERR on the write of 044818: CCR 11 want 19
+1	68040 #460 NEGX 40A9 0000, /BERR on the write of 04481A: CCR 11 want 19
+1	68040 #461 NOT 46A9 FFFC, /BERR on the write of 0447FC: CCR 18 want 10
+1	68040 #461 NOT 46A9 FFFC, /BERR on the write of 0447FE: CCR 18 want 10
+1	68040 #465 ADD Dn,ea D3B1 7012, /BERR on the write of 044852: CCR 0A want 00
+1	68040 #465 ADD Dn,ea D3B1 7012, /BERR on the write of 044854: CCR 0A want 00
+1	68040 #466 SUB Dn,ea 93B1 7008, /BERR on the write of 04484A: CCR 11 want 00
+1	68040 #466 SUB Dn,ea 93B1 7008, /BERR on the write of 04484C: CCR 11 want 00
+1	68040 #469 EOR Dn,ea B3B1 7016, /BERR on the write of 044832: CCR 18 want 10
+1	68040 #469 EOR Dn,ea B3B1 7016, /BERR on the write of 044834: CCR 18 want 10
+1	68040 #472 ADDQ 56B1 7026, /BERR on the write of 044872: RAM[044875] E2 want DF
+1	68040 #472 ADDQ 56B1 7026, /BERR on the write of 044874: RAM[044875] E2 want DF
+1	68040 #473 SUBQ 57B1 701C, /BERR on the write of 044870: RAM[044873] 9F want A2
+1	68040 #473 SUBQ 57B1 701C, /BERR on the write of 044872: RAM[044873] 9F want A2
+1	68040 #474 ADDI 06B1 A711 8C15 700C, /BERR on the write of 044842: CCR 11 want 13
+1	68040 #474 ADDI 06B1 A711 8C15 700C, /BERR on the write of 044844: CCR 11 want 13
+1	68040 #475 EORI 0AB1 2557 8C1D 7018, /BERR on the write of 044826: RAM[044826] F8 want DD
+1	68040 #475 EORI 0AB1 2557 8C1D 7018, /BERR on the write of 044828: RAM[044826] F8 want DD
+1	68040 #477 NEG 44B1 700E, /BERR on the write of 04481E: CCR 11 want 19
+1	68040 #477 NEG 44B1 700E, /BERR on the write of 044820: CCR 11 want 19
+1	68040 #478 NEGX 40B1 7024, /BERR on the write of 044838: CCR 11 want 19
+1	68040 #478 NEGX 40B1 7024, /BERR on the write of 04483A: CCR 11 want 19
+1	68040 #479 NOT 46B1 701E, /BERR on the write of 04482A: CCR 08 want 00
+1	68040 #479 NOT 46B1 701E, /BERR on the write of 04482C: CCR 08 want 00
+1	68040 #483 ADD Dn,ea D3B3 0151, /BERR on the write of 049000: RAM[049000] 57 want 2F
+1	68040 #483 ADD Dn,ea D3B3 0151, /BERR on the write of 049002: RAM[049000] 57 want 2F
+1	68040 #484 SUB Dn,ea 93B3 0151, /BERR on the write of 049000: CCR 02 want 19
+1	68040 #484 SUB Dn,ea 93B3 0151, /BERR on the write of 049002: CCR 02 want 19
+1	68040 #487 EOR Dn,ea B3B3 0151, /BERR on the write of 049000: CCR 18 want 10
+1	68040 #487 EOR Dn,ea B3B3 0151, /BERR on the write of 049002: CCR 18 want 10
+1	68040 #49 EOR Dn,ea B311, /BERR on the write of 04480A: RAM[04480A] D2 want EC
+1	68040 #490 ADDQ 56B3 0151, /BERR on the write of 049000: RAM[049003] D2 want CF
+1	68040 #490 ADDQ 56B3 0151, /BERR on the write of 049002: RAM[049003] D2 want CF
+1	68040 #491 SUBQ 57B3 0151, /BERR on the write of 049000: RAM[049003] 0B want 0E
+1	68040 #491 SUBQ 57B3 0151, /BERR on the write of 049002: RAM[049003] 0B want 0E
+1	68040 #492 ADDI 06B3 7D4A 62F7 0151, /BERR on the write of 049000: CCR 11 want 0A
+1	68040 #492 ADDI 06B3 7D4A 62F7 0151, /BERR on the write of 049002: CCR 11 want 0A
+1	68040 #493 EORI 0AB3 C453 A90A 0151, /BERR on the write of 049000: CCR 00 want 08
+1	68040 #493 EORI 0AB3 C453 A90A 0151, /BERR on the write of 049002: CCR 00 want 08
+1	68040 #495 NEG 44B3 0151, /BERR on the write of 049000: CCR 11 want 19
+1	68040 #495 NEG 44B3 0151, /BERR on the write of 049002: CCR 11 want 19
+1	68040 #496 NEGX 40B3 0151, /BERR on the write of 049000: CCR 11 want 19
+1	68040 #496 NEGX 40B3 0151, /BERR on the write of 049002: CCR 11 want 19
+1	68040 #497 NOT 46B3 0151, /BERR on the write of 049000: CCR 08 want 00
+1	68040 #497 NOT 46B3 0151, /BERR on the write of 049002: CCR 08 want 00
+1	68040 #501 ADD Dn,ea D3B3 0152 001A, /BERR on the write of 04901A: RAM[04901A] DF want D4
+1	68040 #501 ADD Dn,ea D3B3 0152 001A, /BERR on the write of 04901C: RAM[04901A] DF want D4
+1	68040 #502 SUB Dn,ea 93B3 0152 0016, /BERR on the write of 049016: CCR 19 want 1B
+1	68040 #502 SUB Dn,ea 93B3 0152 0016, /BERR on the write of 049018: CCR 19 want 1B
+1	68040 #505 EOR Dn,ea B3B3 0152 0012, /BERR on the write of 049012: RAM[049012] 83 want EF
+1	68040 #505 EOR Dn,ea B3B3 0152 0012, /BERR on the write of 049014: RAM[049012] 83 want EF
+1	68040 #508 ADDQ 56B3 0152 0012, /BERR on the write of 049012: RAM[049015] 9F want 9C
+1	68040 #508 ADDQ 56B3 0152 0012, /BERR on the write of 049014: RAM[049015] 9F want 9C
+1	68040 #509 SUBQ 57B3 0152 0014, /BERR on the write of 049014: RAM[049017] 0B want 0E
+1	68040 #509 SUBQ 57B3 0152 0014, /BERR on the write of 049016: RAM[049017] 0B want 0E
+1	68040 #510 ADDI 06B3 335C 1E44 0152 0016, /BERR on the write of 049016: CCR 08 want 0A
+1	68040 #510 ADDI 06B3 335C 1E44 0152 0016, /BERR on the write of 049018: CCR 08 want 0A
+1	68040 #511 EORI 0AB3 4F72 F775 0152 0002, /BERR on the write of 049002: RAM[049002] 39 want 76
+1	68040 #511 EORI 0AB3 4F72 F775 0152 0002, /BERR on the write of 049004: RAM[049002] 39 want 76
+1	68040 #513 NEG 44B3 0152 0012, /BERR on the write of 049012: CCR 11 want 19
+1	68040 #513 NEG 44B3 0152 0012, /BERR on the write of 049014: CCR 11 want 19
+1	68040 #514 NEGX 40B3 0152 0020, /BERR on the write of 049020: CCR 19 want 11
+1	68040 #514 NEGX 40B3 0152 0020, /BERR on the write of 049022: CCR 19 want 11
+1	68040 #515 NOT 46B3 0152 001E, /BERR on the write of 04901E: CCR 00 want 08
+1	68040 #515 NOT 46B3 0152 001E, /BERR on the write of 049020: CCR 00 want 08
+1	68040 #519 ADDX -(A1),-(A2) D589, /BERR on the write of 045002: CCR 11 want 13
+1	68040 #519 ADDX -(A1),-(A2) D589, /BERR on the write of 045004: CCR 11 want 13
+1	68040 #52 ADDQ 5611, /BERR on the write of 044810: RAM[044810] 8E want 8B
+1	68040 #520 SUBX -(A1),-(A2) 9589, /BERR on the write of 045016: CCR 19 want 02
+1	68040 #520 SUBX -(A1),-(A2) 9589, /BERR on the write of 045018: CCR 19 want 02
+1	68040 #522 shift right E0D1, /BERR on the write of 044804: CCR 19 want 08
+1	68040 #523 shift left E1D1, /BERR on the write of 04481A: CCR 00 want 13
+1	68040 #526 shift right E2D1, /BERR on the write of 044818: RAM[044818] 1A want 34
+1	68040 #527 shift left E3D1, /BERR on the write of 044806: CCR 08 want 00
+1	68040 #528 bit Dn 0351, /BERR on the write of 044800: CCR 0F want 0B
+1	68040 #529 bit # 0851 0007, /BERR on the write of 04480E: CCR 00 want 04
+1	68040 #53 SUBQ 5711, /BERR on the write of 04481E: RAM[04481E] 5B want 5E
+1	68040 #530 shift right E4D1, /BERR on the write of 04480E: CCR 08 want 19
+1	68040 #531 shift left E5D1, /BERR on the write of 044812: CCR 11 want 08
+1	68040 #532 bit Dn 0391, /BERR on the write of 044808: CCR 0E want 0A
+1	68040 #533 bit # 0891 0005, /BERR on the write of 044814: CCR 06 want 02
+1	68040 #534 shift right E6D1, /BERR on the write of 044804: RAM[044804] CA want 94
+1	68040 #535 shift left E7D1, /BERR on the write of 044816: CCR 19 want 18
+1	68040 #539 TAS 4AD1, /BERR on the write of 044808: CCR 18 want 10
+1	68040 #54 ADDI 0611 00D0, /BERR on the write of 04480C: CCR 08 want 11
+1	68040 #540 NBCD 4811, /BERR on the write of 04481A: RAM[04481A] 6C want 2D
+1	68040 #55 EORI 0A11 00D9, /BERR on the write of 04480E: CCR 08 want 00
+1	68040 #568 shift right E0D9, /BERR on the write of 044818: RAM[044819] 2D want 5A
+1	68040 #569 shift left E1D9, /BERR on the write of 04481A: CCR 13 want 0A
+1	68040 #57 NEG 4411, /BERR on the write of 044806: CCR 19 want 11
+1	68040 #572 shift right E2D9, /BERR on the write of 044812: RAM[044812] 10 want 21
+1	68040 #573 shift left E3D9, /BERR on the write of 044814: CCR 00 want 11
+1	68040 #574 bit Dn 0359, /BERR on the write of 044806: CCR 16 want 12
+1	68040 #575 bit # 0859 0001, /BERR on the write of 04481E: CCR 0F want 0B
+1	68040 #576 shift right E4D9, /BERR on the write of 044816: CCR 19 want 08
+1	68040 #577 shift left E5D9, /BERR on the write of 044804: RAM[044804] C7 want E3
+1	68040 #578 bit Dn 0399, /BERR on the write of 044800: CCR 1C want 18
+1	68040 #58 NEGX 4011, /BERR on the write of 044812: CCR 19 want 11
+1	68040 #580 shift right E6D9, /BERR on the write of 04480C: RAM[04480C] C3 want 87
+1	68040 #581 shift left E7D9, /BERR on the write of 044802: CCR 11 want 18
+1	68040 #583 bit # 08D9 0001, /BERR on the write of 044814: CCR 1B want 1F
+1	68040 #585 TAS 4AD9, /BERR on the write of 044812: CCR 08 want 00
+1	68040 #586 NBCD 4819, /BERR on the write of 044812: RAM[044812] B1 want E8
+1	68040 #59 NOT 4611, /BERR on the write of 04480C: CCR 00 want 08
+1	68040 #602 shift right E0E1, /BERR on the write of 04480E: CCR 19 want 08
+1	68040 #603 shift left E1E1, /BERR on the write of 04480E: RAM[04480E] 50 want 28
+1	68040 #606 shift right E2E1, /BERR on the write of 044808: CCR 00 want 11
+1	68040 #607 shift left E3E1, /BERR on the write of 0447FE: CCR 19 want 08
+1	68040 #608 bit Dn 0361, /BERR on the write of 04480D: CCR 0D want 09
+1	68040 #609 bit # 0861 0000, /BERR on the write of 044813: CCR 0F want 0B
+1	68040 #610 shift right E4E1, /BERR on the write of 044808: RAM[044808] 06 want 0D
+1	68040 #611 shift left E5E1, /BERR on the write of 04480C: CCR 08 want 11
+1	68040 #613 bit # 08A1 0005, /BERR on the write of 044819: CCR 1C want 18
+1	68040 #614 shift right E6E1, /BERR on the write of 044810: RAM[044810] EE want DD
+1	68040 #615 shift left E7E1, /BERR on the write of 04481C: RAM[04481C] 30 want 18
+1	68040 #616 bit Dn 03E1, /BERR on the write of 0447FF: CCR 1B want 1F
+1	68040 #620 NBCD 4821, /BERR on the write of 044805: RAM[044805] 58 want 42
+1	68040 #63 ADD Dn,ea D319, /BERR on the write of 044816: CCR 0A want 11
+1	68040 #636 shift right E0E9 0012, /BERR on the write of 04482E: CCR 08 want 19
+1	68040 #637 shift left E1E9 FFEC, /BERR on the write of 0447EE: RAM[0447EE] F6 want FB
+1	68040 #64 SUB Dn,ea 9319, /BERR on the write of 04480C: CCR 02 want 08
+1	68040 #640 shift right E2E9 0002, /BERR on the write of 044816: RAM[044816] 11 want 22
+1	68040 #641 shift left E3E9 0012, /BERR on the write of 04481E: CCR 11 want 19
+1	68040 #642 bit Dn 0369 0010, /BERR on the write of 044820: CCR 1D want 19
+1	68040 #643 bit # 0869 0007 001A, /BERR on the write of 04482A: CCR 13 want 17
+1	68040 #644 shift right E4E9 0004, /BERR on the write of 04480E: RAM[04480E] 19 want 33
+1	68040 #645 shift left E5E9 FFEA, /BERR on the write of 0447F6: CCR 08 want 00
+1	68040 #646 bit Dn 03A9 FFF8, /BERR on the write of 0447F8: CCR 15 want 11
+1	68040 #648 shift right E6E9 FFEE, /BERR on the write of 0447FC: CCR 19 want 10
+1	68040 #649 shift left E7E9 FFEC, /BERR on the write of 0447FC: CCR 09 want 08
+1	68040 #650 bit Dn 03E9 FFFC, /BERR on the write of 044814: CCR 09 want 0D
+1	68040 #651 bit # 08E9 0002 0016, /BERR on the write of 044834: CCR 09 want 0D
+1	68040 #653 TAS 4AE9 001E, /BERR on the write of 044828: CCR 18 want 10
+1	68040 #654 NBCD 4829 FFE0, /BERR on the write of 0447FC: RAM[0447FC] 9B want FE
+1	68040 #67 EOR Dn,ea B319, /BERR on the write of 044814: RAM[044814] 90 want 8E
+1	68040 #682 shift right E0F1 703E, /BERR on the write of 044856: CCR 19 want 08
+1	68040 #683 shift left E1F1 7036, /BERR on the write of 044884: RAM[044884] 1A want 0D
+1	68040 #686 shift right E2F1 700A, /BERR on the write of 044832: RAM[044832] 05 want 0A
+1	68040 #687 shift left E3F1 702A, /BERR on the write of 04485A: CCR 11 want 19
+1	68040 #688 bit Dn 0371 7014, /BERR on the write of 04481A: CCR 0E want 0A
+1	68040 #689 bit # 0871 0005 7026, /BERR on the write of 04485A: CCR 00 want 04
+1	68040 #690 shift right E4F1 700A, /BERR on the write of 044864: RAM[044864] 1C want 38
+1	68040 #691 shift left E5F1 701A, /BERR on the write of 04486C: CCR 11 want 19
+1	68040 #692 bit Dn 03B1 7020, /BERR on the write of 044830: CCR 15 want 11
+1	68040 #693 bit # 08B1 0006 703A, /BERR on the write of 044880: CCR 14 want 10
+1	68040 #694 shift right E6F1 7018, /BERR on the write of 04484E: CCR 19 want 10
+1	68040 #695 shift left E7F1 7020, /BERR on the write of 044820: CCR 09 want 08
+1	68040 #696 bit Dn 03F1 703E, /BERR on the write of 044868: CCR 1A want 1E
+1	68040 #699 TAS 4AF1 7014, /BERR on the write of 04482E: CCR 08 want 00
+1	68040 #70 ADDQ 5619, /BERR on the write of 044804: RAM[044804] AB want A8
+1	68040 #700 NBCD 4831 700A, /BERR on the write of 04483E: RAM[04483E] 7D want 1D
+1	68040 #71 SUBQ 5719, /BERR on the write of 04481E: RAM[04481E] D3 want D6
+1	68040 #72 ADDI 0619 0065, /BERR on the write of 044814: CCR 11 want 0A
+1	68040 #728 shift right E0F3 0151, /BERR on the write of 049000: CCR 00 want 11
+1	68040 #729 shift left E1F3 0151, /BERR on the write of 049000: CCR 13 want 0A
+1	68040 #73 EORI 0A19 00CA, /BERR on the write of 04481C: CCR 18 want 10
+1	68040 #732 shift right E2F3 0151, /BERR on the write of 049000: RAM[049001] 6C want D9
+1	68040 #733 shift left E3F3 0151, /BERR on the write of 049000: RAM[049000] D9 want EC
+1	68040 #734 bit Dn 0373 0151, /BERR on the write of 049000: CCR 1C want 18
+1	68040 #735 bit # 0873 0006 0151, /BERR on the write of 049000: CCR 02 want 06
+1	68040 #736 shift right E4F3 0151, /BERR on the write of 049000: RAM[049000] 19 want 33
+1	68040 #737 shift left E5F3 0151, /BERR on the write of 049000: CCR 11 want 19
+1	68040 #740 shift right E6F3 0151, /BERR on the write of 049000: RAM[049000] 1A want 34
+1	68040 #741 shift left E7F3 0151, /BERR on the write of 049000: CCR 00 want 01
+1	68040 #743 bit # 08F3 0000 0151, /BERR on the write of 049000: CCR 19 want 1D
+1	68040 #745 TAS 4AF3 0151, /BERR on the write of 049000: CCR 18 want 10
+1	68040 #746 NBCD 4833 0151, /BERR on the write of 049000: RAM[049000] DB want BF
+1	68040 #75 NEG 4419, /BERR on the write of 044812: CCR 11 want 19
+1	68040 #76 NEGX 4019, /BERR on the write of 044812: CCR 11 want 19
+1	68040 #77 NOT 4619, /BERR on the write of 044810: CCR 18 want 10
+1	68040 #774 shift right E0F3 0152 0016, /BERR on the write of 049016: CCR 19 want 08
+1	68040 #775 shift left E1F3 0152 0004, /BERR on the write of 049004: RAM[049004] A3 want D1
+1	68040 #778 shift right E2F3 0152 001C, /BERR on the write of 04901C: CCR 00 want 11
+1	68040 #779 shift left E3F3 0152 0004, /BERR on the write of 049004: CCR 00 want 11
+1	68040 #780 bit Dn 0373 0152 001E, /BERR on the write of 04901E: CCR 12 want 16
+1	68040 #781 bit # 0873 0005 0152 001C, /BERR on the write of 04901C: CCR 19 want 1D
+1	68040 #782 shift right E4F3 0152 0004, /BERR on the write of 049004: RAM[049004] 39 want 72
+1	68040 #783 shift left E5F3 0152 0002, /BERR on the write of 049002: CCR 19 want 08
+1	68040 #786 shift right E6F3 0152 0010, /BERR on the write of 049010: CCR 09 want 00
+1	68040 #787 shift left E7F3 0152 0016, /BERR on the write of 049016: RAM[049016] 4A want 25
+1	68040 #788 bit Dn 03F3 0152 000A, /BERR on the write of 04900A: CCR 11 want 15
+1	68040 #789 bit # 08F3 0005 0152 001C, /BERR on the write of 04901C: CCR 03 want 07
+1	68040 #791 TAS 4AF3 0152 0018, /BERR on the write of 049018: CCR 18 want 10
+1	68040 #792 NBCD 4833 0152 0010, /BERR on the write of 049010: RAM[049010] BD want DD
+1	68040 #81 ADD Dn,ea D321, /BERR on the write of 044809: RAM[044809] 7A want 78
+1	68040 #82 SUB Dn,ea 9321, /BERR on the write of 044811: CCR 00 want 1B
+1	68040 #85 EOR Dn,ea B321, /BERR on the write of 0447FF: CCR 00 want 08
+1	68040 #88 ADDQ 5621, /BERR on the write of 044815: RAM[044815] E8 want E5
+1	68040 #89 SUBQ 5721, /BERR on the write of 04480F: RAM[04480F] 8E want 91
+1	68040 #90 ADDI 0621 006C, /BERR on the write of 0447FF: CCR 0A want 11
+1	68040 #91 EORI 0A21 00A4, /BERR on the write of 04481D: CCR 18 want 10
+1	68040 #93 NEG 4421, /BERR on the write of 044811: CCR 19 want 11
+1	68040 #94 NEGX 4021, /BERR on the write of 0447FF: CCR 11 want 19
+1	68040 #95 NOT 4621, /BERR on the write of 04480B: CCR 10 want 18
+1	68040 #99 ADD Dn,ea D329 FFFC, /BERR on the write of 044806: CCR 08 want 0A
+
+# OPEN DEFECT (upstream gap): an instruction-stream fault is reported when the
+# stage is used (MC68030UM-1989 §8.2.1, FB/FC); Dirk's core faults the
+# instruction that prefetched and reruns it, so a non-idempotent one (TAS, bit
+# field, FPU) acts twice. Fork row 99 deferred it.
+1	68030 #539 TAS 4AD1, /BERR on the read of 001004: CCR 18 want 10
+1	68030 #539 TAS 4AD1, /BERR on the read of 001006: CCR 18 want 10
+1	68030 #585 TAS 4AD9, /BERR on the read of 001004: CCR 08 want 00
+1	68030 #585 TAS 4AD9, /BERR on the read of 001006: CCR 08 want 00
+1	68030 #670 bit field EAE9 129E 0006, /BERR on the read of 001008: CCR 18 want 10
+1	68030 #670 bit field EAE9 129E 0006, /BERR on the read of 00100A: CCR 18 want 10
+1	68030 #672 bit field ECE9 1687 0020, /BERR on the read of 001008: CCR 14 want 18
+1	68030 #672 bit field ECE9 1687 0020, /BERR on the read of 00100A: CCR 14 want 18
+1	68030 #716 bit field EAF1 1757 703A, /BERR on the read of 001008: CCR 18 want 10
+1	68030 #716 bit field EAF1 1757 703A, /BERR on the read of 00100A: CCR 18 want 10
+1	68030 #718 bit field ECF1 11D4 7004, /BERR on the read of 001008: CCR 14 want 18
+1	68030 #718 bit field ECF1 11D4 7004, /BERR on the read of 00100A: CCR 14 want 18
+1	68030 #720 bit field EEF1 1395 7012, /BERR on the read of 001008: CCR 18 want 10
+1	68030 #720 bit field EEF1 1395 7012, /BERR on the read of 00100A: CCR 18 want 10
+1	68030 #762 bit field EAF3 15CB 0151, /BERR on the read of 001008: CCR 00 want 08
+1	68030 #762 bit field EAF3 15CB 0151, /BERR on the read of 00100A: CCR 00 want 08
+1	68030 #764 bit field ECF3 1605 0151, /BERR on the read of 001008: CCR 04 want 08
+1	68030 #764 bit field ECF3 1605 0151, /BERR on the read of 00100A: CCR 04 want 08
+1	68030 #791 TAS 4AF3 0152 0018, /BERR on the read of 001008: CCR 18 want 10
+1	68030 #791 TAS 4AF3 0152 0018, /BERR on the read of 00100A: CCR 18 want 10
+1	68040 #539 TAS 4AD1, /BERR on the read of 001004: CCR 18 want 10
+1	68040 #556 bit field EAD1 13CB, /BERR on the read of 001006: CCR 10 want 18
+1	68040 #558 bit field ECD1 14C0, /BERR on the read of 001006: CCR 14 want 18
+1	68040 #560 bit field EED1 178D, /BERR on the read of 001006: CCR 08 want 00
+1	68040 #585 TAS 4AD9, /BERR on the read of 001004: CCR 08 want 00
+1	68040 #653 TAS 4AE9 001E, /BERR on the read of 001006: CCR 18 want 10
+1	68040 #670 bit field EAE9 129E 0006, /BERR on the read of 001008: CCR 18 want 10
+1	68040 #672 bit field ECE9 1687 0020, /BERR on the read of 001008: CCR 14 want 18
+1	68040 #699 TAS 4AF1 7014, /BERR on the read of 001006: CCR 08 want 00
+1	68040 #716 bit field EAF1 1757 703A, /BERR on the read of 001008: CCR 18 want 10
+1	68040 #718 bit field ECF1 11D4 7004, /BERR on the read of 001008: CCR 14 want 18
+1	68040 #720 bit field EEF1 1395 7012, /BERR on the read of 001008: CCR 18 want 10
+1	68040 #745 TAS 4AF3 0151, /BERR on the read of 001006: CCR 18 want 10
+1	68040 #762 bit field EAF3 15CB 0151, /BERR on the read of 001008: CCR 00 want 08
+1	68040 #764 bit field ECF3 1605 0151, /BERR on the read of 001008: CCR 04 want 08
+1	68040 #791 TAS 4AF3 0152 0018, /BERR on the read of 001008: CCR 18 want 10
+1	68040 #808 bit field EAF3 12CB 0152 000C, /BERR on the read of 00100A: CCR 10 want 18
+1	68040 #810 bit field ECF3 1256 0152 0008, /BERR on the read of 00100A: CCR 14 want 18
+
+# Restart model (Dirk's design): the rerun of an instruction whose access was
+# split, or read memory it had already written, does not reproduce the
+# uninterrupted run; continuation is on Dirk's list after his release.
+1	68030 #393 ADD Dn,ea D391, /BERR on the write of 044808: CCR 08 want 11
+1	68030 #394 SUB Dn,ea 9391, /BERR on the write of 044802: CCR 02 want 08
+1	68030 #397 EOR Dn,ea B391, /BERR on the write of 044818: CCR 08 want 00
+1	68030 #402 ADDI 0691 BA5A E42A, /BERR on the write of 044814: CCR 08 want 11
+1	68030 #403 EORI 0A91 05D4 9619, /BERR on the write of 04480A: RAM[044808] 53 want 56
+1	68030 #405 NEG 4491, /BERR on the write of 04481A: CCR 11 want 19
+1	68030 #406 NEGX 4091, /BERR on the write of 044810: CCR 11 want 19
+1	68030 #407 NOT 4691, /BERR on the write of 044820: CCR 08 want 00
+1	68030 #411 ADD Dn,ea D399, /BERR on the write of 044810: CCR 11 want 13
+1	68030 #412 SUB Dn,ea 9399, /BERR on the write of 044802: RAM[044800] 5E want 40
+1	68030 #415 EOR Dn,ea B399, /BERR on the write of 044804: RAM[044802] D9 want 97
+1	68030 #420 ADDI 0699 67D5 0132, /BERR on the write of 044806: CCR 00 want 11
+1	68030 #421 EORI 0A99 F278 9250, /BERR on the write of 04480E: CCR 08 want 00
+1	68030 #423 NEG 4499, /BERR on the write of 044814: CCR 11 want 19
+1	68030 #424 NEGX 4099, /BERR on the write of 04480A: CCR 11 want 19
+1	68030 #425 NOT 4699, /BERR on the write of 04481E: CCR 08 want 00
+1	68030 #429 ADD Dn,ea D3A1, /BERR on the write of 044804: CCR 11 want 0A
+1	68030 #430 SUB Dn,ea 93A1, /BERR on the write of 044806: CCR 00 want 02
+1	68030 #433 EOR Dn,ea B3A1, /BERR on the write of 04480E: CCR 00 want 08
+1	68030 #438 ADDI 06A1 6888 2F28, /BERR on the write of 044804: CCR 11 want 0A
+1	68030 #439 EORI 0AA1 44FC 52C5, /BERR on the write of 044810: RAM[04480E] 3A want 7E
+1	68030 #441 NEG 44A1, /BERR on the write of 044814: CCR 19 want 11
+1	68030 #442 NEGX 40A1, /BERR on the write of 044802: CCR 11 want 19
+1	68030 #443 NOT 46A1, /BERR on the write of 044800: CCR 18 want 10
+1	68030 #447 ADD Dn,ea D3A9 FFE6, /BERR on the write of 0447EC: CCR 0A want 00
+1	68030 #448 SUB Dn,ea 93A9 FFFA, /BERR on the write of 044804: CCR 00 want 1B
+1	68030 #451 EOR Dn,ea B3A9 FFE8, /BERR on the write of 0447EE: RAM[0447EC] 06 want 79
+1	68030 #456 ADDI 06A9 0DA7 5E4A FFF2, /BERR on the write of 04480C: RAM[04480A] 1D want 0F
+1	68030 #457 EORI 0AA9 CF24 5A71 FFE0, /BERR on the write of 0447F4: CCR 10 want 18
+1	68030 #459 NEG 44A9 001A, /BERR on the write of 044830: CCR 11 want 19
+1	68030 #460 NEGX 40A9 0000, /BERR on the write of 04481A: CCR 11 want 19
+1	68030 #461 NOT 46A9 FFFC, /BERR on the write of 0447FE: CCR 18 want 10
+1	68030 #465 ADD Dn,ea D3B1 7012, /BERR on the write of 044854: CCR 0A want 00
+1	68030 #466 SUB Dn,ea 93B1 7008, /BERR on the write of 04484C: CCR 11 want 00
+1	68030 #469 EOR Dn,ea B3B1 7016, /BERR on the write of 044834: CCR 18 want 10
+1	68030 #474 ADDI 06B1 A711 8C15 700C, /BERR on the write of 044844: CCR 11 want 13
+1	68030 #475 EORI 0AB1 2557 8C1D 7018, /BERR on the write of 044828: RAM[044826] F8 want DD
+1	68030 #477 NEG 44B1 700E, /BERR on the write of 044820: CCR 11 want 19
+1	68030 #478 NEGX 40B1 7024, /BERR on the write of 04483A: CCR 11 want 19
+1	68030 #479 NOT 46B1 701E, /BERR on the write of 04482C: CCR 08 want 00
+1	68030 #483 ADD Dn,ea D3B3 0151, /BERR on the write of 049002: RAM[049000] 57 want 2F
+1	68030 #484 SUB Dn,ea 93B3 0151, /BERR on the write of 049002: CCR 02 want 19
+1	68030 #487 EOR Dn,ea B3B3 0151, /BERR on the write of 049002: CCR 18 want 10
+1	68030 #492 ADDI 06B3 7D4A 62F7 0151, /BERR on the write of 049002: CCR 11 want 0A
+1	68030 #493 EORI 0AB3 C453 A90A 0151, /BERR on the write of 049002: CCR 00 want 08
+1	68030 #495 NEG 44B3 0151, /BERR on the write of 049002: CCR 11 want 19
+1	68030 #496 NEGX 40B3 0151, /BERR on the write of 049002: CCR 11 want 19
+1	68030 #497 NOT 46B3 0151, /BERR on the write of 049002: CCR 08 want 00
+1	68030 #501 ADD Dn,ea D3B3 0152 001A, /BERR on the write of 04901C: RAM[04901A] DF want D4
+1	68030 #502 SUB Dn,ea 93B3 0152 0016, /BERR on the write of 049018: CCR 19 want 1B
+1	68030 #505 EOR Dn,ea B3B3 0152 0012, /BERR on the write of 049014: RAM[049012] 83 want EF
+1	68030 #510 ADDI 06B3 335C 1E44 0152 0016, /BERR on the write of 049018: CCR 08 want 0A
+1	68030 #511 EORI 0AB3 4F72 F775 0152 0002, /BERR on the write of 049004: RAM[049002] 39 want 76
+1	68030 #513 NEG 44B3 0152 0012, /BERR on the write of 049014: CCR 11 want 19
+1	68030 #514 NEGX 40B3 0152 0020, /BERR on the write of 049022: CCR 19 want 11
+1	68030 #515 NOT 46B3 0152 001E, /BERR on the write of 049020: CCR 00 want 08
+1	68030 #519 ADDX -(A1),-(A2) D589, /BERR on the write of 045004: CCR 11 want 13
+1	68030 #520 SUBX -(A1),-(A2) 9589, /BERR on the write of 045018: CCR 19 want 02
+1	68030 #556 bit field EAD1 13CB, /BERR on the write of 044817: CCR 10 want 18
+1	68030 #558 bit field ECD1 14C0, /BERR on the read of 04481C: CCR 10 want 18
+1	68030 #558 bit field ECD1 14C0, /BERR on the write of 04481A: CCR 10 want 18
+1	68030 #558 bit field ECD1 14C0, /BERR on the write of 04481C: CCR 10 want 18
+1	68030 #560 bit field EED1 178D, /BERR on the write of 04480D: CCR 08 want 00
+1	68030 #670 bit field EAE9 129E 0006, /BERR on the write of 04481F: CCR 18 want 10
+1	68030 #672 bit field ECE9 1687 0020, /BERR on the write of 04483B: CCR 14 want 18
+1	68030 #716 bit field EAF1 1757 703A, /BERR on the write of 044863: CCR 18 want 10
+1	68030 #718 bit field ECF1 11D4 7004, /BERR on the write of 044858: CCR 10 want 18
+1	68030 #720 bit field EEF1 1395 7012, /BERR on the write of 044851: CCR 18 want 10
+1	68030 #762 bit field EAF3 15CB 0151, /BERR on the write of 049004: CCR 00 want 08
+1	68030 #764 bit field ECF3 1605 0151, /BERR on the write of 049005: CCR 04 want 08
+1	68030 #808 bit field EAF3 12CB 0152 000C, /BERR on the write of 04900F: CCR 10 want 18
+1	68030 #810 bit field ECF3 1256 0152 0008, /BERR on the write of 04900B: CCR 10 want 18
+1	68040 #558 bit field ECD1 14C0, /BERR on the read of 04481C: CCR 10 want 18

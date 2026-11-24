@@ -200,6 +200,7 @@ int main() {
         // This is the invariant the CPU menu is built on: between the click
         // and the machine thread applying it, the tick must still read the
         // engine that is actually running.
+#ifndef POM68K_NO_JIT
         check(m.cpuEngine() == 1, "a 68040 starts on the accelerated engine");
         m.push({MonoMachine::Cmd::CpuEngine, 0});
         check(m.cpuEngine() == 1,
@@ -207,6 +208,15 @@ int main() {
         m.stepTick();
         check(m.cpuEngine() == 0, "cpuEngine() follows the machine after apply");
         check(cpu.engine() == 0, "the CPU really swapped to the reference engine");
+#else
+        // The engine is compiled out (POM68K_JIT=OFF): the CPU runs the
+        // interpreter, and a request for the accelerated engine leaves it there.
+        check(m.cpuEngine() == 0, "no JIT compiled: a 68040 starts on the interpreter");
+        m.push({MonoMachine::Cmd::CpuEngine, 1});
+        m.stepTick();
+        check(m.cpuEngine() == 0 && cpu.engine() == 0,
+              "no JIT compiled: a request for it keeps the interpreter");
+#endif
 
         // ── The queue is FIFO ─────────────────────────────────────────────
         // Two conflicting commands in one batch: the LAST one must win, or a

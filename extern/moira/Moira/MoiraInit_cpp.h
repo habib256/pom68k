@@ -19,14 +19,14 @@
 #endif
 
 #define CIMS(id,name,I,M,S) { \
-exec[id] = EXEC_HANDLER(name,C,I,M,S); \
+if (regExec) exec[id] = EXEC_HANDLER(name,C,I,M,S); \
 REGISTER_DASM(id,name,I,M,S) \
 REGISTER_INFO(id,name,I,M,S) \
 }
 
 #define CIMSloop(id,name,I,M,S) { \
-assert(loop[id] == nullptr); \
-loop[id] = EXEC_HANDLER(name,Core::C68010,I##_LOOP,M,S); \
+if (regExec) { assert(loop[id] == nullptr); \
+loop[id] = EXEC_HANDLER(name,Core::C68010,I##_LOOP,M,S); } \
 }
 
 // Registers an instruction in one of the standard instruction formats:
@@ -154,14 +154,14 @@ parse(const char *s, int sum = 0)
 #ifdef MOIRA_MAIN_TU
 
 void
-Moira::createJumpTable(Model cpuModel, Model dasmModel)
+Moira::createJumpTable(CPUModel cpuModel, CPUModel dasmModel)
 {
-    auto core = [&](Model model) {
+    auto core = [&](CPUModel model) {
         
         switch (model) {
                 
-            case Model::M68000: return Core::C68000;
-            case Model::M68010: return Core::C68010;
+            case CPUModel::M68000: return Core::C68000;
+            case CPUModel::M68010: return Core::C68010;
                 
             default:
                 return Core::C68020;
@@ -171,17 +171,35 @@ Moira::createJumpTable(Model cpuModel, Model dasmModel)
     Core cpuCore = core(cpuModel);
     Core dasmCore = core(dasmModel);
 
-    // Register handlers based on the dasm model
-    if (dasmCore == Core::C68000) createJumpTable<Core::C68000>(dasmModel, true);
-    if (dasmCore == Core::C68010) createJumpTable<Core::C68010>(dasmModel, true);
-    if (dasmCore == Core::C68020) createJumpTable<Core::C68020>(dasmModel, true);
+    // Register the exec and dasm handlers for the CPU model
+    if (cpuCore == Core::C68000) createJumpTable<Core::C68000>(cpuModel, true, true);
+    if (cpuCore == Core::C68010) createJumpTable<Core::C68010>(cpuModel, true, true);
+    if (cpuCore == Core::C68020) createJumpTable<Core::C68020>(cpuModel, true, true);
 
-    // If both models differ, overwrite the exec handlers
+    // If the disassembler is based on a different model, register a second set of dasm handlers
     if (cpuModel != dasmModel) {
 
-        if (cpuCore == Core::C68000) createJumpTable<Core::C68000>(cpuModel, false);
-        if (cpuCore == Core::C68010) createJumpTable<Core::C68010>(cpuModel, false);
-        if (cpuCore == Core::C68020) createJumpTable<Core::C68020>(cpuModel, false);
+        if (MOIRA_ENABLE_DASM) {
+
+            if (!dasmAlt) dasmAlt = new DasmPtr[65536];
+            if (!infoAlt) infoAlt = new InstrInfo[65536];
+
+            // Redirect the dasm registration to the alternative tables
+            std::swap(dasm, dasmAlt);
+            std::swap(info, infoAlt);
+
+            if (dasmCore == Core::C68000) createJumpTable<Core::C68000>(dasmModel, false, true);
+            if (dasmCore == Core::C68010) createJumpTable<Core::C68010>(dasmModel, false, true);
+            if (dasmCore == Core::C68020) createJumpTable<Core::C68020>(dasmModel, false, true);
+
+            std::swap(dasm, dasmAlt);
+            std::swap(info, infoAlt);
+        }
+
+    } else {
+
+        delete [] dasmAlt; dasmAlt = nullptr;
+        delete [] infoAlt; infoAlt = nullptr;
     }
 }
 
@@ -190,7 +208,7 @@ Moira::createJumpTable(Model cpuModel, Model dasmModel)
 // Registers the instruction handlers for a subset of the instruction set
 // (prologue ... AND)
 template <Core C> void
-Moira::createJumpTable1([[maybe_unused]] Model model, bool regDasm)
+Moira::createJumpTable1([[maybe_unused]] CPUModel model, bool regExec, bool regDasm)
 {
     [[maybe_unused]] u16 opcode;
 
@@ -200,8 +218,8 @@ Moira::createJumpTable1([[maybe_unused]] Model model, bool regDasm)
 
     XXXXXXXXXXXXXXXX(Instr::ILLEGAL, Mode::IP, (Size)0, Illegal, CIMS)
 
-    for (int i = 0; i < 0x10000; i++) {
-        loop[i] = nullptr;
+    if (regExec) {
+        for (int i = 0; i < 0x10000; i++) loop[i] = nullptr;
     }
 
 
@@ -325,7 +343,7 @@ Moira::createJumpTable1([[maybe_unused]] Model model, bool regDasm)
 // Registers the instruction handlers for a subset of the instruction set
 // (AND ... BKPT (68010+))
 template <Core C> void
-Moira::createJumpTable2([[maybe_unused]] Model model, bool regDasm)
+Moira::createJumpTable2([[maybe_unused]] CPUModel model, bool regExec, bool regDasm)
 {
     [[maybe_unused]] u16 opcode;
 
@@ -583,7 +601,7 @@ Moira::createJumpTable2([[maybe_unused]] Model model, bool regDasm)
 // Registers the instruction handlers for a subset of the instruction set
 // (BKPT (68010+) ... CLR)
 template <Core C> void
-Moira::createJumpTable3(Model model, bool regDasm)
+Moira::createJumpTable3(CPUModel model, bool regExec, bool regDasm)
 {
     [[maybe_unused]] u16 opcode;
 
@@ -678,7 +696,7 @@ Moira::createJumpTable3(Model model, bool regDasm)
 
     if constexpr (C >= Core::C68020) {
 
-        if (model == Model::M68EC020 || model == Model::M68020) {
+        if (model == CPUModel::M68EC020 || model == CPUModel::M68020) {
 
             opcode = parse("0000 0110 11-- ----");
             __________MMMXXX(opcode, Instr::CALLM, 0b001001111110, Long, Callm, CIMS)
@@ -761,7 +779,7 @@ Moira::createJumpTable3(Model model, bool regDasm)
 // Registers the instruction handlers for a subset of the instruction set
 // (CLR ... EOR)
 template <Core C> void
-Moira::createJumpTable4([[maybe_unused]] Model model, bool regDasm)
+Moira::createJumpTable4([[maybe_unused]] CPUModel model, bool regExec, bool regDasm)
 {
     [[maybe_unused]] u16 opcode;
 
@@ -825,7 +843,7 @@ Moira::createJumpTable4([[maybe_unused]] Model model, bool regDasm)
     ________SSMMMXXX(opcode, Instr::CMPI, 0b100000000000, Byte | Word | Long, CmpiRg, CIMS)
     ________SSMMMXXX(opcode, Instr::CMPI, 0b001111111000, Byte | Word | Long, CmpiEa, CIMS)
 
-    if constexpr (C >= Core::C68010) {
+    if constexpr (C >= Core::C68020) {
 
         ________SSMMMXXX(opcode, Instr::CMPI, 0b000000000110, Byte | Word | Long, CmpiEa, CIMS)
     }
@@ -911,7 +929,7 @@ Moira::createJumpTable4([[maybe_unused]] Model model, bool regDasm)
 // Registers the instruction handlers for a subset of the instruction set
 // (EOR ... LINK)
 template <Core C> void
-Moira::createJumpTable5([[maybe_unused]] Model model, bool regDasm)
+Moira::createJumpTable5([[maybe_unused]] CPUModel model, bool regExec, bool regDasm)
 {
     [[maybe_unused]] u16 opcode;
 
@@ -926,7 +944,8 @@ Moira::createJumpTable5([[maybe_unused]] Model model, bool regDasm)
     //                 X       X   X   X   X   X   X   X
 
     opcode = parse("1011 ---1 ---- ----");
-    ____XXX_SSMMMXXX(opcode, Instr::EOR, 0b101111111000, Byte | Word | Long, AndRgEa, CIMS)
+    ____XXX_SSMMMXXX(opcode, Instr::EOR, 0b100000000000, Byte | Word | Long, AndRgRg, CIMS)
+    ____XXX_SSMMMXXX(opcode, Instr::EOR, 0b001111111000, Byte | Word | Long, AndRgEa, CIMS)
     ____XXX_SSMMMXXX(opcode, Instr::EOR, 0b001110000000, Byte | Word | Long, AndRgEa, CIMSloop)
 
 
@@ -1006,7 +1025,7 @@ Moira::createJumpTable5([[maybe_unused]] Model model, bool regDasm)
 // Registers the instruction handlers for a subset of the instruction set
 // (LINK ... MOVEC)
 template <Core C> void
-Moira::createJumpTable6([[maybe_unused]] Model model, bool regDasm)
+Moira::createJumpTable6([[maybe_unused]] CPUModel model, bool regExec, bool regDasm)
 {
     [[maybe_unused]] u16 opcode;
 
@@ -1182,7 +1201,7 @@ Moira::createJumpTable6([[maybe_unused]] Model model, bool regDasm)
 // Registers the instruction handlers for a subset of the instruction set
 // (MOVEC ... MOVE from SR)
 template <Core C> void
-Moira::createJumpTable7([[maybe_unused]] Model model, bool regDasm)
+Moira::createJumpTable7([[maybe_unused]] CPUModel model, bool regExec, bool regDasm)
 {
     [[maybe_unused]] u16 opcode;
 
@@ -1303,7 +1322,7 @@ Moira::createJumpTable7([[maybe_unused]] Model model, bool regDasm)
 // Registers the instruction handlers for a subset of the instruction set
 // (MOVE from SR ... OR)
 template <Core C> void
-Moira::createJumpTable8([[maybe_unused]] Model model, bool regDasm)
+Moira::createJumpTable8([[maybe_unused]] CPUModel model, bool regExec, bool regDasm)
 {
     [[maybe_unused]] u16 opcode;
 
@@ -1424,7 +1443,7 @@ Moira::createJumpTable8([[maybe_unused]] Model model, bool regDasm)
 // Registers the instruction handlers for a subset of the instruction set
 // (OR ... RESET)
 template <Core C> void
-Moira::createJumpTable9([[maybe_unused]] Model model, bool regDasm)
+Moira::createJumpTable9([[maybe_unused]] CPUModel model, bool regExec, bool regDasm)
 {
     [[maybe_unused]] u16 opcode;
 
@@ -1576,7 +1595,7 @@ Moira::createJumpTable9([[maybe_unused]] Model model, bool regDasm)
 // Registers the instruction handlers for a subset of the instruction set
 // (RESET ... Scc)
 template <Core C> void
-Moira::createJumpTable10(Model model, bool regDasm)
+Moira::createJumpTable10(CPUModel model, bool regExec, bool regDasm)
 {
     [[maybe_unused]] u16 opcode;
 
@@ -1617,7 +1636,7 @@ Moira::createJumpTable10(Model model, bool regDasm)
 
     if constexpr (C >= Core::C68020) {
 
-        if (model == Model::M68EC020 || model == Model::M68020) {
+        if (model == CPUModel::M68EC020 || model == CPUModel::M68020) {
 
             opcode = parse("0000 0110 1100 ----");
             ____________XXXX(opcode, Instr::RTM, Mode::IP, Long, Rtm, CIMS)
@@ -1661,7 +1680,7 @@ Moira::createJumpTable10(Model model, bool regDasm)
 // Registers the instruction handlers for a subset of the instruction set
 // (Scc ... TAS)
 template <Core C> void
-Moira::createJumpTable11([[maybe_unused]] Model model, bool regDasm)
+Moira::createJumpTable11([[maybe_unused]] CPUModel model, bool regExec, bool regDasm)
 {
     [[maybe_unused]] u16 opcode;
 
@@ -1820,7 +1839,7 @@ Moira::createJumpTable11([[maybe_unused]] Model model, bool regDasm)
 // Registers the instruction handlers for a subset of the instruction set
 // (TAS ... end)
 template <Core C> void
-Moira::createJumpTable12(Model model, bool regDasm)
+Moira::createJumpTable12(CPUModel model, bool regExec, bool regDasm)
 {
     [[maybe_unused]] u16 opcode;
 
@@ -2007,18 +2026,14 @@ Moira::createJumpTable12(Model model, bool regDasm)
         // Memory management unit
         //
 
-        if (model == Model::M68030) {
+        if (model == CPUModel::M68030) {
 
             opcode = parse("1111 0000 00-- ----");
             __________XXXXXX(opcode, Instr::cpGEN, Mode::IP, Unsized, PGen, CIMS)
             __________MMMXXX(opcode, Instr::cpGEN, 0b111111111111, Unsized, PGen, CIMS)
         }
 
-        // [B] MC68040UM-1993 §B.6: on the MC68EC040 PTEST and PFLUSH
-        // decode and take no exception (execPTest40/execPFlush40 make them
-        // inert there).
-        if (model == Model::M68040 || model == Model::M68LC040 ||
-            model == Model::M68EC040) {
+        if (model == CPUModel::M68040 || model == CPUModel::M68LC040) {
 
             opcode = parse("1111 0101 000- ----");
             ___________XXXXX(opcode, Instr::PFLUSH, Mode::AI, Unsized, PFlush40, CIMS)
@@ -2035,7 +2050,7 @@ Moira::createJumpTable12(Model model, bool regDasm)
         // 68040 instructions
         //
 
-        if (model == Model::M68040 || model == Model::M68EC040 || model == Model::M68LC040) {
+        if (model == CPUModel::M68040 || model == CPUModel::M68EC040 || model == CPUModel::M68LC040) {
 
 
             //
@@ -2083,50 +2098,24 @@ Moira::createJumpTable12(Model model, bool regDasm)
     // Floating-Point Unit
     //
 
-    // POM68K (host) O5: the coprocessor-id-1 window is also populated when a
-    // 6888x is attached to a 020/030 through the coprocessor interface
-    // (setFPUModel). fpuModel == NONE keeps the stock table (Line-F),
-    // preserving the FPU-less SST030 corpus byte-for-byte. The block is
-    // compiled for the C68020 core only: all models that can own an FPU
-    // (68020/030/040) run on it, and the FPU exec handlers assert it.
-    if constexpr (C == Core::C68020) {
-
-    bool fpuAttachable = model == Model::M68EC020 || model == Model::M68020 ||
-                         model == Model::M68EC030 || model == Model::M68030;
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K Q4: the FPU-less 040 variants (68LC040/68EC040) register the
-    // window too — their F2xx opcodes take the format $4 "FP disabled"
-    // exception (vector 11) with per-shape word consumption and EA, which
-    // the exec handlers implement behind `!hasFPU()` (WinUAE
-    // fault_if_no_fpu). Plain Line-F would stack the wrong frame.
-    if (model == Model::M68040 ||
-        model == Model::M68LC040 || model == Model::M68EC040 ||
-        (fpuModel != FPUModel::NONE && fpuAttachable)) {
+    /* The 68040 has a built-in FPU. The 68020 and 68030 provide a coprocessor
+     * interface to which a 68881 or 68882 (coprocessor ID 1) can be connected.
+     * If an FPU is present, the execution handlers and the disassembler
+     * replace the generic coprocessor interface. Otherwise, the FPU opcodes keep
+     * their line F handlers. The condition only depends on the CPU model
+     * (which is the emulated model or the disassembler model, depending on the
+     * pass) and the selected coprocessor. The jump table is rebuilt whenever
+     * the selection changes. Hosts may also opt into software floating
+     * point for the LC040 by using the 68882 implementation.
+     */
+    if (model == CPUModel::M68040 || (moira::hasCPI(model) && cpModel != CPModel::NONE) ||
+        (model == CPUModel::M68LC040 && lc040SoftFpu)) {
 
         opcode = parse("1111 0010 100- ----");
         ___________XXXXX(opcode, Instr::FBcc, Mode::IP, Word, FBcc, CIMS)
 
         opcode = parse("1111 0010 110- ----");
         ___________XXXXX(opcode, Instr::FBcc, Mode::IP, Long, FBcc, CIMS)
-
-        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // POM68K: the predicate field is six bits wide and FBcc is
-        // registered over all of it ($20-$3F included — WinUAE cpudefs
-        // does the same). With no FPU on a 68040 they take the format $4
-        // exception like any FBcc; with an FPU the handler evaluates the
-        // low five bits (see execFBcc).
-        // [D] Musashi @ 1efd694 (Runner/Musashi of upstream Moira), run by its Runner:
-        //     with binutils as the disassembly reference, these 64 words
-        //     are data. POM68K: not registered under MOIRA_MIMIC_MUSASHI.
-        if (!MOIRA_MIMIC_MUSASHI) {
-
-            opcode = parse("1111 0010 101- ----");
-            ___________XXXXX(opcode, Instr::FBcc, Mode::IP, Word, FBcc, CIMS)
-
-            opcode = parse("1111 0010 111- ----");
-            ___________XXXXX(opcode, Instr::FBcc, Mode::IP, Long, FBcc, CIMS)
-        }
 
         opcode = parse("1111 0010 00-- ----");
         __________XXXXXX(opcode, Instr::cpGEN, Mode::IP, Unsized, FGen, CIMS)
@@ -2149,24 +2138,26 @@ Moira::createJumpTable12(Model model, bool regDasm)
         opcode = parse("1111 0010 0100 1---");
         _____________XXX(opcode, Instr::FDBcc, Mode::IP, Word, FDbcc, CIMS)
     }
-
-    }
 }
 
-// Registers all instruction handlers
 template <Core C> void
-Moira::createJumpTable(Model model, bool regDasm)
+Moira::createJumpTable(CPUModel model, bool regExec, bool regDasm)
 {
-    createJumpTable1<C>(model, regDasm);
-    createJumpTable2<C>(model, regDasm);
-    createJumpTable3<C>(model, regDasm);
-    createJumpTable4<C>(model, regDasm);
-    createJumpTable5<C>(model, regDasm);
-    createJumpTable6<C>(model, regDasm);
-    createJumpTable7<C>(model, regDasm);
-    createJumpTable8<C>(model, regDasm);
-    createJumpTable9<C>(model, regDasm);
-    createJumpTable10<C>(model, regDasm);
-    createJumpTable11<C>(model, regDasm);
-    createJumpTable12<C>(model, regDasm);
+    // Jump table creation is deliberately split into several parts.
+    // As a single function it expands into several hundred kilobytes of
+    // straight-line code per core, which drives the compiler's memory
+    // consumption far beyond what some environments provide.
+    
+    createJumpTable1<C>(model, regExec, regDasm);
+    createJumpTable2<C>(model, regExec, regDasm);
+    createJumpTable3<C>(model, regExec, regDasm);
+    createJumpTable4<C>(model, regExec, regDasm);
+    createJumpTable5<C>(model, regExec, regDasm);
+    createJumpTable6<C>(model, regExec, regDasm);
+    createJumpTable7<C>(model, regExec, regDasm);
+    createJumpTable8<C>(model, regExec, regDasm);
+    createJumpTable9<C>(model, regExec, regDasm);
+    createJumpTable10<C>(model, regExec, regDasm);
+    createJumpTable11<C>(model, regExec, regDasm);
+    createJumpTable12<C>(model, regExec, regDasm);
 }

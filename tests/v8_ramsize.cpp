@@ -241,15 +241,15 @@ int main() {
         mem.setCpu(&cpu);
 
         bool berr = false;
-        try { mem.read8(0xF30000); } catch (moira::MmuBusError&) { berr = true; }
+        try { mem.read8(0xF30000); } catch (moira::BusError&) { berr = true; }
         check(berr, "unmapped I/O $F30000 raises a bus error");
 
         berr = false;
-        try { mem.write8(0xF02000, 0); } catch (moira::MmuBusError&) { berr = true; }
+        try { mem.write8(0xF02000, 0); } catch (moira::BusError&) { berr = true; }
         check(berr, "unmapped I/O hole $F02000 raises a bus error");
 
         berr = false;
-        try { mem.read8(0x80001000); } catch (moira::MmuBusError&) { berr = true; }
+        try { mem.read8(0x80001000); } catch (moira::BusError&) { berr = true; }
         check(berr, "PDS slot space (A31 set) raises a bus error");
 
         mem.write8(0xF40000, 0x99);

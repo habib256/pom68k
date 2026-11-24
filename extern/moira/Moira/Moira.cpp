@@ -8,27 +8,18 @@
 #include "MoiraConfig.h"
 #include "Moira.h"
 #include "MoiraMacros.h"
-#include "MoiraMmu030Walk.h"
 
 #include <cassert>
 #include <cstdio>
-#include <cstdlib>   // POM68K: explicit for std::getenv (NeoST c9925da, Emscripten 7)
 #include <cstring>
+#include <cctype>
 #include <algorithm>
 #include <cmath>
 #include <bit>
 #include <vector>
 #include <stdexcept>
 
-// POM68K (host) O5: 80-bit softfloat backing the 68882 FPU (extern/softfloat,
-// GPLv2+ — linked, not incorporated; Moira itself stays MIT). Included
-// before the moira namespace so the C declarations stay global.
-extern "C" {
-#include "softfloat.h"
-#include "softfloat-specialize.h"
-}
-
-namespace moira {
+namespace MOIRA_NAMESPACE {
 
 using namespace Flag;
 
@@ -37,27 +28,27 @@ using namespace Flag;
 
 #include "MoiraInit_cpp.h"
 #include "MoiraALU_cpp.h"
-#include "MoiraCache_cpp.h"
 #include "MoiraDataflow_cpp.h"
 #include "MoiraExceptions_cpp.h"
 #include "MoiraExec_cpp.h"
 #include "StrWriter_cpp.h"
 #include "MoiraDasm_cpp.h"
+#include "MoiraInfo_cpp.h"
+#include "MoiraRegisters_cpp.h"
 
-Moira::Moira() : fpuFloatStatus(std::make_unique<::float_status>())
+// Instantiations used by the caches (see Cache.cpp)
+template u32 Moira::translate<Core::C68020, false, Word>(u32, u8, bool *);
+template u32 Moira::translate<Core::C68020, false, Long>(u32, u8, bool *);
+template u32 Moira::readLongSplit<Core::C68020, 0>(u32);
+
+Moira::Moira()
 {
-    fpuFloatStatus->floatx80_internal_precision = 80;
-    fpuFloatStatus->floatx80_internal_mode = float_round_nearest_even;
     exec = new ExecPtr[65536];
     loop = new ExecPtr[65536];
-    if (MOIRA_ENABLE_DASM) info = new InstrInfo[65536];
-    if (MOIRA_ENABLE_DASM) dasm = new DasmPtr[65536];
+    info = MOIRA_ENABLE_DASM ? new InstrInfo[65536] : nullptr;
+    dasm = MOIRA_ENABLE_DASM ? new DasmPtr[65536] : nullptr;
 
     createJumpTable(cpuModel, dasmModel);
-
-    // POM68K (host) M1-M3 (docs/CACHE_040.md): the data-bearing 040 I/D caches
-    // stay off until setPomCache040() arms them. The core reads no process
-    // environment; the host decides and injects.
 
     instrStyle = DasmStyle {
 
@@ -82,6 +73,8 @@ Moira::~Moira()
     if (loop) delete [] loop;
     if (info) delete [] info;
     if (dasm) delete [] dasm;
+    if (infoAlt) delete [] infoAlt;
+    if (dasmAlt) delete [] dasmAlt;
 }
 
 std::string
@@ -109,160 +102,354 @@ Moira::build()
 }
 
 void
-Moira::setModel(Model cpuModel, Model dasmModel)
+Moira::setModel(CPUModel cpu, CPUModel dasm)
 {
-    if (this->cpuModel != cpuModel || this->dasmModel != dasmModel) {
+    if (cpuModel != cpu || dasmModel != dasm) {
         
-        this->cpuModel = cpuModel;
-        this->dasmModel = dasmModel;
+        cpuModel = cpu;
+        dasmModel = dasm;
 
+        configureUnits();
         createJumpTable(cpuModel, dasmModel);
 
-        // [B] MC68040UM-1993 §B.3.2: the MC68EC040 has no table search;
-        // a TC programmed under another model must not survive the switch
-        // (setTC040 keeps it clear from here on).
-        if (cpuModel == Model::M68EC040 && reg.tc040) {
-            reg.tc040 = 0;
-            pomJitMapMoved();
-        }
-
-        reg.cacr &= cacrMask();
-        flushInstructionCache();
+        reg.cacr &= getCacrMask();
+        iCache.reset(cpuModel);
+        dCache.reset(cpuModel);
+        
+        // The 68040 caches are not emulated. The CPU behaves like it had perfectly coherent caches
+        iCache.setEmulated(MOIRA_EMULATE_ICACHE && cpuModel >= CPUModel::M68EC020 && cpuModel < CPUModel::M68EC040);
+        dCache.setEmulated(MOIRA_EMULATE_DCACHE && (cpuModel == CPUModel::M68030 || cpuModel == CPUModel::M68EC030));
+        
         flags &= ~State::LOOPING;
     }
 }
 
 void
-Moira::setDasmSyntax(Syntax value)
+Moira::setCPModel(CPModel model)
 {
-    instrStyle.syntax = value;
+    if (cpModel == model) return;
+
+    cpModel = model;
+    configureUnits();
+
+    // The FPU handlers and the disassembler entries depend on the coprocessor
+    if (moira::hasCPI(cpuModel) || moira::hasCPI(dasmModel)) createJumpTable(cpuModel, dasmModel);
 }
 
 void
-Moira::setDasmLetterCase(LetterCase value)
+Moira::setLC040SoftFpu(bool enabled)
 {
-    instrStyle.letterCase = value;
-}
+    if (lc040SoftFpu == enabled) return;
 
-void
-Moira::setNumberFormat(DasmStyle &style, const DasmNumberFormat &value)
-{
-    auto validPrefix = [&](DasmNumberFormat fmt) { return fmt.prefix != nullptr; };
-    auto validRadix = [&](DasmNumberFormat fmt) { return fmt.radix == 10 || fmt.radix == 16; };
-
-    if (!validPrefix(value)) {
-        throw std::runtime_error("prefix must not be NULL");
+    lc040SoftFpu = enabled;
+    if (cpuModel == CPUModel::M68LC040) {
+        configureUnits();
+        fpu.reset();
     }
-    if (!validRadix(value)) {
-        throw std::runtime_error("radix must be 10 or 16");
-    }
-
-    style.numberFormat = value;
-}
-
-bool
-Moira::hasCPI() const
-{
-    switch (cpuModel) {
-
-        case Model::M68EC020: case Model::M68020: case Model::M68EC030: case Model::M68030:
-            return true;
-
-        default:
-            return false;
-    }
-}
-
-bool
-Moira::hasMMU() const
-{
-    switch (cpuModel) {
-
-        case Model::M68030: case Model::M68LC040: case Model::M68040:
-            return true;
-
-        default:
-            return false;
-    }
-}
-
-bool
-Moira::hasFPU() const
-{
-    // POM68K (host) O5: an attached 6888x counts (Mac LC II PDS 68882)
-    if (fpuModel != FPUModel::NONE) return true;
-
-    switch (cpuModel) {
-
-        case Model::M68040:
-            return true;
-
-        default:
-            return false;
-    }
-}
-
-void
-Moira::setFPUModel(FPUModel model)
-{
-    // POM68K (host) O5: same mechanism as setModel — rebuild the jump table so the
-    // F2xx window switches between Line-F (NONE) and the FPU handlers.
-    if (fpuModel != model) {
-
-        fpuModel = model;
+    if (cpuModel == CPUModel::M68LC040 || dasmModel == CPUModel::M68LC040)
         createJumpTable(cpuModel, dasmModel);
-        fpuResetState();
-    }
 }
 
-u32
-Moira::cacrMask() const
+void
+Moira::setDasmStyle(const DasmStyle &style)
 {
-    switch (cpuModel) {
-
-        case Model::M68020: case Model::M68EC020: return 0x0003;
-        // [B] MC68030UM-1989 §6.3.1 — CD (bit 11) and CED (bit 10) are
-        // command strobes, "always read as a zero" (§6.3.1.3/.4), like CI and
-        // CEI. The raw MOVEC value still reaches didChangeCACR().
-        // [D] WinUAE @ Hatari e77819f7 — newcpu_common.c m68k_movec2, 68030
-        // read mask $3313; upstream Moira f7844ac made the same change.
-        // POM68K: was $3F13 (POM68K_VENDOR.md row 86, moira_rules_test).
-        case Model::M68030: case Model::M68EC030: return 0x3313;
-
-        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // POM68K Q2: 68040 CACR = DE (bit 31) | IE (bit 15) — WinUAE
-        // newcpu_common.c m68k_move2c case 2 (cacr_mask, 68040 row)
-        case Model::M68EC040: case Model::M68LC040: case Model::M68040:
-            return 0x80008000;
-
-        default:
-            return 0xFFFF;
-    }
+    style.validate();
+    instrStyle = style;
 }
 
-u32
-Moira::addrMask() const
+void
+Moira::setDataStyle(const DasmStyle &style)
 {
-    switch (cpuModel) {
-
-        case Model::M68000: return addrMask<Core::C68000>();
-        case Model::M68010: return addrMask<Core::C68010>();
-        
-        default:
-            return addrMask<Core::C68020>();
-    }
+    style.validate();
+    dataStyle = style;
 }
 
 void
 Moira::reset()
 {
+    mmu.reset();
+    fpu.reset();
+    completed.armed = false;
+
+    // A bus or address error while the reset vectors are fetched is a double
+    // bus fault: the processor halts (MC68030UM 8.1.1)
+    try {
+
+        switch (cpuModel) {
+
+            case CPUModel::M68000: reset<Core::C68000>(); break;
+            case CPUModel::M68010: reset<Core::C68010>(); break;
+
+            default:
+                reset<Core::C68020>();
+        }
+
+    } catch (const std::exception &) {
+
+        halt();
+    }
+}
+
+i64
+Moira::execute()
+{
+    using namespace State;
+
+    const auto start = clock;
+
+    // Check the integrity of the IRQ flag
+    if (reg.ipl > reg.sr.ipl || (reg.ipl == 7 && !nmiTaken)) assert(flags & CHECK_IRQ);
+
+    // Check the integrity of the trace flag
+    assert(!!(flags & TRACING) == reg.sr.t1);
+
+    // Check the integrity of the program counter
+    assert(reg.pc == reg.pc0 + 2);
+
+    // Take the fast path or the slow path
+    if (!flags) {
+
+        //
+        // Fast path: Call the instruction handler and return
+        //
+
+        try {
+            (this->*exec[queue.ird])(queue.ird);
+        } catch (const std::exception &exc) {
+            processException(exc);
+        }
+        
+        advancePC0();
+
+    } else {
+
+        //
+        // Slow path: Process flags one by one
+        //
+
+        if (flags & (HALTED | TRACE_EXC | TRACING)) {
+
+            // Only continue if the CPU is not halted
+            if (flags & HALTED) {
+                sync(2);
+                return clock - start;
+            }
+
+            // Process pending trace exception (if any)
+            if (flags & TRACE_EXC) {
+
+                // A fault while the trace frame is stacked is a double bus fault
+                // (MC68030UM 8.1.2): the processor halts
+                try { execException(M68kException::TRACE); } catch (const std::exception &) { halt(); }
+                goto done;
+            }
+
+            // Check if the T flag is set inside the status register
+            if ((flags & TRACING) && !(flags & STOPPED)) {
+                flags |= TRACE_EXC;
+            }
+        }
+
+        // Process pending interrupt (if any)
+        if (flags & CHECK_IRQ) {
+
+            try {
+                if (checkForIrq()) goto done;
+            } catch (const std::exception &exc) {
+                processException(exc);
+                advancePC0();
+            }
+        }
+
+        // If the CPU is stopped, poll the IPL lines and return
+        if (flags & STOPPED) {
+
+            POLL_IPL;
+            sync((compat == Compatibility::MUSASHI) ? 1 : 2);
+            return clock - start;
+        }
+
+        // If logging is enabled, record the executed instruction
+        if (flags & LOGGING) {
+            debugger.logInstruction();
+        }
+
+        // Execute the instruction
+        if (flags & (State::SAVE_REGS | State::MMU)) {
+
+            const Registers snapshot = reg;
+
+            try {
+                (this->*((flags & LOOPING) ? loop[queue.ird] : exec[queue.ird]))(queue.ird);
+            } catch (const std::exception &exc) {
+                processException(exc, &snapshot);
+            }
+
+        } else {
+
+            try {
+                (this->*((flags & LOOPING) ? loop[queue.ird] : exec[queue.ird]))(queue.ird);
+            } catch (const std::exception &exc) {
+                processException(exc);
+            }
+        }
+
+    done:
+
+        // The next instruction starts where the prefetch queue points to
+        advancePC0();
+
+        // Check if a breakpoint has been reached
+        if (flags & CHECK_BP) {
+
+            // Don't break if the instruction won't be executed due to tracing
+            if (flags & TRACE_EXC) return clock - start;
+
+            // Check if a softstop has been reached
+            if (debugger.softstopMatches(reg.pc0)) didReachSoftstop(reg.pc0);
+
+            // Check if a breakpoint has been reached
+            if (debugger.breakpointMatches(reg.pc0)) didReachBreakpoint(reg.pc0);
+        }
+    }
+
+    // Check the integrity of the program counter again
+    assert(reg.pc == reg.pc0 + 2);
+
+    return clock - start;
+}
+
+i64
+Moira::execute(i64 cycles)
+{
+    return executeUntil(clock + cycles);
+}
+
+i64
+Moira::executeUntil(i64 cycle)
+{
+    const i64 start = clock;
+    while (clock < cycle) { execute(); }
+    return clock - start;
+}
+
+void
+Moira::jump(u32 addr)
+{
     switch (cpuModel) {
 
-        case Model::M68000:    reset<Core::C68000>(); break;
-        case Model::M68010:    reset<Core::C68010>(); break;
-        
+        case CPUModel::M68000: jump<Core::C68000>(addr); break;
+        case CPUModel::M68010: jump<Core::C68010>(addr); break;
+
         default:
-            reset<Core::C68020>();
+            jump<Core::C68020>(addr);
+    }
+}
+
+template <Core C> void
+Moira::jump(u32 addr)
+{
+    reg.pc = addr & ~1;
+    fullPrefetch<C, Flag::POLL>();
+    reg.pc0 = reg.pc - 2;
+}
+
+u8
+Moira::getFC() const
+{
+    switch (fcSource) {
+
+        case 0: return u8((reg.sr.s ? 4 : 0) | fcl);
+        case 1: return reg.sfc;
+        case 2: return reg.dfc;
+
+        default:
+            fatalError;
+    }
+}
+
+void
+Moira::setIPL(u8 val)
+{
+    if (ipl != val) {
+        
+        ipl = val;
+        flags |= State::CHECK_IRQ;
+    }
+}
+
+InstrInfo
+Moira::getInstrInfo(u16 op) const
+{
+    if constexpr (!MOIRA_ENABLE_DASM)
+        throw std::runtime_error("This feature requires MOIRA_ENABLE_DASM = true\n");
+        
+    return infoAlt ? infoAlt[op] : info[op];
+}
+
+isize
+Moira::instrLength(u32 addr) const
+{
+    // Use the CPU model instead of the DASM model for disassembly
+    constexpr bool cpuView = true;
+    
+    char tmp[128];
+    return disassembleInstr(tmp, addr, cpuView);
+}
+
+/* The exception handlers read instruction words to fill in the stack frame
+ * (e.g., the pipe stages of a bus fault frame). These reads are not part of
+ * the emulated bus traffic. If one of them hits the address that has just
+ * faulted, the host throws again. This must not be treated as a double bus
+ * fault, because the real CPU performs no bus cycle at this point.
+ */
+u16
+Moira::peekInstr(u32 addr) const
+{
+    try { return read16Dasm(addr); } catch (const BusError &) { return 0; }
+}
+
+u32
+Moira::peekInstrLength(u32 addr) const
+{
+    try { return u32(instrLength(addr)); } catch (const BusError &) { return 2; }
+}
+
+void
+Moira::configureUnits()
+{
+    switch (cpuModel) {
+
+        case CPUModel::M68EC020:
+        case CPUModel::M68020:
+        case CPUModel::M68EC030:
+
+            mmu.setModel(MMUModel::NONE);
+            fpu.setModel(cpModel);
+            break;
+
+        case CPUModel::M68030:
+
+            mmu.setModel(MMUModel::M68030);
+            fpu.setModel(cpModel);
+            break;
+
+        case CPUModel::M68LC040:
+
+            mmu.setModel(MMUModel::M68040);
+            if (lc040SoftFpu) fpu.setModel(FPUModel::M68882);
+            break;
+
+        case CPUModel::M68040:
+
+            mmu.setModel(MMUModel::M68040);
+            fpu.setModel(FPUModel::M68040);
+            break;
+
+        default:
+            
+            mmu.setModel(MMUModel::NONE);
+            break;
     }
 }
 
@@ -270,276 +457,76 @@ template <Core C> void
 Moira::reset()
 {
     flags = State::CHECK_IRQ;
-    nmiLatch = false;                       // a level 7 held through reset is no transition
 
+    if constexpr (MOIRA_EMULATE_BUS_ERROR && C == Core::C68020) {
+        
+        // Background: Bus errors on the 68020 family are restartable. After an RTE,
+        // the CPU resumes execution from its internal state. Moira approximates this
+        // behavior by restarting the current instruction, which requires the original
+        // register state to be available.
+        //
+        // Note that this comes with a performance penalty: the 68020 must remain on
+        // the slow path at all times. Other CPU models are unaffected and stay on the
+        // fast path, as they do not require register snapshots.
+        
+        flags |= State::SAVE_REGS;
+    }
+    
     reg = { };
     reg.sr.s = 1;
     reg.sr.ipl = 7;
 
     ipl = 0;
+    nmiTaken = false;
     fcl = 2;
     fcSource = 0;
-    irqDelay = 0;                  // POM68K (host): clear the SR-write IRQ delay too
-    stopGraceUntil = -1;           // POM68K (host): no STOP iteration in flight
-    trace040Pending = false;       // POM68K (host) Q2: 68040 trace machinery
-    tracePc040 = 0;
-
-    // POM68K (host) Q3: 68040 MMU fault capture + MOVEM latch + MOVE16 buffer
-    mmu040FaultAddr = mmu040EffAddr = 0;
-    mmu040Ssw = 0;
-    mmu040Wb3Address = mmu040Wb3Data = 0;
-    // The last write's datum, which a split locked read stacks as WB3D
-    // (mmu040Fault): left over, it made a reset core's frame depend on the
-    // stores made before the reset (found by sst68040_jit, whose translated
-    // core runs each vector twice; the oracle glue zeroes regs.wb3_data).
-    mmu040FullVal = 0;
-    mmu040Wb3Status = mmu040Wb2Status = 0;
-    mmu040Wb2Address = 0;
-    for (auto &m : mmu040Move16) m = 0;
-    mmu040MovemArmed = false;
-    mmu040MovemEa = 0;
-
-    // [B] MC68030UM-1989 §9.2.2; host reset policy distinguished below.
-    // POM68K host reset invalidates ATCs and restart bookkeeping. Hardware
-    // reset clears TC/TTx enable bits but leaves the ATC intact (§9.2.2).
-    // [F] Cold-reset initialization policy, not a pin-level warm-reset model.
-    // Settled by: a reset-retention gate and a defined cold/warm reset API.
-    for (auto &e : mmuAtcArr) { e.valid = false; e.mru = false; }
-    mmuAtcMruCount = 0;                 // POM68K (host) perf: O(1) LRU counter
-    for (auto &r : mmuAtcLast) r[0] = r[1] = 0;
-    // POM68K (host) Q8: 040 I/D ATCs
-    mmu040AtcFlushAll();
-    mmu040AtcAccessI = mmu040AtcAccessD = 0;
-    mmuState[0] = mmuState[1] = mmuState[2] = 0;
-    mmuIdx = mmuIdxDone = 0;
-    for (auto &v : mmuAd) v = 0;
-    mmuFmovemStore[0] = mmuFmovemStore[1] = 0;
-    mmuDataBuffer = 0;
-    mmuDispStore[0] = mmuDispStore[1] = 0;
-    mmuOpcodeV = 0xFFFFFFFF;
-    mmuFixupReg[0] = mmuFixupReg[1] = 0;
-    mmuLogging = false;
-    mmuRmw = false;
-    mmuRteSubstArmed = false;            // reset cancels a pending RTE retry
-    mmuPipeCnt = 0;                     // POM68K (host) O6: prefetch-pipe carry
-
-    // [B] MC68881UM-1989 §10.2 and §6.4.2.1: FPCP reset state.
-    // POM68K O5: the reset line also resets an attached FPU
-    // (MC68881UM-1989 § 6.4.2.1)
-    fpuResetState();
     budget = { };
 
-    flushInstructionCache();
+    iCache.flush();
+    dCache.flush();
+    iCache.refresh();
+    dCache.refresh();
 
     SYNC(16);
 
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // NEOST: guarded — a bus or address error while fetching the reset
-    // vectors (SSP/PC at $0-$7 missing, e.g. an invalid ROM) is a double
-    // fault on the 68000 → HALT (cpu_halt(CPU_HALT_DOUBLE_FAULT) in
-    // WinUAE/Hatari), not a C++ abort of the emulator ("terminate" was
-    // observed on a truncated ROM).
-    try {
+    // Read the initial (supervisor) stack pointer from memory
+    SYNC(2);
+    reg.sp = read16OnReset(0);
+    SYNC(4);
+    reg.isp = reg.sp = (read16OnReset(2) & ~0x1) | reg.sp << 16;
+    SYNC(4);
+    reg.pc = read16OnReset(4);
+    SYNC(4);
+    reg.pc = (read16OnReset(6) & ~0x1) | reg.pc << 16;
 
-        // Read the initial (supervisor) stack pointer from memory
-        SYNC(2);
-        reg.sp = read16OnReset(0);
-        SYNC(4);
-        reg.isp = reg.sp = (read16OnReset(2) & ~0x1) | reg.sp << 16;
-        SYNC(4);
-        reg.pc = read16OnReset(4);
-        SYNC(4);
-        reg.pc = (read16OnReset(6) & ~0x1) | reg.pc << 16;
-
-        // Fill the prefetch queue
-        SYNC(4);
-        queue.irc = read16OnReset(reg.pc & addrMask<C>());
-        // [D] fx68k @ 0602ee46; microcode trap8 (read), trap9 (no bus), b
-        //     (read): 6 cycles between these two reads on a 68000, as at
-        //     the entry of an exception — 2 left of the bus cycle, 2 of
-        //     trap9. The M68000 User's Manual (Rev 8, exception timing
-        //     table) gives the total, 40(6/0), not this place.
-        // POM68K: back-port of NeoST 9f20046.
-        SYNC(C == Core::C68000 ? 4 : 2);
-        prefetch<C>();
-
-    } catch (const std::exception &) {
-
-        halt();
-    }
+    // Fill the prefetch queue
+    SYNC(4);
+    queue.irc = read16OnReset(reg.pc & addrMask<C>());
+    SYNC(2);
+    prefetch<C>();
+    reg.pc0 = reg.pc - 2;
 
     // Reset subcomponents
     debugger.reset();
 
     // Inform the delegate
-    cpuDidReset();
-}
-
-bool
-Moira::executeFastOne()
-{
-    // POM68K (host) 030 extension (2026-07-28): the SAME seam serves the 68030 —
-    // its mode-5 loop head (mmuExecuteStart: POLL_IPL, per-instruction MMU
-    // state reset, translated ird/irc fetch) plays the role
-    // mmu040InstrStart plays below, and the dispatch tail is shared. One
-    // copy, both cores, so the src/jit engine drives either without
-    // knowing which it holds.
-    if (cpuModel == Model::M68030) {
-#if MOIRA_ENABLE_JIT
-        if (pomJitTimingProbe) [[unlikely]] {
-            const i64 start = clock;
-            const i64 misses = pomIcache.misses;
-            if (!mmuExecuteStart<Core::C68020>()) {
-                pomJitTiming.postExceptionCycles = clock - start;
-                pomJitTiming.valid = true;
-                return false;
-            }
-
-            bool retired = true;
-            reg.pc += 2;
-            i64 handlerEnd = clock;
-            i64 handlerMisses = pomIcache.misses;
-            try {
-                (this->*exec[queue.ird])(queue.ird);
-                handlerEnd = clock;
-                handlerMisses = pomIcache.misses;
-            } catch (const std::exception &exc) {
-                handlerEnd = clock;
-                handlerMisses = pomIcache.misses;
-                processException(exc);
-                retired = false;
-            }
-            if (trace040Pending) [[unlikely]] {
-                trace040Pending = false;
-                try {
-                    execException(M68kException::TRACE);
-                } catch (const std::exception &exc) {
-                    processException(exc);
-                }
-                retired = false;
-            }
-
-            const i64 missCycles =
-                (handlerMisses - misses) * i64(pomIcache.missPenalty);
-            pomJitTiming.icacheCycles = missCycles;
-            pomJitTiming.baseCycles = handlerEnd - start - missCycles;
-            pomJitTiming.postExceptionCycles = clock - handlerEnd;
-            pomJitTiming.valid = true;
-            return retired;
-        }
-
-#endif
-
-        if (!mmuExecuteStart<Core::C68020>()) return false;
-
-        bool retired = true;
-        reg.pc += 2;
-        try {
-            (this->*exec[queue.ird])(queue.ird);
-        } catch (const std::exception &exc) {
-            processException(exc);
-            retired = false;
-        }
-        if (trace040Pending) [[unlikely]] {
-            trace040Pending = false;
-            try {
-                execException(M68kException::TRACE);
-            } catch (const std::exception &exc) {
-                processException(exc);
-            }
-            retired = false;
-        }
-        return retired;
-    }
-
-    // POM68K (host) JIT seam (src/jit/POM68K_JIT.md). This IS the 68040 fast path
-    // of execute() — there is exactly ONE copy of it and execute() calls it
-    // below, so the block replayer in src/jit/ can never drift from the
-    // instruction-start contract (POLL_IPL, the eight per-instruction MMU
-    // resets, `reg.pc += 2` before the handler, exception processing, the
-    // staged trace). The caller must have established flags == 0.
-    //
-    // Returns false whenever the instruction did not retire normally — an
-    // instruction-start fault, an exception processed, or a trace taken.
-    // For the engine that always means the same thing: stop replaying and
-    // go back through execute() from a clean instruction boundary.
-    // Plain 020 (2026-07-28), and the cycle-exact 68000/68010 since
-    // 2026-08-06: no per-instruction MMU loop head at all — the queue was
-    // refilled by the PREVIOUS instruction's prefetch (which is where its
-    // POLL_IPL lives, window or not), so the boundary contract is just the
-    // dispatch. These six lines are byte-for-byte execute()'s own generic
-    // fast path, and that duplication is accepted rather than removed:
-    // making execute() delegate would put a model test in the hottest loop
-    // in the emulator, for no behavioural gain. The engine reaches this
-    // branch for every non-030, non-040 guest — what makes it correct for a
-    // cycle-exact core is not here but in the FETCH (pomJitFetch000), which
-    // charges the same cycles read<> would have.
-    if (cpuModel < Model::M68EC040) {
-        bool retired = true;
-        reg.pc += 2;
-        try {
-            (this->*exec[queue.ird])(queue.ird);
-        } catch (const std::exception &exc) {
-            processException(exc);
-            retired = false;
-        }
-        if (trace040Pending) [[unlikely]] {
-            trace040Pending = false;
-            try {
-                execException(M68kException::TRACE);
-            } catch (const std::exception &exc) {
-                processException(exc);
-            }
-            retired = false;
-        }
-        return retired;
-    }
-
-    if (!mmu040InstrStart<Core::C68020>()) return false;
-
-    bool retired = true;
-
-    reg.pc += 2;
-    try {
-        (this->*exec[queue.ird])(queue.ird);
-    } catch (const std::exception &exc) {
-        processException(exc);
-        retired = false;
-    }
-
-    if (trace040Pending) [[unlikely]] {
-        trace040Pending = false;
-        try {
-            execException(M68kException::TRACE);
-        } catch (const std::exception &exc) {
-            processException(exc);
-        }
-        retired = false;
-    }
-
-    return retired;
+    didResetCPU();
 }
 
 void
-Moira::syncCp(int cycles)
+Moira::halt()
 {
-    // POM68K (host): only the 68020/EC020 have the cache whose discounts the budget
-    // spends (MoiraConfig.h); the 68030/68040 on this core keep their own
-    // cache timing and are charged as before.
-    if (cpuModel != Model::M68020 && cpuModel != Model::M68EC020) {
-        sync(cycles);
-        return;
-    }
+    // Halt the CPU
+    flags |= State::HALTED;
+    reg.pc = reg.pc0 + 2;
 
-    // POM68K (host): kept as upstream wrote it, but its debt path (a balance below
-    // zero, the stall rule, minAccum) is now cold. It existed to spend
-    // upstream's -2 per cache hit; with the corrected fetch charges
-    // (readInstr: 0 per hit, +2 or +6 per bus cycle) every charge is
-    // non-negative, so the balance only holds an odd cycle back; the stall
-    // rule could still fire after four instructions charged below 2 in a
-    // row, which the cache-case tables give almost no instruction.
-    // Gate: icache020_test (a long warm run never borrows).
+    // Inform the delegate
+    didHaltCPU();
+}
 
+void
+Moira::syncCyclePenalty(int cycles)
+{
     // Max number of instructions that may execute without advancing the clock
     static constexpr int maxStalled = 4;
 
@@ -574,428 +561,21 @@ Moira::syncCp(int cycles)
 }
 
 void
-Moira::execute()
+Moira::setFC(u8 value)
 {
-    using namespace State;
-
-    // Check the integrity of the IRQ flag
-    if (irqEligible()) assert(flags & CHECK_IRQ);
-
-    // Check the integrity of the trace flag
-    assert(!!(flags & TRACING) == reg.sr.t1);
-
-    // Check the integrity of the program counter
-    assert(reg.pc0 == reg.pc);
-
-#if MOIRA_ENABLE_JIT
-    // POM68K (host): the interpreter-owned fetch window on the cores without an
-    // MMU loop head (68000/68010/68020 — the 68030 and 68040 arm theirs in
-    // mmuExecuteStart / mmu040InstrStart). Their opcode words come from the
-    // prefetch queue, filled by prefetch<>() through pomJitFetch000/020 on
-    // a hit, so the window must cover the pc before this instruction runs
-    // for the NEXT one's words to come from it.
-    if (pomInterpWindowOn && cpuModel != Model::M68030 &&
-        cpuModel < Model::M68EC040 && !pomJitCovers(reg.pc)) [[unlikely]]
-        pomInterpArm(reg.pc);
-
-#endif
-
-    // Take the fast path or the slow path
-    if (!flags) {
-
-        //
-        // Fast path: Call the instruction handler and return
-        //
-
-        // POM68K (host) O4 slice 3: on the 68030 every instruction starts with a
-        // per-instruction MMU state reset and a mode-5-style translated
-        // opcode fetch (may fault). One predictable branch for the other
-        // models; emulated 68000 cycles are unaffected.
-        if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) [[unlikely]] {
-            // POM68K (host) JIT: both MMU cores' fast paths live in
-            // pomJitExecOne() so that the src/jit block replayer runs the
-            // SAME code, not a hand-copied twin. Same TU, still inlined.
-            executeFastOne();
-            return;
-        }
-
-        reg.pc += 2;
-        try {
-            (this->*exec[queue.ird])(queue.ird);
-        } catch (const std::exception &exc) {
-            processException(exc);
-        }
-
-        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // POM68K Q2: 68040 one-shot trace armed mid-instruction (an SR
-        // write with old Tx set — RTE/MOVE-to-SR). Fires after the
-        // instruction, exactly like WinUAE's SPCFLAG_DOTRACE.
-        if (trace040Pending) [[unlikely]] {
-            trace040Pending = false;
-            try {
-                execException(M68kException::TRACE);
-            } catch (const std::exception &exc) {
-                processException(exc);
-            }
-        }
-
-    } else {
-
-        //
-        // Slow path: Process flags one by one
-        //
-
-        // POM68K: a 68030 RTE from a format-$B frame resumes INSIDE the
-        // faulted instruction, so no instruction boundary lies between the
-        // RTE and the instruction it continues: a pending trace or
-        // interrupt waits for the boundary that follows the continuation.
-        // [B] MC68030UM-1989 §8.2.1 — RTE restores the internal state and
-        //     continues the instruction; a format-$0 interrupt frame taken
-        //     there could not carry that state.
-        // [D] WinUAE newcpu.c m68k_run_mmu030 @ Hatari e77819f7 — with
-        //     mmu030_retry the inner loop reruns the opcode without
-        //     passing through do_specialties.
-        // Gate: berr030_test (RTE continuation under a pending interrupt).
-        // On the 68040 the flag means less: a trace pending at an RTE into
-        // a format-$7 frame follows the rerun instruction (execRte). The
-        // interrupt is not held back there. Its flag is consumed here, the
-        // 68030's by mmuExecuteStart.
-        bool rteContinues = false;
-        bool traceAfterRerun = false;
-        if (flags & RTE_REPLAY) [[unlikely]] {
-            if (cpuModel >= Model::M68EC040) {
-                traceAfterRerun = true;
-                flags &= ~RTE_REPLAY;
-            } else {
-                rteContinues = mmuReplayArmed && reg.pc == mmuReplayPc;
-            }
-        }
-
-        if (flags & (HALTED | TRACE_EXC | TRACING | TRACING0)) {
-
-            // Only continue if the CPU is not halted
-            if (flags & HALTED) {
-                sync(2);
-                return;
-            }
-
-            // Process pending trace exception (if any)
-            // NEOST: guarded by processException — an ODD trace vector makes
-            // jumpToVector throw AddressError; on the 68000 that is an
-            // ADDRESS ERROR (group 0) to take, not an emulator abort (a
-            // "terminate" crash was observed on Beyond the Ice Palace, TOS
-            // desktop).
-            if ((flags & TRACE_EXC) && !rteContinues && !traceAfterRerun) {
-
-                // The previous instruction began with T1 set: its trace
-                // exception is taken now, before this instruction starts.
-                // [B] MC68030UM-1989 §8.1.7 — "The state of these bits when
-                //     an instruction begins execution determines whether
-                //     the instruction generates a trace exception after the
-                //     instruction completes".
-                // [B] MC68040UM-1993 §8.2.6 — the same sentence; "Trace
-                //     exception processing starts at the end of normal
-                //     processing for the traced instruction and before the
-                //     start of the next instruction".
-                // [D] WinUAE @ Hatari e77819f7 — do_specialties takes
-                //     SPCFLAG_DOTRACE after the traced instruction.
-                // POM68K: until 2026-11-19 the 68040 ran one more
-                // instruction first. That model was fitted to one-step
-                // oracle vectors, where WinUAE treats a loaded T1 as just
-                // written and does not trace the first step.
-                // Gate: cpu_vectors040_test (trace=t1 cells).
-                try {
-                    execException(M68kException::TRACE);
-                } catch (const std::exception &exc) {
-                    processException(exc);
-                }
-                goto done;
-            }
-
-            // The instruction about to run is the one a trace exception
-            // would report: its address goes into the format-$2 trace frame
-            // of the 68020 and up (execException, TRACE), whether T1 traces
-            // it or T0 does because it changes the flow (traceFlow).
-            if (flags & (TRACING | TRACING0)) tracePc040 = reg.pc;
-
-            // Check if the T flag is set inside the status register
-            if ((flags & TRACING) && !(flags & STOPPED)) {
-                flags |= TRACE_EXC;
-            }
-        }
-
-        // Process pending interrupt (if any)
-        // [D] fx68k @ 0602ee46, as NeoST read it (Moira.h stopGraceUntil).
-        // [F] Hatari disagrees on the segment. Settled by: a capture on a
-        //     68000.
-        // POM68K (back-port of NeoST 993ce5e / 2fc53a8, see stopGraceUntil):
-        // during a 68000 STOP the interrupt is taken at the end of a STOP
-        // ITERATION, every 4 cycles from its start, the first iteration
-        // having tested with the old mask. The pin is still polled every
-        // cycle; only the instant of the take is quantised — by ADVANCING
-        // to the boundary (the clock moves by bus slots; waiting to land on
-        // it exactly would leave the CPU stopped). stopGraceUntil is only
-        // ever set by a 68000 STOP, so the other cores never enter here.
-        if ((flags & CHECK_IRQ) && !((flags & STOPPED) && clock < stopGraceUntil)) {
-
-            if ((flags & STOPPED) && stopGraceUntil >= 0) {
-                const i64 mis = (clock - stopGraceUntil) & 3;
-                if (mis) sync(int(4 - mis));
-            }
-
-            // [F] The depth is the core's (irqDelay = 2, two instructions;
-            //     the PRM reads as one): POM68K_VENDOR.md row 13, pinned by
-            //     moira_rules_test irqDelayAfterMaskLowering. Settled by: a
-            //     capture of MOVE to SR with a pending interrupt.
-            // POM68K: honour the delay armed by a mask-lowering SR-write
-            // before taking the IRQ (breaks the SimCity-2000 redraw livelock).
-            if (irqDelay) {
-                irqDelay--;
-            } else if (!rteContinues) {
-                try {
-                    if (checkForIrq()) goto done;
-                } catch (const std::exception &exc) {
-                    processException(exc);
-                }
-            }
-        }
-
-        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // NEOST_IPLFETCH: apply the DEFERRED level (a pin change seen less than
-        // 2 cycles before the sample) — it becomes the polled value for the
-        // NEXT boundary, ≙ the `ipl[0] = ipl[1]` rotation of WinUAE's run loop
-        // (newcpu.c:5693, AFTER do_specialties). A no-op when the feature is off.
-        if (iplDeferred >= 0) {
-            reg.ipl = u8(iplDeferred);
-            iplDeferred = -1;
-            flags |= State::CHECK_IRQ;
-        }
-
-        // If the CPU is stopped, poll the IPL lines and return
-        if (flags & STOPPED) {
-
-            // Initiate a privilege exception if the supervisor bit is cleared
-            // NEOST: guarded by processException (same reason as TRACE above —
-            // an odd PRIVILEGE vector → an AddressError to take, not to leak).
-            if (!reg.sr.s) {
-                sync(4);
-                reg.pc -= 2;
-                flags &= ~STOPPED;
-                try {
-                    execException(M68kException::PRIVILEGE);
-                } catch (const std::exception &exc) {
-                    processException(exc);
-                }
-                return;
-            }
-
-            POLL_IPL;
-            // NEOST: the 68000 STOP is LEVEL-sensitive — it compares IPL with the
-            // mask continuously, not only on a pin CHANGE. If the polled level
-            // already exceeds the mask (IRQ raised BEFORE the stop, masked by the
-            // SR of the time, unmasked by the stop's operand), CHECK_IRQ must be
-            // re-armed: without it checkForIrq() would never test again and the
-            // CPU would sleep through a presented IRQ (measured case: Super
-            // Hang-On's "stop #$2100" raster, woken ~350 cycles late by an
-            // unrelated event).
-            if (irqEligible())
-                flags |= State::CHECK_IRQ;
-            sync(MOIRA_MIMIC_MUSASHI ? 1 : 2);
-            return;
-        }
-
-        // If logging is enabled, record the executed instruction
-        if (flags & LOGGING) {
-            debugger.logInstruction();
-        }
-
-        // Execute the instruction
-        // POM68K (host) O4 slice 3: see the fast path
-        if (cpuModel == Model::M68030) [[unlikely]] {
-            if (!mmuExecuteStart<Core::C68020>()) goto done;
-        } else if (cpuModel >= Model::M68EC040) [[unlikely]] {
-            if (!mmu040InstrStart<Core::C68020>()) goto done;
-        }
-
-        reg.pc += 2;
-
-        if (flags & LOOPING) {
-
-            // NEOST: guarded by processException (consistent with the exec path —
-            // in the 68010 loop mode an odd access would throw AddressError).
-            assert(loop[queue.ird]);
-            try {
-                (this->*loop[queue.ird])(queue.ird);
-            } catch (const std::exception &exc) {
-                processException(exc);
-            }
-
-        } else {
-
-            try {
-                (this->*exec[queue.ird])(queue.ird);
-            } catch (const std::exception &exc) {
-                processException(exc);
-            }
-        }
-
-        // [B] MC68040UM-1993 §8.2.6: trace is taken when the traced
-        //     instruction completes.
-        // POM68K Q2: 68040 pending trace (staged TRACE_EXC consumed above,
-        // or armed mid-instruction by an SR write) — fires post-instruction
-        if (trace040Pending) [[unlikely]] {
-            trace040Pending = false;
-            try {
-                execException(M68kException::TRACE);
-            } catch (const std::exception &exc) {
-                processException(exc);
-            }
-        }
-
-    done:
-
-        // Check if a breakpoint has been reached
-        if (flags & CHECK_BP) {
-
-            // Don't break if the instruction won't be executed due to tracing
-            if (flags & TRACE_EXC) return;
-
-            // Check if a softstop has been reached
-            if (debugger.softstopMatches(reg.pc0)) didReachSoftstop(reg.pc0);
-
-            // Check if a breakpoint has been reached
-            if (debugger.breakpointMatches(reg.pc0)) didReachBreakpoint(reg.pc0);
-        }
-    }
-
-    // Check the integrity of the program counter again
-    assert(reg.pc0 == reg.pc);
-}
-
-void
-Moira::execute(i64 cycles)
-{
-    executeUntil(clock + cycles);
-}
-
-void
-Moira::executeUntil(i64 cycle)
-{
-    while (clock < cycle) { execute(); }
-}
-
-void
-Moira::processException(const std::exception &exc)
-{
-    switch (cpuModel) {
-
-        case Model::M68000: processException<Core::C68000>(exc); break;
-        case Model::M68010: processException<Core::C68010>(exc); break;
+    if constexpr (MOIRA_EMULATE_FC) {
         
-        default:
-            processException<Core::C68020>(exc);
+        fcl = (u8)value;
     }
-}
-
-template <Core C> void
-Moira::processException(const std::exception &exc)
-{
-    try {
-
-        if constexpr (C == Core::C68020) {
-            if (auto fi = dynamic_cast<const FpuMidInstruction *>(&exc); fi) {
-                try {
-                    fpuMidInterruptFrame = true;
-                    execInterrupt<C>(fi->level);
-                    fpuMidInterruptFrame = false;
-                } catch (...) {
-                    fpuMidInterruptFrame = false;
-                    halt();
-                }
-                return;
-            }
-        }
-
-        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // POM68K O4 slice 3: 68030 MMU translation fault → bus error with
-        // a format $A/$B frame; a nested fault while stacking it is a
-        // double fault → HALT (WinUAE Exception_mmu030 / cpu_halt)
-        if constexpr (C == Core::C68020) {
-            if (dynamic_cast<const MmuBusError *>(&exc)) {
-                // [B] M68000PRM-1992 MOVES: SFC/DFC name the address space
-                //     of the instruction's own operand access, nothing else.
-                // POM68K: a faulting MOVES must release SFC/DFC before
-                // stacking and running its handler (the saved access keeps FC).
-                fcSource = 0;
-                try {
-                    // [B] MC68030UM-1989 §8.2: short/long bus fault frames.
-                    // [B] MC68040UM-1993 §8.4: the access error frame ($7).
-                    // POM68K Q3: the 68040 stacks a format $7 frame with
-                    // the restart model; the 030 keeps its $A/$B frames
-                    if (cpuModel >= Model::M68EC040) {
-                        execMmu040BusError<C>();
-                    } else {
-                        execMmuBusError<C>();
-                    }
-                } catch (...) {
-                    halt();
-                }
-                return;
-            }
-        }
-
-        if (auto ae = dynamic_cast<const AddressError *>(&exc); ae) {
-
-            willProcessFault(ae->stackFrame);  // POM68K (host) (ported from NeoST ce1cc52)
-            execAddressError<C>(ae->stackFrame);
-            return;
-        }
-
-        if (auto be = dynamic_cast<const BusError *>(&exc); be) {
-
-            willProcessFault(be->stackFrame);  // POM68K (host) (ported from NeoST ce1cc52)
-            execBusError<C>(be->stackFrame);
-            return;
-        }
-
-        if (auto df = dynamic_cast<const DoubleFault *>(&exc); df) {
-
-            // NEOST: upstream did `throw df` (a POINTER), which the
-            // catch (DoubleFault &) below does NOT catch → it escaped the
-            // emulator. A double fault is the 68000's HALT, directly.
-            halt();
-            return;
-        }
-
-    } catch (const DoubleFault &) {
-
-        halt();
-        return;
-
-    } catch (AddressError &ae) {
-
-        willProcessFault(ae.stackFrame);  // POM68K (host) (ported from NeoST ce1cc52)
-        // NEOST: an address error WHILE processing a group-0 exception (e.g. an
-        // odd BUS ERROR vector) is a double fault → HALT, as on a real 68000.
-        halt();
-        return;
-
-    } catch (BusError &be) {
-
-        willProcessFault(be.stackFrame);  // POM68K (host) (ported from NeoST ce1cc52)
-        // NEOST: a bus error while stacking a group-0 exception (a stack in a
-        // bus-error area) is a double fault → HALT.
-        halt();
-        return;
-    }
-
-    throw exc;
 }
 
 bool
 Moira::checkForIrq()
 {
-    if (irqEligible()) {
+    // Level 7 is edge triggered. The interrupt can be taken again once the polled level has dropped.
+    if (reg.ipl < 7) nmiTaken = false;
+
+    if (reg.ipl > reg.sr.ipl || (reg.ipl == 7 && !nmiTaken)) {
 
         // Exit loop mode
         if (flags & State::LOOPING) flags &= ~State::LOOPING;
@@ -1018,521 +598,37 @@ Moira::checkForIrq()
     }
 }
 
-void
-Moira::halt()
-{
-    // Halt the CPU
-    flags |= State::HALTED;
-    reg.pc = reg.pc0;
-
-    // Inform the delegate
-    cpuDidHalt();
-}
-
-u8
-Moira::getCCR() const
-{
-    auto result =
-    reg.sr.c << 0 |
-    reg.sr.v << 1 |
-    reg.sr.z << 2 |
-    reg.sr.n << 3 |
-    reg.sr.x << 4 ;
-
-    return u8(result);
-}
-
-void
-Moira::setCCR(u8 val)
-{
-    reg.sr.c = (val >> 0) & 1;
-    reg.sr.v = (val >> 1) & 1;
-    reg.sr.z = (val >> 2) & 1;
-    reg.sr.n = (val >> 3) & 1;
-    reg.sr.x = (val >> 4) & 1;
-}
-
 u16
-Moira::getSR() const
-{
-    auto flags =
-    reg.sr.t1  << 15 |
-    reg.sr.t0  << 14 |
-    reg.sr.s   << 13 |
-    reg.sr.m   << 12 |
-    reg.sr.ipl <<  8 ;
-
-    return u16(flags | getCCR());
-}
-
-void
-Moira::setSR(u16 val)
-{
-    bool t1  = (val >> 15) & 1;
-    bool s   = (val >> 13) & 1;
-    u8   ipl = (val >>  8) & 7;
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K Q2: 68040 one-shot trace — an SR write performed while a Tx
-    // bit WAS set traces once after the instruction, even if the write
-    // cleared Tx (WinUAE MakeFromSR_x: `(oldt0 && t0trace) || oldt1` ->
-    // activate_trace()). Covers RTE/MOVE-to-SR/ANDI-to-SR and throwaway
-    // RTE chains. Harness state loads are safe: reset() precedes them.
-    if (cpuModel >= Model::M68EC040 && (reg.sr.t1 || reg.sr.t0))
-        trace040Pending = true;
-
-    // The same rule on the 68020 and 68030 through the staged trace: an SR
-    // write made while T0 was set is a change of flow, whatever it loads.
-    // [B] MC68030UM-1989 §8.1.7 — trace on change of flow "includes status
-    //     register manipulations".
-    // [B] MC68040UM-1993 §8.2.6 — a traced STOP "never enters the stopped
-    //     condition".
-    // [D] WinUAE @ Hatari e77819f7 — MakeFromSR_x, `oldt0 && t0trace`; but
-    //     it returns before that test when the write changes none of T1,
-    //     T0, S, M and the mask, so STOP #$6700 entered with exactly that
-    //     SR is not traced there and stops. The manuals know no such
-    //     exception and are not overruled by an emulator's shortcut: the
-    //     fork traces it on every model (ruling D41, oracle/README.md).
-    else if (cpuModel >= Model::M68020 && reg.sr.t0 && !reg.sr.t1)
-        flags |= State::TRACE_EXC;
-
-    // [F] POM68K: empirical IRQ-recognition delay after an SR write lowers
-    // the mask, applied to 68020+ (POM68K_VENDOR.md § IRQ delay). The
-    // original SimCity-2000 symptom was later traced to Egret; no manual
-    // establishes this depth. Settled by: a hardware IPL-recognition trace
-    // after a mask change, with the CPU/machine clock ratio calibrated.
-    if (cpuModel >= Model::M68020 && ipl < reg.sr.ipl) irqDelay = 2;
-
-    reg.sr.ipl = ipl;
-    flags |= State::CHECK_IRQ;
-    t1 ? setTraceFlag() : clearTraceFlag();
-
-    setCCR(u8(val));
-    setSupervisorMode(s);
-
-    if (cpuModel > Model::M68010) {
-
-        bool t0 = (val >> 14) & 1;
-        bool m = (val >> 12) & 1;
-
-        t0 ? setTrace0Flag() : clearTrace0Flag();
-        setMasterMode(m);
-    }
-}
-
-void
-Moira::setCACR(u32 val)
-{
-    const u32 old = reg.cacr;
-
-    // Setting the CE bit invalidates the entry for the address in CAAR
-    if (val & (1 << 2)) invalidateCacheEntry(reg.caar);
-
-    // Setting the C bit invalidates all entries
-    if (val & (1 << 3)) flushInstructionCache();
-
-    reg.cacr = val & cacrMask();
-#if MOIRA_ENABLE_JIT
-    // POM68K (host): native 040 cache-line entries are published only while the
-    // D-cache is enabled (pomJitCache040Publish). One published under DE=1
-    // stayed live after a MOVEC cleared DE, and generated code kept reading
-    // the copyback line where the interpreter, cache disabled, reads memory
-    // (tests/jit_program_fuzz.cpp --mmu --dcache --ext FUZZ_CACR_FLUSH=0,
-    // seed 959: UNLK popped a different A1). Retire them on any change.
-    if (pomCache040On && reg.cacr != old) pomJitCache040Bump();
-#else
-    (void)old;
-#endif
-    didChangeCACR(val);
-}
-
-void
-Moira::setCAAR(u32 val)
-{
-    reg.caar = val;
-    didChangeCAAR(val);
-}
-
-#if MOIRA_ENABLE_JIT
-u8 *
-Moira::pomJitDataSlow(u32 addr, u32 want, bool w) noexcept
-{
-    // POM68K (host) J3 (Moira.h § pomJitData): levels 1 and 2 behind the one-entry
-    // level 0. The big table absorbs page ping-pong beyond two pages; the
-    // fill is attempted once — a transient refusal (no resident ATC entry
-    // yet, an unmodified page seen by a write) leaves the tag unset, and
-    // the caller's long path both performs the access and repairs the
-    // cause. Positive AND negative answers are promoted into level 0, the
-    // negative ones deliberately: a hardware poll loop reads the same I/O
-    // register forever, and the remembered refusal keeps its cost to the
-    // level-0 compare.
-    if (!pomJitDtlbFillFn) return nullptr;
-    PomJitDtlb &t = w ? pomJitDtlbW : pomJitDtlbR;
-    PomJitDtlbEntry &e = t.e[(addr >> 12) & (PomJitDtlb::kEntries - 1)];
-    if (e.tag != want) {
-        pomJitDtlbFillFn(pomJitDtlbFillCtx, addr, w != 0);
-        if (e.tag != want) return nullptr;
-    }
-    // POM68K (host) 2026-08-10: the level-0 page carries a tag and a host and
-    // nothing else, so it cannot express the entry's per-slice code mask.
-    // Rather than widen it, this path keeps the OLD, coarser rule — a write
-    // page holding any translated code is refused outright. The mask exists
-    // for GENERATED code, which tests it inline; this window is opt-in
-    // (POM68K_DATA_WINDOW) and measured a net loss on the interpreter, so
-    // buying it back here would be paying for a path nobody runs.
-    if (w && e.codeMask) return nullptr;
-    PomJitDataPage &c = w ? pomJitDataW1 : pomJitDataR1;
-    c.tag = want;
-    c.host = e.host;
-    c.atc040 = e.atc040;
-    return e.host;
-}
-
-#endif
-
-void
-Moira::setSupervisorMode(bool s)
-{
-    if (s != reg.sr.s) setSupervisorFlags(s, reg.sr.m);
-}
-
-void
-Moira::setMasterMode(bool m)
-{
-    if (m != reg.sr.m) setSupervisorFlags(reg.sr.s, m);
-}
-
-void
-Moira::setSupervisorFlags(bool s, bool m)
-{
-    bool uspWasVisible = !reg.sr.s;
-    bool ispWasVisible =  reg.sr.s && !reg.sr.m;
-    bool mspWasVisible =  reg.sr.s &&  reg.sr.m;
-
-    if (uspWasVisible) reg.usp = reg.sp;
-    if (ispWasVisible) reg.isp = reg.sp;
-    if (mspWasVisible) reg.msp = reg.sp;
-
-    reg.sr.s = s;
-    reg.sr.m = m;
-
-    bool uspIsVisible  = !reg.sr.s;
-    bool ispIsVisible  =  reg.sr.s && !reg.sr.m;
-    bool mspIsVisible  =  reg.sr.s &&  reg.sr.m;
-
-    if (uspIsVisible)  reg.sp = reg.usp;
-    if (ispIsVisible)  reg.sp = reg.isp;
-    if (mspIsVisible)  reg.sp = reg.msp;
-}
-
-u16
-Moira::availabilityMask(Instr I) const
-{
-
-    switch (I) {
-
-        case Instr::BKPT: case Instr::MOVEC: case Instr::MOVES: case Instr::MOVEFCCR: case Instr::RTD:
-
-            return AV::M68010_UP;
-
-        case Instr::CALLM: case Instr::RTM:
-
-            return AV::M68020;
-
-        case Instr::cpGEN: case Instr::cpRESTORE: case Instr::cpSAVE: case Instr::cpScc: case Instr::cpTRAPcc:
-
-            return AV::M68020 | AV::M68030;
-
-        case Instr::BFCHG: case Instr::BFCLR: case Instr::BFEXTS: case Instr::BFEXTU: case Instr::BFFFO:
-        case Instr::BFINS: case Instr::BFSET: case Instr::BFTST: case Instr::CAS: case Instr::CAS2:
-        case Instr::CHK2: case Instr::CMP2: case Instr::DIVL: case Instr::EXTB: case Instr::MULL:
-        case Instr::PACK: case Instr::TRAPCC: case Instr::TRAPCS: case Instr::TRAPEQ: case Instr::TRAPGE:
-        case Instr::TRAPGT: case Instr::TRAPHI: case Instr::TRAPLE: case Instr::TRAPLS: case Instr::TRAPLT:
-        case Instr::TRAPMI: case Instr::TRAPNE: case Instr::TRAPPL: case Instr::TRAPVC: case Instr::TRAPVS:
-        case Instr::TRAPF: case Instr::TRAPT: case Instr::UNPK:
-
-            return AV::M68020_UP;
-
-        case Instr::CINV: case Instr::CPUSH: case Instr::MOVE16:
-
-            return AV::M68040;
-
-        case Instr::PFLUSH: case Instr::PFLUSHA: case Instr::PFLUSHAN: case Instr::PFLUSHN: case Instr::PLOAD:
-        case Instr::PMOVE: case Instr::PTEST:
-
-            return AV::MMU;
-
-        case Instr::FABS: case Instr::FADD: case Instr::FBcc: case Instr::FCMP: case Instr::FDBcc: case Instr::FDIV:
-        case Instr::FMOVE: case Instr::FMOVEM: case Instr::FMUL: case Instr::FNEG: case Instr::FNOP:
-        case Instr::FRESTORE: case Instr::FSAVE: case Instr::FScc: case Instr::FSQRT: case Instr::FSUB:
-        case Instr::FTRAPcc: case Instr::FTST:
-
-        case Instr::FSABS: case Instr::FDABS: case Instr::FSADD: case Instr::FDADD: case Instr::FSDIV: case Instr::FDDIV:
-        case Instr::FSMOVE: case Instr::FDMOVE: case Instr::FSMUL: case Instr::FDMUL: case Instr::FSNEG:
-        case Instr::FDNEG: case Instr::FSSQRT: case Instr::FDSQRT: case Instr::FSSUB: case Instr::FDSUB:
-
-            return AV::FPU;
-
-        case Instr::FACOS: case Instr::FASIN: case Instr::FATAN: case Instr::FATANH: case Instr::FCOS: case Instr::FCOSH:
-        case Instr::FETOX: case Instr::FETOXM1: case Instr::FGETEXP: case Instr::FGETMAN: case Instr::FINT:
-        case Instr::FINTRZ: case Instr::FLOG10: case Instr::FLOG2: case Instr::FLOGN: case Instr::FLOGNP1:
-        case Instr::FMOD: case Instr::FMOVECR: case Instr::FREM: case Instr::FSCAL: case Instr::FSGLDIV:
-        case Instr::FSGLMUL: case Instr::FSIN: case Instr::FSINCOS: case Instr::FSINH: case Instr::FTAN:
-        case Instr::FTANH: case Instr::FTENTOX: case Instr::FTWOTOX:
-
-            return 0; // M6888x only
-
-        default:
-
-            return AV::M68000_UP;
-    }
-}
-
-u16
-Moira::availabilityMask(Instr I, Mode M, Size S) const
-{
-    u16 mask = availabilityMask(I);
-
-    switch (I) {
-
-        case Instr::CMPI:
-
-            if (isPrgMode(M)) mask &= AV::M68010_UP;
-            break;
-
-        case Instr::CHK: case Instr::LINK: case Instr::BRA: case Instr::BHI: case Instr::BLS: case Instr::BCC: case Instr::BCS:
-        case Instr::BNE: case Instr::BEQ: case Instr::BVC: case Instr::BVS: case Instr::BPL: case Instr::BMI: case Instr::BGE:
-        case Instr::BLT: case Instr::BGT: case Instr::BLE: case Instr::BSR:
-
-            if (S == Long) mask &= AV::M68020_UP;
-            break;
-
-        case Instr::TST:
-
-            if (M == Mode(1) || M >= Mode(9)) mask &= AV::M68020_UP;
-            break;
-
-        default:
-
-            break;
-    }
-
-    return mask;
-}
-
-u16 Moira::availabilityMask(Instr I, Mode M, Size S, u16 ext) const
-{
-    u16 mask = availabilityMask(I);
-
-    switch (I) {
-
-        case Instr::MOVEC:
-
-            switch (ext & 0x0FFF) {
-
-                case 0x000:
-                case 0x001:
-                case 0x800:
-                case 0x801: mask &= AV::M68010_UP; break;
-                case 0x002:
-                case 0x803:
-                case 0x804: mask &=  AV::M68020_UP; break;
-                case 0x802: mask &=  AV::M68020 | AV::M68030; break;
-                case 0x003:
-                case 0x004:
-                case 0x005:
-                case 0x006:
-                case 0x007:
-                case 0x805:
-                case 0x806:
-                case 0x807: mask &= AV::M68040; break;
-
-                default:
-                    break;
-            }
-            break;
-
-        case Instr::MOVES:
-
-            if (ext & 0x7FF) mask = 0;
-            break;
-
-        default:
-            break;
-    }
-
-    return mask;
-}
-
-bool
-Moira::isAvailable(Model model, Instr I) const
-{
-    return availabilityMask(I) & (1 << (int)model);
-}
-
-bool
-Moira::isAvailable(Model model, Instr I, Mode M, Size S) const
-{
-    return availabilityMask(I, M, S) & (1 << (int)model);
-}
-
-bool
-Moira::isAvailable(Model model, Instr I, Mode M, Size S, u16 ext) const
-{
-    return availabilityMask(I, M, S, ext) & (1 << (int)model);
-}
-
-const char *
-Moira::availabilityString(Instr I, Mode M, Size S, u16 ext)
-{
-    switch (availabilityMask(I, M, S, ext)) {
-
-        case AV::M68010_UP:           return "(1+)";
-        case AV::M68020:              return "(2)";
-        case AV::M68020 | AV::M68030: return "(2-3)";
-        case AV::M68020_UP:           return "(2+)";
-        case AV::M68040:              return "(4+)";
-
-        default:
-            return "(?)";
-    }
-}
-
-bool
-Moira::isValidExt(Instr I, Mode M, u16 op, u32 ext) const
-{
-    switch (I) {
-
-        case Instr::BFCHG:     return (ext & 0xF000) == 0;
-        case Instr::BFCLR:     return (ext & 0xF000) == 0;
-        case Instr::BFEXTS:    return (ext & 0x8000) == 0;
-        case Instr::BFEXTU:    return (ext & 0x8000) == 0;
-        case Instr::BFFFO:     return (ext & 0x8000) == 0;
-        case Instr::BFINS:     return (ext & 0x8000) == 0;
-        case Instr::BFSET:     return (ext & 0xF000) == 0;
-        case Instr::BFTST:     return (ext & 0xF000) == 0;
-        case Instr::CAS:       return (ext & 0xFE38) == 0;
-        case Instr::CAS2:      return (ext & 0x0E380E38) == 0;
-        case Instr::CHK2:      return (ext & 0x07FF) == 0;
-        case Instr::CMP2:      return (ext & 0x0FFF) == 0;
-        case Instr::MULL:      return (ext & 0x83F8) == 0;
-        case Instr::DIVL:      return (ext & 0x83F8) == 0;
-
-        default:
-            fatalError;
-    }
-}
-
-u8
-Moira::readFC() const
-{
-    switch (fcSource) {
-
-        case 0: return u8((reg.sr.s ? 4 : 0) | fcl);
-        case 1: return u8(reg.sfc);
-        case 2: return u8(reg.dfc);
-
-        default:
-            fatalError;
-    }
-}
-
-void
-Moira::setFC(u8 value)
-{
-    if constexpr (MOIRA_EMULATE_FC) {
-        
-        fcl = (u8)value;
-    }
-}
-
-void
-Moira::setIPL(u8 val)
-{
-    if (ipl != val) {
-
-        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // NEOST_IPLFETCH: keep the pin history (≙ WinUAE update_ipl, newcpu.c:5006)
-        // — the PREVIOUS change (value + clock) is kept for pollIpl's "cdp"
-        // threshold. No effect when the feature is off (iplDelay4 == 0).
-        iplChangeClockPrev = iplChangeClock;
-        iplPrev = ipl;
-        iplChangeClock = clock;
-        if (val == 7) nmiLatch = true;      // a transition from a lower level
-        ipl = val;
-        flags |= State::CHECK_IRQ;
-
-        // NEOST: cycle-exact diagnostic (setPomExceptionDiag) — the instant the PIN
-        // changes, in core clock (`clock`), to correlate with [EXC]/[HBLD] (bus
-        // clock).
-        if (pomExceptionDiag) [[unlikely]]
-            fprintf(stderr, "[PIN] ipl=%d clk=%lld\n", val, (long long)clock);
-    }
-}
-
-void
-Moira::pollIpl()
-{
-#if MOIRA_ENABLE_JIT
-    if (pomJitTimingProbe) [[unlikely]] {
-        if (pomJitTiming.iplPolls < 8) {
-            const u32 pos = pomJitTiming.dataAccesses > 15
-                ? 15u : u32(pomJitTiming.dataAccesses);
-            pomJitTiming.iplPollPositions |=
-                pos << (4 * pomJitTiming.iplPolls);
-        }
-        pomJitTiming.iplPolls++;
-    }
-
-#endif
-
-    // Feature off (the default): upstream Moira's behaviour, byte-identical
-    // (NeoST's etalons, 19/0, checked). POLL_IPL ≡ reg.ipl = ipl.
-    if (iplDelay4 == 0) { reg.ipl = ipl; return; }
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // NEOST_IPLFETCH: a FAITHFUL port of WinUAE ipl_fetch_next (newcpu.c:4996-5011).
-    // The sample is taken ~4 cycles before the END of the instruction (where
-    // Moira places its POLL_IPL). Three cases, as in WinUAE:
-    //   cd  = clock − last change      ≥ 4 → pin settled → the new value
-    //   cdp = clock − PREVIOUS change  ≥ 2 → latch not updated → the PREVIOUS value
-    //   otherwise → DEFERRED (≙ regs.ipl[1]): the value is polled at the NEXT
-    //   boundary (applyDeferredIpl, the ipl[0]=ipl[1] rotation of WinUAE's run loop).
-    const i64 cd  = clock - iplChangeClock;
-    const i64 cdp = clock - iplChangeClockPrev;
-    if (cd >= iplDelay4)       { reg.ipl = ipl;     iplDeferred = -1; }
-    else if (cdp >= iplDelay2) { reg.ipl = iplPrev; iplDeferred = -1; }
-    else                       { iplDeferred = ipl; }
-}
-
-u16
-Moira::getIrqVector(u8 level) const {
+Moira::getIrqVector(u8 level) {
 
     assert(level < 8);
 
-    switch (irqMode) {
+    // The interrupt acknowledge cycle is a CPU space cycle
+    willExecute(CpuSpaceType::IRQ_ACK, level);
 
-        case IrqMode::AUTO:          return 24 + level;
-        case IrqMode::USER:          return readIrqUserVector(level) & 0xFF;
-        case IrqMode::SPURIOUS:      return 24;
-        case IrqMode::UNINITIALIZED: return 15;
+    // Ask the interrupting device for the vector
+    u8 userVector = 0;
+    u16 vector = 0;
 
-        default:
-            fatalError;
+    switch (readIrqVector(level, &userVector)) {
+
+        case IrqMode::AUTO:          vector = 24 + level; break;
+        case IrqMode::USER:          vector = userVector; break;
+        case IrqMode::SPURIOUS:      vector = 24; break;
+        case IrqMode::UNINITIALIZED: vector = 15; break;
     }
+
+    didExecute(CpuSpaceType::IRQ_ACK, level);
+    return vector;
 }
 
-InstrInfo
-Moira::getInstrInfo(u16 op) const
+void
+Moira::notifyCPCycle(u16 opcode, CIR cir)
 {
-    if constexpr (MOIRA_ENABLE_DASM) {
-
-        return info[op];
-
-    } else {
-
-        throw std::runtime_error("This feature requires MOIRA_ENABLE_DASM = true\n");
-    }
+    // Coprocessor ID (opcode bits 11-9) on A15-A13, register select on A4-A0
+    u8 arg = u8(((opcode >> 9) & 7) << 5 | u8(cir));
+    willExecute(CpuSpaceType::COPROCESSOR, arg);
+    didExecute(CpuSpaceType::COPROCESSOR, arg);
 }
 
 template u32 Moira::readD <Long> (int n) const;

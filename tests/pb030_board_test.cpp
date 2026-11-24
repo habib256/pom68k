@@ -42,7 +42,7 @@ void testBus() {
     mem.write8(0xfee08000,0x81);
     check(mem.read8(0xfee00000)==0x81 && mem.read8(0xfee08000)==0x81,"DDC VRAM aliases its upper 32 KB");
     check(mem.read8(0x50014800)==0xb0,"sound window exposes the discrete EASC version");
-    bool fault=false;try {mem.read8(0x51026000);} catch(const moira::MmuBusError&) {fault=true;}
+    bool fault=false;try {mem.read8(0x51026000);} catch(const moira::BusError&) {fault=true;}
     check(fault,"foreign decoder probe raises bus error rather than exposing an MSC pseudo-VIA");
     uint32_t length=1;
     check(mem.codeSpan(0x50000000,length)==nullptr && !length,"JIT cannot turn I/O into plain memory");

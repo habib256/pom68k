@@ -83,7 +83,10 @@ pb165_boot_etalon@System_7.5.5_HD.dsk	72742c3473f134b3
 pb180_boot_etalon@System_7.5.5_HD.dsk	72742c3473f134b3
 pb180c_boot_etalon@System_7.5.5_HD.dsk	6d7a190822fb3dc2
 pb165c_boot_etalon@System_7.5.5_HD.dsk	a94e32a1a7c5b25d
-portable_boot_etalon@System_7.1_HD.dsk	cc4a869f52d960ad
+# 2026-11-24, Dirk Hoffmann's core: 92 pixels at x 7-23, y 7-29 differ, the
+# pointer (the fork settled with the busy watch, this core with the arrow).
+# Previous pin: cc4a869f52d960ad.
+portable_boot_etalon@System_7.1_HD.dsk	f3c9095a373a7f28
 pb100_boot_etalon@System_7.1_HD.dsk	cc4a869f52d960ad
 pb160_external_video_etalon@System_7.5.5_HD.dsk	f52754f53dfa49c3
 pb165c_external_video_etalon@System_7.5.5_HD.dsk	d893292dacecdec7

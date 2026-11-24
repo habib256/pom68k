@@ -25,7 +25,7 @@
 //
 // Exit 0 = pass, 1 = fail.
 
-#include "Moira.h"
+#include "MoiraCompat.h"
 #include "MoiraCache040.h"
 
 #include <cstdint>
@@ -188,10 +188,10 @@ void testStruct() {
 // Flat 16 MB bus with a /BERR hole at $F00000-$F0FFFF (the BerrCpu
 // pattern): phase L steers a page-table walk into it to prove a
 // bus-erroring descriptor chain is swallowed, not delivered.
-class Cpu : public moira::Moira {
+class Cpu : public MoiraCompat {
 public:
     Cpu() : mem(1 << 24, 0) {
-        setModel(moira::Model::M68040);
+        setModel(moira::CPUModel::M68040);
         setPomCache040(true);
     }
     std::vector<uint8_t> mem;
@@ -605,9 +605,9 @@ void testDataPath() {
 
 // Records only operand-line transfers; opcode and descriptor reads remain
 // real bus accesses but cannot mask a missing push or an accidental fill.
-class CoherenceCpu : public moira::Moira {
+class CoherenceCpu : public MoiraCompat {
 public:
-    explicit CoherenceCpu(moira::Model model) : mem(1 << 20) { setModel(model); }
+    explicit CoherenceCpu(moira::CPUModel model) : mem(1 << 20) { setModel(model); }
     std::vector<uint8_t> mem;
     struct Transfer {
         uint32_t address, value;
@@ -641,7 +641,7 @@ private:
         if (skipWrites) { --skipWrites; return; }
         ++busErrors;
         auto& cpu = *const_cast<CoherenceCpu*>(this);
-        if (getModel() >= moira::Model::M68EC040) cpu.extBusError040();
+        if (getModel() >= moira::CPUModel::M68EC040) cpu.extBusError040();
         else cpu.extBusError();
     }
     void checkRead(uint32_t a) const {
@@ -672,9 +672,9 @@ void testImplicitNoncacheable() {
     // Distinguish this from disabling CACR.DE: the controller must still
     // resolve the resident line before the external operand transfer.
     unsigned cases = 0;
-    for (auto model : {moira::Model::M68EC040, moira::Model::M68LC040,
-                       moira::Model::M68040})
-    for (unsigned mapping = 0; mapping < (model == moira::Model::M68EC040 ? 1u : 3u); ++mapping)
+    for (auto model : {moira::CPUModel::M68EC040, moira::CPUModel::M68LC040,
+                       moira::CPUModel::M68040})
+    for (unsigned mapping = 0; mapping < (model == moira::CPUModel::M68EC040 ? 1u : 3u); ++mapping)
     for (unsigned resident = 0; resident < 3; ++resident)
     for (unsigned op = 0; op < 12; ++op)
     for (unsigned fc : {1u, 2u, 5u, 6u}) {
@@ -774,7 +774,7 @@ void testCas2WriteProtection() {
     // CAS2's read stage needs write permission even when comparison would
     // fail. Cover either operand, paging sizes, and the cacheless product
     // path as well as the optional cache model.
-    for (auto model : {moira::Model::M68LC040, moira::Model::M68040})
+    for (auto model : {moira::CPUModel::M68LC040, moira::CPUModel::M68040})
     for (bool page8k : {false, true})
     for (bool cache : {false, true})
     for (unsigned protectedOperand : {0u, 1u}) {
@@ -814,14 +814,14 @@ void testCasMismatchTerminalWrite() {
     // [B] MC68040UM-1993 §7.4.5: a failed CAS writes its operand back;
     // failed CAS2 writes only the second operand, even if comparison 1 failed.
     unsigned cases = 0;
-    for (auto model : {moira::Model::M68EC020, moira::Model::M68020, moira::Model::M68030,
-                       moira::Model::M68EC040, moira::Model::M68LC040, moira::Model::M68040})
-    for (unsigned mapping = 0; mapping < (model < moira::Model::M68LC040 ? 1u : 3u); ++mapping)
+    for (auto model : {moira::CPUModel::M68EC020, moira::CPUModel::M68020, moira::CPUModel::M68030,
+                       moira::CPUModel::M68EC040, moira::CPUModel::M68LC040, moira::CPUModel::M68040})
+    for (unsigned mapping = 0; mapping < (model < moira::CPUModel::M68LC040 ? 1u : 3u); ++mapping)
     for (bool super : {false, true})
-    for (unsigned cache = 0; cache < (model < moira::Model::M68EC040 ? 1u : 4u); ++cache)
+    for (unsigned cache = 0; cache < (model < moira::CPUModel::M68EC040 ? 1u : 4u); ++cache)
     for (unsigned op = 0; op < 13; ++op)
     for (int fault = -1; fault < 2; ++fault) {
-        const bool is040 = model >= moira::Model::M68EC040, cas2 = op >= 9;
+        const bool is040 = model >= moira::CPUModel::M68EC040, cas2 = op >= 9;
         const unsigned bytes = cas2 ? (op < 11 ? 2 : 4) : 1u << (op / 3);
         const unsigned mode = cas2 ? 0 : op % 3; // (A0), (A0)+, -(A0)
         const bool failFirst = !cas2 || !(op & 1); // both CAS2 mismatch branches
@@ -947,8 +947,8 @@ void testMove16FaultContext() {
     // transfer, logical initial line address, independent of physical beat.
     // WB2/PD and restart checks pin the existing WinUAE-derived fault model.
     unsigned cases = 0;
-    for (auto model : {moira::Model::M68EC040, moira::Model::M68LC040, moira::Model::M68040})
-    for (unsigned mapping = 0; mapping < (model == moira::Model::M68EC040 ? 1u : 3u); ++mapping)
+    for (auto model : {moira::CPUModel::M68EC040, moira::CPUModel::M68LC040, moira::CPUModel::M68040})
+    for (unsigned mapping = 0; mapping < (model == moira::CPUModel::M68EC040 ? 1u : 3u); ++mapping)
     for (bool super : {false, true})
     for (unsigned path = 0; path < 3; ++path) // bus, instruction window, cache model (misses only)
     for (unsigned form = 0; form < 5; ++form)
@@ -967,7 +967,7 @@ void testMove16FaultContext() {
         if (form == 0) cpu.put16(0x1002, 0x9000);
         else cpu.put32(0x1002, form == 2 || form == 4 ? src + 11 : dst + 7);
         cpu.put16(next, 0x4E71); cpu.put16(next + 2, 0x4E71);
-        cpu.put16(0x3000, model == moira::Model::M68EC040 ? 0x4E71 : 0xF518);
+        cpu.put16(0x3000, model == moira::CPUModel::M68EC040 ? 0x4E71 : 0xF518);
         cpu.put16(0x3002, 0x4E73); // flush repaired MMU tables (NOP on EC040); RTE
         cpu.put16(0x3004, 0x4E71);
         uint32_t data[4];
@@ -1052,8 +1052,8 @@ void testFaultAfterSuccessfulPush() {
     // dirty physical alias. The push itself succeeds; push-fault frames
     // need their own physical-address/PD contract and are not tested here.
     unsigned cases = 0;
-    for (auto model : {moira::Model::M68EC040, moira::Model::M68LC040, moira::Model::M68040})
-    for (unsigned mapping = 0; mapping < (model == moira::Model::M68EC040 ? 1u : 3u); ++mapping)
+    for (auto model : {moira::CPUModel::M68EC040, moira::CPUModel::M68LC040, moira::CPUModel::M68040})
+    for (unsigned mapping = 0; mapping < (model == moira::CPUModel::M68EC040 ? 1u : 3u); ++mapping)
     for (unsigned fc : {1u, 5u})
     for (unsigned op = 0; op < 4; ++op)
     for (unsigned beat = 0; beat < (op == 2 ? 2u : 1u); ++beat) {
@@ -1065,7 +1065,7 @@ void testFaultAfterSuccessfulPush() {
         cpu.put32(0, 0x70000); cpu.put32(4, 0x1000); cpu.put32(8, 0x3000);
         cpu.put16(0x1000, tas ? 0x4AD0 : uint16_t(0x0E10 + op * 0x40));
         cpu.put16(0x1002, tas ? 0x4E71 : 0); cpu.put16(0x1004, 0x4E71); cpu.put16(0x1006, 0x4E71);
-        cpu.put16(0x3000, model == moira::Model::M68EC040 ? 0x4E71 : 0xF518);
+        cpu.put16(0x3000, model == moira::CPUModel::M68EC040 ? 0x4E71 : 0xF518);
         cpu.put16(0x3002, 0x4E73); cpu.put16(0x3004, 0x4E71);
         cpu.put32(0x8000, 0x99AABBCC); cpu.put32(0x8008, 0xAABBCCDD);
         cpu.reset(); cpu.setISP(0x70000); cpu.setUSP(0x60000);
@@ -1124,8 +1124,8 @@ void testReadFillFaults() {
     // fault only demanded longwords; an aborted line is not cached. Dirty
     // victims survive an aborted replacement read without being pushed.
     unsigned cases = 0;
-    for (auto model : {moira::Model::M68EC040, moira::Model::M68LC040, moira::Model::M68040})
-    for (unsigned mapping = 0; mapping < (model == moira::Model::M68EC040 ? 1u : 3u); ++mapping)
+    for (auto model : {moira::CPUModel::M68EC040, moira::CPUModel::M68LC040, moira::CPUModel::M68040})
+    for (unsigned mapping = 0; mapping < (model == moira::CPUModel::M68EC040 ? 1u : 3u); ++mapping)
     for (bool super : {false, true})
     for (unsigned size = 0; size < 3; ++size)
     for (unsigned off : {0u, 3u, 12u, 15u})
@@ -1140,7 +1140,7 @@ void testReadFillFaults() {
         const uint16_t ops[] = {0x1010, 0x3010, 0x2010}; // MOVE.B/W/L (A0),D0
         cpu.put32(0, 0x70000); cpu.put32(4, 0x1000); cpu.put32(8, 0x3000);
         cpu.put16(0x1000, ops[size]); cpu.put16(0x1002, 0x4E71); cpu.put16(0x1004, 0x4E71);
-        cpu.put16(0x3000, model == moira::Model::M68EC040 ? 0x4E71 : 0xF518);
+        cpu.put16(0x3000, model == moira::CPUModel::M68EC040 ? 0x4E71 : 0xF518);
         cpu.put16(0x3002, 0x4E73); cpu.put16(0x3004, 0x4E71);
         for (unsigned i = 0; i < 32; ++i) cpu.mem[0x8000 + i] = uint8_t(0x20 + i);
         for (unsigned way = 0; way < 4; ++way)
@@ -1246,8 +1246,8 @@ void testWriteAllocateFaults() {
     // and still reports unused write-fill beat errors. Silicon stage/delivery
     // policy needs a captured write-miss fault, not an assertion in this gate.
     unsigned cases = 0;
-    for (auto model : {moira::Model::M68EC040, moira::Model::M68LC040, moira::Model::M68040})
-    for (unsigned mapping = 0; mapping < (model == moira::Model::M68EC040 ? 1u : 3u); ++mapping)
+    for (auto model : {moira::CPUModel::M68EC040, moira::CPUModel::M68LC040, moira::CPUModel::M68040})
+    for (unsigned mapping = 0; mapping < (model == moira::CPUModel::M68EC040 ? 1u : 3u); ++mapping)
     for (bool super : {false, true})
     for (unsigned size = 0; size < 3; ++size)
     for (unsigned off : {0u, 3u, 12u, 15u})
@@ -1374,8 +1374,8 @@ void testPushFaults() {
     // a successful replacement read. CPUSH invalidates even on failure.
     // Pending ordinary stores retain the fork's WB3/final-store policy.
     unsigned cases = 0;
-    for (auto model : {moira::Model::M68EC040, moira::Model::M68LC040, moira::Model::M68040})
-    for (unsigned mapping = 0; mapping < (model == moira::Model::M68EC040 ? 1u : 3u); ++mapping)
+    for (auto model : {moira::CPUModel::M68EC040, moira::CPUModel::M68LC040, moira::CPUModel::M68040})
+    for (unsigned mapping = 0; mapping < (model == moira::CPUModel::M68EC040 ? 1u : 3u); ++mapping)
     for (bool super : {false, true})
     for (unsigned kind = 0; kind < 8; ++kind) // CPUSH L/P/A, replacement R/W, NC R/W, TAS
     for (unsigned size = 0; size < ((kind == 4 || kind == 6) ? 3u : 1u); ++size)
@@ -1518,7 +1518,7 @@ void testDescriptorFaults() {
     // with ATC, not the physical descriptor cycle. Prior U writes follow
     // the next descriptor read. PTEST reports B without an exception.
     unsigned cases = 0;
-    for (auto model : {moira::Model::M68LC040, moira::Model::M68040})
+    for (auto model : {moira::CPUModel::M68LC040, moira::CPUModel::M68040})
     for (bool page8k : {false, true})
     for (unsigned cache = 0; cache < 3; ++cache)
     for (bool super : {false, true})
@@ -1715,8 +1715,8 @@ void testPageSplitFaults() {
     // ATC fault only; physical /BERR still retains the initial logical FA.
     // The WB3/last-store and restart policy is the existing fork model.
     unsigned cases = 0;
-    for (auto model : {moira::Model::M68EC040, moira::Model::M68LC040, moira::Model::M68040})
-    for (unsigned mapping = 0; mapping < (model == moira::Model::M68EC040 ? 1u : 3u); ++mapping)
+    for (auto model : {moira::CPUModel::M68EC040, moira::CPUModel::M68LC040, moira::CPUModel::M68040})
+    for (unsigned mapping = 0; mapping < (model == moira::CPUModel::M68EC040 ? 1u : 3u); ++mapping)
     for (unsigned cache = 0; cache < 3; ++cache) // off, active NC, active WT reads / CB writes
     for (bool super : {false, true})
     for (bool write : {false, true})
@@ -1763,7 +1763,7 @@ void testPageSplitFaults() {
             cpu.put32(0, 0x70000); cpu.put32(4, 0x1000); cpu.put32(8, 0x3000);
             cpu.put16(0x1000, uint16_t(op + mode * (write ? 0x40 : 8)));
             cpu.put16(0x1002, 0x4E71); cpu.put16(0x1004, 0x4E71);
-            cpu.put16(0x3000, model == moira::Model::M68EC040 ? 0x4E71 : 0xF518);
+            cpu.put16(0x3000, model == moira::CPUModel::M68EC040 ? 0x4E71 : 0xF518);
             cpu.put16(0x3002, 0x4E73); cpu.put16(0x3004, 0x4E71);
             for (unsigned o = 0; o < 16; ++o) {
                 cpu.mem[0x8000 + pageBytes - 16 + o] = uint8_t(0x80 + o);
@@ -1891,8 +1891,8 @@ void testPageSplitFaults() {
 
 void testInstructionFillFaults() {
     unsigned cases = 0;
-    for (auto model : {moira::Model::M68EC040, moira::Model::M68LC040, moira::Model::M68040})
-    for (unsigned mapping = 0; mapping < (model == moira::Model::M68EC040 ? 1u : 3u); ++mapping)
+    for (auto model : {moira::CPUModel::M68EC040, moira::CPUModel::M68LC040, moira::CPUModel::M68040})
+    for (unsigned mapping = 0; mapping < (model == moira::CPUModel::M68EC040 ? 1u : 3u); ++mapping)
     for (bool super : {false, true})
     for (unsigned off : {0u, 2u, 8u, 10u})
     for (bool demanded : {false, true})
@@ -1902,7 +1902,7 @@ void testInstructionFillFaults() {
         const uint32_t la = paged ? 0x10000000 : 0x8000, pc = la + off;
         cpu.put32(0, 0x70000); cpu.put32(4, 0x1000); cpu.put32(8, 0x3000);
         cpu.put16(0x1000, 0x4E71); cpu.put16(0x1002, 0x4E71);
-        cpu.put16(0x3000, model == moira::Model::M68EC040 ? 0x4E71 : 0xF518);
+        cpu.put16(0x3000, model == moira::CPUModel::M68EC040 ? 0x4E71 : 0xF518);
         cpu.put16(0x3002, 0x4E73); cpu.put16(0x3004, 0x4E71);
         for (unsigned i = 0; i < 32; i += 2) cpu.put16(0x8000 + i, 0x4E71);
         cpu.reset(); cpu.setPomCache040(true); cpu.setCACR(0x80008000);
@@ -1953,8 +1953,8 @@ void testInstructionFillFaults() {
 }
 
 void testDisabledDataCache() {
-    for (auto model : {moira::Model::M68EC040, moira::Model::M68LC040,
-                       moira::Model::M68040}) {
+    for (auto model : {moira::CPUModel::M68EC040, moira::CPUModel::M68LC040,
+                       moira::CPUModel::M68040}) {
         CoherenceCpu cpu(model);
         cpu.put32(0, 0x70000); cpu.put32(4, 0x1000);
         cpu.put16(0x1000, 0x2010); cpu.put16(0x1002, 0x2010); // MOVE.L (A0),D0 twice

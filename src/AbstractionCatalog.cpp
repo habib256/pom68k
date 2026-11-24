@@ -103,7 +103,7 @@ const std::vector<Entry>& catalogue() {
      .whyNot = "Architectural model; the JIT refuses the big soft TLB a "
                "classic 68k JIT uses.",
      .files = "extern/moira/Moira/MoiraExecMMU_cpp.h "
-              "extern/moira/Moira/MoiraMmu030Walk.h",
+              "extern/moira/Moira/MMU/MMU030.cpp src/Mmu030Walk.h",
      .platforms = kNoCompact68000, .docSection = "1.11"},
     {.id = "cpu-fpu", .group = "CPU", .subsystem = "68881 / 68882 / 68040 FPU",
      .level = Level::PureLle,
@@ -119,7 +119,7 @@ const std::vector<Entry>& catalogue() {
                  "lines, copyback, snooping, CPUSH/CINV.",
      .whyNot = "The architectural cache stays opt-in until its native paths "
                "are measured (docs/CACHE_040.md).",
-     .files = "extern/moira/Moira/MoiraCache040.h src/Cpu040.h docs/CACHE_040.md",
+     .files = "src/Cpu040.h docs/CACHE_040.md",
      .platforms = k040Boards, .docSection = "1.2"},
     {.id = "cpu-engine", .group = "CPU",
      .subsystem = "Execution engine (interpreter / JIT)",

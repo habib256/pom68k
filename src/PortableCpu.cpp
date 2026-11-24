@@ -3,7 +3,7 @@
 
 PortableCpu::PortableCpu(PortableMemory& mem,const jit::ResolvedConfig& config)
     :MoiraCpu(mem,jit::kGuest68000,config) {
-    setModel(moira::Model::M68000);
+    setModel(moira::CPUModel::M68000);
 }
 void PortableCpu::hardReset() {
     flushTicks();mem_.reset();lastPeriphClock_=clock;jit_.flushAll();

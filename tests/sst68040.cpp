@@ -30,7 +30,7 @@
 //                 [--examples K]
 // Exit 0 = all matched / no data (soft skip); 1 = mismatch; 2 = usage.
 
-#include "Moira.h"
+#include "MoiraCompat.h"
 #include "SstKnown.h"
 #if SST_JIT
 #include "SstJitLockstep.h"
@@ -85,9 +85,9 @@ struct Vector {
 };
 
 // ── Flat 16 MB test bus (no Mac hardware, no contention) ─────────────────
-class TestCpu : public moira::Moira {
+class TestCpu : public MoiraCompat {
 public:
-    TestCpu() : mem(1 << 24, 0) { setModel(moira::Model::M68LC040); }
+    TestCpu() : mem(1 << 24, 0) { setModel(moira::CPUModel::M68LC040); }
     std::vector<uint8_t> mem;
 
     // Every byte a vector set or wrote, so that the next one starts from the
@@ -109,11 +109,9 @@ public:
     // Traced vectors (runVector): exceptions taken, and the trace exception
     // execute() has staged for its next call.
     unsigned long exceptions = 0;
-    // Not while RTE_REPLAY is set: the next execute() then runs the
-    // instruction an RTE resumes before it takes the trace.
-    bool traceStaged() const {
-        return (flags & moira::State::TRACE_EXC) && !(flags & moira::State::RTE_REPLAY);
-    }
+    // Dirk's core restarts a faulted instruction rather than resuming it
+    // after RTE, so a staged trace is always taken by the next execute().
+    bool traceStaged() const { return (flags & moira::State::TRACE_EXC) != 0; }
     void dropStagedTrace() { flags &= ~moira::State::TRACE_EXC; }
 
 private:
@@ -277,7 +275,7 @@ void setupVector(TestCpu& cpu, const Vector& v) {
     // format $4 "FP disabled" exception, which an attached 68882 would
     // mask. --fpu (2026-11-06) replays a corpus generated against the full
     // 68040: integrated FPU, FP registers loaded and compared.
-    cpu.setFPUModel(gFpu ? moira::FPUModel::M68040 : moira::FPUModel::NONE);
+    cpu.setFPUModel(gFpu ? MoiraFpu::M68040 : MoiraFpu::NONE);
     cpu.reset();                           // clears STOP/halt state from prior vectors
     cpu.clearDirty();
     for (const RamCell& c : v.initial.ram) {
@@ -515,11 +513,11 @@ int main(int argc, char** argv) {
     if (files.empty()) { std::fprintf(stderr,"SKIP: [sst68040] '%s' holds no .json\n",dir.c_str()); return 0; }
 
     TestCpu cpu;
-    if (gFpu) cpu.setModel(moira::Model::M68040);   // full 68040, integrated FPU
+    if (gFpu) cpu.setModel(moira::CPUModel::M68040);   // full 68040, integrated FPU
 #if SST_JIT
     jitOpt.fpu = gFpu;
     sstjit::Pair<TestCpu> pair;
-    sstjit::build(pair, gFpu ? moira::Model::M68040 : moira::Model::M68LC040,
+    sstjit::build(pair, gFpu ? moira::CPUModel::M68040 : moira::CPUModel::M68LC040,
                   jit::kGuest68040);
     std::printf("[sst68040 --jit] backend=%s slack=%ld %s\n", pair.engine->backendName(),
                 jitOpt.slack, jitOpt.warm ? "warm" : "cold");

@@ -330,7 +330,8 @@
       ],
       "sha256": "a3e27846e8a4a13e3f9f56875e08d56e104d7ffed1e768a3b74a490ed0293071",
       "bytes": 869734229,
-      "vectors": 1128
+      "vectors": 1128,
+      "floor": 811
     },
     "040": {
       "file": "040.json.gz",
@@ -498,7 +499,8 @@
       ],
       "sha256": "3d7074b116e5629d22e33315078a699ce3c802b3971c4b077faf56c015213f6e",
       "bytes": 98882476,
-      "vectors": 576
+      "vectors": 576,
+      "floor": 383
     }
   }
 }

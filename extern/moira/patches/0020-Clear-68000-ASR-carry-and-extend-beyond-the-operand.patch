@@ -1,0 +1,28 @@
+From 2ddae712b9953198f26eb8f9587bb71516e613d8 Mon Sep 17 00:00:00 2001
+From: VERHILLE Arnaud <gist974@gmail.com>
+Date: Tue, 24 Nov 2026 07:55:28 +0400
+Subject: [PATCH] Clear 68000 ASR carry and extend beyond the operand width
+
+---
+ Moira/MoiraALU_cpp.h | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/Moira/MoiraALU_cpp.h b/Moira/MoiraALU_cpp.h
+index 5c87dcc..c792799 100644
+--- a/Moira/MoiraALU_cpp.h
++++ b/Moira/MoiraALU_cpp.h
+@@ -192,6 +192,11 @@ Moira::shift(int cnt, u64 data) {
+                 data = shifted;
+             }
+ 
++            // SingleStepTests shows C/X cleared beyond the width on 68000.
++            if constexpr (C == Core::C68000 && compat == Compatibility::DEFAULT) {
++                if (cnt > 8 * int(S)) carry = false;
++            }
++
+             if (cnt) reg.sr.x = carry;
+             reg.sr.c = carry;
+             reg.sr.v = NBIT<S>(changed);
+-- 
+2.54.0 (Apple Git-157)
+

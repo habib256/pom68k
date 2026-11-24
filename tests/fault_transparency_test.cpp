@@ -33,7 +33,7 @@
 // Exit 0 = pass, 1 = fail. `--verbose` lists every instruction; a number
 // restricts the run to that instruction index.
 
-#include "Moira.h"
+#include "MoiraCompat.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -56,9 +56,9 @@ struct Cycle {
     bool operator==(const Cycle& o) const { return addr == o.addr && write == o.write; }
 };
 
-class Cpu : public moira::Moira {
+class Cpu : public MoiraCompat {
 public:
-    explicit Cpu(moira::Model model) : mem(1 << 20, 0), model_(model) { setModel(model); }
+    explicit Cpu(moira::CPUModel model) : mem(1 << 20, 0), model_(model) { setModel(model); }
     std::vector<uint8_t> mem;
     bool record = false;
     mutable std::vector<Cycle> cycles;
@@ -67,7 +67,7 @@ public:
     mutable unsigned trips = 0;
 
 private:
-    moira::Model model_;
+    moira::CPUModel model_;
     // The cycles the instruction under test makes: its operands, its own
     // words and prefetch, and the first words of a JSR/BSR/RTS target.
     static bool swept(moira::u32 a) {
@@ -80,24 +80,28 @@ private:
             armed = false;                      // one /BERR, then the board answers
             ++trips;
             auto& self = *const_cast<Cpu*>(this);
-            if (model_ >= moira::Model::M68EC040) self.extBusError040();
+            if (model_ >= moira::CPUModel::M68EC040) self.extBusError040();
             else self.extBusError();
         }
         if (record && swept(a)) cycles.push_back({ a, write });
     }
     moira::u8 read8(moira::u32 a) const override {
+        pomBusAddr = a;                       // the address a /BERR reports
         cycle(a, false);
         return mem[a & 0xfffff];
     }
     moira::u16 read16(moira::u32 a) const override {
+        pomBusAddr = a;                       // the address a /BERR reports
         cycle(a, false);
         return moira::u16((mem[a & 0xfffff] << 8) | mem[(a + 1) & 0xfffff]);
     }
     void write8(moira::u32 a, moira::u8 v) const override {
+        pomBusAddr = a;                       // the address a /BERR reports
         cycle(a, true);
         const_cast<Cpu*>(this)->mem[a & 0xfffff] = v;
     }
     void write16(moira::u32 a, moira::u16 v) const override {
+        pomBusAddr = a;                       // the address a /BERR reports
         cycle(a, true);
         auto& m = const_cast<Cpu*>(this)->mem;
         m[a & 0xfffff] = moira::u8(v >> 8); m[(a + 1) & 0xfffff] = moira::u8(v);
@@ -128,7 +132,7 @@ uint32_t rnd(uint32_t& s) { s ^= s << 13; s ^= s >> 17; s ^= s << 5; return s; }
 void p16(Cpu& c, uint32_t a, uint16_t v) { c.mem[a] = uint8_t(v >> 8); c.mem[a + 1] = uint8_t(v); }
 void p32(Cpu& c, uint32_t a, uint32_t v) { p16(c, a, uint16_t(v >> 16)); p16(c, a + 2, uint16_t(v)); }
 
-Final run(moira::Model model, const Inst& in, uint32_t seed, const Cycle* hole,
+Final run(moira::CPUModel model, const Inst& in, uint32_t seed, const Cycle* hole,
           std::vector<Cycle>* cyclesOut)
 {
     Cpu c(model);
@@ -151,7 +155,7 @@ Final run(moira::Model model, const Inst& in, uint32_t seed, const Cycle* hole,
     if (in.cell >= 0) p32(c, a[1], uint32_t(in.cell) << 16);
     for (size_t i = 0; i < in.stack.size(); i++) p16(c, kUserStack + 2 * uint32_t(i), in.stack[i]);
 
-    if (model == moira::Model::M68030) c.setFPUModel(moira::FPUModel::M68882);
+    if (model == moira::CPUModel::M68030) c.setFPUModel(MoiraFpu::M68882);
     c.reset();
     for (int i = 0; i < 8; i++) {
         const uint32_t w[3] = { 0x3ffd0000u + ((rnd(s) & 7) << 16) + (rnd(s) & 0x80000000u),
@@ -188,7 +192,7 @@ Final run(moira::Model model, const Inst& in, uint32_t seed, const Cycle* hole,
     for (int i = 0; i < 8 && !f.wedged; i++) {
         if (c.getPC0() - kTrap < 16) { f.trapped = true; break; }
         if (c.getPC0() == kHandler) {
-            if (model >= moira::Model::M68EC040 && !writtenBack) {
+            if (model >= moira::CPUModel::M68EC040 && !writtenBack) {
                 // What a 68040 access-error handler does before its RTE:
                 // the pending write-backs of the format-$7 frame.
                 // [B] MC68040UM-1993 §8.4.6.5 — WB2 and WB3 are completed by
@@ -474,9 +478,9 @@ int main(int argc, char** argv)
     }
     build();
 
-    struct Row { moira::Model model; const char* name; bool is040; };
+    struct Row { moira::CPUModel model; const char* name; bool is040; };
     static const Row rows[] = {
-        { moira::Model::M68030, "68030", false }, { moira::Model::M68040, "68040", true },
+        { moira::CPUModel::M68030, "68030", false }, { moira::CPUModel::M68040, "68040", true },
     };
     int failures = 0;
     for (const Row& r : rows) {

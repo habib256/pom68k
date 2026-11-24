@@ -57,7 +57,7 @@ int main() {
     mem.write8(0xfc380000,0x27);
     check(mem.read8(0xfc000000)==0x27 && mem.read8(0xfcff8001)==0x5a && mem.read8(0xfe0fe004)==0x70,
           "board maps Pangola aliases and bounds declaration ROM without hiding external monitor sense");
-    bool fault=false;try{mem.read8(0x50f20001);}catch(const moira::MmuBusError&){fault=true;}
+    bool fault=false;try{mem.read8(0x50f20001);}catch(const moira::BusError&){fault=true;}
     check(fault,"color board faults the grayscale GSC probe");
     Pb030Cpu cpu(mem,jit::defaultResolvedConfig(),core.cpu,true);mem.setCpu(&cpu);
     mem.loadRom(std::vector<uint8_t>(Pb030Memory::kRomSize,0));cpu.hardReset();
@@ -77,7 +77,7 @@ int main() {
     sibling.loadRom(std::vector<uint8_t>(Pb030Memory::kRomSize,0));sibling.colorVideo().loadRom(rom);siblingCpu.hardReset();
     sibling.read8(0x40000000);sibling.write8(0x1234,0xa5);sibling.write8(0xfc000000,0x42);
     sibling.decode(out);
-    check(panel.cpuHz==33000000 && panel.boxFlag==44 && siblingCpu.getFPUModel()==moira::FPUModel::M68882 &&
+    check(panel.cpuHz==33000000 && panel.boxFlag==44 && siblingCpu.getFPUModel()==MoiraFpu::M68882 &&
           sibling.screenHeight()==400 && out.size()==640*400,"165c profile composes a 33 MHz 030/68882 with a 640x400 panel");
     check(!pom68k::load(sibling,siblingCpu,pom68k::SnapMachine::Pb165c,session.data(),session.size(),error) &&
           error=="save state is for another machine profile" && sibling.peek8(0x1234)==0xa5 && sibling.read8(0xfc000000)==0x42,

@@ -1,0 +1,95 @@
+From 09ba3e14850aea4c8bb56fca1c14bd85865f668a Mon Sep 17 00:00:00 2001
+From: VERHILLE Arnaud <gist974@gmail.com>
+Date: Tue, 24 Nov 2026 07:29:17 +0400
+Subject: [PATCH] Allow a host to opt into software floating point on an LC040
+
+---
+ Moira/Moira.cpp       | 15 +++++++++++++++
+ Moira/Moira.h         |  4 ++++
+ Moira/MoiraInfo_cpp.h |  3 ++-
+ Moira/MoiraInit_cpp.h |  6 ++++--
+ 4 files changed, 25 insertions(+), 3 deletions(-)
+
+diff --git a/Moira/Moira.cpp b/Moira/Moira.cpp
+index f1371b5..7132730 100644
+--- a/Moira/Moira.cpp
++++ b/Moira/Moira.cpp
+@@ -136,6 +136,20 @@ Moira::setCPModel(CPModel model)
+     if (moira::hasCPI(cpuModel) || moira::hasCPI(dasmModel)) createJumpTable(cpuModel, dasmModel);
+ }
+ 
++void
++Moira::setLC040SoftFpu(bool enabled)
++{
++    if (lc040SoftFpu == enabled) return;
++
++    lc040SoftFpu = enabled;
++    if (cpuModel == CPUModel::M68LC040) {
++        configureUnits();
++        fpu.reset();
++    }
++    if (cpuModel == CPUModel::M68LC040 || dasmModel == CPUModel::M68LC040)
++        createJumpTable(cpuModel, dasmModel);
++}
++
+ void
+ Moira::setDasmStyle(const DasmStyle &style)
+ {
+@@ -423,6 +437,7 @@ Moira::configureUnits()
+         case CPUModel::M68LC040:
+ 
+             mmu.setModel(MMUModel::M68040);
++            if (lc040SoftFpu) fpu.setModel(FPUModel::M68882);
+             break;
+ 
+         case CPUModel::M68040:
+diff --git a/Moira/Moira.h b/Moira/Moira.h
+index 462045c..435edf7 100644
+--- a/Moira/Moira.h
++++ b/Moira/Moira.h
+@@ -78,6 +78,10 @@ protected:
+     // The emulated coprocessor (if any)
+     CPModel cpModel = CPModel::NONE;
+ 
++    // Host opt-in for software floating point on an LC040.
++    bool lc040SoftFpu = false;
++    void setLC040SoftFpu(bool enabled);
++
+     // Instruction set used by the disassembler
+     CPUModel dasmModel = CPUModel::M68000;
+     
+diff --git a/Moira/MoiraInfo_cpp.h b/Moira/MoiraInfo_cpp.h
+index 649ebd7..25ed054 100644
+--- a/Moira/MoiraInfo_cpp.h
++++ b/Moira/MoiraInfo_cpp.h
+@@ -23,7 +23,8 @@ Moira::hasMMU() const
+ bool
+ Moira::hasFPU() const
+ {
+-    return hasInternalFPU() || hasExternalFPU();
++    return hasInternalFPU() || hasExternalFPU() ||
++           (cpuModel == CPUModel::M68LC040 && lc040SoftFpu);
+ }
+ 
+ bool
+diff --git a/Moira/MoiraInit_cpp.h b/Moira/MoiraInit_cpp.h
+index 7840eb4..9ee70b0 100644
+--- a/Moira/MoiraInit_cpp.h
++++ b/Moira/MoiraInit_cpp.h
+@@ -2105,9 +2105,11 @@ Moira::createJumpTable12(CPUModel model, bool regExec, bool regDasm)
+      * their line F handlers. The condition only depends on the CPU model
+      * (which is the emulated model or the disassembler model, depending on the
+      * pass) and the selected coprocessor. The jump table is rebuilt whenever
+-     * the selection changes (see setCPModel).
++     * the selection changes. Hosts may also opt into software floating
++     * point for the LC040 by using the 68882 implementation.
+      */
+-    if (model == CPUModel::M68040 || (moira::hasCPI(model) && cpModel != CPModel::NONE)) {
++    if (model == CPUModel::M68040 || (moira::hasCPI(model) && cpModel != CPModel::NONE) ||
++        (model == CPUModel::M68LC040 && lc040SoftFpu)) {
+ 
+         opcode = parse("1111 0010 100- ----");
+         ___________XXXXX(opcode, Instr::FBcc, Mode::IP, Word, FBcc, CIMS)
+-- 
+2.54.0 (Apple Git-157)
+

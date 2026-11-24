@@ -1,0 +1,68 @@
+From 6f593dae20d0ea665f7e6ceca92360c54c28b07b Mon Sep 17 00:00:00 2001
+From: VERHILLE Arnaud <gist974@gmail.com>
+Date: Tue, 24 Nov 2026 08:05:14 +0400
+Subject: [PATCH] Restore 68000 divide overflow flags and signed timing in
+ DEFAULT mode
+
+---
+ Moira/MoiraALU_cpp.h | 23 ++++++++++++++++++++---
+ 1 file changed, 20 insertions(+), 3 deletions(-)
+
+diff --git a/Moira/MoiraALU_cpp.h b/Moira/MoiraALU_cpp.h
+index c792799..c79cf49 100644
+--- a/Moira/MoiraALU_cpp.h
++++ b/Moira/MoiraALU_cpp.h
+@@ -960,8 +960,14 @@ Moira::cyclesDiv(u32 op1, u16 op2) const
+         i16 divisor  = (i16)op2;
+         int mcycles  = (dividend < 0) ? 7 : 6;
+ 
+-        // Check if quotient is larger than 16 bit
+-        if (((dividend < 0 ? 0u - (u32)dividend : (u32)dividend) >> 16) >= (u32)abs(divisor)) {
++        const u32 magnitude = dividend < 0 ? 0u - u32(dividend) : u32(dividend);
++        u32 aquot = magnitude / u32(abs(divisor));
++        u32 limit = 0xffff;
++        if constexpr (compat == Compatibility::DEFAULT) {
++            // The signed-overflow path exits at 16 or 18 clocks.
++            limit = (dividend < 0) != (divisor < 0) ? 0x8000 : 0x7fff;
++        }
++        if (aquot > limit) {
+ 
+             result = (mcycles + 2) * 2;
+ 
+@@ -973,7 +979,6 @@ Moira::cyclesDiv(u32 op1, u16 op2) const
+                 mcycles += (dividend < 0) ? 1 : -1;
+             }
+ 
+-            u32 aquot = abs(dividend) / abs(divisor);
+             for (int i = 0; i < 15; i++) {
+                 if ( (i16)aquot >= 0) mcycles++;
+                 aquot <<= 1;
+@@ -1166,6 +1171,12 @@ Moira::setUndefinedCHK2(i32 lower, i32 upper, i32 value)
+ template <Core C, Size S> void
+ Moira::setUndefinedDIVU(u32 dividend, u16 divisor)
+ {
++    if constexpr (C == Core::C68000 && compat == Compatibility::DEFAULT) {
++        // The measured overflow leaves N and Z unchanged.
++        reg.sr.c = 0;
++        return;
++    }
++
+     // The 68040 sets V and clears C. N and Z stay unchanged.
+     if (cpuModel >= CPUModel::M68EC040) { reg.sr.c = 0; return; }
+ 
+@@ -1198,6 +1209,12 @@ Moira::setUndefinedDIVU(u32 dividend, u16 divisor)
+ template <Core C, Size S> void
+ Moira::setUndefinedDIVS(i32 dividend, i16 divisor)
+ {
++    if constexpr (C == Core::C68000 && compat == Compatibility::DEFAULT) {
++        // The measured overflow leaves N and Z unchanged.
++        reg.sr.c = 0;
++        return;
++    }
++
+     // The 68040 sets V and clears C. N and Z stay unchanged.
+     if (cpuModel >= CPUModel::M68EC040) { reg.sr.c = 0; return; }
+ 
+-- 
+2.54.0 (Apple Git-157)
+

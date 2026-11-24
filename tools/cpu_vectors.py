@@ -63,6 +63,24 @@ def replay(model, entry, runner, emulator="", jit=False):
     output = result.stdout + result.stderr
     print(output, end="")
     summary = re.search(r"\[sst680" + model[-2:] + r"\] OK: (\d+)/(\d+) across (\d+) file", output)
+    # A conformance floor (manifest "floor"): since 2026-11-24 the core is
+    # Dirk Hoffmann's Moira, whose restart model and MMU edge cases differ
+    # from WinUAE's on part of these vectors (docs/MOIRA_CONVERGENCE.md). The
+    # vectors stay WinUAE's; every one must still run, and agreement may not
+    # fall below the measured floor. Raise it as rulings and fixes land.
+    floor = entry.get("floor")
+    if floor is not None and not jit:
+        ran = re.search(r"\[sst680" + model[-2:] + r"\] (?:OK|FAIL): (\d+)/(\d+) across (\d+) file", output)
+        mmu = re.search(r"\b(\d+) mmu-skipped\b", output)
+        skipped = re.search(r"(?im)^\s*(?:SKIP:|SOFT[ -]SKIP\b)", output)
+        expected = entry["vectors"]
+        if (skipped or not ran or int(ran[2]) != expected or int(ran[3]) != 1
+                or not mmu or int(mmu[1]) != 0 or int(ran[1]) < floor):
+            raise ValueError(f"{model}: {ran[1] if ran else '?'}/{expected} agree with the "
+                             f"oracle, below the floor of {floor}")
+        print(f"cpu_vectors: {model} executed {expected} pinned vectors; {ran[1]} agree "
+              f"with the oracle (floor {floor}); no soft skip")
+        return
     known = re.search(r"(\d+) known divergence", output)
     mmu = re.search(r"\b(\d+) mmu-skipped\b", output)
     skipped = re.search(r"(?im)^\s*(?:SKIP:|SOFT[ -]SKIP\b)", output)

@@ -1621,9 +1621,9 @@ forms still replay. § 8 lists the admitted transactions and their refusals.
 > **The 68k seam below the backends is no longer 040-only, and the scope
 > box is now the only thing holding the line.** `pomJitProbeData` grew an
 > 030 branch (data-space fc, write-protect and owed-M-bit refusals,
-> `MoiraExecMMU_cpp.h:2413-2488`) and `pomJitReadData`/`pomJitWriteData`
+> `0139930a:extern/moira/Moira/MoiraExecMMU_cpp.h:2413-2488`) and `pomJitReadData`/`pomJitWriteData`
 > reach `mmuRead`/`mmuWrite` on an 030 instead of `mmu040Read`/`Write`
-> (`MoiraExecMMU_cpp.h:2728-2750`, `MoiraExecMMU_cpp.h:2755-2777`). `jit_lockstep_030_test` gives the family the
+> (`0139930a:extern/moira/Moira/MoiraExecMMU_cpp.h:2728-2750`, `0139930a:extern/moira/Moira/MoiraExecMMU_cpp.h:2755-2777`). `jit_lockstep_030_test` gives the family the
 > differential coverage it lacked. The emitters' side of the 030 contract
 > is lockstep-proved since 2026-08-18 — generated 030 code is reachable by
 > an explicit `POM68K_JIT_BACKEND=x64|a64`, no unsafe override — and since
@@ -1911,7 +1911,7 @@ are the safety argument for the whole path:
 * **no page-table walk, no U/M write-back** — `pomJitProbeData` only reads
   resident ATC entries, and refuses a write to a page not already marked
   modified, because that write owes the descriptor an M bit. The 68030
-  branch (`MoiraExecMMU_cpp.h:2475-2550`) probes DATA space, `fc = 5/1`,
+  branch (`0139930a:extern/moira/Moira/MoiraExecMMU_cpp.h:2475-2550`) probes DATA space, `fc = 5/1`,
   not the program space the code probe uses: the 030 ATC matches `fc`
   exactly, so probing the data side with the program-space `fc` would miss
   every entry and refuse everything — an engine that looks merely slow;

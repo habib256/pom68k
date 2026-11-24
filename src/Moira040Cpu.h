@@ -176,12 +176,12 @@ protected:
     // at all (architectural vector-11 format-$4 F-line — the silicon).
     void selectIdentity(bool lc040, bool bareFpu, bool mmu040Walk) {
         if (lc040) {
-            this->setModel(moira::Model::M68LC040);
-            this->setFPUModel(bareFpu ? moira::FPUModel::NONE
-                                      : moira::FPUModel::M68882);
+            this->setModel(moira::CPUModel::M68LC040);
+            this->setFPUModel(bareFpu ? MoiraFpu::NONE
+                                      : MoiraFpu::M68882);
         } else {
-            this->setModel(moira::Model::M68040);
-            this->setFPUModel(moira::FPUModel::M68040);
+            this->setModel(moira::CPUModel::M68040);
+            this->setFPUModel(MoiraFpu::M68040);
         }
         // Q8: walk-per-access comparison mode (disables the I/D ATC overlay).
         if (mmu040Walk) this->setMmu040AtcArmed(false);

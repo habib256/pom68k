@@ -469,8 +469,8 @@ static void testMscII() {
         MscCpu cpu(mem, jit::defaultResolvedConfig(),
                    pom68k::defaultCoreConfig().cpu, true);
         mem.setCpu(&cpu);
-        check(cpu.getModel() == moira::Model::M68LC040 &&
-              cpu.getFPUModel() == moira::FPUModel::NONE,
+        check(cpu.getModel() == moira::CPUModel::M68LC040 &&
+              cpu.getFPUModel() == MoiraFpu::NONE,
               "MSC II uses a bare 68LC040, even if a 030 FPU was requested");
         check(mem.read8(0x50F20002) == panel &&
               mem.screenHeight() == (panel == 4 ? 400 : 480),

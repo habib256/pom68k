@@ -204,7 +204,7 @@ void RbvMemory::reset() {
 
 void RbvMemory::busError() const {
     if (cpu_) cpu_->extBusError();
-    throw moira::MmuBusError{};
+    throw moira::BusError(0u);
 }
 
 int RbvMemory::iplLevel() const {

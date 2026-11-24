@@ -372,7 +372,7 @@ void V8Memory::busError() const {
     // Machine-less access (unit tests poking the map): open bus would be
     // silent — throw via the CPU when wired, else report loudly.
     if (cpu_) cpu_->extBusError();
-    throw moira::MmuBusError{};
+    throw moira::BusError(0u);
 }
 
 int V8Memory::iplLevel() const {

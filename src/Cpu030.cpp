@@ -22,8 +22,8 @@ Cpu030::Cpu030(V8Memory& mem, const jit::ResolvedConfig& jitConfig,
     // V8 machine on a 68020 (Apple HMMU part; the V8's $80FFFFFF decode
     // makes the HMMU translation a no-op for us). FPU socket empty by
     // default on both (maclc.cpp:325-330 config port).
-    setModel(as020 ? moira::Model::M68020 : moira::Model::M68030);
-    setFPUModel(withFpu ? moira::FPUModel::M68882 : moira::FPUModel::NONE);
+    setModel(as020 ? moira::CPUModel::M68020 : moira::CPUModel::M68030);
+    setFPUModel(withFpu ? MoiraFpu::M68882 : MoiraFpu::NONE);
     if (cpuConfig.cacheBoost) cacheBoost_ = *cpuConfig.cacheBoost;
     if (cpuConfig.icacheMiss) icacheMiss_ = *cpuConfig.icacheMiss;
     boost_ = cacheBoost_;
@@ -197,7 +197,7 @@ void Cpu030::dumpFpuLog(moira::u16 vector) {
                  getFPCR(), getFPSR(), getFPIAR());
     for (int n = 0; n < 8; n++) {
         moira::u32 w[3]; getFP(n, w);
-        std::fprintf(f, "FP%d=%04X %08X%08X\n", n, w[0] & 0xFFFF, w[1], w[2]);
+        std::fprintf(f, "FP%d=%04X %08X%08X\n", n, w[0] >> 16, w[1], w[2]);
     }
     char da[128];
     std::fprintf(f, "--- A5 (CurrentA5) write history (oldest first): pc: from -> to ---\n");
@@ -358,22 +358,26 @@ void Cpu030::emitPeriphTrace(int phase, int delivered, moira::i64 target) {
 // HwCfgFlags. A bus fault lets the ROM clear the flag itself.
 void Cpu030::checkCoprocessorBus(moira::u32 addr) const {
     if ((addr & 0xFFFFE000u) == 0x00022000u &&
-        getFPUModel() == moira::FPUModel::NONE && readFC() == 7)
+        getFPUModel() == MoiraFpu::NONE && readFC() == 7)
         const_cast<Cpu030*>(this)->extBusError();
 }
 moira::u8 Cpu030::read8(moira::u32 addr) const {
+    pomBusAddr = addr;
     checkCoprocessorBus(addr);
     return mem_.read8(addr);
 }
 moira::u16 Cpu030::read16(moira::u32 addr) const {
+    pomBusAddr = addr;
     checkCoprocessorBus(addr);
     return mem_.read16(addr);
 }
 void Cpu030::write8(moira::u32 addr, moira::u8 value) const {
+    pomBusAddr = addr;
     checkCoprocessorBus(addr);
     mem_.write8(addr, value);
 }
 void Cpu030::write16(moira::u32 addr, moira::u16 value) const {
+    pomBusAddr = addr;
     checkCoprocessorBus(addr);
     mem_.write16(addr, value);
 }

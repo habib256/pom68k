@@ -1,0 +1,36 @@
+From df5709cd78727856f757274d0c9125cfaddfcf08 Mon Sep 17 00:00:00 2001
+From: VERHILLE Arnaud <gist974@gmail.com>
+Date: Tue, 24 Nov 2026 01:26:03 +0400
+Subject: [PATCH 17/17] 68040: the fault address is the first byte of the
+ faulted access
+
+MC68040UM 8.4.6.4: "For a misaligned access that faults, the FA field
+contains the address of the first byte of the transfer, regardless of which
+of the two or three bus transfers for the misaligned access was faulted",
+and WB3A tells a handler where to complete the write-back (8.4.6.5). A bus
+error raised by the host on the second word of a long word stacked the
+address of that word, so a handler completing WB3 wrote the long word two
+bytes too far.
+---
+ Moira/MoiraDataflow_cpp.h | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/Moira/MoiraDataflow_cpp.h b/Moira/MoiraDataflow_cpp.h
+index f51be21..db93ec8 100644
+--- a/Moira/MoiraDataflow_cpp.h
++++ b/Moira/MoiraDataflow_cpp.h
+@@ -1253,6 +1253,11 @@ Moira::completeBusError(BusError &e, u32 addr)
+         e.stackFrame.ssw = size | (fc & 7);
+         if (!W) e.stackFrame.ssw |= SSW040::RW;
+ 
++        // The fault address is the first byte of the access, whichever of its
++        // bus transfers failed (MC68040UM 8.4.6.4); WB3A takes it too, so that
++        // a handler completing the write-back writes the whole operand there.
++        e.stackFrame.addr = addr & addrMask<Core::C68020>();
++
+     } else {
+ 
+         // On the 68020 and 68030, a fault in program space belongs to the
+-- 
+2.54.0 (Apple Git-157)
+

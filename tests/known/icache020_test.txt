@@ -1,0 +1,19 @@
+# Known divergences of icache020_test on Dirk Hoffmann's Moira (2026-11-24).
+# Format: <count><TAB><failure line without its file:line>. Gate:
+# tools/known_failures.py. A failure outside this list fails the gate; lower
+# a count when a failure disappears. Every heading says why its rows fail.
+
+# Cycle totals graded [F] in the test (the fork's model, no bus capture) and
+# the refill of an exception handler; the manual loops pass (patches 2, 3).
+1	68020 loop-off: 122 cycles, expected 120
+1	68020 loop-on: 102 cycles, expected 100
+1	68020 loop-port16: 126 cycles, expected 120
+1	68020 loop-port8: 126 cycles, expected 120
+1	68020 refills: second call 0 reads of the cached code, 3 of the cached handler, expected 0
+1	68020 self-modifying: 338 cycles, expected 332
+1	68EC020 loop-off: 122 cycles, expected 120
+1	68EC020 loop-on: 102 cycles, expected 100
+1	68EC020 loop-port16: 126 cycles, expected 120
+1	68EC020 loop-port8: 126 cycles, expected 120
+1	68EC020 refills: second call 0 reads of the cached code, 3 of the cached handler, expected 0
+1	68EC020 self-modifying: 338 cycles, expected 332

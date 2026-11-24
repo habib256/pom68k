@@ -1,0 +1,175 @@
+From 7ea0739387931be29e1ee2c8721fb3d8a47b718e Mon Sep 17 00:00:00 2001
+From: VERHILLE Arnaud <gist974@gmail.com>
+Date: Mon, 23 Nov 2026 21:31:03 +0400
+Subject: [PATCH 06/17] 68020/68030: do not rerun a data cycle a handler has
+ completed
+
+MC68030UM 8.2.2 lets a bus error handler complete a faulted data cycle in
+software: it fills the data input buffer (read) or performs the write, then
+clears DF in the special status word. With DF clear, RTE does not run the
+cycle again; it "assumes that the data input buffer value on the stack is
+valid for a read or that the data has been correctly written to memory for
+a write" (8.2.1; MC68020UM 6.2.1). Moira restarts the faulted instruction,
+so it ran the cycle again and faulted again forever: Mac OS's slot-probe
+recovery does exactly this.
+
+Without giving up restart, RTE of a format $A or $B frame whose DF is clear
+now records the completed cycle (fault address, direction, data input
+buffer), and the restarted instruction gets it from there instead of from
+the bus. A new bus error cancels it. A handler that sets up a read and
+clears DF now sees the instruction complete with its data.
+
+Measured on a Mac LC II booting a System 7.5 volume: without this change
+the System's recovery routine ($1313E-$13170) was entered 28.8 million
+times and the boot stopped; with it, 524 times, and the boot goes on.
+---
+ Moira/Moira.cpp             |  1 +
+ Moira/Moira.h               |  3 +++
+ Moira/MoiraDataflow_cpp.h   | 16 ++++++++++++++++
+ Moira/MoiraExceptions_cpp.h |  3 +++
+ Moira/MoiraExec_cpp.h       | 26 ++++++++++++++++++++++++++
+ Moira/MoiraTypes.h          | 10 ++++++++++
+ 6 files changed, 59 insertions(+)
+
+diff --git a/Moira/Moira.cpp b/Moira/Moira.cpp
+index 94b387b..b9ca9bc 100644
+--- a/Moira/Moira.cpp
++++ b/Moira/Moira.cpp
+@@ -155,6 +155,7 @@ Moira::reset()
+ {
+     mmu.reset();
+     fpu.reset();
++    completed.armed = false;
+ 
+     switch (cpuModel) {
+ 
+diff --git a/Moira/Moira.h b/Moira/Moira.h
+index 15dd078..462045c 100644
+--- a/Moira/Moira.h
++++ b/Moira/Moira.h
+@@ -157,6 +157,9 @@ protected:
+     // Restart information of a faulted instruction (68020+)
+     Restart restart {};
+ 
++    // A data cycle that a bus error handler has completed (68020, 68030)
++    CompletedCycle completed {};
++
+     
+     //
+     // Lookup tables
+diff --git a/Moira/MoiraDataflow_cpp.h b/Moira/MoiraDataflow_cpp.h
+index 8197ffe..1f9686f 100644
+--- a/Moira/MoiraDataflow_cpp.h
++++ b/Moira/MoiraDataflow_cpp.h
+@@ -781,6 +781,14 @@ try
+ {
+     if constexpr (MOIRA_REPORT_BUS_ACCESS) willAccessBus(addr, S, false);
+ 
++    // A read that a bus error handler has completed is served from its frame
++    if constexpr (C == Core::C68020) {
++        if (completed.armed && !completed.write && completed.addr == addr && completed.pc == reg.pc0) {
++            completed.armed = false;
++            return CLIP<S>(completed.data);
++        }
++    }
++
+     u32 result;
+ 
+     // Derive the physical address
+@@ -989,6 +997,14 @@ try
+ {
+     if constexpr (MOIRA_REPORT_BUS_ACCESS) willAccessBus(addr, S, true);
+ 
++    // A write that a bus error handler has completed is not repeated
++    if constexpr (C == Core::C68020) {
++        if (completed.armed && completed.write && completed.addr == addr && completed.pc == reg.pc0) {
++            completed.armed = false;
++            return;
++        }
++    }
++
+     // Derive the physical address
+     addr = translate<C, true, S>(addr, getFC(), ci);
+ 
+diff --git a/Moira/MoiraExceptions_cpp.h b/Moira/MoiraExceptions_cpp.h
+index a507f5b..6c3cb87 100644
+--- a/Moira/MoiraExceptions_cpp.h
++++ b/Moira/MoiraExceptions_cpp.h
+@@ -442,6 +442,9 @@ Moira::execAddressError(StackFrame frame, int delay)
+ template <Core C> void
+ Moira::execBusError(StackFrame frame, int delay, const Registers *saved)
+ {
++    // A new fault cancels a cycle completed by the previous handler
++    completed.armed = false;
++
+     u16 status = getSR();
+     // A completed fault carries its special status word (DF or FB/RB, RW, size, FC)
+     u16 ssw = frame.ssw ? frame.ssw : u16(0x60 | (getFC() & 7));
+diff --git a/Moira/MoiraExec_cpp.h b/Moira/MoiraExec_cpp.h
+index 36f7359..67436cc 100644
+--- a/Moira/MoiraExec_cpp.h
++++ b/Moira/MoiraExec_cpp.h
+@@ -5091,6 +5091,29 @@ Moira::readRteFrame68020(u16 &newsr, u32 &newpc)
+             case 0b1011: size = 92; break;  // Long bus fault frame
+         }
+ 
++        /* A handler that has completed the faulted data cycle itself clears DF
++         * in the special status word. The processor then does not run the cycle
++         * again: it uses the data input buffer for a read and assumes that a
++         * write has been done (MC68020UM 6.2.1, MC68030UM 8.2.1 and 8.2.2).
++         * Moira restarts the instruction instead of continuing it, so the cycle
++         * is recorded here and served without a bus cycle when the restarted
++         * instruction issues it again.
++         */
++        if ((format == 0b1010 || format == 0b1011) && cpuModel < CPUModel::M68EC040) {
++
++            u16 ssw = (u16)read<C, AddrSpace::DATA, Word>(frameBase + 0xA);
++            bool data = !(ssw & (SSW030::FC | SSW030::FB | SSW030::RM | SSW030::DF));
++
++            completed.armed = false;
++            if (data) {
++
++                completed.write = !(ssw & SSW030::RW);
++                completed.addr = read<C, AddrSpace::DATA, Long>(frameBase + 0x10);
++                completed.data = completed.write ? 0 : read<C, AddrSpace::DATA, Long>(frameBase + 0x2C);
++                completed.armed = format == 0b1011 || completed.write;
++            }
++        }
++
+         // Like UAE, skip the rest of the frame without reading it
+         reg.sp = frameBase + size;
+ 
+@@ -5111,6 +5134,9 @@ Moira::readRteFrame68020(u16 &newsr, u32 &newpc)
+         setSR(newsr);
+     }
+ 
++    // The completed cycle belongs to the instruction RTE returns to
++    if (completed.armed) completed.pc = newpc;
++
+     // Roll back the registers that the restarted instruction has modified
+     if (rollback) {
+ 
+diff --git a/Moira/MoiraTypes.h b/Moira/MoiraTypes.h
+index 1ee1c87..e1750ba 100644
+--- a/Moira/MoiraTypes.h
++++ b/Moira/MoiraTypes.h
+@@ -508,6 +508,16 @@ struct Restart {
+     u32 entryUsp;               ///< User stack pointer (while in supervisor mode)
+ };
+ 
++/// A data cycle that a bus error handler has completed in software (68020, 68030)
++struct CompletedCycle {
++
++    bool armed;
++    u32 pc;                     ///< Instruction that is restarted by RTE
++    u32 addr;                   ///< Fault address of the completed cycle
++    bool write;                 ///< Direction of the completed cycle
++    u32 data;                   ///< Data input buffer of a completed read
++};
++
+ /// Bookkeeping of the cycle penalty (68020 only)
+ struct CycleBudget {
+ 
+-- 
+2.54.0 (Apple Git-157)
+

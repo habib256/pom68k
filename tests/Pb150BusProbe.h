@@ -18,7 +18,7 @@ static void testPb150Bus() {
     check(cpu.machineClock() - duringMotor == 100,
           "JeDI floppy gate restores throughput without a machine-clock jump");
     check(mem.read8(0x50F20001) == 4 && mem.screenHeight() == 480 &&
-          cpu.getFPUModel() == moira::FPUModel::NONE,
+          cpu.getFPUModel() == MoiraFpu::NONE,
           "JeDI selects panel 4, 480 lines and no coprocessor");
     mem.write8(0x50F20004, 0x21);
     mem.write8(0x60000000 + 479 * 160, 0x1B);

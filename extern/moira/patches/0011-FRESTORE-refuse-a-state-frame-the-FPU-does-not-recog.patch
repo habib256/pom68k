@@ -1,0 +1,63 @@
+From 1d0c229c9215a2cd38946c2c1ca1309a8dc76d66 Mon Sep 17 00:00:00 2001
+From: VERHILLE Arnaud <gist974@gmail.com>
+Date: Tue, 24 Nov 2026 00:54:28 +0400
+Subject: [PATCH 11/17] FRESTORE: refuse a state frame the FPU does not
+ recognize
+
+MC68881UM 6.2.8: when the format word of FRESTORE is not valid, the
+processor takes a pre-instruction exception using the format error vector.
+FRESTORE accepted any non-null format word. It now accepts the null frame
+and the FPU's own frames only (version $41 on the 68040, $1F on the 6888x,
+with an idle, unimplemented instruction or busy frame size) and takes a
+format error otherwise.
+
+The 68040 busy frame is 50 words (MC68040UM 9.8, Figure 9-10 a: size $60);
+stateFrameSize() gave 92 bytes instead of 96.
+---
+ Moira/FPU/FPU.cpp        |  3 ++-
+ Moira/MoiraExecFPU_cpp.h | 15 +++++++++++++++
+ 2 files changed, 17 insertions(+), 1 deletion(-)
+
+diff --git a/Moira/FPU/FPU.cpp b/Moira/FPU/FPU.cpp
+index 699521a..b119c73 100644
+--- a/Moira/FPU/FPU.cpp
++++ b/Moira/FPU/FPU.cpp
+@@ -920,7 +920,8 @@ FPU::stateFrameSize(FpuFrameType type) const
+         case FpuFrameType::BUSY:
+ 
+             switch (model) {
+-                case FPUModel::M68040:     return 92;
++                // 50 words including the format word (MC68040UM 9.8, Figure 9-10 a)
++                case FPUModel::M68040:     return 96;
+                 case FPUModel::M68881:     return 180;
+                 case FPUModel::M68882:     return 212;
+             }
+diff --git a/Moira/MoiraExecFPU_cpp.h b/Moira/MoiraExecFPU_cpp.h
+index 63eb2de..f418e67 100644
+--- a/Moira/MoiraExecFPU_cpp.h
++++ b/Moira/MoiraExecFPU_cpp.h
+@@ -645,6 +645,21 @@ Moira::execFRestore(u16 opcode)
+     u32 fmt = readM<C, M, Long>(ea);
+     u32 version = fmt >> 24;
+ 
++    /* A format word the FPU does not recognize is refused: the processor
++     * takes a format error (MC68881UM 6.2.8). Besides the null frame, the
++     * FPU accepts its own frames: version $41 on the 68040, $1F on the 6888x,
++     * with the size of an idle, unimplemented instruction or busy frame.
++     */
++    if (version != 0) {
++
++        u32 own = hasInternalFPU() ? 0x41 : 0x1F;
++        if (version != own || fpu.typeOfFrame(fmt) == FpuFrameType::INVALID) {
++
++            execException(M68kException::FORMAT_ERROR);
++            return;
++        }
++    }
++
+     if (version == 0) {
+ 
+         // A NULL frame resets the FPU
+-- 
+2.54.0 (Apple Git-157)
+

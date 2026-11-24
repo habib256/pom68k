@@ -8,7 +8,7 @@
 // A physical read of a logical global can therefore return desktop pixels.
 // This adapter resolves the mapping before the caller reads physical RAM.
 //
-// The core's MoiraMmu030Walk.h owns descriptor geometry and bounds.
+// Mmu030Walk.h owns descriptor geometry and bounds.
 // Inspection selects its read-only mode and supplies physical peek8 reads;
 // CPU accesses supply live bus reads and descriptor-history writes. No
 // inspection access reaches the CPU's ATC or the live memory bus.
@@ -18,7 +18,7 @@
 
 #pragma once
 #include <cstdint>
-#include "MoiraMmu030Walk.h"
+#include "Mmu030Walk.h"
 
 namespace mmu030peek {
 
@@ -44,7 +44,7 @@ inline bool translate(uint32_t tc, uint64_t crp, uint64_t srp,
     uint16_t status = 0;
     bool ci = false;
     int count = 0;
-    moira::mmu030::tableWalk<false>(tc, crp, srp, laddr, uint8_t(fc), false, 0,
+    pom68k::mmu030::tableWalk<false>(tc, crp, srp, laddr, uint8_t(fc), false, 0,
         peek32, [](uint32_t, uint32_t) {}, page, ci, status, descriptor, count);
     if (status & 0xC400) return false;              // B | L | I, not WP/S
     const uint32_t pageMask = (uint32_t(1) << ((tc >> 20) & 15)) - 1;

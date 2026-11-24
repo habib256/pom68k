@@ -228,7 +228,12 @@ int main() {
                 cpu.runCycles(kFrameCycles);
         },
         [&] { return mem.scsi().commands; },
-        screen.width, screen.height, /*menuRows=*/20);
+        screen.width, screen.height, /*menuRows=*/20,
+        // A 600-frame window (10 s of machine time): on Dirk Hoffmann's core
+        // the Finder spends longer than 2 s computing, screen and disk still,
+        // before it draws the desktop picture and icons (2026-11-24; the
+        // cacheBoost requalification in TODO.md may shorten it again).
+        /*tries=*/8, /*framesBetween=*/600);
     const bool pinOk = pixelpin::check(getenv("POM68K_Q630_ROM")
                                            ? "q630_boot_etalon/lc580"
                                            : "q630_boot_etalon/q630", pin);

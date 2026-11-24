@@ -20,61 +20,58 @@ programme moteur se cite `§ Moteur › Socle`, `› Convergence`,
 `› JIT justesse`, `› JIT performance`, `› Surface`. Les numéros bougent à
 chaque réorganisation.
 
-## Objectif principal — Moira CPU/PMMU/JIT prêt à migrer vers NeoST
+## Objectif principal — POM68K sur la Moira de Dirk, puis le JIT par-dessus
 
-Préparer le cœur Moira de POM68K — CPU 68000 à 68040, PMMU, FPU, et son
-JIT — pour qu'il migre vers NeoST **dans un état propre**, et pour pouvoir
-en présenter une version à Dirk Hoffmann, l'auteur de Moira. Tout le reste
-de ce fichier passe après, la section « Vitesse » ci-dessous comprise :
-une optimisation côté hôte POM68K ne rapproche pas de NeoST.
+Depuis le 2026-11-23 le cœur est la Moira de Dirk Hoffmann (`master`, commit
+dans `extern/moira/patches/BASE`) plus une file de correctifs
+(`extern/moira/patches/`, `POM68K_VENDOR.md`). L'interpréteur seul tourne
+(`POM68K_JIT=OFF` par défaut) : **tout doit être vert avant de reconstruire
+le JIT** (décision du propriétaire, 2026-11-23).
 
-**Où on en est (2026-11-22).**
-
-- **Le 68000 est prêt à reprendre** : 1 000 058 vecteurs SingleStepTests
-  tenus cycle de bus par cycle de bus, frames /BERR externes, les trois
-  hooks que NeoST attend ; le contrat de surface
-  (`extern/moira/POM68K_SURFACE.md`) dit ce que l'hôte doit au cœur.
-- **Le cœur est présentable** : chaque commentaire `POM68K` porte son grade
-  ou se déclare `(host)` (cliquet `core_grades.py` à 0), cœur et
-  `NEOST_VENDOR.md` en anglais, couture JIT séparable (`MOIRA_ENABLE_JIT=0`),
-  les « unverified » du contrat sont des inconnues de silicium étiquetées
-  ou côté NeoST. D27, D28 et D29 sont tranchés par les manuels.
-- **Restent** : D25 et le An de D26 (un vrai 68040) ; le JIT n'a jamais
-  tourné hors d'un Macintosh (`codeSpan`/`jitGuard_` fournis par nos
-  cartes) ; sur AArch64, le tier 030 des machines et le delta a64 de +6 %.
+**Où on en est (2026-11-24, nuit).** 17 correctifs dans la file, chacun
+reproduit sur sa branche et cité dans le manuel verrouillé
+(`tools/dirk_moira/findings_repro.cpp`). Les machines démarrent au Finder,
+les Quadra compris (FSAVE UNIMP, correctif 5). Les tests CPU écrits pour le
+fork tournent contre une liste de divergences connues classées
+(`tests/known/`, `tools/known_failures.py`) ; les vecteurs publics contre un
+plancher d'accord avec WinUAE (`tests/cpu_vectors/manifest.json`, `floor`).
 
 **Prochaines actions, dans l'ordre :**
 
-1. **Dirk réécrit Moira sur sa branche `FPU`** (MMU, FPU MIT et caches à
-   lui, depuis le 2026-11-02) : ce qui l'aide n'est plus un patch sur
-   `master` mais nos vecteurs et nos jugements rejoués sur *sa* branche
-   (`tools/dirk_moira/`, `CHANGELOG` 2026-11-22 (huitième)). À faire :
-   trancher l'AEXC des conditionnels FPU par le manuel 68881/68882 ;
-   relancer `sst_dirk` à chaque avancée de sa branche. Message posté dans
-   la discussion Moira #36 le 2026-11-22 (trois défauts, deux questions) :
-   suivre sa réponse. Prochains candidats : `docs/MOIRA_CONVERGENCE.md`
-   § *Candidates to report first*, chacun relu dans le manuel et reproduit
-   sur sa branche avant envoi.
-   L'archive `moira-pom68k-20261122-228e63a5` reste la référence publiée ;
-   la recouper dès qu'un commit touche `extern/moira`, `src/jit` ou un
-   gate exporté.
-2. **La base est la Moira de Dirk ; les CPU 68K de POM68K s'ajoutent
-   par-dessus** (décision du propriétaire, 2026-11-22). Sa branche `FPU`,
-   corrigée (nos constats remontés) et améliorée, devient le socle ;
-   POM68K n'y ajoute que ce que les Macintosh exigent, chaque ajout
-   justifié par la ROM ou le logiciel Mac qui en a besoin
-   (`POM68K_VENDOR.md`). À préparer : la liste de ce que sa branche couvre
-   déjà, et de ce qui resterait à ajouter par-dessus pour les cartes Mac.
-3. **D30** (`› Justesse 68040`) : relire d'abord MC68040UM-1993 §9.6.2 et
-   la Table 8-4 — une exception pré-instruction y est prise *avant*
-   l'instruction fautive elle-même (format $0, redémarrage), pas postée
-   jusqu'à l'instruction FPU suivante comme l'item le dit.
-4. **Autres restes décidables ici** (`› Justesse 68030`, `› Justesse 68040`) :
-   TRAPV en fin de page, 68020 nu transparent à une faute, mots d'état d'un
-   MOVES indexé, report du pipe de préfetch, ordre de lecture de FMOVEM.
-5. **Jambe AArch64** sur l'autre machine (pas sur cet hôte x86-64).
-6. **Premier portage réel vers NeoST**, qui dira ce que le contrat a oublié
-   (demande l'arbre de NeoST).
+1. **Proposer la file à Dirk en petites PR contre `master`** (accord dans la
+   discussion #36, 2026-11-23), une par correctif, chacune avec un test
+   `Tests/Unit` tiré du reproducteur. Lire ses commits avant chacune : il
+   corrige en parallèle.
+2. **Défaut ouvert prioritaire — faute d'écriture 68040** : le 68040 termine
+   une écriture fautive après l'instruction (le gestionnaire vide WB3,
+   MC68040UM §8.4.6, §8.4.6.5) ; le cœur de Dirk relance l'instruction, qui
+   applique deux fois un lecture-modification-écriture une fois le
+   write-back fait (388 lignes de `tests/known/fault_transparency_test.txt`).
+   Vérifier si la mémoire virtuelle de Mac OS sur Quadra y passe.
+3. **Défauts ouverts suivants** : faute de pipe d'instruction signalée à
+   l'usage de l'étage (MC68030UM §8.2.1 FB/FC ; 38 lignes) ; bit RM du SSW
+   pour TAS/CAS/CAS2 (MC68020UM §6.2.1) ; continuation après RTE quand DF
+   est effacé au-delà du cycle terminé (sur la liste de Dirk après sa
+   version).
+4. **Revoir une à une les divergences connues** : `moira_rules_test` (395,
+   non classées cellule par cellule), lectures WinUAE de `berr030_test`,
+   exclusions nommées de `fpu040_test` (type non supporté, vecteur 55 —
+   sur la liste de Dirk), `fpu_sanity` (temps FPU MC68882UM Table 8-3,
+   68882 interrompu en cours d'instruction), `moira_state_test`.
+5. **Gates en attente** (`cmake/pom68k_pending_gates.tsv`) : décider du
+   modèle de cache 68040 au-dessus du cœur (`cache040_test`, avant le JIT) ;
+   réécrire `mmu040_atc_test` sur son MMU040 ; CALLM/RTM (talons chez lui,
+   inutilisés par Mac OS).
+6. **Requalifier le facteur `cacheBoost` (×4)** : il compensait le modèle
+   sans cache du fork ; le cœur de Dirk compte les cycles 020/030 avec son
+   cache (correctifs 2 et 3). Mesurer le temps CPU au Finder par carte avant
+   de ré-épingler d'autres écrans.
+7. **Remplacer `src/Mmu030Walk.h` par `MMU::peek`** (Dirk, `5fde078`),
+   en gardant la lecture des pages superviseur pour le débogueur.
+8. **Reconstruire le JIT** sur ce cœur (couture `PomJitLayout`,
+   `pomJitSync`, fenêtres, ATC 040, backends a64/x64), puis ses admissions
+   (`POM68K_JIT.md`) ; remettre `POM68K_JIT` à `ON` et régénérer
+   `cmake/pom68k_jit_gates.tsv`.
 
 **Dépôt — purge faite le 2026-11-21, reste GitHub.** Le journal disque
 `lc580_ide_boot.img.pomundo` (blocs d'une image système privée), poussé

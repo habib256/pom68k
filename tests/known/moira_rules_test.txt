@@ -1,0 +1,401 @@
+# Known divergences of moira_rules_test on Dirk Hoffmann's Moira (2026-11-24).
+# Format: <count><TAB><failure line without its file:line>. Gate:
+# tools/known_failures.py. A failure outside this list fails the gate; lower
+# a count when a failure disappears. Every heading says why its rows fail.
+
+# The fork's rule cells, not yet reviewed one by one on Dirk's core: frame
+# contents of its continuation model, WinUAE readings, PTEST/MMUSR details,
+# timing, and possible defects. Each failure stays visible here until it is
+# ruled or fixed (TODO.md, CPU tests on Dirk's core).
+1	68000 DIVS $80000000/$0001 entry CCR=00: CCR=0A want 02
+1	68000 DIVS $80000000/$0001 entry CCR=1F: CCR=1A want 1E
+1	68000 DIVS $80000000/$7FFF entry CCR=00: CCR=0A want 02
+1	68000 DIVS $80000000/$7FFF entry CCR=1F: CCR=1A want 1E
+1	68000 DIVS $80000000/$8000 entry CCR=00: CCR=0A want 02
+1	68000 DIVS $80000000/$8000 entry CCR=1F: CCR=1A want 1E
+1	68000 DIVS $80000000/$FFFF entry CCR=00: CCR=0A want 02
+1	68000 DIVS $80000000/$FFFF entry CCR=1F: CCR=1A want 1E
+1	68000 STOP with a pending interrupt: handler at +48, want +52 (STOP+8 plus the 44-cycle exception); PC0=00002000
+1	68000 reset: 40 cycles against the 68010's 40 (want +2)
+1	68010 DIVS $80000000/$0001 entry CCR=00: CCR=0A want 02
+1	68010 DIVS $80000000/$0001 entry CCR=1F: CCR=1A want 1E
+1	68010 DIVS $80000000/$7FFF entry CCR=00: CCR=0A want 02
+1	68010 DIVS $80000000/$7FFF entry CCR=1F: CCR=1A want 1E
+1	68010 DIVS $80000000/$8000 entry CCR=00: CCR=0A want 02
+1	68010 DIVS $80000000/$8000 entry CCR=1F: CCR=1A want 1E
+1	68010 DIVS $80000000/$FFFF entry CCR=00: CCR=0A want 02
+1	68010 DIVS $80000000/$FFFF entry CCR=1F: CCR=1A want 1E
+1	68010: MOVEM (d16,PC) read at 001016 FC=5, want 6
+1	68020 ANDI to SR: interrupt returns to 00001004, want 00001008
+1	68020 BFCHG (A0){3:30}: bus "w0 w2 W0 W2 b4 B4" (want "w0 w2 b4 W0 W2 B4"), memory ok, D1 DEADBEEF, PC0 00001004
+1	68020 BFCHG (A0){4:32} with /BERR on the fifth byte: bus "w0 w2 W0 W2 b4", first four bytes WRITTEN, 1 trip(s)
+1	68020 BFEXTU (A0){0:8},D1: bus "w0 w2" (want "b0"), memory ok, D1 000000A5, PC0 00001004
+1	68020 BFEXTU (A0){4:16},D1: bus "w0 w2" (want "w0 b2"), memory ok, D1 00002345, PC0 00001004
+1	68020 BFEXTU (A0){4:8},D1: bus "w0 w2" (want "w0"), memory ok, D1 00000023, PC0 00001004
+1	68020 BFINS D1,(A0){12:4}: bus "w1 w3 W1 W3" (want "b1 B1"), memory ok, D1 0000000A, PC0 00001004
+1	68020 CAS2.W D0:D0 with a failing comparison: D0=11115678 (want 11111234)
+1	68020 MOVE to SR: interrupt returns to 00001004, want 00001008
+1	68020 RTE: interrupt returns to 00001100, want 00001104
+1	68020: MOVEM (d16,PC) read at 001016 FC=5, want 6
+1	68030 /BERR on a descriptor fetch: PC0=00002000 (want the bus error handler 00002000), fault address 00080000 (want the logical 40000000)
+1	68030 ANDI #$FFFF,SR with the second refill word on a /BERR hole: PC0=00002000 (want 00001004), 0 fault(s) taken (want 0)
+1	68030 ANDI to SR: interrupt returns to 00001004, want 00001008
+1	68030 ASL (A0) of $C001, store fault: format A008 (want A008), data output buffer 00008002 (want 00018002)
+1	68030 BFCHG (A0){3:30}: bus "w0 w2 W0 W2 b4 B4" (want "w0 w2 b4 W0 W2 B4"), memory ok, D1 DEADBEEF, PC0 00001004
+1	68030 BFCHG (A0){4:32} with /BERR on the fifth byte: bus "w0 w2 W0 W2 b4", first four bytes WRITTEN, 1 trip(s)
+1	68030 BFEXTU (A0){0:8},D1: bus "w0 w2" (want "b0"), memory ok, D1 000000A5, PC0 00001004
+1	68030 BFEXTU (A0){4:16},D1: bus "w0 w2" (want "w0 b2"), memory ok, D1 00002345, PC0 00001004
+1	68030 BFEXTU (A0){4:8},D1: bus "w0 w2" (want "w0"), memory ok, D1 00000023, PC0 00001004
+1	68030 BFINS D1,(A0){12:4}: bus "w1 w3 W1 W3" (want "b1 B1"), memory ok, D1 0000000A, PC0 00001004
+1	68030 BSR.W push fault: format A008, stacked PC 00001000 (want 00001000), USP=00080004 (want 00080004), 68030 log 00000000 idx byte 00 (want 00000040, 12)
+1	68030 CAS.W, compare failing: M on the operand pages 0/0 (want 1/0), on the code page 0 (want 0)
+1	68030 CAS2 first-operand fault: format B008, log 00000000 (want 808090C1), idx byte 00 (want 12)
+1	68030 CAS2.W D0:D0 with a failing comparison: D0=11115678 (want 11111234)
+1	68030 CAS2.W, compare failing: M on the operand pages 0/0 (want 1/1), on the code page 0 (want 0)
+1	68030 EORI #0,SR with the second refill word on a /BERR hole: PC0=00002000 (want 00001004), 0 fault(s) taken (want 0)
+1	68030 JMP (16.W,A0,D1) to an odd target: PC0=00002000 format B00C, stacked PC 00001000 (want 00001008)
+1	68030 JMP (A0) to an odd target: PC0=00002000 format B00C, stacked PC 00001000 (want 00001002)
+1	68030 JMP 16(A0) to an odd target: PC0=00002000 format B00C, stacked PC 00001000 (want 00001002)
+1	68030 JMP 4(A0,D1.W) to an odd target: PC0=00002000 format B00C, stacked PC 00001000 (want 00001006)
+1	68030 JSR (A0) push fault: format A008 (want B008), stacked PC 00001000 (want 00001000), USP=00080004 (want 00080004)
+1	68030 LINK A6,#-8 push fault: format A008, stacked PC 00001000 (want 00001004), A6=12345678 (want 00080000), USP=00080004 (want 0007FFF8), 1 /BERR(s)
+1	68030 MOVE CCR,(A2)+ store fault: PC0=00002000 A2=00080000 (want 00080002), 1 /BERR(s) (want 1), format A008 (want A008), stacked PC 00001000
+1	68030 MOVE D0,CCR with the second refill word on a /BERR hole: PC0=00002000 (want 00001002), 0 fault(s) taken (want 0)
+1	68030 MOVE D0,SR with the second refill word on a /BERR hole: PC0=00002000 (want 00001002), 0 fault(s) taken (want 0)
+1	68030 MOVE SR,(A2)+ store fault: PC0=00002000 A2=00080000 (want 00080002), 1 /BERR(s) (want 1), format A008 (want A008), stacked PC 00001000
+1	68030 MOVE to SR: interrupt returns to 00001004, want 00001008
+1	68030 MOVE.W (A1),(xxx).L /BERR on the store: format A008 (want A008), stacked PC 00001000 (want 00001006), CCR 0 (want N)
+1	68030 MOVEM.L D0-D1,16(A0) /BERR at an even address: PC0=00002000 format A008, idx/idx_done 00 (want $22)
+1	68030 MOVEM.L D0-D1,16(A0) /BERR at an odd address: PC0=00002000 format A008, idx/idx_done 00 (want $22)
+1	68030 MOVEM.L D0-D1,16(A0) retry after RTE at an even address: stored 00000000 00000000, A0 0007FFF0, PC0 00002006 (want the registers, A0 unchanged, PC0 00001006)
+1	68030 MOVEM.L D0-D1,16(A0) retry after RTE at an odd address: stored 00000000 00000000, A0 0007FFF1, PC0 00002006 (want the registers, A0 unchanged, PC0 00001006)
+1	68030 MOVES.L (A4)+,D0 /BERR: PC0=00002000 format B008, wb3 status 00 (want $54), wb2 status 00 (want $00), A4 00080000 (want 00080004)
+1	68030 NEGX.B (A0) of $80, X clear, store fault: format A008 (want A008), data output buffer FFFFFF80 (want 00000080)
+1	68030 ORI #0,SR with the second refill word on a /BERR hole: PC0=00002000 (want 00001004), 0 fault(s) taken (want 0)
+1	68030 PACK -(A3),-(A2) source fault: PC0=00002000 A3=00080002 (want 0007FFFE) A2=00030000 stacked PC 00001000 (want 00001000) SSW 0155 (want word size)
+1	68030 PEA (A0) push fault: format A008 (want A008), stacked PC 00001000 (want 00001002), USP=00080004 (want 00080000), pending 00031234
+1	68030 PTEST level 0 after the fault: MMUSR 0400 (want $8400, the ATC entry's B with I)
+1	68030 PTEST level 7 into a /BERR: PC0=00002000 (want 00001004, no exception), MMUSR 0000 (want $8400: B, I, N = 0)
+1	68030 PTEST root lower delta=-1 R=0 level=1: MMUSR=0000/4400 descriptor=00000000/00000000
+1	68030 PTEST root lower delta=-1 R=0 level=2: MMUSR=0000/4400 descriptor=00000000/00000000
+1	68030 PTEST root lower delta=-1 R=1 level=1: MMUSR=0000/4400 descriptor=00000000/00000000
+1	68030 PTEST root lower delta=-1 R=1 level=2: MMUSR=0000/4400 descriptor=00000000/00000000
+1	68030 PTEST root lower delta=0 R=0 level=1: MMUSR=0000/0001 descriptor=00000000/00004010
+1	68030 PTEST root lower delta=0 R=0 level=2: MMUSR=0000/0002 descriptor=00000000/00005008
+1	68030 PTEST root lower delta=0 R=1 level=1: MMUSR=0000/0001 descriptor=00000000/00004010
+1	68030 PTEST root lower delta=0 R=1 level=2: MMUSR=0000/0002 descriptor=00000000/00005008
+1	68030 PTEST root lower delta=1 R=0 level=1: MMUSR=0000/0001 descriptor=00000000/00004018
+1	68030 PTEST root lower delta=1 R=0 level=2: MMUSR=0000/0002 descriptor=00000000/00005008
+1	68030 PTEST root lower delta=1 R=1 level=1: MMUSR=0000/0001 descriptor=00000000/00004018
+1	68030 PTEST root lower delta=1 R=1 level=2: MMUSR=0000/0002 descriptor=00000000/00005008
+1	68030 PTEST root upper delta=-1 R=0 level=1: MMUSR=0000/0001 descriptor=00000000/00004008
+1	68030 PTEST root upper delta=-1 R=0 level=2: MMUSR=0000/0002 descriptor=00000000/00005008
+1	68030 PTEST root upper delta=-1 R=1 level=1: MMUSR=0000/0001 descriptor=00000000/00004008
+1	68030 PTEST root upper delta=-1 R=1 level=2: MMUSR=0000/0002 descriptor=00000000/00005008
+1	68030 PTEST root upper delta=0 R=0 level=1: MMUSR=0000/0001 descriptor=00000000/00004010
+1	68030 PTEST root upper delta=0 R=0 level=2: MMUSR=0000/0002 descriptor=00000000/00005008
+1	68030 PTEST root upper delta=0 R=1 level=1: MMUSR=0000/0001 descriptor=00000000/00004010
+1	68030 PTEST root upper delta=0 R=1 level=2: MMUSR=0000/0002 descriptor=00000000/00005008
+1	68030 PTEST root upper delta=1 R=0 level=1: MMUSR=0000/4400 descriptor=00000000/00000000
+1	68030 PTEST root upper delta=1 R=0 level=2: MMUSR=0000/4400 descriptor=00000000/00000000
+1	68030 PTEST root upper delta=1 R=1 level=1: MMUSR=0000/4400 descriptor=00000000/00000000
+1	68030 PTEST root upper delta=1 R=1 level=2: MMUSR=0000/4400 descriptor=00000000/00000000
+1	68030 PTEST table lower delta=-1 R=0 level=1: MMUSR=0000/0001 descriptor=00000000/00004008
+1	68030 PTEST table lower delta=-1 R=0 level=2: MMUSR=0000/4401 descriptor=00000000/00004008
+1	68030 PTEST table lower delta=-1 R=1 level=1: MMUSR=0000/0001 descriptor=00000000/00004008
+1	68030 PTEST table lower delta=-1 R=1 level=2: MMUSR=0000/4401 descriptor=00000000/00004008
+1	68030 PTEST table lower delta=0 R=0 level=1: MMUSR=0000/0001 descriptor=00000000/00004008
+1	68030 PTEST table lower delta=0 R=0 level=2: MMUSR=0000/0002 descriptor=00000000/00005010
+1	68030 PTEST table lower delta=0 R=1 level=1: MMUSR=0000/0001 descriptor=00000000/00004008
+1	68030 PTEST table lower delta=0 R=1 level=2: MMUSR=0000/0002 descriptor=00000000/00005010
+1	68030 PTEST table lower delta=1 R=0 level=1: MMUSR=0000/0001 descriptor=00000000/00004008
+1	68030 PTEST table lower delta=1 R=0 level=2: MMUSR=0000/0002 descriptor=00000000/00005018
+1	68030 PTEST table lower delta=1 R=1 level=1: MMUSR=0000/0001 descriptor=00000000/00004008
+1	68030 PTEST table lower delta=1 R=1 level=2: MMUSR=0000/0002 descriptor=00000000/00005018
+1	68030 PTEST table upper delta=-1 R=0 level=1: MMUSR=0000/0001 descriptor=00000000/00004008
+1	68030 PTEST table upper delta=-1 R=0 level=2: MMUSR=0000/0002 descriptor=00000000/00005008
+1	68030 PTEST table upper delta=-1 R=1 level=1: MMUSR=0000/0001 descriptor=00000000/00004008
+1	68030 PTEST table upper delta=-1 R=1 level=2: MMUSR=0000/0002 descriptor=00000000/00005008
+1	68030 PTEST table upper delta=0 R=0 level=1: MMUSR=0000/0001 descriptor=00000000/00004008
+1	68030 PTEST table upper delta=0 R=0 level=2: MMUSR=0000/0002 descriptor=00000000/00005010
+1	68030 PTEST table upper delta=0 R=1 level=1: MMUSR=0000/0001 descriptor=00000000/00004008
+1	68030 PTEST table upper delta=0 R=1 level=2: MMUSR=0000/0002 descriptor=00000000/00005010
+1	68030 PTEST table upper delta=1 R=0 level=1: MMUSR=0000/0001 descriptor=00000000/00004008
+1	68030 PTEST table upper delta=1 R=0 level=2: MMUSR=0000/4401 descriptor=00000000/00004008
+1	68030 PTEST table upper delta=1 R=1 level=1: MMUSR=0000/0001 descriptor=00000000/00004008
+1	68030 PTEST table upper delta=1 R=1 level=2: MMUSR=0000/4401 descriptor=00000000/00004008
+1	68030 RTD #8 pop fault: format B008 (want B008), log 00000000 (want 00000008), idx byte 00 (want 12), USP=00080000
+1	68030 RTE: interrupt returns to 00001100, want 00001104
+1	68030 SUBX.B -(A1),-(A0): $A1 - $7D - X, store fault: format A008 (want A008), data output buffer 00000023 (want FFFFFF23)
+1	68030 UNPK -(A3),-(A2) destination fault: PC0=00002000 A2=00080002 (want 00080000) A3=00030001 (want 00030000), 1 /BERR(s) (want 1), bus "W0" (want "W0"), stacked PC 00001000 (want 00001004, last write)
+1	68030 UNPK -(A3),-(A2) source fault: format B008 (want B008), fixup byte 00 (want 73), A3=00080001 in the handler (want 0007FFFD)
+1	68030 full-format EA log: format B008, log 00000000 00000000 00000000, idx byte 00 (want 00000172 00080000 00000010, 34)
+1	68030 pipe across PMOVE to TC: D1-D7 = 1 2 53 54 55 56 57 (want 1 2 3 4 from the old map, then 55 56 57 from the new)
+1	68030 watchpoint armed at 00123010 under translation: saw "", want "r123010:4 "
+1	68030+68882 FBcc predicate $21 with Z=0: next instruction at 00002000 (want 00001004), SP moved by 8
+1	68030+68882 FBcc predicate $21 with Z=1: next instruction at 00002000 (want 00001022), SP moved by 8
+1	68030: MOVEM (d16,PC) made 2 read(s), want 1 (D0=FFFFBEEF)
+1	68030: MOVEM (d16,PC) read at 001016 FC=5, want 6
+1	68040 ANDI #$FFFF,SR with the second refill word on a /BERR hole: PC0=00002000 (want 00001004), 0 fault(s) taken (want 0)
+1	68040 ANDI to SR: interrupt returns to 00001004, want 00001008
+1	68040 BKPT on a page reached through ITT0 only: PC0=00000000 (want 00002000), format 7008 (want 0010), stacked PC 00001000 (want 00001000)
+1	68040 CAS.W, compare failing: the operand page is not modified (00020009)
+1	68040 CAS2.W, compare failing: the operand page is not modified (00020009)
+1	68040 CMP2.B value in range: CCR=10 want 1A, PC0=00001004
+1	68040 CMP2.B value on the lower bound: CCR=14 want 1E, PC0=00001004
+1	68040 EORI #$2000,SR into user mode: PC0=00001004 SR=0700, root 0000420A and code page 00001009 descriptors (want U clear: no table walk)
+1	68040 EORI #0,SR with the second refill word on a /BERR hole: PC0=00002000 (want 00001004), 0 fault(s) taken (want 0)
+1	68040 FADD.P #imm,FP0 (implemented): PC0=00001010, want vector 55 at 00002040
+1	68040 FBF.W, odd offset, not taken: PC0=00001004 format/vector 0000 stacked PC 00000000 address 00000000 (want the handler at once, $200C, 00001000, 00001012)
+1	68040 FBT.W to an odd target: PC0=00001013 format/vector 0000 stacked PC 00000000 address 00000000 (want the handler at once, $200C, 00001000, 00001012)
+1	68040 FBcc predicate $21 with Z=0: next instruction at 00002000 (want 00001004), SP moved by 8
+1	68040 FBcc predicate $21 with Z=1: next instruction at 00002000 (want 00001022), SP moved by 8
+1	68040 FDBF D0 with an odd offset: D0=12340004 (want it untouched)
+1	68040 FDBF D0 with an odd offset: PC0=00001015 format/vector 0000 stacked PC 00000000 address 00000000 (want the handler at once, $200C, 00001000, 00001014)
+1	68040 LINK A6,#-8 push fault: format 7008, stacked PC 00001000 (want 00001004), A6=12345678 (want 00080000), USP=00080004 (want 0007FFF8), 1 /BERR(s)
+1	68040 MOVE CCR,(A2)+ store fault: PC0=00002000 A2=00080000 (want 00080002), 1 /BERR(s) (want 1), format 7008 (want 7008), stacked PC 00001000
+1	68040 MOVE D0,CCR with the second refill word on a /BERR hole: PC0=00002000 (want 00001002), 0 fault(s) taken (want 0)
+1	68040 MOVE D0,SR with the second refill word on a /BERR hole: PC0=00002000 (want 00001002), 0 fault(s) taken (want 0)
+1	68040 MOVE SR,(A2)+ store fault: PC0=00002000 A2=00080000 (want 00080002), 1 /BERR(s) (want 1), format 7008 (want 7008), stacked PC 00001000
+1	68040 MOVE to SR: interrupt returns to 00001004, want 00001008
+1	68040 MULS.L D3,D0:D0: D0=FAF3B9A5 (want 6DB90838, the low half)
+1	68040 MULU.L D3,D0:D0: D0=05C86367 (want 6DB90838, the low half)
+1	68040 ORI #0,SR with the second refill word on a /BERR hole: PC0=00002000 (want 00001004), 0 fault(s) taken (want 0)
+1	68040 PACK -(A3),-(A2) source fault: PC0=00002000 A3=00080002 (want 00080002) A2=00030000 stacked PC 00001000 (want 00001000) SSW 0125 (want word size)
+1	68040 RTE into a format-$7 frame: the deferred trace follows the rerun; PC0 after the rerun 00003002 (want 00003002), then 00003006 (want 00002000), SP=00001844 (want 00001838) format/vector=0000 stacked PC=00000000
+1	68040 RTE: interrupt returns to 00001100, want 00001104
+1	68040 T0, NOP: want a trace exception; PC0=00001004 SP=00008000 SR=6700 format/vector=0000 stacked PC=00000000 address=00000000
+1	68040 T0, TRAP #0: want the trap alone; PC0=00002000 SP=00007FEC (entry 00008000) top format/vector=2024
+1	68040 TTR DTT0 = $40, both privileges, W: wrote, memory 2222 (want a fault, 1111)
+1	68040 TTR DTT0 misses, DTT1 matches with W: wrote, memory 2222 (want a fault, 1111)
+1	68040 TTR DTT1 = $40, supervisor only, W: wrote, memory 2222 (want a fault, 1111)
+1	68040 UNPK -(A3),-(A2) destination fault: PC0=00002000 A2=00080002 (want 00080000) A3=00030001 (want 00030000), 1 /BERR(s) (want 1), bus "W0" (want "W0"), stacked PC 00001000 (want 00001004, last write)
+1	68EC020: MOVEM (d16,PC) read at 001016 FC=5, want 6
+1	68EC030: MOVEM (d16,PC) read at 001016 FC=5, want 6
+1	68EC040: MOVEC D0,$006 disassembles as "movec D0, DTT0; (4+)"
+1	68EC040: PFLUSHA took an exception
+1	68EC040: PTEST took an exception (PC0=00000000)
+1	68EC040: TC after setModel = 00004000
+1	68EC040: read from a W block: PC0=00001002 D1=0000BEEF
+1	68EC040: write to a W block: PC0=00001002 mem=BEEF
+1	68LC040 $F200 FMOVE FP0,FP0 (an instruction): PC0=00002000 (want 00002000), 8 frame bytes (want 16), format word 002C (want 402C), stacked PC 00001000 (want 00001004)
+1	68LC040 $F200 opmode $78 (illegal vector): PC0=00002000 (want 00002040), 8 frame bytes (want 8), format word 002C (want 0010), stacked PC 00001000 (want 00001004)
+1	68LC040 BFCHG (A0){3:30}: bus "w0 w2 W0 W2 b4 B4" (want "w0 w2 b4 W0 W2 B4"), memory ok, D1 DEADBEEF, PC0 00001004
+1	68LC040 BFCHG (A0){4:32} with /BERR on the fifth byte: bus "w0 w2 W0 W2 b4", first four bytes WRITTEN, 1 trip(s)
+1	68LC040 BFEXTU (A0){0:8},D1: bus "w0 w2" (want "b0"), memory ok, D1 000000A5, PC0 00001004
+1	68LC040 BFEXTU (A0){4:16},D1: bus "w0 w2" (want "w0 b2"), memory ok, D1 00002345, PC0 00001004
+1	68LC040 BFEXTU (A0){4:8},D1: bus "w0 w2" (want "w0"), memory ok, D1 00000023, PC0 00001004
+1	68LC040 BFINS D1,(A0){12:4}: bus "w1 w3 W1 W3" (want "b1 B1"), memory ok, D1 0000000A, PC0 00001004
+1	68LC040 CMP2.B value in range: CCR=10 want 1A, PC0=00001004
+1	68LC040 CMP2.B value on the lower bound: CCR=14 want 1E, PC0=00001004
+1	68LC040: (d16,PC) operand read FC=6, want 5
+1	68LC040: MOVEM (d16,PC) made 2 read(s), want 1 (D0=FFFFBEEF)
+1	68LC040: MOVEM (d16,PC) read at 001014 FC=6, want 5
+1	68LC040: read from a W block: PC0=00001002 D1=0000BEEF
+1	68LC040: write to a W block: PC0=00001002 mem=BEEF
+1	A-line on the last word model=7: PC0=000020A0 stacked PC 0007FFFE D0=00008000 (want vector 2 at 00002020)
+1	A-line on the last word model=8: PC0=000020A0 stacked PC 0007FFFE D0=00008000 (want vector 2 at 00002020)
+1	ADDI.W ending on the last word model=5: PC=00002020 SP=00007FA4 (want it retired at 00080000, no exception)
+1	ADDI.W ending on the last word model=5: the next opcode fetch did not fault at 00080000
+1	ADDI.W ending on the last word model=7: PC=00002020 SP=00007FC4 (want it retired at 00080000, no exception)
+1	ADDI.W ending on the last word model=7: the next opcode fetch did not fault at 00080000
+1	ADDI.W ending on the last word model=8: PC=00002020 SP=00007FC4 (want it retired at 00080000, no exception)
+1	ADDI.W ending on the last word model=8: the next opcode fetch did not fault at 00080000
+1	ADDI.W whose immediate is on the hole model=7: PC0=00080002 stacked PC 00000000 D0=0000CE71 (want vector 2 at 00002020)
+1	ADDI.W whose immediate is on the hole model=8: PC0=00080002 stacked PC 00000000 D0=0000CE71 (want vector 2 at 00002020)
+1	CHK D1,D0 out of bounds on the last word model=7: PC0=00002060 stacked PC 00080000 D0=00008000 (want vector 2 at 00002020)
+1	CHK D1,D0 out of bounds on the last word model=8: PC0=00002060 stacked PC 00080000 D0=00008000 (want vector 2 at 00002020)
+1	FP0 of a never-reset core is 7FFF0000 C0000000 00000000
+1	FP1 of a never-reset core is 7FFF0000 C0000000 00000000
+1	FP2 of a never-reset core is 7FFF0000 C0000000 00000000
+1	FP3 of a never-reset core is 7FFF0000 C0000000 00000000
+1	FP4 of a never-reset core is 7FFF0000 C0000000 00000000
+1	FP5 of a never-reset core is 7FFF0000 C0000000 00000000
+1	FP6 of a never-reset core is 7FFF0000 C0000000 00000000
+1	FP7 of a never-reset core is 7FFF0000 C0000000 00000000
+1	ILLEGAL on the last word model=7: PC0=00002040 stacked PC 0007FFFE D0=00008000 (want vector 2 at 00002020)
+1	ILLEGAL on the last word model=8: PC0=00002040 stacked PC 0007FFFE D0=00008000 (want vector 2 at 00002020)
+1	JSR (A0) model=5, next fetch: PC0=00002002 stacked PC 00001000 (want the target 00080000)
+1	JSR (A0) model=5: PC=00002000 SP=00007FA4 pushed=00000000 (want the JSR retired at its target, return 00001002 pushed, no exception)
+1	JSR (A0) model=7, next fetch: PC0=00002002 stacked PC 00001000 (want the target 00080000)
+1	JSR (A0) model=7: PC=00002000 SP=00007FC4 pushed=00000000 (want the JSR retired at its target, return 00001002 pushed, no exception)
+1	JSR (A0) model=8, next fetch: PC0=00002002 stacked PC 00001000 (want the target 00080000)
+1	JSR (A0) model=8: PC=00002000 SP=00007FC4 pushed=00000000 (want the JSR retired at its target, return 00001002 pushed, no exception)
+1	JSR 16(A0) model=5, next fetch: PC0=00002002 stacked PC 00001000 (want the target 00080000)
+1	JSR 16(A0) model=5: PC=00002000 SP=00007FA4 pushed=00000000 (want the JSR retired at its target, return 00001004 pushed, no exception)
+1	JSR 16(A0) model=7, next fetch: PC0=00002002 stacked PC 00001000 (want the target 00080000)
+1	JSR 16(A0) model=7: PC=00002000 SP=00007FC4 pushed=00000000 (want the JSR retired at its target, return 00001004 pushed, no exception)
+1	JSR 16(A0) model=8, next fetch: PC0=00002002 stacked PC 00001000 (want the target 00080000)
+1	JSR 16(A0) model=8: PC=00002000 SP=00007FC4 pushed=00000000 (want the JSR retired at its target, return 00001004 pushed, no exception)
+1	MOVE 1343 final-store control changed, model=7 mmu=0 cache=0
+1	MOVE 1343 final-store control changed, model=7 mmu=0 cache=1
+1	MOVE 1343 final-store control changed, model=7 mmu=1 cache=0
+1	MOVE 1343 final-store control changed, model=7 mmu=1 cache=1
+1	MOVE 1343 final-store control changed, model=7 mmu=2 cache=0
+1	MOVE 1343 final-store control changed, model=7 mmu=2 cache=1
+1	MOVE 1343 final-store control changed, model=8 mmu=0 cache=0
+1	MOVE 1343 final-store control changed, model=8 mmu=0 cache=1
+1	MOVE 1343 final-store control changed, model=8 mmu=1 cache=0
+1	MOVE 1343 final-store control changed, model=8 mmu=1 cache=1
+1	MOVE 1343 final-store control changed, model=8 mmu=2 cache=0
+1	MOVE 1343 final-store control changed, model=8 mmu=2 cache=1
+1	MOVE 2343 final-store control changed, model=7 mmu=0 cache=0
+1	MOVE 2343 final-store control changed, model=7 mmu=0 cache=1
+1	MOVE 2343 final-store control changed, model=7 mmu=1 cache=0
+1	MOVE 2343 final-store control changed, model=7 mmu=1 cache=1
+1	MOVE 2343 final-store control changed, model=7 mmu=2 cache=0
+1	MOVE 2343 final-store control changed, model=7 mmu=2 cache=1
+1	MOVE 2343 final-store control changed, model=8 mmu=0 cache=0
+1	MOVE 2343 final-store control changed, model=8 mmu=0 cache=1
+1	MOVE 2343 final-store control changed, model=8 mmu=1 cache=0
+1	MOVE 2343 final-store control changed, model=8 mmu=1 cache=1
+1	MOVE 2343 final-store control changed, model=8 mmu=2 cache=0
+1	MOVE 2343 final-store control changed, model=8 mmu=2 cache=1
+1	MOVE 3343 final-store control changed, model=7 mmu=0 cache=0
+1	MOVE 3343 final-store control changed, model=7 mmu=0 cache=1
+1	MOVE 3343 final-store control changed, model=7 mmu=1 cache=0
+1	MOVE 3343 final-store control changed, model=7 mmu=1 cache=1
+1	MOVE 3343 final-store control changed, model=7 mmu=2 cache=0
+1	MOVE 3343 final-store control changed, model=7 mmu=2 cache=1
+1	MOVE 3343 final-store control changed, model=8 mmu=0 cache=0
+1	MOVE 3343 final-store control changed, model=8 mmu=0 cache=1
+1	MOVE 3343 final-store control changed, model=8 mmu=1 cache=0
+1	MOVE 3343 final-store control changed, model=8 mmu=1 cache=1
+1	MOVE 3343 final-store control changed, model=8 mmu=2 cache=0
+1	MOVE 3343 final-store control changed, model=8 mmu=2 cache=1
+1	MOVE.B D0,(A0), write: PC 00001004 want 00001002
+1	MOVE.B D0,(A0), write: willProcessFault saw 0 fault(s) at 00000000
+1	NOP ending on the last word model=5: PC=00002020 SP=00007FA4 (want it retired at 00080000, no exception)
+1	NOP ending on the last word model=5: the next opcode fetch did not fault at 00080000
+1	NOP ending on the last word model=7: the next opcode fetch did not fault at 00080000
+1	NOP ending on the last word model=8: the next opcode fetch did not fault at 00080000
+1	PTEST descriptor fault stride=4 target=4 level=1 word=0 depth=1: MMUSR=0000/8400 A1=00000000/00000000 trips=1
+1	PTEST descriptor fault stride=4 target=4 level=1 word=0 depth=2: MMUSR=0000/8400 A1=00000000/00000000 trips=1
+1	PTEST descriptor fault stride=4 target=4 level=1 word=0 depth=3: MMUSR=0000/8400 A1=00000000/00000000 trips=1
+1	PTEST descriptor fault stride=4 target=4 level=1 word=0 depth=4: MMUSR=0000/8400 A1=00000000/00000000 trips=1
+1	PTEST descriptor fault stride=4 target=4 level=2 word=0 depth=2: MMUSR=0000/8401 A1=00000000/00004004 trips=1
+1	PTEST descriptor fault stride=4 target=4 level=2 word=0 depth=3: MMUSR=0000/8401 A1=00000000/00004004 trips=1
+1	PTEST descriptor fault stride=4 target=4 level=2 word=0 depth=4: MMUSR=0000/8401 A1=00000000/00004004 trips=1
+1	PTEST descriptor fault stride=4 target=4 level=3 word=0 depth=3: MMUSR=0000/8402 A1=00000000/00005008 trips=1
+1	PTEST descriptor fault stride=4 target=4 level=3 word=0 depth=4: MMUSR=0000/8402 A1=00000000/00005008 trips=1
+1	PTEST descriptor fault stride=4 target=8 level=1 word=0 depth=1: MMUSR=0000/8400 A1=00000000/00000000 trips=1
+1	PTEST descriptor fault stride=4 target=8 level=1 word=0 depth=2: MMUSR=0000/8400 A1=00000000/00000000 trips=1
+1	PTEST descriptor fault stride=4 target=8 level=1 word=0 depth=3: MMUSR=0000/8400 A1=00000000/00000000 trips=1
+1	PTEST descriptor fault stride=4 target=8 level=1 word=0 depth=4: MMUSR=0000/8400 A1=00000000/00000000 trips=1
+1	PTEST descriptor fault stride=4 target=8 level=2 word=0 depth=2: MMUSR=0000/8401 A1=00000000/00004004 trips=1
+1	PTEST descriptor fault stride=4 target=8 level=2 word=0 depth=3: MMUSR=0000/8401 A1=00000000/00004004 trips=1
+1	PTEST descriptor fault stride=4 target=8 level=2 word=0 depth=4: MMUSR=0000/8401 A1=00000000/00004004 trips=1
+1	PTEST descriptor fault stride=4 target=8 level=3 word=0 depth=3: MMUSR=0000/8402 A1=00000000/00005008 trips=1
+1	PTEST descriptor fault stride=4 target=8 level=3 word=0 depth=4: MMUSR=0000/8402 A1=00000000/00005008 trips=1
+1	PTEST descriptor fault stride=4 target=8 level=3 word=4 depth=3: MMUSR=0000/8402 A1=00000000/00005008 trips=1
+1	PTEST descriptor fault stride=4 target=8 level=3 word=4 depth=4: MMUSR=0000/8402 A1=00000000/00005008 trips=1
+1	PTEST descriptor fault stride=8 target=4 level=1 word=0 depth=1: MMUSR=0000/8400 A1=00000000/00000000 trips=1
+1	PTEST descriptor fault stride=8 target=4 level=1 word=0 depth=2: MMUSR=0000/8400 A1=00000000/00000000 trips=1
+1	PTEST descriptor fault stride=8 target=4 level=1 word=0 depth=3: MMUSR=0000/8400 A1=00000000/00000000 trips=1
+1	PTEST descriptor fault stride=8 target=4 level=1 word=0 depth=4: MMUSR=0000/8400 A1=00000000/00000000 trips=1
+1	PTEST descriptor fault stride=8 target=4 level=1 word=4 depth=1: MMUSR=0000/8400 A1=00000000/00000000 trips=1
+1	PTEST descriptor fault stride=8 target=4 level=1 word=4 depth=2: MMUSR=0000/8400 A1=00000000/00000000 trips=1
+1	PTEST descriptor fault stride=8 target=4 level=1 word=4 depth=3: MMUSR=0000/8400 A1=00000000/00000000 trips=1
+1	PTEST descriptor fault stride=8 target=4 level=1 word=4 depth=4: MMUSR=0000/8400 A1=00000000/00000000 trips=1
+1	PTEST descriptor fault stride=8 target=4 level=2 word=0 depth=2: MMUSR=0000/8401 A1=00000000/00004008 trips=1
+1	PTEST descriptor fault stride=8 target=4 level=2 word=0 depth=3: MMUSR=0000/8401 A1=00000000/00004008 trips=1
+1	PTEST descriptor fault stride=8 target=4 level=2 word=0 depth=4: MMUSR=0000/8401 A1=00000000/00004008 trips=1
+1	PTEST descriptor fault stride=8 target=4 level=2 word=4 depth=2: MMUSR=0000/8401 A1=00000000/00004008 trips=1
+1	PTEST descriptor fault stride=8 target=4 level=2 word=4 depth=3: MMUSR=0000/8401 A1=00000000/00004008 trips=1
+1	PTEST descriptor fault stride=8 target=4 level=2 word=4 depth=4: MMUSR=0000/8401 A1=00000000/00004008 trips=1
+1	PTEST descriptor fault stride=8 target=4 level=3 word=0 depth=3: MMUSR=0000/8402 A1=00000000/00005010 trips=1
+1	PTEST descriptor fault stride=8 target=4 level=3 word=0 depth=4: MMUSR=0000/8402 A1=00000000/00005010 trips=1
+1	PTEST descriptor fault stride=8 target=8 level=1 word=0 depth=1: MMUSR=0000/8400 A1=00000000/00000000 trips=1
+1	PTEST descriptor fault stride=8 target=8 level=1 word=0 depth=2: MMUSR=0000/8400 A1=00000000/00000000 trips=1
+1	PTEST descriptor fault stride=8 target=8 level=1 word=0 depth=3: MMUSR=0000/8400 A1=00000000/00000000 trips=1
+1	PTEST descriptor fault stride=8 target=8 level=1 word=0 depth=4: MMUSR=0000/8400 A1=00000000/00000000 trips=1
+1	PTEST descriptor fault stride=8 target=8 level=1 word=4 depth=1: MMUSR=0000/8400 A1=00000000/00000000 trips=1
+1	PTEST descriptor fault stride=8 target=8 level=1 word=4 depth=2: MMUSR=0000/8400 A1=00000000/00000000 trips=1
+1	PTEST descriptor fault stride=8 target=8 level=1 word=4 depth=3: MMUSR=0000/8400 A1=00000000/00000000 trips=1
+1	PTEST descriptor fault stride=8 target=8 level=1 word=4 depth=4: MMUSR=0000/8400 A1=00000000/00000000 trips=1
+1	PTEST descriptor fault stride=8 target=8 level=2 word=0 depth=2: MMUSR=0000/8401 A1=00000000/00004008 trips=1
+1	PTEST descriptor fault stride=8 target=8 level=2 word=0 depth=3: MMUSR=0000/8401 A1=00000000/00004008 trips=1
+1	PTEST descriptor fault stride=8 target=8 level=2 word=0 depth=4: MMUSR=0000/8401 A1=00000000/00004008 trips=1
+1	PTEST descriptor fault stride=8 target=8 level=2 word=4 depth=2: MMUSR=0000/8401 A1=00000000/00004008 trips=1
+1	PTEST descriptor fault stride=8 target=8 level=2 word=4 depth=3: MMUSR=0000/8401 A1=00000000/00004008 trips=1
+1	PTEST descriptor fault stride=8 target=8 level=2 word=4 depth=4: MMUSR=0000/8401 A1=00000000/00004008 trips=1
+1	PTEST descriptor fault stride=8 target=8 level=3 word=0 depth=3: MMUSR=0000/8402 A1=00000000/00005010 trips=1
+1	PTEST descriptor fault stride=8 target=8 level=3 word=0 depth=4: MMUSR=0000/8402 A1=00000000/00005010 trips=1
+1	PTEST descriptor fault stride=8 target=8 level=3 word=4 depth=3: MMUSR=0000/8402 A1=00000000/00005010 trips=1
+1	PTEST descriptor fault stride=8 target=8 level=3 word=4 depth=4: MMUSR=0000/8402 A1=00000000/00005010 trips=1
+1	TAS (A0) bus-lock bracket: "rw", want LrwU
+1	TAS on a /BERR byte: contained=1 events "", want LU
+1	TST.B (A0), read: willProcessFault saw 0 fault(s) at 00000000
+1	address error: 0 fault(s) at 00000000, PC0=00002000
+1	direct root ATC M size=1 MOVES=0 FC=1 pass=1: MMUSR=0000
+1	direct root ATC M size=1 MOVES=0 FC=1 pass=2: MMUSR=0000
+1	direct root ATC M size=1 MOVES=0 FC=5 pass=1: MMUSR=0000
+1	direct root ATC M size=1 MOVES=0 FC=5 pass=2: MMUSR=0000
+1	direct root ATC M size=1 MOVES=1 FC=1 pass=1: MMUSR=0000
+1	direct root ATC M size=1 MOVES=1 FC=1 pass=2: MMUSR=0000
+1	direct root ATC M size=1 MOVES=1 FC=5 pass=1: MMUSR=0000
+1	direct root ATC M size=1 MOVES=1 FC=5 pass=2: MMUSR=0000
+1	direct root ATC M size=2 MOVES=0 FC=1 pass=1: MMUSR=0000
+1	direct root ATC M size=2 MOVES=0 FC=1 pass=2: MMUSR=0000
+1	direct root ATC M size=2 MOVES=0 FC=5 pass=1: MMUSR=0000
+1	direct root ATC M size=2 MOVES=0 FC=5 pass=2: MMUSR=0000
+1	direct root ATC M size=2 MOVES=1 FC=1 pass=1: MMUSR=0000
+1	direct root ATC M size=2 MOVES=1 FC=1 pass=2: MMUSR=0000
+1	direct root ATC M size=2 MOVES=1 FC=5 pass=1: MMUSR=0000
+1	direct root ATC M size=2 MOVES=1 FC=5 pass=2: MMUSR=0000
+1	direct root ATC M size=4 MOVES=0 FC=1 pass=1: MMUSR=0000
+1	direct root ATC M size=4 MOVES=0 FC=1 pass=2: MMUSR=0000
+1	direct root ATC M size=4 MOVES=0 FC=5 pass=1: MMUSR=0000
+1	direct root ATC M size=4 MOVES=0 FC=5 pass=2: MMUSR=0000
+1	direct root ATC M size=4 MOVES=1 FC=1 pass=1: MMUSR=0000
+1	direct root ATC M size=4 MOVES=1 FC=1 pass=2: MMUSR=0000
+1	direct root ATC M size=4 MOVES=1 FC=5 pass=1: MMUSR=0000
+1	direct root ATC M size=4 MOVES=1 FC=5 pass=2: MMUSR=0000
+1	direct root PTEST FCL=1 lower=0 delta=1 depth=1 FC=1 R=0: MMUSR=0000/4400 A1=00000000
+1	direct root PTEST FCL=1 lower=0 delta=1 depth=1 FC=1 R=1: MMUSR=0000/4400 A1=00000000
+1	direct root PTEST FCL=1 lower=0 delta=1 depth=1 FC=5 R=0: MMUSR=0000/4400 A1=00000000
+1	direct root PTEST FCL=1 lower=0 delta=1 depth=1 FC=5 R=1: MMUSR=0000/4400 A1=00000000
+1	direct root PTEST FCL=1 lower=0 delta=1 depth=7 FC=1 R=0: MMUSR=0000/4400 A1=00000000
+1	direct root PTEST FCL=1 lower=0 delta=1 depth=7 FC=1 R=1: MMUSR=0000/4400 A1=00000000
+1	direct root PTEST FCL=1 lower=0 delta=1 depth=7 FC=5 R=0: MMUSR=0000/4400 A1=00000000
+1	direct root PTEST FCL=1 lower=0 delta=1 depth=7 FC=5 R=1: MMUSR=0000/4400 A1=00000000
+1	direct root PTEST FCL=1 lower=1 delta=-1 depth=1 FC=1 R=0: MMUSR=0000/4400 A1=00000000
+1	direct root PTEST FCL=1 lower=1 delta=-1 depth=1 FC=1 R=1: MMUSR=0000/4400 A1=00000000
+1	direct root PTEST FCL=1 lower=1 delta=-1 depth=1 FC=5 R=0: MMUSR=0000/4400 A1=00000000
+1	direct root PTEST FCL=1 lower=1 delta=-1 depth=1 FC=5 R=1: MMUSR=0000/4400 A1=00000000
+1	direct root PTEST FCL=1 lower=1 delta=-1 depth=7 FC=1 R=0: MMUSR=0000/4400 A1=00000000
+1	direct root PTEST FCL=1 lower=1 delta=-1 depth=7 FC=1 R=1: MMUSR=0000/4400 A1=00000000
+1	direct root PTEST FCL=1 lower=1 delta=-1 depth=7 FC=5 R=0: MMUSR=0000/4400 A1=00000000
+1	direct root PTEST FCL=1 lower=1 delta=-1 depth=7 FC=5 R=1: MMUSR=0000/4400 A1=00000000
+1	direct root bus FCL=1 lower=0 delta=1 R=0: PC=80001004 RAM=DEADBEEF
+1	direct root bus FCL=1 lower=0 delta=1 R=1: PC=80001004 RAM=12345678
+1	direct root bus FCL=1 lower=1 delta=-1 R=0: PC=80001004 RAM=DEADBEEF
+1	direct root bus FCL=1 lower=1 delta=-1 R=1: PC=80001004 RAM=12345678
+1	handled ILLEGAL: 34 cycles, want 4
+1	handled ILLEGAL: PC0=00002000 SP=00007FFA
+1	model 0: the 68000/68010 level-sensitive level 7 changed (1 entries)
+1	model 1: the 68000/68010 level-sensitive level 7 changed (1 entries)
+1	model 2 (d16,PC) /BERR: SSW 5066 (want DF, RW, FC 6; no FC/FB/RC/RB)
+1	model 2 (d16,PC) RTE with DF clear: PC0=00002000 D0=00000000, 2 /BERR (want 00001004, CAFE from the frame, one)
+1	model 2 MOVE.L D0,(A0), second word: stacked SR 2718 (want 2715, the program's CCR)
+1	model 2 MOVE.L D0,(A0): stacked SR 2718 (want 2715, the program's CCR)
+1	model 3 (d16,PC) /BERR: SSW 5066 (want DF, RW, FC 6; no FC/FB/RC/RB)
+1	model 3 (d16,PC) RTE with DF clear: PC0=00002000 D0=00000000, 2 /BERR (want 00001004, CAFE from the frame, one)
+1	model 3 I-stack interrupt costs 0 cycles, want 26
+1	model 3 M-stack interrupt costs 0 cycles, want 41
+1	model 3 MOVE.L D0,(A0), second word: stacked SR 2718 (want 2715, the program's CCR)
+1	model 3 MOVE.L D0,(A0): stacked SR 2718 (want 2715, the program's CCR)
+2	model 3: the interrupt was not taken
+1	model 5 (d16,PC) /BERR: SSW 5066 (want DF, RW, FC 6; no FC/FB/RC/RB)
+1	model 5 (d16,PC) RTE with DF clear: PC0=00002000 D0=00000000, 2 /BERR (want 00001004, CAFE from the frame, one)
+1	model 5 I-stack interrupt costs 0 cycles, want 26
+1	model 5 M-stack interrupt costs 0 cycles, want 41
+1	model 5 read watchpoint: saw "", want "r40000:4 "
+1	model 5 write watchpoint: saw "", want "w40000:4 "
+1	model 5: overlay counted 0 fetches
+2	model 5: the interrupt was not taken
+1	model 8 I-stack interrupt costs 0 cycles, want 26
+1	model 8 M-stack interrupt costs 0 cycles, want 41
+1	model 8 read watchpoint: saw "", want "r40000:4 "
+1	model 8 write watchpoint: saw "", want "w40000:4 "
+2	model 8: the interrupt was not taken

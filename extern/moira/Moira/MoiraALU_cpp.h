@@ -81,11 +81,23 @@ template <Size S> bool ZERO(u64 data) {
     if constexpr (S == Long) return !(data & 0xFFFFFFFF);
 }
 
-template <Size S> u32 WRITE(u32 d1, u32 d2) {
+// Returns the n-th byte, word, or long word of data (counted from the least significant end)
+template <Size S, int n = 0> u32 READ(u32 data) {
 
-    if constexpr (S == Byte) return (d1 & 0xFFFFFF00) | (d2 & 0x000000FF);
-    if constexpr (S == Word) return (d1 & 0xFFFF0000) | (d2 & 0x0000FFFF);
-    if constexpr (S == Long) return d2;
+    static_assert(S * (n + 1) <= Long, "Portion exceeds 32 bits");
+
+    return CLIP<S>(data >> (8 * S * n));
+}
+
+// Replaces the n-th byte, word, or long word of d1 (counted from the least significant end) by d2
+template <Size S, int n = 0> u32 WRITE(u32 d1, u32 d2) {
+
+    static_assert(S * (n + 1) <= Long, "Portion exceeds 32 bits");
+
+    constexpr int shift = 8 * S * n;
+    constexpr u32 mask = u32((1ull << (8 * S)) - 1) << shift;
+
+    return (d1 & ~mask) | ((d2 << shift) & mask);
 }
 
 template <Cond C> bool
@@ -180,21 +192,9 @@ Moira::shift(int cnt, u64 data) {
                 data = shifted;
             }
 
-            // [F] Retired Musashi comparison: local patched revision unavailable.
-            // Settled by: a replay with a pinned replacement oracle.
-            // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-            // POM68K: shifting past the operand width clears C and X even
-            // for negative values (SingleStepTests/680x0 rule; a known
-            // manual exception in oracle/README.md).
-            // O4 slice 3 re-verification: BOTH 68030 oracles (WinUAE,
-            // Musashi) keep C/X = the last bit shifted out (the sign) on
-            // 020+, so the clear is a 68000/68010-only behaviour.
-            if constexpr (C != Core::C68020) {
-                // [D] Musashi @ 1efd694 (Runner/Musashi of upstream Moira), run by its Runner:
-                //     C/X keep the sign there. POM68K: so they do under
-                //     MOIRA_MIMIC_MUSASHI, the configuration that Runner uses.
-                if (cnt > 8 * (int)S && !MOIRA_MIMIC_MUSASHI) carry = false;
+            // SingleStepTests shows C/X cleared beyond the width on 68000.
+            if constexpr (C == Core::C68000 && compat == Compatibility::DEFAULT) {
+                if (cnt > 8 * int(S)) carry = false;
             }
 
             if (cnt) reg.sr.x = carry;
@@ -343,13 +343,10 @@ Moira::bcd(u32 op1, u32 op2)
                 reg.sr.x = 0;
             }
 
-            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
             // Set V flag
-            // POM68K Q2: the 68040 leaves V (and N, see below) untouched
-            // (WinUAE cpuemu_31 op_c100: no SET_VFLG/SET_NFLG)
             if constexpr (C != Core::C68020) {
                 reg.sr.v = ((tmp & 0x80) == 0) && ((result & 0x80) == 0x80);
-            } else if (cpuModel < Model::M68EC040) {
+            } else {
                 reg.sr.v = 0;
             }
 
@@ -357,6 +354,8 @@ Moira::bcd(u32 op1, u32 op2)
         }
         case Instr::SBCD:
         case Instr::SBCD_LOOP:
+        case Instr::NBCD:           // NBCD is computed as an SBCD with a zero destination operand
+        case Instr::NBCD_LOOP:
         {
             // Subtract digits
             u16 lo = lo2 - lo1 - reg.sr.x;
@@ -377,13 +376,9 @@ Moira::bcd(u32 op1, u32 op2)
             }
 
             // Set V flag
-            // [B] M68000PRM-1992 SBCD: N and V undefined.
-            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-            // POM68K Q2: the 68040 leaves V/N untouched (cpuemu_31.c
-            // op_8100_31_ff: no SET_VFLG/SET_NFLG), as for ABCD above
             if constexpr (C != Core::C68020) {
                 reg.sr.v = ((tmp & 0x80) == 0x80) && ((result & 0x80) == 0);
-            } else if (cpuModel < Model::M68EC040) {
+            } else {
                 reg.sr.v = 0;
             }
 
@@ -396,15 +391,28 @@ Moira::bcd(u32 op1, u32 op2)
 
     // Set other flags
     reg.sr.c = reg.sr.x;
-    if (C != Core::C68020 || cpuModel < Model::M68EC040) reg.sr.n = NBIT<S>(result);
+    reg.sr.n = NBIT<S>(result);
     if (CLIP<Byte>(result)) reg.sr.z = 0;
 
     return (u32)result;
 }
 
+template <Size S> void
+Moira::setMoveFlags(u32 data)
+{
+    reg.sr.n = NBIT<S>(data);
+    reg.sr.z = ZERO<S>(data);
+    reg.sr.v = 0;
+    reg.sr.c = 0;
+}
+
 template <Core C, Size S> void
 Moira::cmp(u32 op1, u32 op2)
 {
+    // Only the lower S bytes of the operands are taken into account (the borrow is derived from bit 8 * S)
+    op1 = CLIP<S>(op1);
+    op2 = CLIP<S>(op2);
+
     u64 result = U64_SUB(op2, op1);
 
     reg.sr.c = NBIT<S>(result >> 1);
@@ -608,6 +616,10 @@ Moira::addsub(u32 op1, u32 op2)
 {
     u64 result;
 
+    // Only the lower S bytes of the operands are taken into account (the carry is derived from bit 8 * S)
+    op1 = CLIP<S>(op1);
+    op2 = CLIP<S>(op2);
+
     switch (I) {
 
         case Instr::ADD:
@@ -739,7 +751,7 @@ Moira::mullu(u32 op1, u32 op2)
 }
 
 template <Core C> u32
-Moira::divsMoira(u32 op1, u32 op2)
+Moira::divs(u32 op1, u32 op2)
 {
     u32 result;
     bool overflow;
@@ -755,33 +767,7 @@ Moira::divsMoira(u32 op1, u32 op2)
 
     if (overflow) {
 
-        if constexpr (C == Core::C68020) {
-
-            if (cpuModel >= Model::M68EC040) {
-
-                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-                // POM68K Q2: 68040 overflow — V=1, C=0, N/Z untouched
-                // (WinUAE setdivsflags, 68040 row)
-                reg.sr.c = 0;
-
-            } else {
-
-                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-                // POM68K O4 slice 4: WinUAE-arbitrated 020/030 overflow CCR
-                // (setdivsflags: clears NZC, then N/Z from the low byte of
-                // the absolute quotient unless the overflow is absolute)
-                setUndefinedDIVS<C, Word>(i32(op1), i16(op2));
-            }
-
-        } else {
-
-            // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-            // POM68K: V=1, C=0, N/Z PRESERVED on the 68000/68010
-            // (SingleStepTests/680x0 — differs from WinUAE's N=1,Z=0; see
-            // extern/moira/POM68K_VENDOR.md)
-            reg.sr.c = 0;
-        }
+        setUndefinedDIVS<C, Word>(i32(op1), i16(op2));
 
     } else {
 
@@ -794,7 +780,7 @@ Moira::divsMoira(u32 op1, u32 op2)
 }
 
 template <Core C> u32
-Moira::divuMoira(u32 op1, u32 op2)
+Moira::divu(u32 op1, u32 op2)
 {
     u32 result;
     bool overflow;
@@ -808,30 +794,7 @@ Moira::divuMoira(u32 op1, u32 op2)
 
     if (overflow) {
 
-        if constexpr (C == Core::C68020) {
-
-            if (cpuModel >= Model::M68EC040) {
-
-                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-                // POM68K Q2: 68040 overflow — V=1, C=0, N/Z untouched
-                // (WinUAE setdivuflags, 68040 row)
-                reg.sr.c = 0;
-
-            } else {
-
-                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-                // POM68K O4 slice 4: WinUAE-arbitrated 020/030 overflow CCR
-                // (setdivuflags: N set for a negative dividend; Z/C untouched)
-                setUndefinedDIVU<C, Word>(op1, (u16)op2);
-            }
-
-        } else {
-
-            // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-            // POM68K: V=1, C=0, N/Z preserved on the 68000/68010
-            // (SingleStepTests/680x0)
-            reg.sr.c = 0;
-        }
+        setUndefinedDIVU<C, Word>(i32(op1), i16(op2));
 
     } else {
 
@@ -843,70 +806,8 @@ Moira::divuMoira(u32 op1, u32 op2)
     return overflow ? op1 : result;
 }
 
-template <Core C> u32
-Moira::divsMusashi(u32 op1, u32 op2)
-{
-    u32 result;
-
-    if (op1 == 0x80000000 && (i32)op2 == -1) {
-
-        reg.sr.z = 0;
-        reg.sr.n = 0;
-        reg.sr.v = 0;
-        reg.sr.c = 0;
-        result = 0;
-
-    } else {
-
-        i64 quotient  = (i64)(i32)op1 / (i16)op2;
-        i16 remainder = (i64)(i32)op1 % (i16)op2;
-
-        if (quotient == (i16)quotient) {
-
-            result = (quotient & 0xffff) | (u16)remainder << 16;
-
-            reg.sr.z = quotient;
-            reg.sr.n = NBIT<Word>(quotient);
-            reg.sr.v = 0;
-            reg.sr.c = 0;
-
-        } else {
-
-            result = op1;
-            reg.sr.v = 1;
-        }
-    }
-
-    return result;
-}
-
-template <Core C> u32
-Moira::divuMusashi(u32 op1, u32 op2)
-{
-    u32 result;
-    i64 quotient  = op1 / op2;
-    u16 remainder = (u16)(op1 % op2);
-
-    if(quotient < 0x10000) {
-
-        result = (quotient & 0xffff) | remainder << 16;
-
-        reg.sr.z = quotient;
-        reg.sr.n = NBIT<Word>(quotient);
-        reg.sr.v = 0;
-        reg.sr.c = 0;
-
-    } else {
-
-        result = op1;
-        reg.sr.v = 1;
-    }
-
-    return result;
-}
-
 template <Size S> std::pair<u32,u32>
-Moira::divlsMoira(i64 a, u32 src)
+Moira::divls(i64 a, u32 src)
 {
     i64 quotient, remainder;
 
@@ -914,11 +815,6 @@ Moira::divlsMoira(i64 a, u32 src)
 
     if ((u64)a == 0x8000000000000000UL && (i32)src == -1) {
 
-        // [B] M68000PRM-1992 DIVS: quotient overflow.
-        // POM68K: reachable for the 64-bit dividend too — DIVS.L
-        // $80000000:00000000 / -1 overflows, V is the answer (M68000PRM-1992,
-        // DIVS). Upstream asserted S == Word here, which a Debug build of
-        // jit_asset_free_lockstep_test tripped on 2026-11-07.
         reg.sr.v = 1;
         return { u32(0), u32(0) };
 
@@ -930,9 +826,6 @@ Moira::divlsMoira(i64 a, u32 src)
         if ((quotient & u64(0xffffffff80000000)) != 0
             && (quotient & u64(0xffffffff80000000)) != u64(0xffffffff80000000)) {
 
-            // [B] M68000PRM-1992 DIVS: on overflow "the operands are
-            // unaffected". POM68K O4 slice 4: also reachable in the 32/32
-            // form ($80000000 / -1); the caller keeps the registers.
             reg.sr.v = 1;
             return { u32(0), u32(0) };
 
@@ -953,7 +846,7 @@ Moira::divlsMoira(i64 a, u32 src)
 }
 
 template <Size S> std::pair<u32,u32>
-Moira::divluMoira(u64 a, u32 src)
+Moira::divlu(u64 a, u32 src)
 {
     u64 quotient, remainder;
 
@@ -975,99 +868,15 @@ Moira::divluMoira(u64 a, u32 src)
     }
 }
 
-template <Size S> std::pair<u32,u32>
-Moira::divlsMusashi(u64 op1, u32 op2)
-{
-    u64 quotient, remainder;
-
-    if constexpr (S == Word) {
-
-        quotient  = (u64)((i64)((i32)op1) / (i64)((i32)op2));
-        remainder = (u64)((i64)((i32)op1) % (i64)((i32)op2));
-
-        reg.sr.n = NBIT<Long>(quotient);
-        reg.sr.z = ZERO<Long>(quotient);
-        reg.sr.v = 0;
-        reg.sr.c = 0;
-    }
-
-    if constexpr (S == Long) {
-
-        // [B] M68000PRM-1992 DIVS: $80000000:00000000 / -1 overflows (V).
-        // POM68K: upstream divided unguarded; INT64_MIN / -1 is undefined in
-        // C++ and kills an x86-64 host with SIGFPE (reproduced on unmodified
-        // ce28239, 2026-11-20). Gate: moira_upstream_config_test (divsl).
-        if (i64(op1) == INT64_MIN && i32(op2) == -1) {
-
-            reg.sr.v = 1;
-            return { u32(0), u32(0) };
-        }
-
-        quotient  = u64(i64(op1) / i64(i32(op2)));
-        remainder = u64(i64(op1) % i64(i32(op2)));
-
-        if (i64(quotient) == i64(i32(quotient))) {
-
-            reg.sr.n = NBIT<Long>(quotient);
-            reg.sr.z = ZERO<Long>(quotient);
-            reg.sr.v = 0;
-            reg.sr.c = 0;
-
-        } else {
-
-            reg.sr.v = 1;
-        }
-    }
-
-    return { u32(quotient), u32(remainder) };
-}
-
-template <Size S> std::pair<u32,u32>
-Moira::divluMusashi(u64 op1, u32 op2)
-{
-    u64 quotient, remainder;
-
-    if constexpr (S == Word) {
-
-        quotient  = op1 / op2;
-        remainder = op1 % op2;
-
-        reg.sr.n = NBIT<Long>(quotient);
-        reg.sr.z = ZERO<Long>(quotient);
-        reg.sr.v = 0;
-        reg.sr.c = 0;
-    }
-
-    if constexpr (S == Long) {
-
-        quotient  = op1 / op2;
-        remainder = op1 % op2;
-
-        if (quotient <= 0xffffffff) {
-
-            reg.sr.n = NBIT<Long>(quotient);
-            reg.sr.z = ZERO<Long>(quotient);
-            reg.sr.v = 0;
-            reg.sr.c = 0;
-
-        } else {
-
-            reg.sr.v = 1;
-        }
-    }
-
-    return { u32(quotient), u32(remainder) };
-}
-
 template <Core C, Instr I> int
 Moira::cyclesBit(u8 bit) const
 {
     switch (I)
     {
         case Instr::BTST: return 2;
-        case Instr::BCLR: return MOIRA_MIMIC_MUSASHI ? 6 : (bit > 15 ? 6 : 4);
+        case Instr::BCLR: return (compat == Compatibility::MUSASHI) ? 6 : (bit > 15 ? 6 : 4);
         case Instr::BSET:
-        case Instr::BCHG: return MOIRA_MIMIC_MUSASHI ? 4 : (bit > 15 ? 4 : 2);
+        case Instr::BCHG: return (compat == Compatibility::MUSASHI) ? 4 : (bit > 15 ? 4 : 2);
 
         default:
             fatalError;
@@ -1151,18 +960,14 @@ Moira::cyclesDiv(u32 op1, u16 op2) const
         i16 divisor  = (i16)op2;
         int mcycles  = (dividend < 0) ? 7 : 6;
 
-        // POM68K (host) (ported from NeoST 74b2f2d): absolute values in UNSIGNED
-        // arithmetic. abs(INT32_MIN) is undefined behaviour, and GCC and
-        // clang took different branches for $80000000 / $8000 (NeoST's
-        // cpu_div_ram bench: +136 cycles on one compiler only).
-        // |-2^31| >> 16 = $8000 >= |divisor| for every divisor, which is
-        // the overflow branch. Unreachable here today (execDivsMoira leaves
-        // on V before asking for the cycle count), kept identical to NeoST.
-        const u32 adividend = dividend < 0 ? 0u - (u32)dividend : (u32)dividend;
-        const u32 adivisor  = divisor  < 0 ? 0u - (u32)(i32)divisor : (u32)divisor;
-
-        // Check if quotient is larger than 16 bit
-        if ((adividend >> 16) >= adivisor) {
+        const u32 magnitude = dividend < 0 ? 0u - u32(dividend) : u32(dividend);
+        u32 aquot = magnitude / u32(abs(divisor));
+        u32 limit = 0xffff;
+        if constexpr (compat == Compatibility::DEFAULT) {
+            // The signed-overflow path exits at 16 or 18 clocks.
+            limit = (dividend < 0) != (divisor < 0) ? 0x8000 : 0x7fff;
+        }
+        if (aquot > limit) {
 
             result = (mcycles + 2) * 2;
 
@@ -1174,7 +979,6 @@ Moira::cyclesDiv(u32 op1, u16 op2) const
                 mcycles += (dividend < 0) ? 1 : -1;
             }
 
-            u32 aquot = adividend / adivisor;
             for (int i = 0; i < 15; i++) {
                 if ( (i16)aquot >= 0) mcycles++;
                 aquot <<= 1;
@@ -1221,13 +1025,9 @@ Moira::cyclesDiv(u32 op1, u16 op2) const
         i32 dividend = (i32)op1;
         i16 divisor  = (i16)op2;
         int mcycles  = (dividend < 0) ? 120 : 118;
-        // POM68K (host) (ported from NeoST 74b2f2d): unsigned absolute values, as
-        // in the 68000 case above — abs(INT32_MIN) is undefined.
-        const u32 adividend = dividend < 0 ? 0u - (u32)dividend : (u32)dividend;
-        const u32 adivisor  = divisor  < 0 ? 0u - (u32)(i32)divisor : (u32)divisor;
 
         // Check if quotient is larger than 16 bit
-        if ((adividend >> 16) >= adivisor) {
+        if (((dividend < 0 ? 0u - (u32)dividend : (u32)dividend) >> 16) >= (u32)abs(divisor)) {
 
             result = 16;
 
@@ -1258,10 +1058,6 @@ Moira::setUndefinedCHK(i32 src, i32 dst)
             reg.sr.c = reg.sr.z = reg.sr.n = reg.sr.v = 0;
 
             if (dst == 0) reg.sr.z = 1;
-            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-            // POM68K O4 slice 4: upstream dropped WinUAE's
-            // SET_NFLG(dst < 0) when porting setchkundefinedflags
-            reg.sr.n = dst < 0;
             if (dst < 0 || dst > src) {
 
                 if constexpr (S == Word) {
@@ -1375,6 +1171,15 @@ Moira::setUndefinedCHK2(i32 lower, i32 upper, i32 value)
 template <Core C, Size S> void
 Moira::setUndefinedDIVU(u32 dividend, u16 divisor)
 {
+    if constexpr (C == Core::C68000 && compat == Compatibility::DEFAULT) {
+        // The measured overflow leaves N and Z unchanged.
+        reg.sr.c = 0;
+        return;
+    }
+
+    // The 68040 sets V and clears C. N and Z stay unchanged.
+    if (cpuModel >= CPUModel::M68EC040) { reg.sr.c = 0; return; }
+
     auto iDividend = i32(dividend);
 
     switch (C) {
@@ -1385,6 +1190,13 @@ Moira::setUndefinedDIVU(u32 dividend, u16 divisor)
             reg.sr.c = 0;
             reg.sr.n = 1;
             reg.sr.z = 0;
+
+            if constexpr (compat == Compatibility::UAE) {
+
+                // UAE mimics an unverified 68010 behavior: N is cleared if both operands
+                // are negative. Real hardware sets N in this case (vAmigaTS: addrerr30).
+                if (C == Core::C68010 && iDividend < 0 && i16(divisor) < 0) reg.sr.n = 0;
+            }
             break;
 
         case Core::C68020:
@@ -1397,9 +1209,16 @@ Moira::setUndefinedDIVU(u32 dividend, u16 divisor)
 template <Core C, Size S> void
 Moira::setUndefinedDIVS(i32 dividend, i16 divisor)
 {
-    // POM68K (host) (ported from NeoST 74b2f2d): std::abs(INT32_MIN) is undefined
-    // behaviour; negate in unsigned arithmetic. This one IS reached: a
-    // 68020/030 DIVS.W of $80000000 always overflows and lands here.
+    if constexpr (C == Core::C68000 && compat == Compatibility::DEFAULT) {
+        // The measured overflow leaves N and Z unchanged.
+        reg.sr.c = 0;
+        return;
+    }
+
+    // The 68040 sets V and clears C. N and Z stay unchanged.
+    if (cpuModel >= CPUModel::M68EC040) { reg.sr.c = 0; return; }
+
+    // Negate in unsigned arithmetic (std::abs(INT32_MIN) is undefined)
     auto uDividend = dividend < 0 ? 0u - u32(dividend) : u32(dividend);
     auto uDivisor = u16(divisor < 0 ? 0u - u32(i32(divisor)) : u32(divisor));
 
@@ -1431,6 +1250,9 @@ Moira::setUndefinedDIVS(i32 dividend, i16 divisor)
 template <Core C, Size S> void
 Moira::setUndefinedDIVUL(i64 a, i32 divisor)
 {
+    // The 68040 sets V and clears C. N and Z stay unchanged.
+    if (cpuModel >= CPUModel::M68EC040) { reg.sr.c = 0; return; }
+
     i32 a32 = (i32)a;
     bool neg32 = a32 < 0;
 
@@ -1442,6 +1264,9 @@ Moira::setUndefinedDIVUL(i64 a, i32 divisor)
 template <Core C, Size S> void
 Moira::setUndefinedDIVSL(i64 a, i32 divisor)
 {
+    // The 68040 sets V and clears C. N and Z stay unchanged.
+    if (cpuModel >= CPUModel::M68EC040) { reg.sr.c = 0; return; }
+
     i32 a32 = (i32)a;
     bool neg64 = a < 0;
     bool neg32 = a32 < 0;

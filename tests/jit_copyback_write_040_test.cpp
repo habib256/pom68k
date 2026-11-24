@@ -53,7 +53,7 @@ public:
     GateCpu()
         : mem(1u << 24, 0), jit(*this, hooks(this), jit::kGuest68040,
                                 injectedJitConfig()) {
-        setModel(moira::Model::M68040);
+        setModel(moira::CPUModel::M68040);
     }
 
     std::vector<uint8_t> mem;

@@ -109,7 +109,7 @@ void CentrisMemory::reset() {
 void CentrisMemory::busError(uint32_t addr, bool write) const {
     if (onBusError) onBusError(addr, write);
     if (cpu_) cpu_->extBusError040();
-    throw moira::MmuBusError{};
+    throw moira::BusError(0u);
 }
 
 int CentrisMemory::iplLevel() const {

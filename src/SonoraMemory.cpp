@@ -160,7 +160,7 @@ void SonoraMemory::reset() {
 
 void SonoraMemory::busError() const {
     if (cpu_) cpu_->extBusError();
-    throw moira::MmuBusError{};
+    throw moira::BusError(0u);
 }
 
 int SonoraMemory::iplLevel() const {

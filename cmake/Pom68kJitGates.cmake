@@ -69,6 +69,7 @@ function(pom68k_perf_budget target workload cpu_family metric macro)
         "${macro}=${value}")
 endfunction()
 
+if(POM68K_JIT)   # JIT gates: not registered while the engine is compiled out (POM68K_JIT=OFF)
 include(${CMAKE_CURRENT_LIST_DIR}/Pom68kJitFuzzGates.cmake)
 
 # Daily native lockstep with no Apple assets: a deterministic flat-RAM
@@ -159,8 +160,10 @@ if(POM68K_JIT_NATIVE_BACKEND STREQUAL "a64")
 endif()
 
 # The gates that link Moira alone — no machine, no ROM, no JIT engine.
+endif()
 include(${CMAKE_CURRENT_LIST_DIR}/Pom68kCpuGates.cmake)
 
+if(POM68K_JIT)   # JIT gates: not registered while the engine is compiled out (POM68K_JIT=OFF)
 # ── JIT gates (src/jit/POM68K_JIT.md) ────────────────────────────────
 # The portability seam: backend selection, W^X executable memory, and
 # the block classifier's safety rules. No assets, runs everywhere.
@@ -551,6 +554,7 @@ if(POM68K_JIT_NATIVE_BACKEND)
     endforeach()
 endif()
 
+endif()
 # The plain 68040 etalons now exercise the accelerated default. Preserve
 # one explicit interpreter oracle per 68040 platform: a default is only
 # conformant while the old reference remains independently runnable and

@@ -1,5 +1,5 @@
 // CPU-instance arithmetic state must survive another CPU's execution.
-#include "Moira.h"
+#include "MoiraCompat.h"
 extern "C" {
 #include "softfloat.h"
 }
@@ -61,7 +61,7 @@ void intermediateContexts() {
           "the overflow context retains its own exception flags");
 }
 
-class Cpu : public moira::Moira {
+class Cpu : public MoiraCompat {
 public:
     std::vector<moira::u8> mem = std::vector<moira::u8>(1 << 20);
     mutable Cpu* nested = nullptr;
@@ -72,9 +72,9 @@ public:
     uint32_t lng(uint32_t a) const {
         return uint32_t(mem[a]) << 24 | uint32_t(mem[a+1]) << 16 | uint32_t(mem[a+2]) << 8 | mem[a+3];
     }
-    void prepare(moira::Model model, uint16_t ext, uint32_t fpcr, bool onePointFive) {
+    void prepare(moira::CPUModel model, uint16_t ext, uint32_t fpcr, bool onePointFive) {
         setModel(model);
-        setFPUModel(model == moira::Model::M68040 ? moira::FPUModel::M68040 : moira::FPUModel::M68882);
+        setFPUModel(model == moira::CPUModel::M68040 ? MoiraFpu::M68040 : MoiraFpu::M68882);
         lng(0, 0x80000); lng(4, 0x1000);
         word(0x1000, 0xf210); word(0x1002, ext);
         word(0x1004, 0x4e71); word(0x1006, 0x4e71);
@@ -102,7 +102,7 @@ private:
         trigger(a, true); const_cast<Cpu*>(this)->word(a & 0xfffff, v);
     }
 };
-void nestedInstruction(moira::Model model, bool output) {
+void nestedInstruction(moira::CPUModel model, bool output) {
     Cpu control, outer, inner;
     for (Cpu* c : {&control, &outer}) {
         c->prepare(model, output ? 0x6000 : 0x4422, output ? 0 : 0x70, output);
@@ -125,7 +125,7 @@ void nestedInstruction(moira::Model model, bool output) {
           "nested execution preserves the outer CPU's precision, rounding and exception flags");
 }
 #if !defined(__EMSCRIPTEN__) || defined(__EMSCRIPTEN_PTHREADS__)
-void parallelInstructions(moira::Model model) {
+void parallelInstructions(moira::CPUModel model) {
     constexpr unsigned iterations = 512;
     Cpu up, truncate;
     for (auto* c : {&up, &truncate}) {
@@ -163,7 +163,7 @@ void parallelInstructions(moira::Model model) {
 }
 int main() {
     intermediateContexts();
-    for (auto model : {moira::Model::M68030, moira::Model::M68040}) {
+    for (auto model : {moira::CPUModel::M68030, moira::CPUModel::M68040}) {
         nestedInstruction(model, false); nestedInstruction(model, true);
 #if !defined(__EMSCRIPTEN__) || defined(__EMSCRIPTEN_PTHREADS__)
         parallelInstructions(model);

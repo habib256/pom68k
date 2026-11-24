@@ -619,6 +619,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-24 — POM68K runs on Dirk Hoffmann's Moira: seventeen fixes in a patch queue, the Quadras' FPSP and the Mac slot probes restored](#2026-11-24-dirk-moira-base)
 - [2026-11-22 (sixth) — The 68040 FBcc/FDBcc with an odd displacement faults as the manual says: after the predicate, taken or not](#2026-11-22-fbcc-odd-040)
 - [2026-11-22 (fifth) — D27, D29 and the 68030 half of D28 settled by the manuals, D25/D26 narrowed; the continuation and CIR sentences of the surface contract](#2026-11-22-d25-d29-by-manual)
 - [2026-11-22 (fourth) — The core and NEOST_VENDOR.md are in English, for the release to Dirk Hoffmann](#2026-11-22-core-in-english)
@@ -1442,6 +1443,70 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-24-dirk-moira-base"></a>
+## 2026-11-24 — POM68K runs on Dirk Hoffmann's Moira: seventeen fixes in a patch queue, the Quadras' FPSP and the Mac slot probes restored
+
+**The base.** `extern/moira/Moira` is Dirk's `master` (`450b15ae`, his `FPU`
+branch merged) plus a queue of seventeen commits exported to
+`extern/moira/patches/` (`POM68K_VENDOR.md` § Inventory). Each one is in his
+style, reproduced on his unmodified tree by
+`tools/dirk_moira/findings_repro.cpp` and checked in the locked manuals; Dirk
+agreed to receive them as small pull requests against `master` (discussion
+#36, 2026-11-23). His own `58e0405b` fixed the 68030/68040 host-bus-error SSW
+in parallel and replaced ours: the queue is rebased before each patch.
+The JIT is compiled out (`POM68K_JIT=OFF` is now the default); its 106 gates
+are recorded absent (`cmake/pom68k_jit_gates.tsv`) until it is rebuilt.
+
+**What the machines needed**, found by booting them, not by reading code:
+- the SSW of a bus error raised by the host was empty (020/030/040): the LC II
+  power-on test fell into the ROM's diagnostic monitor (patch 1, and his
+  `58e0405b`); three CPU wrappers reported a stale fault address;
+- instruction-cache hits were counted twice (a cached 8 x NOP + DBF cost 4.5
+  clocks, MC68020UM §8.2 gives 22): the 33 MHz LC III+, LC 550 and Color
+  Classic II stayed black (patches 2, 3);
+- FSAVE after an unimplemented 68040 FPU instruction returned a null frame:
+  the Quadra 605's ROM FPSP took it, wrote its operands over the caller's
+  stack and the machine crashed a hundred instructions later, after a
+  "MyEyes error type 10" with the earlier format-$0 frame (patch 5,
+  MC68040UM §9.6.1, Table 9-16);
+- a handler that completes a read and clears DF made the restart model
+  re-fault forever: the LC II booting GISTPERSO entered the System's
+  recovery routine ($1313E) 28.8 million times; with the completed-cycle
+  record (patches 6, 14) 524 times, as on the fork, and the boot goes on;
+- a double bus fault during reset or a trace exception escaped as a C++
+  exception instead of halting (patch 7, MC68030UM §8.1.1).
+
+**What the tests found**: the watchpoint delegate had no access kind (8);
+catchpoints were lost by reset (9); FMOVE.P of a zero with k > 17 raised no
+OPERR (10, MC68881UM Table 6-2); FRESTORE accepted any frame and the 68040
+busy frame was 92 bytes (11); a 68040 FMOVE to an integer did not take SNAN
+and OPERR unconditionally (12, §9.7.2.2, §9.7.3.2); a fault on the final
+prefetch reran FADD on its own result (13); the 68020 frame had no data
+output buffer (15); the SSW size and the 68040 fault address of a split long
+word (16, 17). POM68K's side: the save-state visitor gained the FPU state,
+the 68020 restart record, the completed cycle and the cache lines (format
+v39); debugger flags no longer enter a save state; `debugSetPc` follows
+Dirk's PC convention; the host publishes the engine that runs.
+
+**Rulings against the fork**, each recorded at its test: a 6888x reports no
+post-instruction exception (MC68881UM §6.1), so the fork's format-$2 frame
+for FMOVE to an integer was WinUAE's; the 68040 FPCR low nibble reads 0
+(MC68040UM Figure 9-2); SSW bit 9 is reserved (MC68020UM §6.2.1); the
+68040 FMOVEM word order is the common one (the Quadras' FPSP runs on it).
+
+**What stays open** (`TODO.md` § Objectif principal): a 68040 write fault is
+completed post-instruction by the handler and Dirk's core reruns the
+instruction, applying a read-modify-write twice (388 known rows of
+`fault_transparency_test`); instruction-stream faults are taken by the
+prefetching instruction; the RM bit of locked cycles. The CPU tests written
+for the fork run against classified known lists (`tests/known/`,
+`tools/known_failures.py`: an unlisted failure fails the gate); the public
+WinUAE vectors against an agreement floor (030: 811/1128, 040: 383/576).
+`moira_release_test` is retired with the fork's release; `cache040_test`,
+`callm_rtm_test` and `mmu040_atc_test` wait for an equivalent on his core.
+One pixel pin moved and was re-pinned after checking the pixels (the
+Portable's pointer, 92 pixels at x 7-23, y 7-29).
 
 <a id="2026-11-22-moira-convergence-inventory"></a>
 ## 2026-11-22 (ninth) — Dirk's Moira becomes the base: the fork's 158 changes sorted against his rewrite, and the first findings sent to him

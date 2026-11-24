@@ -7,7 +7,7 @@
 
 #pragma once
 
-namespace moira {
+namespace MOIRA_NAMESPACE {
 
 //
 // Wrapper structures controlling the output format
@@ -25,11 +25,13 @@ struct UInt32 { u32 raw; UInt32(u32 v) : raw(v) { } };
 struct Imu { u32 raw; Size sz; Imu(u32 v, Size s = Long) : raw(v), sz(s) { } };
 struct Ims { i32 raw; Size sz; Ims(i32 v, Size s = Long) : raw(v), sz(s) { } };
 struct Imd { u32 raw; Imd(u32 v) : raw(v) { } };
+struct ImPacked { u32 a, b, c; };
 
 // Mnemonics
 struct Ins { Instr raw; Ins(Instr v) : raw(v) { } };
 struct Sz { Size raw; Sz(Size v) : raw(v) { } };
 struct Szb { Size raw; Szb(Size v) : raw(v) { } };
+struct Usz { Size raw; Usz(Size v) : raw(v) { } };   // Size suffix that is only printed in UAE syntax
 struct Cc { int raw; Cc(int v) : raw(v) { } };
 struct Cpcc { int raw; Cpcc(int v) : raw(v) { } };
 struct Fcc { int raw; Fcc(int v) : raw(v) { } };
@@ -39,9 +41,7 @@ struct Pcc { int raw; Pcc(int v) : raw(v) { } };
 struct Dn { int raw; Dn(int v) : raw(v) { } };
 struct An { int raw; An(int v) : raw(v) { } };
 struct Rn { int raw;  Rn(int v) : raw(v) { } };
-// POM68K: acu — the MC68EC040 names its four TTR slots IACR0/1 and DACR0/1.
-// [B] MC68040UM-1993 §B.3.1, Figure B-2.
-struct Cn { u16 raw; bool acu; Cn(u16 v, bool a = false) : raw(v), acu(a) { } };
+struct Cn { u16 raw; Cn(u16 v) : raw(v) { } };
 struct Ccr { };
 struct Pc { };
 struct Zpc { };
@@ -66,6 +66,7 @@ struct Ix { const Ea &ea; };
 struct IxMot { const Ea &ea; };
 struct IxMit { const Ea &ea; };
 struct IxMus { const Ea &ea; };
+struct IxUae { const Ea &ea; };
 struct Aw { const Ea &ea; };
 struct Al { const Ea &ea; };
 struct DiPc { const Ea &ea; };
@@ -131,6 +132,8 @@ public:
     StrWriter& operator<<(Ins);
     StrWriter& operator<<(Sz);
     StrWriter& operator<<(Szb);
+    StrWriter& operator<<(Usz);
+    StrWriter& operator<<(ImPacked);
     StrWriter& operator<<(Cc);
     StrWriter& operator<<(Cpcc);
     StrWriter& operator<<(Fcc);
@@ -160,6 +163,7 @@ public:
     StrWriter& operator<<(IxMot);
     StrWriter& operator<<(IxMit);
     StrWriter& operator<<(IxMus);
+    StrWriter& operator<<(IxUae);
     StrWriter& operator<<(Aw);
     StrWriter& operator<<(Al);
     StrWriter& operator<<(DiPc);

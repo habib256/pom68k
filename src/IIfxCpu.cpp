@@ -9,8 +9,8 @@ IIfxCpu::IIfxCpu(IIfxMemory& mem, const jit::ResolvedConfig& jitConfig,
       // has not run at member-init time, and reading it there is the mistake
       // JitEngine.h documents (it cost the Quadra its x64 backend).
     : MoiraCpu(mem, jit::kGuest68030, jitConfig) {
-    setModel(moira::Model::M68030);
-    setFPUModel(withFpu ? moira::FPUModel::M68882 : moira::FPUModel::NONE);
+    setModel(moira::CPUModel::M68030);
+    setFPUModel(withFpu ? MoiraFpu::M68882 : MoiraFpu::NONE);
     // Fixed batch, like the Mac II family: the IIfx is one of the four
     // platforms still on kPeriphBatch rather than a device-derived
     // deadline (TODO.md § Fidélité matérielle et LLE).

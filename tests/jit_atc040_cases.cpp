@@ -27,7 +27,7 @@ public:
     jit::Engine engine;
     uint32_t hole = ~0u;
     unsigned faults = 0;
-    explicit Cpu(const jit::ResolvedConfig& config, moira::Model model)
+    explicit Cpu(const jit::ResolvedConfig& config, moira::CPUModel model)
         : engine(*this, hooks(this), jit::kGuest68040, config) { setModel(model); }
     void word(uint32_t a, uint16_t v) {
         ram[a & Mask] = uint8_t(v >> 8); ram[(a + 1) & Mask] = uint8_t(v);
@@ -180,7 +180,7 @@ bool same(const Cpu& a, const Cpu& b) {
     return ok;
 }
 
-bool run(const jit::ResolvedConfig& base, moira::Model model, bool page8k,
+bool run(const jit::ResolvedConfig& base, moira::CPUModel model, bool page8k,
          unsigned profile, bool super, unsigned strategy, bool packed) {
     auto config = base; config.backend = strategy == 1 ? "threaded" : "auto";
     if (strategy == 1) config.requireNative = false;   // deliberate threaded arm
@@ -219,7 +219,7 @@ bool run(const jit::ResolvedConfig& base, moira::Model model, bool page8k,
 // Enter an already compiled block with a cold or denied data translation.
 // The failed exact thunk must restore its speculative ATC effects before
 // Moira repeats the instruction and constructs the architectural frame.
-bool faultCase(const jit::ResolvedConfig& base, moira::Model model, bool page8k,
+bool faultCase(const jit::ResolvedConfig& base, moira::CPUModel model, bool page8k,
                bool cache, bool super, unsigned kind, bool packed) {
     auto config = base; config.packedCcr = packed;
     config.dataWindow = true; config.dataWindowExplicit = true;
@@ -279,7 +279,7 @@ bool faultCase(const jit::ResolvedConfig& base, moira::Model model, bool page8k,
     return ok;
 }
 
-bool replacementCase(const jit::ResolvedConfig& base, moira::Model model, bool page8k,
+bool replacementCase(const jit::ResolvedConfig& base, moira::CPUModel model, bool page8k,
                      bool cache, bool super, bool data, unsigned strategy,
                      unsigned form, unsigned accesses) {
     auto config = base; config.backend = strategy == 1 ? "threaded" : "auto";
@@ -424,7 +424,7 @@ bool replacementCase(const jit::ResolvedConfig& base, moira::Model model, bool p
 // (logical page, physical page, bytes) block proof across TC/TTR changes.
 // No instruction writes code. Reusing the same generated blocks must still
 // consult live ATC provenance for both instruction and data accesses.
-bool transitionCase(const jit::ResolvedConfig& base, moira::Model model, bool page8k,
+bool transitionCase(const jit::ResolvedConfig& base, moira::CPUModel model, bool page8k,
                     bool cache, bool super, unsigned strategy, bool packed) {
     auto config = base; config.backend = strategy == 1 ? "threaded" : "auto";
     if (strategy == 1) config.requireNative = false;   // deliberate threaded arm
@@ -504,7 +504,7 @@ bool transitionCase(const jit::ResolvedConfig& base, moira::Model model, bool pa
 
 bool runJitAtc040Cases(const jit::ResolvedConfig& config) {
     unsigned cases = 0, failures = 0;
-    for (auto model : {moira::Model::M68LC040, moira::Model::M68040})
+    for (auto model : {moira::CPUModel::M68LC040, moira::CPUModel::M68040})
     for (bool page8k : {false, true})
     for (unsigned profile = 0; profile != 4; ++profile)
     for (bool super : {false, true})
@@ -513,7 +513,7 @@ bool runJitAtc040Cases(const jit::ResolvedConfig& config) {
         ++cases;
         if (!run(config, model, page8k, profile, super, strategy, packed)) ++failures;
     }
-    for (auto model : {moira::Model::M68LC040, moira::Model::M68040})
+    for (auto model : {moira::CPUModel::M68LC040, moira::CPUModel::M68040})
     for (bool page8k : {false, true})
     for (bool cache : {false, true})
     for (bool super : {false, true})
@@ -523,7 +523,7 @@ bool runJitAtc040Cases(const jit::ResolvedConfig& config) {
         ++cases;
         if (!faultCase(config, model, page8k, cache, super, kind, packed)) ++failures;
     }
-    for (auto model : {moira::Model::M68LC040, moira::Model::M68040})
+    for (auto model : {moira::CPUModel::M68LC040, moira::CPUModel::M68040})
     for (bool page8k : {false, true})
     for (bool cache : {false, true})
     for (bool super : {false, true})
@@ -542,7 +542,7 @@ bool runJitAtc040Cases(const jit::ResolvedConfig& config) {
 
 bool runJitAtc040ReplacementCases(const jit::ResolvedConfig& config) {
     unsigned cases = 0, failures = 0;
-    for (auto model : {moira::Model::M68LC040, moira::Model::M68040})
+    for (auto model : {moira::CPUModel::M68LC040, moira::CPUModel::M68040})
     for (bool page8k : {false, true})
     for (bool cache : {false, true})
     for (bool super : {false, true})

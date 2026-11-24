@@ -8,7 +8,7 @@
 #define AVAILABILITY(core) \
 if constexpr ((core) == Core::C68010) { static_assert(C != Core::C68000); } \
 if constexpr ((core) == Core::C68020) { static_assert(C != Core::C68000 && C != Core::C68010); } \
-if constexpr (C == Core::C68020) { budget.cp = 0; mmuPreparePlain020(opcode); } \
+if constexpr (C == Core::C68020) budget.penalty = 0; \
 if constexpr (MOIRA_WILL_EXECUTE) willExecute(__func__, I, M, S, opcode);
 
 #define FINALIZE \
@@ -22,12 +22,14 @@ CYCLES_68010(38) \
 CYCLES_68020(34) \
 return; }
 
-// [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-// POM68K: upstream applied per-mode PC adjustments (+2 for -(An) short,
-// -2 for d16/d8 modes). SingleStepTests/680x0 shows the 68000 stacks
-// getPC()-2 uniformly for data faults (the -2 lives in makeFrame), so the
-// per-mode corrections are neutralized. See extern/moira/POM68K_VENDOR.md.
-#define STD_AE_FRAME (0)
+#define CLRC ((!isRegMode(M) || S == Long) ? COMMIT_IRD : 0)   // CLR defers the IRD update only if the prefetch is not the last cycle
+
+#define STD_AE_FRAME (\
+(M == Mode::PD && S != Long) ? AE_INC_PC : \
+(M == Mode::DI)              ? AE_DEC_PC : \
+(M == Mode::IX)              ? AE_DEC_PC : \
+(M == Mode::DIPC)            ? AE_DEC_PC : \
+(M == Mode::IXPC)            ? AE_DEC_PC : 0)
 
 template <Core C, Instr I, Mode M, Size S> void
 Moira::execLineA(u16 opcode)
@@ -63,42 +65,6 @@ Moira::execLineF(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K O4 slice 4 (WinUAE-arbitrated, D6-remainder): on a
-    // coprocessor-less 020/030 the USER-mode cpSAVE/cpRESTORE windows of
-    // every coprocessor id take a privilege violation BEFORE the Line-F
-    // trap — but only for the EA modes a real cpSAVE/cpRESTORE decodes
-    // (WinUAE op_illg -> privileged_copro_instruction).
-    // Q3: 020/030 ONLY — the 68040 has no coprocessor interface and its
-    // op_illg goes straight to Line-F (fresh-seed arbitrated 2026-07-18).
-    if constexpr (C == Core::C68020) {
-
-        if (!reg.sr.s && cpuModel < Model::M68EC040) {
-
-            int mode = opcode >> 3 & 7;
-            int rg = opcode & 7;
-            bool priv = false;
-
-            if ((opcode & 0xF1C0) == 0xF100) {      // cpSAVE shape
-                priv = mode == 2 || (mode >= 4 && mode <= 6)
-                    || (mode == 7 && (rg == 0 || rg == 1));
-            }
-            if ((opcode & 0xF1C0) == 0xF140) {      // cpRESTORE shape
-                priv = mode == 2 || mode == 3 || (mode >= 5 && mode <= 6)
-                    || (mode == 7 && rg <= 3);
-            }
-            if (priv) {
-
-                execException<C>(M68kException::PRIVILEGE);
-
-                CYCLES_68020(34)
-
-                FINALIZE
-                return;
-            }
-        }
-    }
-
     execException<C>(M68kException::LINEF);
 
     CYCLES_68000(34)
@@ -112,15 +78,6 @@ template <Core C, Instr I, Mode M, Size S> void
 Moira::execIllegal(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
-
-    // POM68K (host) (ported from NeoST fdbce2e): opcode handled by the subclass ->
-    // consumed like a NOP (see Moira.h illegalOpcodeHook).
-    if (illegalOpcodeHook(opcode)) {
-
-        prefetch<C, POLL>();
-        FINALIZE
-        return;
-    }
 
     execException<C>(M68kException::ILLEGAL);
 
@@ -142,10 +99,14 @@ Moira::execShiftRg(u16 opcode)
     int cnt = readD(src) & 0x3F;
     int cyc = (S == Long ? 4 : 2) + 2 * cnt;
 
-    prefetch<C, POLL>();
+    u32 operand = readD<S>(dst);
+
+    try { prefetchLate<C, POLL>(); } catch (BusError &e) {
+        rethrow<C>(e, CCR::N | CCR::Z | CCR::V | CCR::C, shiftPendingCCR(I, S, operand));
+    }
     SYNC(cyc);
 
-    writeD<S>(dst, shift<C, I, S>(cnt, readD<S>(dst)));
+    writeD<S>(dst, shift<C, I, S>(cnt, operand));
 
     if constexpr (C == Core::C68000 || C == Core::C68010) {
 
@@ -153,26 +114,11 @@ Moira::execShiftRg(u16 opcode)
 
     } else {
 
-        switch (I) {
+        constexpr int base =
+        (I == Instr::ROL || I == Instr::ROR || I == Instr::ASL) ? 8 :
+        (I == Instr::ROXL || I == Instr::ROXR) ? 12 : 6;
 
-            case Instr::ROL:
-            case Instr::ROR:
-            case Instr::ASL:
-                
-                CYCLES(  8 + cnt );
-                break;
-                
-            case Instr::ROXL:
-            case Instr::ROXR:
-                
-                CYCLES( 12 + cnt );
-                break;
-                
-            default:
-                
-                CYCLES(  6 + cnt );
-                break;
-        }
+        CYCLES(base + cnt);
     }
 
     FINALIZE
@@ -188,10 +134,14 @@ Moira::execShiftIm(u16 opcode)
     int cnt = src ? src : 8;
     int cyc = (S == Long ? 4 : 2) + 2 * cnt;
 
-    prefetch<C, POLL>();
+    u32 operand = readD<S>(dst);
+
+    try { prefetchLate<C, POLL>(); } catch (BusError &e) {
+        rethrow<C>(e, CCR::N | CCR::Z | CCR::V | CCR::C, shiftPendingCCR(I, S, operand));
+    }
     SYNC(cyc);
 
-    writeD<S>(dst, shift<C, I, S>(cnt, readD<S>(dst)));
+    writeD<S>(dst, shift<C, I, S>(cnt, operand));
 
     if constexpr (C == Core::C68000 || C == Core::C68010) {
 
@@ -199,32 +149,12 @@ Moira::execShiftIm(u16 opcode)
 
     } else {
 
-        switch (I) {
+        constexpr int cycles =
+        (I == Instr::LSL || I == Instr::LSR) ? 4 :
+        (I == Instr::ROL || I == Instr::ROR || I == Instr::ASL) ? 8 :
+        (I == Instr::ROXL || I == Instr::ROXR) ? 12 : 6;
 
-            case Instr::LSL:
-            case Instr::LSR:
-                
-                CYCLES(4);
-                break;
-                
-            case Instr::ROL:
-            case Instr::ROR:
-            case Instr::ASL:
-                
-                CYCLES(8);
-                break;
-                
-            case Instr::ROXL:
-            case Instr::ROXR:
-                
-                CYCLES(12);
-                break;
-                
-            default:
-                
-                CYCLES(6);
-                break;
-        }
+        CYCLES(cycles);
     }
 
     FINALIZE
@@ -240,17 +170,9 @@ Moira::execShiftEa(u16 opcode)
     u32 ea, data;
     readOp<C, M, S, STD_AE_FRAME>(src, &ea, &data);
 
-    looping<I>() ? noPrefetch<C>(4) : prefetch<C, POLL>();
-    pomLastWrite030<C>();   // POM68K (host): the store below ends the instruction
-    // [D] WinUAE gencpu memory shifts @ Hatari e77819f7: `uae_u16 val` —
-    // the word zero-extended in the 68030 write buffer. ASL alone shifts a
-    // `uae_u32`, so its buffer keeps the bit shifted out ("op=ASL_mem
-    // #9555", opcells.py --set classes --mmu identity --user --stack data).
-    u32 shifted = shift<C, I, S>(1, data);
-    if constexpr (C == Core::C68020 && (I == Instr::ASL || I == Instr::ASL_LOOP)) {
-        shifted = CLIP<S>(data) << 1;
-    }
-    writeM<C, M, S, MMU_RAWBUF>(ea, shifted);
+    u32 result = shift<C, I, S>(1, data);
+    looping<I>() ? noPrefetch<C>(4) : fetchIrc<C, POLL>();
+    writeM<C, M, S, COMMIT_IRD>(ea, result);
 
     if constexpr (I == Instr::ROR || I == Instr::ROL) {
 
@@ -292,50 +214,6 @@ Moira::execShiftEa(u16 opcode)
     FINALIZE
 }
 
-// [D] WinUAE gencpu.c i_ABCD/i_SBCD/i_NBCD @ Hatari e77819f7 (cpuemu_31/32
-// op_c108/op_8108/op_4810): the value a BCD store hands the bus is gencpu's
-// `uae_u16 newv`, the unclipped digit arithmetic, so a faulting store leaves
-// those sixteen bits in the 68030 write buffer, not the sign-extended byte
-// (the 68040's WB3D takes the store at its size: mmu040Fault). Only the
-// buffer sees the high bits — the low byte is the result the core already
-// computed. [F] for silicon: the buffer is internal.
-// Settled by: the internal long of a $B frame a real 68030 stacks for a
-// faulting NBCD.
-// Gate: sst68030_rmw (NBCD, SBCD -(An) faults: unlisted-byte check).
-static inline u32
-pomGencpuBcdValue(Instr I, u32 src, u32 dst, bool x)
-{
-    const int s = i8(src), d = i8(dst), xb = x ? 1 : 0;
-    u16 newv;
-    switch (I) {
-        case Instr::ABCD: case Instr::ABCD_LOOP: {
-            const u16 lo = u16((s & 0xF) + (d & 0xF) + xb);
-            const u16 hi = u16((s & 0xF0) + (d & 0xF0));
-            newv = u16(hi + lo);
-            if (lo > 9) newv = u16(newv + 6);
-            if ((newv & 0x3F0) > 0x90) newv = u16(newv + 0x60);
-            break;
-        }
-        case Instr::NBCD: case Instr::NBCD_LOOP: {
-            u16 lo = u16(-(s & 0xF) - xb);
-            const u16 hi = u16(-(s & 0xF0));
-            if (lo > 9) lo = u16(lo - 6);
-            newv = u16(hi + lo);
-            if ((newv & 0x1F0) > 0x90) newv = u16(newv - 0x60);
-            break;
-        }
-        default: {                          // SBCD
-            const u16 lo = u16((d & 0xF) - (s & 0xF) - xb);
-            const u16 hi = u16((d & 0xF0) - (s & 0xF0));
-            newv = u16(hi + lo);
-            if (lo & 0xF0) newv = u16(newv - 6);
-            if ((((d & 0xFF) - (s & 0xFF) - xb) & 0x100) > 0xFF) newv = u16(newv - 0x60);
-            break;
-        }
-    }
-    return newv;
-}
-
 template <Core C, Instr I, Mode M, Size S> void
 Moira::execAbcdRg(u16 opcode)
 {
@@ -346,7 +224,7 @@ Moira::execAbcdRg(u16 opcode)
 
     u32 result = bcd<C, I, Byte>(readD<Byte>(src), readD<Byte>(dst));
 
-    prefetch<C, POLL>();
+    prefetchLate<C, POLL>();
     SYNC(2);
     writeD<Byte>(dst, result);
 
@@ -366,20 +244,13 @@ Moira::execAbcdEa(u16 opcode)
     int dst = ____xxx_________(opcode);
 
     u32 ea1, ea2, data1, data2;
-    readOp<C, M, S>(src, &ea1, &data1);
+    readOp<C, M, S, AE_INC_PC>(src, &ea1, &data1);
     POLL_IPL;
-    readOp<C, M, S, IMPL_DEC>(dst, &ea2, &data2);
+    readOp<C, M, S, IMPL_DEC | AE_INC_PC>(dst, &ea2, &data2);
 
-    const u32 raw = pomGencpuBcdValue(I, data1, data2, reg.sr.x);
     u32 result = bcd<C, I, Byte>(data1, data2);
-    looping<I>() ? noPrefetch<C>(4) : prefetch<C>();
-
-    pomLastWrite030<C>();   // POM68K (host): the store below ends the instruction
-    if constexpr (C == Core::C68020) {
-        writeM<C, M, Byte, MMU_RAWBUF>(ea2, (raw & ~0xFFu) | (result & 0xFF));
-    } else {
-        writeM<C, M, Byte>(ea2, result);
-    }
+    looping<I>() ? noPrefetch<C>(4) : fetchIrc<C>();
+    writeM<C, M, Byte, COMMIT_IRD>(ea2, result);
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -400,20 +271,40 @@ Moira::execAddEaRg(u16 opcode)
 
     readOp<C, M, S, STD_AE_FRAME>(src, &ea, &data);
 
-    result = addsub<C, I, S>(data, readD<S>(dst));
-    writeD<S>(dst, result);
+    if constexpr (C == Core::C68000 && S == Long && isMemMode(M)) {
 
-    if constexpr (C == Core::C68000) {
+        result = addsub<C, I, S>(data, readD<S>(dst));
+        try { prefetchLate<C, POLL, true>(); } catch (BusError &e) {
+            rethrowD<C, Word>(e, dst, result);
+        }
+        SYNC(2);
+        writeD<S>(dst, result);
 
-        prefetch<C, POLL>();
-        if constexpr (S == Long) SYNC(2 + (isMemMode(M) ? 0 : 2));
+    } else if constexpr (C == Core::C68000 && S == Long) {
+
+        try { prefetchLate<C, POLL, true>(); } catch (BusError &e) {
+            rethrowD<C, Word>(e, dst, addsub<C, I, Word>(data, readD<Word>(dst)));
+        }
+        result = addsub<C, I, S>(data, readD<S>(dst));
+        SYNC(4);
+        writeD<S>(dst, result);
+
+    } else if constexpr (C == Core::C68000) {
+
+        result = addsub<C, I, S>(data, readD<S>(dst));
+
+        try { prefetch<C, POLL>(); } catch (BusError &e) {
+            rethrowD<C, S>(e, dst, result);
+        }
+        writeD<S>(dst, result);
 
     } else {
 
+        result = addsub<C, I, S>(data, readD<S>(dst));
+        writeD<S>(dst, result);
         POLL_IPL;
         if constexpr (S == Long) SYNC(2);
         looping<I>() ? noPrefetch<C>(6) : prefetch<C>();
-
     }
 
     //           00  10  20        00  10  20        00  10  20
@@ -445,23 +336,16 @@ Moira::execAddRgEa(u16 opcode)
     int dst = _____________xxx(opcode);
 
     readOp<C, M, S, STD_AE_FRAME>(dst, &ea, &data);
+
     result = addsub<C, I, S>(readD<S>(src), data);
 
-    looping<I>() ? noPrefetch<C>(2) : prefetch<C, POLL>();
+    // If the prefetch of a long operation fails, the flags of the low word operation show up
+    try { looping<I>() ? noPrefetch<C>(2) : fetchIrc<C, POLL>(); } catch (BusError &e) {
+        if constexpr (S == Long) addsub<C, I, Word>(readD<Word>(src), data);
+        rethrow<C>(e);
+    }
 
-    // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-    // POM68K: a long result goes back LOW word first on the 68000 — the
-    // carry chain ran that way. [D] SingleStepTests/680x0 v1 transactions
-    // (ADD.l, SUB.l to memory); `sst68000 --transactions`.
-    pomLastWrite030<C>();   // POM68K (host): the store below ends the instruction
-    // [D] WinUAE gencpu flag_add/flag_sub @ Hatari e77819f7: the stored
-    // value is `uae_u32 newv = (uN)dst ± (uN)src`, so a faulting 68030 store
-    // stacks the unmasked 32-bit result (addsub returns it) as wb3_data.
-    // [D] Musashi @ 1efd694 (Runner/Musashi of upstream Moira), run by its Runner:
-    //     the high word is stored first. POM68K: so it is under
-    //     MOIRA_MIMIC_MUSASHI, here and in execAddiEa / execAddqEa; that
-    //     Runner compares the order of writes.
-    writeM<C, M, S, (C == Core::C68000 && !MOIRA_MIMIC_MUSASHI ? REVERSE : 0) | MMU_RAWBUF>(ea, result);
+    writeM<C, M, S, REVERSE | COMMIT_IRD>(ea, result);
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -490,31 +374,28 @@ Moira::execAdda(u16 opcode)
     data = SEXT<S>(data);
 
     result = (I == Instr::ADDA || I == Instr::ADDA_LOOP) ? U32_ADD(readA(dst), data) : U32_SUB(readA(dst), data);
-    writeA(dst, result);
 
     if constexpr (C == Core::C68000) {
 
-        prefetch<C, POLL>();
+        try { prefetchLate<C, POLL>(); } catch (BusError &e) {
+            rethrowA<C, Word>(e, dst, result);
+        }
         SYNC(2);
         if constexpr (S == Word || isRegMode(M) || isImmMode(M)) SYNC(2);
+        writeA(dst, result);
 
     } else {
 
+        writeA(dst, result);
         SYNC(2);
         POLL_IPL;
         if constexpr (S == Word || isRegMode(M) || isImmMode(M)) SYNC(2);
-        if (looping<I>()) {
-            if constexpr (M == Mode::DN && S == Long) noPrefetch<C>(6);
-            else if constexpr (M == Mode::AI && S == Long) noPrefetch<C>(6);
-            else if constexpr (M == Mode::AI && S != Long) noPrefetch<C>(4);
-            else if constexpr (M == Mode::PI && S == Long) noPrefetch<C>(6);
-            else if constexpr (M == Mode::PI && S != Long) noPrefetch<C>(4);
-            else if constexpr (M == Mode::PD && S == Long) noPrefetch<C>(6);
-            else if constexpr (M == Mode::PD && S != Long) noPrefetch<C>(4);
-            else noPrefetch<C>();
-        } else {
-            prefetch<C>();
-        }
+
+        constexpr int loopDelay =
+        M == Mode::DN ? (S == Long ? 6 : 0) :
+        (M == Mode::AI || M == Mode::PI || M == Mode::PD) ? (S == Long ? 6 : 4) : 0;
+
+        looping<I>() ? noPrefetch<C>(loopDelay) : prefetch<C>();
     }
 
     //           00  10  20        00  10  20        00  10  20
@@ -546,10 +427,22 @@ Moira::execAddiRg(u16 opcode)
     u32 ea, data, result;
     readOp<C, M, S>(dst, &ea, &data);
 
-    result = addsub<C, I, S>(src, data);
-    prefetch<C, POLL>();
+    if constexpr (S == Long) {
 
-    if constexpr (S == Long) { SYNC_68000(4); SYNC_68010(2); }
+        try { prefetchLate<C, POLL>(); } catch (BusError &e) {
+            rethrowD<C, Word>(e, dst, addsub<C, I, Word>(src, data));
+        }
+        result = addsub<C, I, S>(src, data);
+        SYNC_68000(4);
+        SYNC_68010(2);
+
+    } else {
+
+        result = addsub<C, I, S>(src, data);
+        try { prefetch<C, POLL>(); } catch (BusError &e) {
+            rethrowD<C, S>(e, dst, result);
+        }
+    }
     writeD<S>(dst, result);
 
     //           00  10  20        00  10  20        00  10  20
@@ -567,25 +460,24 @@ Moira::execAddiRg(u16 opcode)
     FINALIZE
 }
 
-
 template <Core C, Instr I, Mode M, Size S> void
 Moira::execAddiEa(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
-    u32 src = readI<C, S>();
+    u32 src = readIFrame<C, S>();
     int dst = _____________xxx(opcode);
 
     u32 ea, data, result;
     readOp<C, M, S, STD_AE_FRAME>(dst, &ea, &data);
-
     result = addsub<C, I, S>(src, data);
-    prefetch<C>();
 
-    // [D] SST/680x0 68000/v1 @ e0d5ece9 — low word first.
-    // POM68K: low word first on the 68000 (see execAddRgEa). MMU_RAWBUF:
-    // the unmasked result is the 68030 write buffer (see execAddRgEa).
-    writeOp<C, M, S, POLL | (C == Core::C68000 && !MOIRA_MIMIC_MUSASHI ? REVERSE : 0) | MMU_RAWBUF>(dst, ea, result);
+    try { fetchIrc<C>(); } catch (BusError &e) {
+        if constexpr (S == Long) addsub<C, I, Word>(src, data);
+        rethrow<C>(e);
+    }
+
+    writeOp<C, M, S, POLL | REVERSE | COMMIT_IRD>(dst, ea, result);
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -611,10 +503,23 @@ Moira::execAddqDn(u16 opcode)
     int dst = _____________xxx(opcode);
 
     if (src == 0) src = 8;
-    u32 result = addsub<C, I, S>(src, readD<S>(dst));
-    prefetch<C, POLL>();
+    u32 result;
 
-    if constexpr (S == Long) SYNC(4);
+    if constexpr (S == Long) {
+
+        try { prefetchLate<C, POLL>(); } catch (BusError &e) {
+            rethrowD<C, Word>(e, dst, addsub<C, I, Word>(src, readD<Word>(dst)));
+        }
+        result = addsub<C, I, S>(src, readD<S>(dst));
+        SYNC(4);
+
+    } else {
+
+        result = addsub<C, I, S>(src, readD<S>(dst));
+        try { prefetch<C, POLL>(); } catch (BusError &e) {
+            rethrowD<C, S>(e, dst, result);
+        }
+    }
     writeD<S>(dst, result);
 
     //           00  10  20        00  10  20        00  10  20
@@ -634,10 +539,11 @@ Moira::execAddqAn(u16 opcode)
 
     if (src == 0) src = 8;
     u32 result = (I == Instr::ADDQ) ? U32_ADD(readA(dst), src) : U32_SUB(readA(dst), src);
-    prefetch<C, POLL>();
-    // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-    // POM68K: ADDQ/SUBQ.l to An is 6 cycles, not 8 (SingleStepTests/680x0)
-    SYNC(S == Long ? 2 : 4);
+
+    try { prefetchLate<C, POLL>(); } catch (BusError &e) {
+        rethrowA<C>(e, dst, result);
+    }
+    SYNC(4);
     writeA(dst, result);
 
     //           00  10  20        00  10  20        00  10  20
@@ -654,18 +560,19 @@ Moira::execAddqEa(u16 opcode)
 
     i8  src = ____xxx_________(opcode);
     int dst = _____________xxx(opcode);
+    if (src == 0) src = 8;
 
     u32 ea, data, result;
     readOp<C, M, S, STD_AE_FRAME>(dst, &ea, &data);
 
-    if (src == 0) src = 8;
     result = addsub<C, I, S>(src, data);
-    prefetch<C, POLL>();
 
-    // [D] SST/680x0 68000/v1 @ e0d5ece9 — low word first.
-    // POM68K: low word first on the 68000 (see execAddRgEa). MMU_RAWBUF:
-    // the unmasked result is the 68030 write buffer (see execAddRgEa).
-    writeOp<C, M, S, (C == Core::C68000 && !MOIRA_MIMIC_MUSASHI ? REVERSE : 0) | MMU_RAWBUF>(dst, ea, result);
+    try { fetchIrc<C, POLL>(); } catch (BusError &e) {
+        if constexpr (S == Long) addsub<C, I, Word>(src, data);
+        rethrow<C>(e);
+    }
+
+    writeOp<C, M, S, REVERSE | COMMIT_IRD>(dst, ea, result);
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -688,15 +595,26 @@ Moira::execAddxRg(u16 opcode)
     int src = _____________xxx(opcode);
     int dst = ____xxx_________(opcode);
 
-    u32 result = addsub<C, I, S>(readD<S>(src), readD<S>(dst));
+    u32 result;
 
-    if constexpr (C == Core::C68000) {
+    if constexpr (C == Core::C68000 && S == Long) {
 
-        prefetch<C, POLL>();
-        if constexpr (S == Long) SYNC(4);
+        try { prefetchLate<C, POLL>(); } catch (BusError &e) {
+            rethrowD<C, Word>(e, dst, addsub<C, I, Word>(readD<Word>(src), readD<Word>(dst)));
+        }
+        result = addsub<C, I, S>(readD<S>(src), readD<S>(dst));
+        SYNC(4);
+
+    } else if constexpr (C == Core::C68000) {
+
+        result = addsub<C, I, S>(readD<S>(src), readD<S>(dst));
+        try { prefetch<C, POLL>(); } catch (BusError &e) {
+            rethrowD<C, S>(e, dst, result);
+        }
 
     } else {
 
+        result = addsub<C, I, S>(readD<S>(src), readD<S>(dst));
         POLL_IPL;
         if constexpr (S == Long) SYNC(2);
         prefetch<C>();
@@ -716,72 +634,71 @@ Moira::execAddxEa(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
-    // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-    // POM68K: no AE_INC_PC (data faults stack getPC()-2 uniformly) and no
-    // predecrement undo — the real 68000 keeps An fully decremented when
-    // the access faults (SingleStepTests/680x0)
-    // POM68K: on the 68000 both long operands are READ low word first
-    // ([D] SingleStepTests/680x0 transactions, ADDX.l / SUBX.l).
-    const u64 flags = (S == Long) ? (AE_INC_A | (C == Core::C68000 ? REVERSE : 0)) : 0;
-
     int src = _____________xxx(opcode);
     int dst = ____xxx_________(opcode);
 
-    u32 ea1, ea2, data1, data2;
+    u32 ea1, ea2, data1, data2, result;
 
-    try {
+    if constexpr (C == Core::C68000 && S == Long) {
+
+        // The 68000 reads and writes the lower word of a long operand first
+        constexpr Flags flags = AE_INC_PC | AE_INC_A | REVERSE | DEC_LATE;
+
         readOp<C, M, S, flags>(src, &ea1, &data1);
 
-    } catch (const AddressError &exc) {
+        // If the high word fails, the low words have been added already
+        try { readOp<C, M, S, flags|IMPL_DEC>(dst, &ea2, &data2); } catch (BusError &e) {
+            if (e.upperWord) addsub<C, I, Word>(data1, readBuffer);
+            rethrow<C>(e);
+        }
 
-        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-        // POM68K: ADDX/SUBX only — a faulting -(An).l leaves An at init-2
-        // (two word steps); plain reads keep the full -4 (SingleStepTests)
-        if constexpr (S == Long) writeA(src, U32_ADD(readA(src), 2));
-        throw exc;
-    }
-    if constexpr (S != Long) POLL_IPL;
+        u8 ccr = getCCR();
+        result = addsub<C, I, S>(data1, data2);
 
-    try {
-        readOp<C, M, S, flags|IMPL_DEC> (dst, &ea2, &data2);
+        // If the low word fails, the stacked flags are those of the low word addition
+        try { writeM<C, M, Word, POLL | AE_INC_PC>(ea2 + 2, READ<Word>(result)); } catch (BusError &e) {
+            setCCR(ccr);
+            addsub<C, I, Word>(data1, data2);
+            rethrow<C>(e);
+        }
 
-    } catch (const AddressError &exc) {
+        looping<I>() ? noPrefetch<C>() : fetchIrc<C>();
+        writeM<C, M, Word, COMMIT_IRD>(ea2, READ<Word, 1>(result));
 
-        if constexpr (S == Long) writeA(dst, U32_ADD(readA(dst), 2));
-        throw exc;
-    }
+    } else if constexpr (C == Core::C68010 && S == Long) {
 
-    [[maybe_unused]] const u32 xBefore = reg.sr.x ? 1 : 0;
-    u32 result = addsub<C, I, S>(data1, data2);
+        // The 68010 stacks the PC of the executing instruction and has undone the decrement already
+        readOp<C, M, S, AE_INC_A>(src, &ea1, &data1);
+        readOp<C, M, S, AE_INC_A|IMPL_DEC>(dst, &ea2, &data2);
 
-    if constexpr (S == Long && C == Core::C68000 && !MOIRA_MIMIC_MUSASHI) {
+        result = addsub<C, I, S>(data1, data2);
 
-        writeM<C, M, Word, POLL>(ea2 + 2, result & 0xFFFF);
-        looping<I>() ? noPrefetch<C>() : prefetch<C>();
-        writeM<C, M, Word>(ea2, result >> 16);
+        writeM<C, M, S, REVERSE>(ea2, result);
+        looping<I>() ? noPrefetch<C>() : prefetchLate<C, POLL>();
 
-    } else if constexpr (S == Long && C == Core::C68010 && !MOIRA_MIMIC_MUSASHI) {
+    } else if constexpr (C == Core::C68020 && S == Long) {
 
-        writeM<C, M, S>(ea2, result);
-        looping<I>() ? noPrefetch<C>(S == Long ? 0 : 2) : prefetch<C, POLL>();
+        readOp<C, M, S>(src, &ea1, &data1);
+        readOp<C, M, S, IMPL_DEC>(dst, &ea2, &data2);
+
+        result = addsub<C, I, S>(data1, data2);
+
+        looping<I>() ? noPrefetch<C>() : fetchIrc<C>();
+        writeM<C, M, S, COMMIT_IRD>(ea2, result);
 
     } else {
 
-        looping<I>() ? noPrefetch<C>(S == Long ? 0 : 2) : prefetch<C>();
-        pomLastWrite030<C>();   // POM68K (host): the store below ends the instruction
-        if constexpr (C == Core::C68020) {
-            // [D] WinUAE gencpu i_ADDX/i_SUBX @ Hatari e77819f7: `uae_u32
-            // newv = dst ± src ± X` over the sign-extended operands, so a
-            // faulting 68030 store stacks that 32-bit value as its pending
-            // write ("op=SUBX_M_B #967", opcells.py --set classes --mmu
-            // identity --only ADDX|SUBX, seed 7801: $A1 − $7D − 1 stacks
-            // $FFFFFF23). Gate: moira_rules_test (stackStoreFaults).
-            const u32 a = u32(SEXT<S>(data2)), b = u32(SEXT<S>(data1));
-            const bool sub = I == Instr::SUBX || I == Instr::SUBX_LOOP;
-            writeM<C, M, S, MMU_RAWBUF>(ea2, sub ? a - b - xBefore : a + b + xBefore);
-        } else {
-            writeM<C, M, S>(ea2, result);
-        }
+        // The 68010 stacks the PC of the executing instruction
+        constexpr Flags flags = C == Core::C68010 ? 0 : AE_INC_PC;
+
+        readOp<C, M, S, flags>(src, &ea1, &data1);
+        POLL_IPL;
+        readOp<C, M, S, flags | IMPL_DEC> (dst, &ea2, &data2);
+
+        result = addsub<C, I, S>(data1, data2);
+
+        looping<I>() ? noPrefetch<C>(2) : fetchIrc<C>();
+        writeM<C, M, S, COMMIT_IRD>(ea2, result);
     }
 
     //           00  10  20        00  10  20        00  10  20
@@ -802,16 +719,42 @@ Moira::execAndEaRg(u16 opcode)
     u32 ea, data;
     readOp<C, M, S, STD_AE_FRAME>(src, &ea, &data);
 
-    u32 result = logic<C, I, S>(data, readD<S>(dst));
-    writeD<S>(dst, result);
+    u32 result;
 
-    if constexpr (C == Core::C68000) {
+    if constexpr (C == Core::C68000 && S == Long && isMemMode(M)) {
 
-        looping<I>() ? noPrefetch<C>() : prefetch<C, POLL>();
-        if constexpr (S == Long) SYNC(isRegMode(M) || isImmMode(M) ? 4 : 2);
+        // A failing prefetch shows the flags of the long operation and the low word of the result
+        result = logic<C, I, S>(data, readD<S>(dst));
+        try { looping<I>() ? noPrefetch<C>() : prefetchLate<C, POLL>(); } catch (BusError &e) {
+            rethrowD<C, Word>(e, dst, result);
+        }
+        SYNC(2);
+        writeD<S>(dst, result);
+
+    } else if constexpr (C == Core::C68000 && S == Long) {
+
+        // A failing prefetch shows the flags and the result of the low word operation
+        try { looping<I>() ? noPrefetch<C>() : prefetchLate<C, POLL>(); } catch (BusError &e) {
+            rethrowD<C, Word>(e, dst, logic<C, I, Word>(data, readD<Word>(dst)));
+        }
+        result = logic<C, I, S>(data, readD<S>(dst));
+        SYNC(4);
+        writeD<S>(dst, result);
+
+    } else if constexpr (C == Core::C68000) {
+
+        result = logic<C, I, S>(data, readD<S>(dst));
+
+        try { looping<I>() ? noPrefetch<C>() : prefetch<C, POLL>(); } catch (BusError &e) {
+            rethrowD<C, S>(e, dst, result);
+        }
+        writeD<S>(dst, result);
 
     } else {
 
+        result = logic<C, I, S>(data, readD<S>(dst));
+
+        writeD<S>(dst, result);
         POLL_IPL;
         if constexpr (S == Long) SYNC(2);
         looping<I>() ? noPrefetch<C>(6) : prefetch<C>();
@@ -835,6 +778,42 @@ Moira::execAndEaRg(u16 opcode)
 }
 
 template <Core C, Instr I, Mode M, Size S> void
+Moira::execAndRgRg(u16 opcode)
+{
+    AVAILABILITY(Core::C68000)
+
+    int src = ____xxx_________(opcode);
+    int dst = _____________xxx(opcode);
+
+    u32 result;
+
+    if constexpr (S == Long) {
+
+        try { prefetchLate<C, POLL, true>(); } catch (BusError &e) {
+            rethrowD<C, Word>(e, dst, logic<C, I, Word>(readD<Word>(src), readD<Word>(dst)));
+        }
+        result = logic<C, I, S>(readD<S>(src), readD<S>(dst));
+        SYNC_68000(4);
+        SYNC_68010(2);
+
+    } else {
+
+        result = logic<C, I, S>(readD<S>(src), readD<S>(dst));
+        try { prefetch<C, POLL>(); } catch (BusError &e) {
+            rethrowD<C, S>(e, dst, result);
+        }
+    }
+
+    writeD<S>(dst, result);
+
+    //           00  10  20        00  10  20        00  10  20
+    //           .b  .b  .b        .w  .w  .w        .l  .l  .l
+    CYCLES_DN   ( 4,  4,  2,        4,  4,  2,        8,  6,  2)
+
+    FINALIZE
+}
+
+template <Core C, Instr I, Mode M, Size S> void
 Moira::execAndRgEa(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
@@ -842,23 +821,21 @@ Moira::execAndRgEa(u16 opcode)
     int src = ____xxx_________(opcode);
     int dst = _____________xxx(opcode);
 
-    u32 ea, data;
+    u32 ea, data, result;
     readOp<C, M, S, STD_AE_FRAME>(dst, &ea, &data);
 
-    u32 result = logic<C, I, S>(readD<S>(src), data);
-    looping<I>() ? noPrefetch<C>(2) : prefetch<C, POLL>();
+    result = logic<C, I, S>(readD<S>(src), data);
 
-    if constexpr (S == Long && isRegMode(M)) { SYNC_68000(4); SYNC_68010(2); }
-
-    if constexpr (MOIRA_MIMIC_MUSASHI) {
-        writeOp<C, M, S>(dst, ea, result);
-    } else {
-        writeOp<C, M, S, REVERSE>(dst, ea, result);
+    try { looping<I>() ? noPrefetch<C>(2) : fetchIrc<C, POLL>(); } catch (BusError &e) {
+        
+        if constexpr (S == Long) logic<C, I, Word>(readD<Word>(src), data);
+        rethrow<C>(e);
     }
+    
+    writeOp<C, M, S, REVERSE | COMMIT_IRD>(dst, ea, result);
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
-    CYCLES_DN   ( 4,  4,  2,        4,  4,  2,        8,  6,  2)
     CYCLES_AI   (12, 12,  8,       12, 12,  8,       20, 20,  8)
     CYCLES_PI   (12, 12,  8,       12, 12,  8,       20, 20,  8)
     CYCLES_PD   (14, 14,  9,       14, 14,  9,       22, 22,  9)
@@ -875,13 +852,27 @@ Moira::execAndiRg(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
-    u32 src = readI<C, S>();
+    u32 src = readIFrame<C, S>();
     int dst = _____________xxx(opcode);
 
-    u32 result = logic<C, I, S>(src, readD<S>(dst));
-    prefetch<C, POLL>();
+    u32 result;
+    if constexpr (S == Long) {
 
-    if constexpr (S == Long) { SYNC_68000(4); SYNC_68010(2); }
+        try { prefetchLate<C, POLL>(); } catch (BusError &e) {
+            rethrowD<C, Word>(e, dst, logic<C, I, Word>(src, readD<Word>(dst)));
+        }
+        result = logic<C, I, S>(src, readD<S>(dst));
+        SYNC_68000(4);
+        SYNC_68010(2);
+
+    } else {
+
+        result = logic<C, I, S>(src, readD<S>(dst));
+
+        try { prefetch<C, POLL>(); } catch (BusError &e) {
+            rethrowD<C, S>(e, dst, result);
+        }
+    }
     writeD<S>(dst, result);
 
     //           00  10  20        00  10  20        00  10  20
@@ -898,19 +889,19 @@ Moira::execAndiEa(u16 opcode)
 
     u32 ea, data, result;
 
-    u32 src = readI<C, S>();
+    u32 src = readIFrame<C, S>();
     int dst = _____________xxx(opcode);
 
     readOp<C, M, S, STD_AE_FRAME>(dst, &ea, &data);
 
     result = logic<C, I, S>(src, data);
-    prefetch<C, POLL>();
 
-    if constexpr (MOIRA_MIMIC_MUSASHI) {
-        writeOp<C, M, S>(dst, ea, result);
-    } else {
-        writeOp<C, M, S, REVERSE>(dst, ea, result);
+    try { fetchIrc<C, POLL>(); } catch (BusError &e) {
+        if constexpr (S == Long) logic<C, I, Word>(src, data);
+        rethrow<C>(e);
     }
+
+    writeOp<C, M, S, REVERSE | COMMIT_IRD>(dst, ea, result);
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -930,19 +921,15 @@ Moira::execAndiccr(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
+    changeOfFlow<C>();
+
     if constexpr (C == Core::C68000) {
 
         u32 src = readI<C, S>();
         u8  dst = getCCR();
         setCCR(u8(logic<C, I, S>(src, dst)));
         SYNC(8);
-        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-        // POM68K (ported from NeoST d8d33bb): microcode 003c/023c/0a3c —
-        // 1cc stiw1 (back two bytes) -> 321 stiw4 -> 1e1 malw3 -> 363 b:
-        // re-read pc0+4 THEN pc0+6, in PROGRAM space; IRD receives the word
-        // re-read after the CCR change (see execMoveToSr). Hatari CE does
-        // the same; so do the SingleStepTests transaction lists.
-        fullPrefetch<C, POLL>();
+        dummyProgRead<C>(reg.pc);
 
     } else {
 
@@ -950,21 +937,9 @@ Moira::execAndiccr(u16 opcode)
         u32 src = readI<C, S>();
         u8  dst = getCCR();
         setCCR(u8(logic<C, I, S>(src, dst)));
-        prefetch<C, POLL>();
-
-        // T0: ANDI, ORI and EORI to CCR are traced below the 68040.
-        // [B] MC68030UM-1989 §8.1.7 — the mode "includes status register
-        //     manipulations", traced "any time an instruction that can
-        //     modify the status register is executed".
-        // [B] MC68040UM-1993 §8.2.6 — the 68040's list has the three "to
-        //     SR" forms only.
-        // [D] WinUAE @ Hatari e77819f7 — cpuemu_32.c ANDSR.B/ORSR.B/EORSR.B
-        //     run check_t0_trace, cpuemu_31.c does not; MOVE to CCR is
-        //     traced on neither.
-        if constexpr (C == Core::C68020) {
-            if (cpuModel < Model::M68EC040) traceFlow();
-        }
     }
+
+    prefetch<C, POLL>();
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -980,6 +955,8 @@ Moira::execAndisr(u16 opcode)
 
     SUPERVISOR_MODE_ONLY
 
+    changeOfFlow<C>();
+
     u32 src = readI<C, S>();
     u16 dst = getSR();
 
@@ -990,28 +967,12 @@ Moira::execAndisr(u16 opcode)
     setSR((u16)result);
 
     if constexpr (C == Core::C68000) {
-        // [D] NeoST @ d8d33bb — its microcode transcription (fx68k).
-        // POM68K (ported from NeoST d8d33bb): microcode 007c/027c/0a7c, same
-        // tail as MOVE to SR (1cc stiw1 -> 321 stiw4 -> 1e1 malw3 -> 363 b).
-        // Both words are re-read AFTER the SR write, hence with the new FC:
-        // ANDI #$DFFF,SR returns to user mode and re-reads pc0+4 as user
-        // program (the old dummy read was pc0+6 in DATA space).
-        fullPrefetch<C, POLL>();
-    } else if constexpr (C == Core::C68020) {
-        // The pipe refill after the SR write is an instruction fetch, as
-        // execMoveToSr has it: upstream's data-space stand-in went through
-        // the data translation, with the new SR's function code — after
-        // EORI #,SR to user mode a 68040 whose code is covered by an ITT
-        // only (DTT supervisor-only) walked the tables of the next
-        // instruction's page. [D] WinUAE @ Hatari e77819f7 (no data access
-        // there); "040 random/tt seed=79011 #1749", fresh-seed sweep
-        // 2026-11-14. Gate: moira_rules_test (srWriteRefillIsAFetch).
-        pomRefillRead<C>();
-        prefetch<C, POLL>();
+        dummyProgRead<C>(reg.pc);
     } else {
         (void)read<C, AddrSpace::DATA, Word>(reg.pc + 2);
-        prefetch<C, POLL>();
     }
+
+    prefetch<C, POLL>();
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -1026,47 +987,23 @@ Moira::execBra(u16 opcode)
     AVAILABILITY(S == Long ? Core::C68020 : Core::C68000)
 
     u32 oldpc = reg.pc;
-    u32 disp = S == Byte ? (u8)opcode : S == Long ? ircLong<C>() : ircWord();
+    u32 disp = S == Byte ? (u8)opcode : queue.irc;
 
     SYNC(2);
 
+    if constexpr (S == Long) {
+
+        readExt<C>();
+        disp = disp << 16 | queue.irc;
+    }
+
+    // Compute new PC
     u32 newpc = U32_ADD(oldpc, SEXT<S>(disp));
+    checkEvenPC<C, AE_FETCH>(newpc);
 
-    // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-    // Check for address error
-    // POM68K: odd branch target — the 68000 stacks PC = target with the I/N
-    // bit set (SingleStepTests/680x0; see extern/moira/POM68K_VENDOR.md)
-    if (misaligned<C>(newpc)) {
-        throw AddressError(makeFrame<AE_PROG|AE_SET_CB3>(newpc, U32_SUB(newpc, 4)));
-    }
+    fullPrefetchAt<C, POLL>(newpc);
 
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K O4 slice 4: 68030 odd instruction-flow target — WinUAE's
-    // mmu030 handlers raise vector 3 with a format $B frame
-    // (exception3_read_prefetch*); see execAddressError030.
-    // Stacked PC = the branch instruction; the log holds the displacement.
-    if constexpr (C == Core::C68020) {
-        if (cpuModel == Model::M68030 && oddFlowTarget(newpc)) {
-            mmuLogReset();
-            if constexpr (S == Word) mmuLogExtWord(u16(disp));
-            if constexpr (S == Long) mmuLogExtWord(disp);
-            execAddressError030<C>(newpc, reg.pc0);
-            FINALIZE
-            return;
-        }
-        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // POM68K Q2: 68040 — vector 3, format $2, stacked PC = the branch
-        // instruction (WinUAE op_60xx_31: exception3_read_prefetch with
-        // the pc untouched)
-        if (cpuModel >= Model::M68EC040 && oddFlowTarget(newpc)) {
-            execAddressError040<C>(newpc, reg.pc0);
-            FINALIZE
-            return;
-        }
-    }
-
-    reg.pc = newpc;
-    fullPrefetch<C, POLL | FLOW>();
+    changeOfFlow<C>();
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -1084,58 +1021,23 @@ Moira::execBcc(u16 opcode)
 
     SYNC(2);
 
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K Q2: the 68040 raises the odd-displacement address error
-    // BEFORE evaluating the condition (WinUAE op_6xxx_31: the `src & 1`
-    // check precedes cctrue, even on the not-taken path). The second
-    // extension word of the .L form is peeked without being consumed —
-    // WinUAE's get_ilong(2) does not advance the pc either.
-    if constexpr (C == Core::C68020) {
-        if (cpuModel >= Model::M68EC040) {
-            u32 d40 = S == Byte ? (u8)opcode : ircWord();
-            if constexpr (S == Long) {
-                d40 = d40 << 16 | (u16)read<C, AddrSpace::PROG, Word>(reg.pc + 2);
-            }
-            u32 t40 = U32_ADD(oldpc, SEXT<S>(d40));
-            if (oddFlowTarget(t40)) {
-                execAddressError040<C>(t40, reg.pc0);
-                FINALIZE
-                return;
-            }
-        }
-    }
-
     if (cond<I>()) {
 
-        u32 disp = S == Byte ? (u8)opcode : S == Long ? ircLong<C>() : ircWord();
+        u32 disp = S == Byte ? (u8)opcode : queue.irc;
 
+        if constexpr (S == Long) {
+
+            readExt<C>();
+            disp = disp << 16 | queue.irc;
+        }
+
+        // Compute new PC
         u32 newpc = U32_ADD(oldpc, SEXT<S>(disp));
-
-        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-        // Check for address error
-        // POM68K: same rule as Bra above (SingleStepTests/680x0)
-        if (misaligned<C>(newpc)) {
-            throw AddressError(makeFrame<AE_PROG|AE_SET_CB3>(newpc, U32_SUB(newpc, 4)));
-        }
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K O4 slice 4: 68030 odd instruction-flow target — WinUAE's
-    // mmu030 handlers raise vector 3 with a format $B frame
-    // (exception3_read_prefetch*); see execAddressError030.
-        if constexpr (C == Core::C68020) {
-            if (cpuModel == Model::M68030 && oddFlowTarget(newpc)) {
-                mmuLogReset();
-                if constexpr (S == Word) mmuLogExtWord(u16(disp));
-                if constexpr (S == Long) mmuLogExtWord(disp);
-                execAddressError030<C>(newpc, reg.pc0);
-                FINALIZE
-                return;
-            }
-        }
+        checkEvenPC<C, AE_FETCH>(newpc);
 
         // Take branch
-        reg.pc = newpc;
-        fullPrefetch<C, POLL | FLOW>();
+        fullPrefetchAt<C, POLL>(newpc);
+        changeOfFlow<C>();
 
         //           00  10  20        00  10  20        00  10  20
         //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -1145,8 +1047,8 @@ Moira::execBcc(u16 opcode)
 
         // Fall through to next instruction
         if constexpr (C == Core::C68000) SYNC(2);
-        if constexpr (S == Word || S == Long) readExt<C>();
-        if constexpr (S == Long) readExt<C>();
+        if constexpr (S == Word) readExtLast<C>();
+        if constexpr (S == Long) { readExt<C>(); readExtLast<C>(); }
         prefetch<C, POLL>();
 
         //           00  10  20        00  10  20        00  10  20
@@ -1169,9 +1071,14 @@ Moira::execBitDxDy(u16 opcode)
     [[maybe_unused]] auto c = cyclesBit<C, I>(b);
 
     u32 data = readD(dst);
-    data = bit<C, I>(data, b);
 
-    prefetch<C, POLL>();
+    try { prefetchLate<C, POLL>(); } catch (BusError &e) {
+        
+        // MAME updates the flags after the prefetch
+        if constexpr (C != Core::C68000 || compat == Compatibility::UAE) bit<C, I>(data, b);
+        rethrow<C>(e);
+    }
+    data = bit<C, I>(data, b);
 
     SYNC(c);
     if constexpr (I != Instr::BTST) writeD(dst, data);
@@ -1193,22 +1100,38 @@ Moira::execBitDxEa(u16 opcode)
     u8 b = readD(src) & 0b111;
 
     u32 ea, data;
-    readOp<C, M, Byte>(dst, &ea, &data);
 
-    data = bit<C, I>(data, b);
+    if constexpr (C == Core::C68000) {
 
-    if constexpr (I == Instr::BCLR && C == Core::C68010) { SYNC(2); }
-    // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-    // POM68K: BTST Dn,#imm takes 10 cycles, not 8 (SingleStepTests/680x0);
-    // on the 68000 the two extra cycles FOLLOW the prefetch (transactions).
-    if constexpr (I == Instr::BTST && M == Mode::IM && C != Core::C68000) { SYNC(2); }
+        readOp<C, M, Byte, STD_AE_FRAME>(dst, &ea, &data);
 
-    prefetch<C, POLL>();
-    if constexpr (I == Instr::BTST && M == Mode::IM && C == Core::C68000) { SYNC(2); }
-    if constexpr (I != Instr::BTST) {
-        pomLastWrite030<C>();   // POM68K (host): the store below ends the instruction
-        writeM<C, M, Byte>(ea, data);
+        try { fetchIrc<C, POLL, !(I == Instr::BTST && M != Mode::IM)>(); } catch (BusError &e) {
+
+            // MAME updates the flags after the prefetch, except for BTST with a memory operand. UAE updates them before.
+            constexpr bool before = compat == Compatibility::UAE || (I == Instr::BTST && !isRegMode(M) && !isImmMode(M));
+            if constexpr (before) bit<C, I>(data, b);
+            rethrow<C>(e);
+        }
+        data = bit<C, I>(data, b);
+
+        // MAME and UAE idle after the prefetch
+        if constexpr (I == Instr::BTST && M == Mode::IM) SYNC(2);
+
+    } else {
+
+        readOp<C, M, Byte>(dst, &ea, &data);
+        if constexpr (I == Instr::BCLR && C == Core::C68010) SYNC(2);
+
+        // The flags are updated before the prefetch
+        try { fetchIrc<C, POLL, !(I == Instr::BTST && M != Mode::IM)>(); } catch (BusError &e) {
+            bit<C, I>(data, b);
+            rethrow<C>(e);
+        }
+        data = bit<C, I>(data, b);
     }
+
+    if constexpr (I != Instr::BTST) writeM<C, M, Byte, COMMIT_IRD>(ea, data);
+    else if constexpr (M == Mode::IM) commitIrd<C>();
 
     [[maybe_unused]] auto c = I == Instr::BTST ? 0 : I == Instr::BCLR && C == Core::C68010 ? 6 : 4;
 
@@ -1238,9 +1161,14 @@ Moira::execBitImDy(u16 opcode)
 
     src &= 0b11111;
     u32 data = readD(dst);
-    data = bit<C, I>(data, src);
 
-    prefetch<C, POLL>();
+    try { prefetchLate<C, POLL>(); } catch (BusError &e) {
+        
+        // MAME updates the flags after the prefetch
+        if constexpr (C != Core::C68000 || compat == Compatibility::UAE) bit<C, I>(data, src);
+        rethrow<C>(e);
+    }
+    data = bit<C, I>(data, src);
 
     [[maybe_unused]] auto c = cyclesBit<C, I>(src);
     SYNC(c);
@@ -1262,15 +1190,25 @@ Moira::execBitImEa(u16 opcode)
 
     src &= 0b111;
     u32 ea, data;
-    readOp<C, M, S>(dst, &ea, &data);
+    readOp<C, M, S, STD_AE_FRAME>(dst, &ea, &data);
 
-    data = bit<C, I>(data, src);
+    try { fetchIrc<C, POLL, (I != Instr::BTST)>(); } catch (BusError &e) {
 
-    prefetch<C, POLL>();
-    if constexpr (I != Instr::BTST) {
-        pomLastWrite030<C>();   // POM68K (host): the store below ends the instruction
-        writeM<C, M, S>(ea, data);
+        if constexpr (C == Core::C68000) {
+
+            // MAME updates the flags after the prefetch, except for BTST with a memory operand. UAE updates them before.
+            constexpr bool before = compat == Compatibility::UAE || (I == Instr::BTST && !isRegMode(M) && !isImmMode(M));
+            if constexpr (before) bit<C, I>(data, src);
+
+        } else {
+
+            // The flags are updated before the prefetch
+            bit<C, I>(data, src);
+        }
+        rethrow<C>(e);
     }
+    data = bit<C, I>(data, src);
+    if constexpr (I != Instr::BTST) writeM<C, M, S, COMMIT_IRD>(ea, data);
 
     [[maybe_unused]] auto c = I == Instr::BTST ? 0 : 4;
 
@@ -1308,9 +1246,7 @@ Moira::execBitFieldDn(u16 opcode)
 
     // Crop offset and map width to 32, 1 ... 31
     int offset = rawOffset & 0b11111;
-    // POM68K (host): unsigned, as the register is. rawWidth - 1 overflowed int for
-    // Dw = $80000000 (UBSan, jit_program_fuzz under build-cpu-sanitize).
-    int width = int(((u32(rawWidth) - 1) & 0b11111) + 1);
+    int width = int((u32(rawWidth) - 1) & 0b11111) + 1;
 
     // Create the bit mask
     u32 mask = std::rotr(u32(0xFFFFFFFF00000000 >> width), offset);
@@ -1345,7 +1281,7 @@ Moira::execBitFieldDn(u16 opcode)
             break;
 
         case Instr::BFFFO:
-        {
+
             data = std::rotl(data, offset);
             result = bitfield<I>(data, rawOffset, width, mask);
             writeD(dn, result);
@@ -1354,16 +1290,13 @@ Moira::execBitFieldDn(u16 opcode)
             //           .b  .b  .b        .w  .w  .w        .l  .l  .l
             CYCLES_DN   ( 0,  0,  0,        0,  0,  0,        0,  0, 18)
             break;
-        }
+
         case Instr::BFINS:
 
             insert = readD(dn);
             insert = u32(insert << (32 - width));
 
-            reg.sr.n = NBIT<S>(insert);
-            reg.sr.z = ZERO<S>(insert);
-            reg.sr.v = 0;
-            reg.sr.c = 0;
+            setMoveFlags<S>(insert);
 
             insert = std::rotr((u32)insert, offset);
             writeD(dy, (data & ~mask) | insert);
@@ -1400,30 +1333,27 @@ Moira::execBitFieldEa(u16 opcode)
 
     int dy     = _____________xxx (opcode);
     int dn     = _xxx____________ (ext);
-    int offset = _____xxxxx______ (ext);
+    int of     = _____xxxxx______ (ext);
     int doBit  = ____x___________ (ext);
-    int width  = ___________xxxxx (ext);
+    int wi     = ___________xxxxx (ext);
     int dwBit  = __________x_____ (ext);
 
-    // If Do or Dw is set, offset or width are taken from data registers
-    if (doBit) offset = reg.d[offset & 0b111];
-    if (dwBit) width = reg.d[width & 0b111];
+    // If do or dw is set, offset or width are taken from data registers
+    int rawOffset = doBit ? reg.d[of & 0b111] : of;
+    int rawWidth = dwBit ? reg.d[wi & 0b111] : wi;
 
     // Map width to 32, 1 ... 31
-    // POM68K (host): in unsigned arithmetic — width - 1 overflowed int for a
-    // width register of $80000000 (UBSan, jit_program_fuzz --dcache under
-    // build-cpu-sanitize). Same value for every input.
-    width = int(((u32(width) - 1) & 0b11111) + 1);
+    int width = int((u32(rawWidth) - 1) & 0b11111) + 1;
 
-    u32 oldOffset = offset;
     u32 result, insert;
 
     // Compute the effective address
     u32 ea = computeEA<C, M, S>(dy);
 
-    ea += offset / 8;
-    offset %= 8;
-    if(offset < 0) {
+    // Split the offset into a byte displacement and a bit offset (0 ... 7)
+    ea += rawOffset / 8;
+    int offset = rawOffset % 8;
+    if (offset < 0) {
 
         offset += 8;
         ea--;
@@ -1434,84 +1364,27 @@ Moira::execBitFieldEa(u16 opcode)
     auto mask = u32(baseMask >> 32);
     auto mask8 = u8(baseMask >> 24);
 
-    // POM68K: a memory field touches only the bytes it spans, and every read
-    // precedes the first write.
-    // [B] MC68030UM-1989 §11.6.14 (bit field timing table and its note): a
-    //     field spanning fewer than five bytes takes one operand cycle, a
-    //     five-byte field two, in each direction.
-    // [D] WinUAE get_bitfield/put_bitfield (newcpu_common.c) and the i_BF*
-    //     generator (gencpu.c) @ Hatari e77819f7: 1, 2, 2+1, 4 or 4+1 bytes,
-    //     both reads before either write; BFINS reads too.
-    // [F] A three-byte field: the manual counts one operand cycle and the
-    //     68020/68030 bus has a three-byte SIZ; the oracle and this core issue
-    //     a word and a byte. Settled by: a bus capture of BFEXTU (An){0:24}.
-    // The previous longword-always access read and rewrote bytes outside the
-    // field (a spurious fault or device access past a page or register end)
-    // and wrote the longword before reading the fifth byte, so a fault on
-    // that read made the restarted BFCHG toggle the first four bytes twice.
-    // Gates: moira_rules_test (bit field access trace), sst68040 seed 405.
-    const int span = (offset + width + 7) >> 3;
-    u32 data;               // the spanned bytes, left-aligned in a longword
-    u32 tail = 0;           // the fifth byte of a five-byte field
-    switch (span) {
-        case 1:
-            data = readM<C, M, Byte>(ea) << 24;
-            break;
-        case 2:
-            data = readM<C, M, Word>(ea) << 16;
-            break;
-        case 3:
-            data = readM<C, M, Word>(ea) << 16;
-            data |= readM<C, M, Byte>(ea + 2) << 8;
-            break;
-        case 4:
-            data = readM<C, M, Long>(ea);
-            break;
-        default:
-            data = readM<C, M, Long>(ea);
-            tail = readM<C, M, Byte>(ea + 4);
-            break;
-    }
-    auto writeField = [&](u32 value, u32 tailValue) {
-        switch (span) {
-            case 1:
-                writeM<C, M, Byte>(ea, value >> 24);
-                break;
-            case 2:
-                writeM<C, M, Word>(ea, value >> 16);
-                break;
-            case 3:
-                writeM<C, M, Word>(ea, value >> 16);
-                writeM<C, M, Byte>(ea + 2, (value >> 8) & 0xFF);
-                break;
-            case 4:
-                writeM<C, M, Long>(ea, value);
-                break;
-            default:
-                writeM<C, M, Long>(ea, value);
-                writeM<C, M, Byte>(ea + 4, tailValue & 0xFF);
-                break;
-        }
-    };
+    u32 data = readM<C, M, S>(ea);
 
     switch (I) {
 
         case Instr::BFCHG:
         case Instr::BFCLR:
         case Instr::BFSET:
-        {
+
             result = bitfield<I>(data, offset, width, mask);
+            writeM<C, M, S>(ea, result);
 
-            u32 tailResult = tail;
-            if (span == 5) {
+            if ((width + offset) > 32) {
 
-                if constexpr (I == Instr::BFCHG) tailResult = tail ^ mask8;
-                if constexpr (I == Instr::BFCLR) tailResult = tail & ~mask8;
-                if constexpr (I == Instr::BFSET) tailResult = tail | mask8;
+                data = readM<C, M, Byte>(ea + 4);
 
-                reg.sr.z &= ZERO<Byte>(tail & mask8);
+                if constexpr (I == Instr::BFCHG) writeM<C, M, Byte>(ea + 4, data ^ mask8);
+                if constexpr (I == Instr::BFCLR) writeM<C, M, Byte>(ea + 4, data & ~mask8);
+                if constexpr (I == Instr::BFSET) writeM<C, M, Byte>(ea + 4, data | mask8);
+
+                reg.sr.z &= ZERO<Byte>(data & mask8);
             }
-            writeField(result, tailResult);
 
             //           00  10  20        00  10  20        00  10  20
             //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -1521,51 +1394,43 @@ Moira::execBitFieldEa(u16 opcode)
             CYCLES_AW   ( 0,  0,  0,        0,  0,  0,        0,  0, 24)
             CYCLES_AL   ( 0,  0,  0,        0,  0,  0,        0,  0, 24)
             break;
-        }
+
         case Instr::BFEXTS:
         case Instr::BFEXTU:
-
-            data = CLIP<Long>(data << offset);
-
-            if (span == 5) {
-                data |= (tail << offset) >> 8;
-            }
-
-            result = bitfield<I>(data, offset, width, mask);
-            writeD(dn, result);
-
-            //           00  10  20        00  10  20        00  10  20
-            //           .b  .b  .b        .w  .w  .w        .l  .l  .l
-            CYCLES_AI   ( 0,  0,  0,        0,  0,  0,        0,  0, 19)
-            CYCLES_DI   ( 0,  0,  0,        0,  0,  0,        0,  0, 20)
-            CYCLES_IX   ( 0,  0,  0,        0,  0,  0,        0,  0, 22)
-            CYCLES_AW   ( 0,  0,  0,        0,  0,  0,        0,  0, 19)
-            CYCLES_AL   ( 0,  0,  0,        0,  0,  0,        0,  0, 19)
-            CYCLES_DIPC ( 0,  0,  0,        0,  0,  0,        0,  0, 20)
-            CYCLES_IXPC ( 0,  0,  0,        0,  0,  0,        0,  0, 22)
-            break;
-
         case Instr::BFFFO:
 
+            // Align the field to bit 31 and pull in the spill byte
             data = CLIP<Long>(data << offset);
+            if ((offset + width) > 32) data |= (readM<C, M, Byte>(ea + 4) << offset) >> 8;
 
-            if (span == 5) {
-
-                data |= (tail << offset) >> 8;
-            }
-
-            result = bitfield<I>(data, oldOffset, width, mask);
+            // BFFFO reports the position relative to the unsplit offset
+            result = bitfield<I>(data, I == Instr::BFFFO ? rawOffset : offset, width, mask);
             writeD(dn, result);
 
-            //           00  10  20        00  10  20        00  10  20
-            //           .b  .b  .b        .w  .w  .w        .l  .l  .l
-            CYCLES_AI   ( 0,  0,  0,        0,  0,  0,        0,  0, 32)
-            CYCLES_DI   ( 0,  0,  0,        0,  0,  0,        0,  0, 33)
-            CYCLES_IX   ( 0,  0,  0,        0,  0,  0,        0,  0, 35)
-            CYCLES_AW   ( 0,  0,  0,        0,  0,  0,        0,  0, 32)
-            CYCLES_AL   ( 0,  0,  0,        0,  0,  0,        0,  0, 32)
-            CYCLES_DIPC ( 0,  0,  0,        0,  0,  0,        0,  0, 33)
-            CYCLES_IXPC ( 0,  0,  0,        0,  0,  0,        0,  0, 35)
+            if constexpr (I == Instr::BFFFO) {
+
+                //           00  10  20        00  10  20        00  10  20
+                //           .b  .b  .b        .w  .w  .w        .l  .l  .l
+                CYCLES_AI   ( 0,  0,  0,        0,  0,  0,        0,  0, 32)
+                CYCLES_DI   ( 0,  0,  0,        0,  0,  0,        0,  0, 33)
+                CYCLES_IX   ( 0,  0,  0,        0,  0,  0,        0,  0, 35)
+                CYCLES_AW   ( 0,  0,  0,        0,  0,  0,        0,  0, 32)
+                CYCLES_AL   ( 0,  0,  0,        0,  0,  0,        0,  0, 32)
+                CYCLES_DIPC ( 0,  0,  0,        0,  0,  0,        0,  0, 33)
+                CYCLES_IXPC ( 0,  0,  0,        0,  0,  0,        0,  0, 35)
+
+            } else {
+
+                //           00  10  20        00  10  20        00  10  20
+                //           .b  .b  .b        .w  .w  .w        .l  .l  .l
+                CYCLES_AI   ( 0,  0,  0,        0,  0,  0,        0,  0, 19)
+                CYCLES_DI   ( 0,  0,  0,        0,  0,  0,        0,  0, 20)
+                CYCLES_IX   ( 0,  0,  0,        0,  0,  0,        0,  0, 22)
+                CYCLES_AW   ( 0,  0,  0,        0,  0,  0,        0,  0, 19)
+                CYCLES_AL   ( 0,  0,  0,        0,  0,  0,        0,  0, 19)
+                CYCLES_DIPC ( 0,  0,  0,        0,  0,  0,        0,  0, 20)
+                CYCLES_IXPC ( 0,  0,  0,        0,  0,  0,        0,  0, 22)
+            }
             break;
 
         case Instr::BFINS:
@@ -1573,19 +1438,17 @@ Moira::execBitFieldEa(u16 opcode)
             insert = readD(dn);
             insert = u32(insert << (32 - width));
 
-            reg.sr.n = NBIT<S>(insert);
-            reg.sr.z = ZERO<S>(insert);
-            reg.sr.v = 0;
-            reg.sr.c = 0;
+            setMoveFlags<S>(insert);
 
-            u32 tailResult = tail;
-            if (span == 5) {
+            writeM<C, M, S>(ea, (data & ~mask) | insert >> offset);
 
+            if ((width + offset) > 32) {
+
+                data = readM<C, M, Byte>(ea + 4);
                 u8 insert8 = u8(readD(dn) << (8 - ((width + offset) - 32)));
-                tailResult = (tail & ~mask8) | insert8;
+                writeM<C, M, Byte>(ea + 4, (data & ~mask8) | insert8);
                 reg.sr.z &= ZERO<Byte>(insert8);
             }
-            writeField((data & ~mask) | insert >> offset, tailResult);
 
             //           00  10  20        00  10  20        00  10  20
             //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -1600,9 +1463,10 @@ Moira::execBitFieldEa(u16 opcode)
 
             (void)bitfield<I>(data, offset, width, mask);
 
-            if (span == 5) {
+            if ((width + offset) > 32) {
 
-                reg.sr.z &= ZERO<Byte>(tail & mask8);
+                u8 data2 = u8(readM<C, M, Byte>(ea + 4));
+                reg.sr.z &= ZERO<Byte>(data2 & mask8);
             }
 
             //           00  10  20        00  10  20        00  10  20
@@ -1630,18 +1494,15 @@ Moira::execBkpt(u16 opcode)
 {
     AVAILABILITY(Core::C68010)
 
-    if (MOIRA_MIMIC_MUSASHI) {
+    // Acknowledges the breakpoint with a CPU space cycle
+    willExecute(CpuSpaceType::BREAKPOINT, opcode & 7);
+    didExecute(CpuSpaceType::BREAKPOINT, opcode & 7);
 
-        execException<C>(M68kException::ILLEGAL);
-
-    } else {
-
-        execException<C>(M68kException::BKPT);
-    }
+    execException<C>(M68kException::BKPT);
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
-    CYCLES_IP   ( 0,  0,  0,        0,  0,  0,        0, 38, 20 );
+    CYCLES_IP   ( 0,  0,  0,        0,  0,  0,        0, 38, 20)
 
     FINALIZE
 }
@@ -1652,14 +1513,13 @@ Moira::execBsr(u16 opcode)
     AVAILABILITY(S == Long ? Core::C68020 : Core::C68000)
 
     u32 oldpc = reg.pc;
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K: on the 68030 the displacement is one entry of the access log,
-    // made below, when the oracle makes it; ircLong() would log its first
-    // word alone.
-    [[maybe_unused]] bool logSave = false;
-    if constexpr (C == Core::C68020) { logSave = mmuLogging; mmuLogging = false; }
-    u32 disp = S == Byte ? (u8)opcode : S == Long ? ircLong<C>() : ircWord();
-    if constexpr (C == Core::C68020) mmuLogging = logSave;
+    u32 disp = S == Byte ? (u8)opcode : queue.irc;
+
+    if constexpr (S == Long) {
+
+        readExt<C>();
+        disp = disp << 16 | queue.irc;
+    }
 
     u32 newpc = U32_ADD(oldpc, SEXT<S>(disp));
     u32 retpc = U32_ADD(reg.pc, S == Long || S == Word ? 2 : 0);
@@ -1671,94 +1531,59 @@ Moira::execBsr(u16 opcode)
         // Check for address errors
         if (misaligned<C>(reg.sp)) {
             reg.sp -= 4;
-            throw AddressError(makeFrame<AE_WRITE|AE_DATA>(reg.sp));
+            throw earlyAddressError<C>(makeFrame<AE_WRITE|AE_DATA>(reg.sp));
+        }
+        if (misalignedPC<C>(newpc)) {
+
+            // MAME pushes the return address before it detects the misaligned target
+            push<C, Long>(retpc);
+            reg.pc = newpc;
+            throw earlyAddressError<C>(makeFrame<AE_PROG>(newpc));
         }
 
-        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
         // Save return address on stack
-        // POM68K: pushed BEFORE the target alignment check — the real 68000
-        // stacks the return address, then faults on the target prefetch
-        // (SingleStepTests/680x0: SSP = -18, not -14, on odd BSR targets)
-        push<C, Long>(retpc);
-
-        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-        // POM68K: same rule as Bra (SingleStepTests/680x0)
-        if (misaligned<C>(newpc)) {
-            throw AddressError(makeFrame<AE_PROG|AE_SET_CB3>(newpc, U32_SUB(newpc, 4)));
-        }
+        push<C, Long, UAE_DEC_PC>(retpc);
 
         // Jump to new address
         reg.pc = newpc;
-        fullPrefetch<C, POLL | FLOW>();
+        fullPrefetch<C, POLL>();
 
-    } else {
+    } else if constexpr (C == Core::C68010) {
 
         // Check for address errors
         if (misaligned<C>(reg.sp)) {
-            pomSetWB<C>(0);  // POM68K (host): 68010-only (Moira.h pomSetWB)
-            throw AddressError(makeFrame<AE_WRITE|AE_DATA>(newpc));
 
+            writeBuffer = 0;
+            throw earlyAddressError<C>(makeFrame<AE_WRITE|AE_DATA>(newpc));
         }
-        if (misaligned<C>(newpc)) {
-            throw AddressError(makeFrame(newpc));
-        }
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K O4 slice 4: 68030 odd instruction-flow target — WinUAE's
-    // mmu030 handlers raise vector 3 with a format $B frame
-    // (exception3_read_prefetch*); see execAddressError030.
-        // WinUAE BSR: A7 is decremented but the return address is never
-        // written; stacked PC = the BSR instruction.
-        if constexpr (C == Core::C68020) {
-            if (cpuModel == Model::M68030 && oddFlowTarget(newpc)) {
-                reg.sp -= 4;
-                mmuLogReset();
-                if constexpr (S == Word) mmuLogExtWord(u16(disp));
-                if constexpr (S == Long) mmuLogExtWord(disp);
-                execAddressError030<C>(newpc, reg.pc0);
-                FINALIZE
-                return;
-            }
-            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-            // POM68K Q2: 68040 BSR checks BEFORE pushing (WinUAE
-            // op_6100_31: exception3_read_prefetch precedes
-            // m68k_do_bsr) — A7 is untouched, stacked PC = the BSR.
-            if (cpuModel >= Model::M68EC040 && oddFlowTarget(newpc)) {
-                execAddressError040<C>(newpc, reg.pc0);
-                FINALIZE
-                return;
-            }
-        }
+        checkEvenPC<C, AE_FETCH>(newpc);
 
         // Save return address on stack
-        // [D] WinUAE gencpu i_BSR @ Hatari e77819f7 ("op=BSR_W #14225" on
-        // the 68030, "op=BSR_W #14284" and "op=BSR_L #14345" on the 68040;
-        // opcells.py --set classes --mmu identity --user --stack data). A
-        // faulting push restarts the BSR on both, with A7 intact: the store
-        // goes to A7-4 and A7 moves afterwards, as for JSR. The 68030 has
-        // logged the displacement by then; on the 68040
-        // execMmu040BusError excludes both from the last-write rule.
-        // Gate: moira_rules_test (stackStoreFaults).
-        bool pushed = false;
-        if constexpr (C == Core::C68020) {
-            if (cpuModel == Model::M68030) [[unlikely]] {
-                if constexpr (S == Word) mmuLogExtWord(u16(disp));
-                if constexpr (S == Long) mmuLogExtWord(disp);
-            }
-            if (cpuModel >= Model::M68EC040 || cpuModel == Model::M68030) {
-                write<C, AddrSpace::DATA, Long, POLL>(reg.sp - 4, retpc);
-                reg.sp -= 4;
-                pushed = true;
-            }
-        }
-        if (!pushed) push<C, Long, POLL>(retpc);
+        push<C, Long, POLL>(retpc);
 
         // Jump to new address
         reg.pc = newpc;
+        fullPrefetch<C>();
 
-        fullPrefetch<C, FLOW>();
+    } else if constexpr (C == Core::C68020) {
+
+        // Check for address error
+        if (misalignedPC<C>(newpc)) {
+
+            // The 68020 reserves the space for the return address (UAE does not write it)
+            reg.sp -= 4;
+            throw earlyAddressError<C>(makeFrame<AE_FETCH>(newpc));
+        }
+
+        // Save return address on stack
+        push<C, Long, POLL>(retpc);
+
+        // Jump to new address
+        reg.pc = newpc;
+        fullPrefetch<C>();
     }
 
+    changeOfFlow<C>();
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -1772,133 +1597,22 @@ Moira::execCallm(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    int dst = ( _____________xxx(opcode) );
+    int dst = _____________xxx(opcode);
+    u32 ea, data;
 
-    // [D] Musashi @ 1efd694 (Runner/Musashi of upstream Moira), run by its Runner:
-    //     CALLM does nothing but consume its operands. POM68K: under
-    //     MOIRA_MIMIC_MUSASHI this is upstream Moira's body, unchanged; the
-    //     module call below is what the fork executes otherwise (row 25).
-    if constexpr (MOIRA_MIMIC_MUSASHI) {
+    readOp<C, M, Byte>(dst, &ea, &data);
+    readExt<C>();
+    prefetch<C, POLL>();
 
-        u32 ea, data;
-
-        readOp<C, M, Byte>(dst, &ea, &data);
-        readExt<C>();
-        prefetch<C, POLL>();
-
-        //           00  10  20        00  10  20        00  10  20
-        //           .b  .b  .b        .w  .w  .w        .l  .l  .l
-        CYCLES_AI   ( 0,  0,  0,        0,  0,  0,        0,  0, 64)
-        CYCLES_DI   ( 0,  0,  0,        0,  0,  0,        0,  0, 65)
-        CYCLES_IX   ( 0,  0,  0,        0,  0,  0,        0,  0, 67)
-        CYCLES_AW   ( 0,  0,  0,        0,  0,  0,        0,  0, 64)
-        CYCLES_AL   ( 0,  0,  0,        0,  0,  0,        0,  0, 64)
-        CYCLES_DIPC ( 0,  0,  0,        0,  0,  0,        0,  0, 65)
-        CYCLES_IXPC ( 0,  0,  0,        0,  0,  0,        0,  0, 67)
-
-        FINALIZE
-        return;
-    }
-
-    const u16 argWord = u16(readI<C, Word>());
-    const u32 ea = computeEA<C, M, Long>(dst);
-
-    // CALLM's immediate field is eight bits.  The descriptor and entry word
-    // are validated completely before any visible register is modified.
-    const u32 control = read<C, AddrSpace::DATA, Long>(ea + 0);
-    const u32 entry = read<C, AddrSpace::DATA, Long>(ea + 4);
-    const u32 moduleData = read<C, AddrSpace::DATA, Long>(ea + 8);
-    const u16 entryWord = u16(read<C, AddrSpace::DATA, Word>(entry));
-
-    // CALLM's charge by EA mode: 64/65/67, the figures upstream Moira has.
-    // [D] Musashi @ 1efd694 (Runner/Musashi of upstream Moira): their origin.
-    // [B] MC68020UM-1992 §8.2.16 lists 30 (2/0/6) for type $00 in the cache
-    //     case, plus the fetch of the immediate address: the figures above
-    //     are not the manual's.
-    // [F] The format-error exits below are charged the same count; the
-    //     manual gives no format-error timing for CALLM or RTM, and before
-    //     2026-11-20 these exits charged nothing: the instruction took zero
-    //     cycles. Settled by: a bus capture of CALLM with an invalid
-    //     descriptor.
-    // Gate: callm_rtm_test (formatErrorCycles).
-    auto charge = [&]() {
-        //           00  10  20        00  10  20        00  10  20
-        //           .b  .b  .b        .w  .w  .w        .l  .l  .l
-        CYCLES_AI   ( 0,  0,  0,        0,  0,  0,        0,  0, 64)
-        CYCLES_DI   ( 0,  0,  0,        0,  0,  0,        0,  0, 65)
-        CYCLES_IX   ( 0,  0,  0,        0,  0,  0,        0,  0, 67)
-        CYCLES_AW   ( 0,  0,  0,        0,  0,  0,        0,  0, 64)
-        CYCLES_AL   ( 0,  0,  0,        0,  0,  0,        0,  0, 64)
-        CYCLES_DIPC ( 0,  0,  0,        0,  0,  0,        0,  0, 65)
-        CYCLES_IXPC ( 0,  0,  0,        0,  0,  0,        0,  0, 67)
-    };
-
-    const u8 opt = u8(control >> 29);
-    const u8 type = u8(control >> 24) & 0x1f;
-    if ((argWord & 0xff00) || (opt != 0 && opt != 4) || type > 1 ||
-        (control & 0xffff) || (entryWord & 0x0fff)) {
-        execException<C>(M68kException::FORMAT_ERROR);
-        charge();
-        FINALIZE
-        return;
-    }
-
-    const u8 argc = u8(argWord);
-    const int moduleReg = (entryWord >> 12) & 15;
-    const u32 oldSp = reg.sp;
-    const u32 oldModuleData = readR(moduleReg);
-    u32 stackTop = oldSp;
-    u8 savedAccess = 0;
-    u8 accessStatus = 1;
-
-    if (type == 1) {
-        // Type $01 talks to external access-control hardware in CPU space.
-        // Verify the old stack before asking the hardware to change access.
-        // The descriptor-address register is selected by the data FC used
-        // for the descriptor (user=$1, supervisor=$5).
-        (void)read<C, AddrSpace::DATA, Byte>(oldSp);
-        const u8 descriptorFc = reg.sr.s ? FC::SUPERVISOR_DATA : FC::USER_DATA;
-        setFC(FC::CPU_SPACE);
-        const bool ok =
-            readModuleCpuSpace8(0x10000, savedAccess) &&
-            writeModuleCpuSpace32(0x10040 + 4 * descriptorFc, ea) &&
-            writeModuleCpuSpace8(0x10008, u8(control >> 16)) &&
-            readModuleCpuSpace8(0x10004, accessStatus);
-        if (!ok || accessStatus == 0 || accessStatus > 7) {
-            execException<C>(M68kException::FORMAT_ERROR);
-            charge();
-            FINALIZE
-            return;
-        }
-
-        if (accessStatus >= 4) {
-            stackTop = read<C, AddrSpace::DATA, Long>(ea + 12);
-            if (opt == 0) {
-                for (u32 i = 0; i < argc; i++) {
-                    const u8 v = u8(read<C, AddrSpace::DATA, Byte>(oldSp + i));
-                    write<C, AddrSpace::DATA, Byte>(stackTop + i, v);
-                }
-            }
-        }
-    }
-
-    const u32 frame = stackTop - 24;
-    const u32 frameControl = (control & 0xff000000) |
-        (u32(type == 1 ? savedAccess : u8(control >> 16)) << 16) | getCCR();
-    write<C, AddrSpace::DATA, Long>(frame + 0x00, frameControl);
-    write<C, AddrSpace::DATA, Long>(frame + 0x04, argc);
-    write<C, AddrSpace::DATA, Long>(frame + 0x08, ea);
-    write<C, AddrSpace::DATA, Long>(frame + 0x0c, reg.pc);
-    write<C, AddrSpace::DATA, Long>(frame + 0x10, oldModuleData);
-    write<C, AddrSpace::DATA, Long>(frame + 0x14,
-        (opt == 4 || (type == 1 && accessStatus >= 4)) ? oldSp : 0);
-
-    writeR(moduleReg, moduleData);
-    reg.sp = frame;                    // A7 selection is intentionally lost
-    reg.pc = entry + 2;
-    fullPrefetch<C, POLL | FLOW>();
-
-    charge();
+    //           00  10  20        00  10  20        00  10  20
+    //           .b  .b  .b        .w  .w  .w        .l  .l  .l
+    CYCLES_AI   ( 0,  0,  0,        0,  0,  0,        0,  0, 64)
+    CYCLES_DI   ( 0,  0,  0,        0,  0,  0,        0,  0, 65)
+    CYCLES_IX   ( 0,  0,  0,        0,  0,  0,        0,  0, 67)
+    CYCLES_AW   ( 0,  0,  0,        0,  0,  0,        0,  0, 64)
+    CYCLES_AL   ( 0,  0,  0,        0,  0,  0,        0,  0, 64)
+    CYCLES_DIPC ( 0,  0,  0,        0,  0,  0,        0,  0, 65)
+    CYCLES_IXPC ( 0,  0,  0,        0,  0,  0,        0,  0, 67)
 
     FINALIZE
 }
@@ -1909,22 +1623,10 @@ Moira::execCas(u16 opcode)
     AVAILABILITY(Core::C68020)
 
     int dst = _____________xxx(opcode);
-    int dc  = _____________xxx(ircWord());
-    int du  = _______xxx______(ircWord());
+    int dc  = _____________xxx(queue.irc);
+    int du  = _______xxx______(queue.irc);
 
     u32 ea, data;
-
-    // [B] MC68030UM-1989 §8.2.1: SSW RM marks a read-modify-write cycle.
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K O4 slice 3: CAS drives a locked read-modify-write cycle on
-    // the 68030 (SSW RM bit, RWM-only TT matching, write-probed ATC)
-    if constexpr (C == Core::C68020) {
-        if (mmuPlain020() || cpuModel == Model::M68030) [[unlikely]] mmuRmw = true;
-        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // POM68K Q3: 68040 locked RMW — reads translate as writes and
-        // faults carry SSW.LK (WinUAE uae_mmu_get_lrmw)
-        if (cpuModel >= Model::M68EC040) [[unlikely]] mmu040Lrmw = true;
-    }
 
     readExt<C>();
     readOp<C, M, S, STD_AE_FRAME>(dst, &ea, &data);
@@ -1932,20 +1634,10 @@ Moira::execCas(u16 opcode)
     auto compare = readD(dc);
 
     // Set flags
-    cmp<C, S>(CLIP<S>(compare), data);
+    cmp<C, S>(compare, data);
 
     if (!reg.sr.z) {
 
-        // [B] MC68040UM-1993 §7.4.5: failed CAS still writes the value
-        // read to terminate the locked sequence. Earlier cores do not.
-        // [D] WinUAE cpuemu_31.c op_0ad0/op_0cd0/op_0ed0 @ Hatari e77819f7:
-        // the terminal write precedes Dc's update and is a final store.
-        // POM68K: keep the normal write path, including /BERR and WB3.
-        if constexpr (C == Core::C68020) {
-            // [D] Musashi @ 1efd694 (Runner/Musashi of upstream Moira), run by its Runner:
-            //     no terminal write. POM68K: none under MOIRA_MIMIC_MUSASHI.
-            if (cpuModel >= Model::M68EC040 && !MOIRA_MIMIC_MUSASHI) [[unlikely]] writeM<C, M, S>(ea, data);
-        }
         writeD(dc, CLEAR<S>(compare) | data);
 
         //           00  10  20        00  10  20        00  10  20
@@ -1973,14 +1665,7 @@ Moira::execCas(u16 opcode)
         CYCLES_AL   ( 0,  0, 19,        0,  0, 19,        0,  0, 19)
     }
 
-    if constexpr (C == Core::C68020) {
-        mmuRmw = false;                                 // POM68K (host) O4 slice 3
-        mmu040Lrmw = false;                             // POM68K (host): see execTas
-    }
-
     prefetch<C, POLL>();
-
-    traceFlow040<C>();
 
     FINALIZE
 }
@@ -1990,140 +1675,48 @@ Moira::execCas2(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    u16 ext1, ext2;
-    bool asLong = false;
-    if constexpr (C == Core::C68020) asLong = cpuModel == Model::M68030;
-    if (asLong) [[unlikely]] {
-        // [D] WinUAE gencpu.c i_CAS2 @ Hatari e77819f7 (next_ilong): the two
-        // extension words are ONE long entry of the 68030 access log. Logged
-        // as two words, an operand fault stacked a format-$B frame with one
-        // entry too many ("op=CAS2_W #4168", opcells.py --set ea --mmu
-        // identity seed 5201). Gate: moira_rules_test (cas2ExtensionLog030).
-        const u32 ext = readExt<C, Long>();
-        ext1 = u16(ext >> 16); ext2 = u16(ext);
-    } else {
-        ext1 = u16(ircWord()); readExt<C>();
-        ext2 = u16(ircWord()); readExt<C>();
-    }
+    int dc1 = _____________xxx(queue.irc);
+    int du1 = _______xxx______(queue.irc);
+    int rn1 = xxxx____________(queue.irc);
 
-    int dc1 = _____________xxx(ext1);
-    int du1 = _______xxx______(ext1);
-    int rn1 = xxxx____________(ext1);
+    readExt<C>();
 
-    int dc2 = _____________xxx(ext2);
-    int du2 = _______xxx______(ext2);
-    int rn2 = xxxx____________(ext2);
+    int dc2 = _____________xxx(queue.irc);
+    int du2 = _______xxx______(queue.irc);
+    int rn2 = xxxx____________(queue.irc);
+
+    readExt<C>();
 
     u32 ea1 = reg.r[rn1];
     u32 ea2 = reg.r[rn2];
-    // [B] MC68020UM-1992 §6.2.2: CAS2 faults are RMW, not single-cycle
-    // software completions. POM68K: exclude them from the 020 data latch.
-    if constexpr (C == Core::C68020) {
-        if (mmuPlain020()) mmuRmw = true;
-        // [D] WinUAE @ Hatari e77819f7, fresh-seed vector "random/tt
-        // seed=5109 #261": on the 68030 both operand reads of CAS2 are the
-        // read half of a locked read-modify-write, as CAS's and TAS's are
-        // (above, and execTas) — write-probed, M set on both pages even
-        // when the compare fails and nothing is written. POM68K had the
-        // 68030 on CAS and TAS only. Gate: moira_rules_test
-        // (cas2IsReadModifyWrite030).
-        if (cpuModel == Model::M68030) [[unlikely]] mmuRmw = true;
-    }
-    // [B] MC68040UM-1993 §7.4.5: CAS2 operands are locked, implicitly
-    // noncacheable, and resolve matching dirty data before the read.
-    // POM68K: use the same write-permission/SSW/cache path as TAS/CAS.
-    if constexpr (C == Core::C68020) {
-        if (cpuModel >= Model::M68EC040) [[unlikely]] mmu040Lrmw = true;
-    }
     u32 data1 = readM<C, M, S>(ea1);
     u32 data2 = readM<C, M, S>(ea2);
 
     auto compare1 = readD(dc1);
     auto compare2 = readD(dc2);
 
-    // Set flags
-    cmp<C, S>(CLIP<S>(compare1), data1);
-
+    // Set flags (the second comparison is only performed if the first one matches)
+    cmp<C, S>(compare1, data1);
+    
+    if (reg.sr.z) {
+        
+        cmp<C, S>(compare2, data2);
+    }
     if (reg.sr.z) {
 
-        // Set flags
-        cmp<C, S>(CLIP<S>(compare2), data2);
-        if (reg.sr.z) {
+        writeM<C, M, S>(ea1, reg.d[du1]);
+        writeM<C, M, S>(ea2, reg.d[du2]);
 
-            writeM<C, M, S>(ea1, reg.d[du1]);
-            writeM<C, M, S>(ea2, reg.d[du2]);
-
-            if constexpr (C == Core::C68020) {
-                if (cpuModel == Model::M68030) mmuRmw = false;  // not the prefetch
-                mmu040Lrmw = false;                     // POM68K (host): see execTas
-            }
-            prefetch<C, POLL>();
-            CYCLES_68020 (15);
-            return;
-        }
+        prefetch<C, POLL>();
+        CYCLES_68020(15)
+        return;
     }
 
-    // [B] MC68040UM-1993 §7.4.5: failed CAS2 writes only the second
-    // operand read, including when comparison 1 failed.
-    // [D] WinUAE gencpu.c i_CAS2 @ Hatari e77819f7 omits this write;
-    // the primary rule above takes precedence.
-    // [F] CAS2's register commit and frame-PC sequencing on this new
-    // write fault follows CAS's write-before-Dc/final-store model, not a
-    // silicon capture. Settled by: a real 040 terminal-write /BERR trace.
-    // POM68K: preserve the captured EA/data before compare registers change.
-    if constexpr (C == Core::C68020) {
-        // [D] Musashi @ 1efd694 (Runner/Musashi of upstream Moira), run by its Runner:
-        //     no terminal write. POM68K: none under MOIRA_MIMIC_MUSASHI.
-        if (cpuModel >= Model::M68EC040 && !MOIRA_MIMIC_MUSASHI) [[unlikely]] writeM<C, M, S>(ea2, data2);
-    }
-
-    if (MOIRA_MIMIC_MUSASHI) {
-
-        if (rn1 & 0x8) {
-            writeD(dc1, SEXT<S>(data1));
-        } else {
-            writeD<S>(dc1, data1);
-        }
-        if (rn2 & 0x8) {
-            writeD(dc2, SEXT<S>(data2));
-        } else {
-            writeD<S>(dc2, data2);
-        }
-
-    } else {
-
-        // The order shows only when Dc1 and Dc2 are the same register: it
-        // then holds memory operand 1 below the 68040.
-        // [B] M68000PRM-1992 CAS2 — "If Dc1 and Dc2 specify the same data
-        //     register and the comparison fails, memory operand 1 is stored
-        //     in the data register."
-        // [D] WinUAE gencpu.c i_CAS2 @ Hatari e77819f7 — Dc2 then Dc1 below
-        //     the 68040, and "68040: register update order swapped".
-        // POM68K: until 2026-11-20 every model wrote Dc1 then Dc2, which is
-        // the oracle's 68040 order; 43 class-balanced 68030 vectors of
-        // 45 600 differed. The 68040 keeps that order against the manual's
-        // family-wide sentence (ruling D44, oracle/README.md).
-        // [F] for the 68040. Settled by: CAS2 Dn:Dn on a real 68040 with a
-        //     failing comparison.
-        // Gate: moira_rules_test (cas2SameCompareRegister).
-        if (cpuModel >= Model::M68EC040) {
-            writeD<S>(dc1, data1);
-            writeD<S>(dc2, data2);
-        } else {
-            writeD<S>(dc2, data2);
-            writeD<S>(dc1, data1);
-        }
-    }
-
-    if constexpr (C == Core::C68020) {
-        if (cpuModel == Model::M68030) mmuRmw = false;
-        mmu040Lrmw = false;                             // POM68K (host): see execTas
-    }
+    writeD<S>(dc1, data1);
+    writeD<S>(dc2, data2);
     prefetch<C, POLL>();
 
-    CYCLES_68020 (12)
-
-    traceFlow040<C>();
+    CYCLES_68020(12)
 
     FINALIZE
 }
@@ -2136,148 +1729,50 @@ Moira::execChk(u16 opcode)
     int src = _____________xxx(opcode);
     int dst = ____xxx_________(opcode);
     u32 ea = 0, data, dy;
-    [[maybe_unused]] auto c = clock;
 
-    try {
+    try { readOp<C, M, S, STD_AE_FRAME>(src, &ea, &data); }
+    catch (const AddressError &) {
 
-        readOp<C, M, S>(src, &ea, &data);
+        // Rectify the stack frame (68010 and above). The register has been advanced by readOp already.
+        // The DIB still holds the last prefetch.
+        if constexpr (C != Core::C68000) {
 
-    } catch (const AddressError &) {
-
-        // Rectify the stack frame
-        if constexpr (C == Core::C68000) {
-
-            throw AddressError(makeFrame<STD_AE_FRAME>(ea));
-
-        } else {
-
-            pomSetRB<C>((u16)readM<C, M, S>(ea & ~1));  // POM68K (host): 68010-only store; the dummy read stays on every core
-            updateAnPI<M, S>(src);
-            if (isAbsMode(M) || M == Mode::AI || M == Mode::PI || M == Mode::PD) {
-
-                SYNC(2);
-                throw AddressError(makeFrame<AE_SET_RW|AE_SET_DF>(ea));
-
-            } else {
-
-                SYNC(2);
-                throw AddressError(makeFrame<AE_DEC_PC|AE_SET_RW|AE_SET_DF>(ea));
-            }
+            constexpr bool noDec = isAbsMode(M) || M == Mode::AI || M == Mode::PI || M == Mode::PD;
+            SYNC(2);
+            throw AddressError(makeFrame<noDec ? 0 : AE_DEC_PC>(ea));
         }
+        throw;
     }
     dy = readD<S>(dst);
 
-    // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-    // POM68K: when CHK traps, the 68000 spends the first four of these idle
-    // cycles on a bus cycle — it fetches the next word, and discards it.
-    // Same total. [D] SingleStepTests/680x0 v1 transactions (CHK.json).
-    // Without a trap the same bus cycle is the instruction's own prefetch,
-    // and the six idle cycles follow it.
-    if constexpr (C == Core::C68000 && !MOIRA_MIMIC_MUSASHI) {
-        if (SEXT<S>(dy) > SEXT<S>(data) || SEXT<S>(dy) < 0) {
-            (void)read<C, AddrSpace::PROG, Word>(reg.pc + 2);
-            SYNC(2);
-        } else {
+    SYNC_68000(6);
+
+    reg.sr.n = 0;
+    setUndefinedCHK<C, S>(SEXT<S>(data), SEXT<S>(dy));
+
+    bool above = SEXT<S>(dy) > SEXT<S>(data);
+    bool below = SEXT<S>(dy) < 0;
+
+    // The 68000 additionally takes the branch if the difference of both operands has a negative sign,
+    // which includes the case where an arithmetic overflow occurs (vAmigaTS: Timing2/CHK/CHK1). UAE doesn't.
+    constexpr bool overflowCheck = C == Core::C68000 ? compat != Compatibility::UAE : compat == Compatibility::MAME;
+    if constexpr (overflowCheck) above |= S == Word && (i16)(data - dy) < 0;
+
+    if (above || below) {
+
+        if constexpr (C == Core::C68010) {
+
+            // The 68010 prefetches before it traps. The stacked PC is the address of the next instruction.
             prefetch<C, POLL>();
-            SYNC(6);
-        }
-    } else {
-        SYNC_68000(6);
-    }
-
-    if (MOIRA_MIMIC_MUSASHI) {
-
-        reg.sr.z = ZERO<S>(dy);
-        reg.sr.v = 0;
-        reg.sr.c = 0;
-
-    } else if constexpr (C == Core::C68020) {
-
-        if (cpuModel >= Model::M68EC040) {
-
-            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-            // POM68K Q2: 68040 CHK — C computed from the out-of-range
-            // shape, N = value<0, Z/V/X untouched (WinUAE
-            // setchkundefinedflags, 68040 row; applied trap or no trap)
-            i32 s040 = SEXT<S>(data), d040 = SEXT<S>(dy);
-            reg.sr.c = 0;
-            if (d040 < 0 || d040 > s040) {
-                if (d040 < 0 && s040 >= 0)       reg.sr.c = 1;
-                else if (s040 >= 0 && d040 >= s040) reg.sr.c = 1;
-                else if (d040 < 0 && s040 < d040)   reg.sr.c = 1;
-            }
-            reg.sr.n = d040 < 0;
+            SYNC(above ? 4 : 6);
+            reg.pc -= 2;
 
         } else {
 
-            // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-            // POM68K O4 slice 4: WinUAE-arbitrated 020/030 undefined CCR —
-            // N/Z always refreshed; V/C from the bound-value subtraction when
-            // the value is out of range (setchkundefinedflags, hardware-
-            // verified tables; NOTES.md § slice 4). The 68000 rule below is
-            // pinned by SingleStepTests and stays untouched.
-            setUndefinedCHK<C, S>(SEXT<S>(data), SEXT<S>(dy));
+            SYNC(above ? 2 : 4);
         }
 
-    } else {
-
-        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-        // POM68K: C=V=0, Z=(value==0) always; N=1 if value<0 (wins),
-        // N=0 if value>bound, else preserved (SingleStepTests/680x0)
-        reg.sr.c = 0;
-        reg.sr.v = 0;
-        reg.sr.z = ZERO<S>(dy);
-        if (SEXT<S>(dy) < 0) reg.sr.n = 1;
-        else if (SEXT<S>(dy) > SEXT<S>(data)) reg.sr.n = 0;
-    }
-
-    if (SEXT<S>(dy) > SEXT<S>(data)) {
-
-        switch (C) {
-
-            case Core::C68000:
-            case Core::C68020:
-
-                SYNC(MOIRA_MIMIC_MUSASHI ? 10 - (int)(clock - c) : 2);
-                break;
-
-            case Core::C68010:
-
-                prefetch<C, POLL>();
-                SYNC_68010(4);
-                break;
-        }
-        // [D] Musashi @ 1efd694 (Runner/Musashi of upstream Moira), run by its Runner:
-        //     N is set from Dn before this trap, as upstream had it on every
-        //     model before the rulings above. POM68K: restored under
-        //     MOIRA_MIMIC_MUSASHI.
-        if (MOIRA_MIMIC_MUSASHI) reg.sr.n = NBIT<S>(dy);
-        execException<C>(M68kException::CHK);
-
-
-        CYCLES_68000(40)
-        CYCLES_68010(44)
-        CYCLES_68020(40)
-        return;
-    }
-
-    if (SEXT<S>(dy) < 0) {
-
-        switch (C) {
-
-            case Core::C68000:
-            case Core::C68020:
-
-                SYNC(MOIRA_MIMIC_MUSASHI ? 10 - (int)(clock - c) : 4);
-                break;
-
-            case Core::C68010:
-
-                prefetch<C, POLL>();
-                SYNC_68010(6);
-        }
-        if (MOIRA_MIMIC_MUSASHI) reg.sr.n = NBIT<S>(dy);
+        reg.sr.n = above ? NBIT<S>(dy) : 1;
         execException<C>(M68kException::CHK);
 
         CYCLES_68000(40)
@@ -2286,7 +1781,7 @@ Moira::execChk(u16 opcode)
         return;
     }
 
-    if constexpr (!(C == Core::C68000 && !MOIRA_MIMIC_MUSASHI)) prefetch<C, POLL>();
+    prefetch<C, POLL>();
     SYNC_68010(4);
 
     //           00  10  20        00  10  20        00  10  20
@@ -2311,7 +1806,7 @@ Moira::execChkCmp2(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    u32 ext = ircWord();
+    u32 ext = queue.irc;
     int src = _____________xxx(opcode);
     int dst = xxxx____________(ext);
     u32 ea, data1, data2;
@@ -2321,40 +1816,17 @@ Moira::execChkCmp2(u16 opcode)
     readOp<C, M, S>(src, &ea, &data1);
     data2 = readM<C, M, S>(ea + S);
 
-    if (MOIRA_MIMIC_MUSASHI) {
+    i32 bound1 = SEXT<S>(data1);
+    i32 bound2 = SEXT<S>(data2);
+    i32 compare = dst < 8 ? SEXT<S>(readR(dst)) : readR(dst);
 
-        auto bound1 = ((M == Mode(9) || M == Mode(10)) && S == Byte) ? (i32)data1 : SEXT<S>(data1);
-        auto bound2 = ((M == Mode(9) || M == Mode(10)) && S == Byte) ? (i32)data2 : SEXT<S>(data2);
-        i32 compare = readR<S>(dst);
-        if (dst < 8) compare = SEXT<S>(compare);
-
-        if (bound1 < bound2) {
-            reg.sr.c = compare < bound1 || compare > bound2;
-        } else {
-            reg.sr.c = compare > bound2 || compare < bound1;
-        }
-        reg.sr.z = compare == bound1 || compare == bound2;
-
+    if (bound1 <= bound2) {
+        reg.sr.c = compare < bound1 || compare > bound2;
     } else {
-
-        i32 bound1 = SEXT<S>(data1);
-        i32 bound2 = SEXT<S>(data2);
-        i32 compare = dst < 8 ? SEXT<S>(readR(dst)) : readR(dst);
-
-        if (bound1 <= bound2) {
-            reg.sr.c = compare < bound1 || compare > bound2;
-        } else {
-            reg.sr.c = compare < bound1 && compare > bound2;
-        }
-        reg.sr.z = compare == bound1 || compare == bound2;
-        // POM68K: N and V are undefined for CHK2/CMP2. The 68020/68030
-        // table below is WinUAE's; on the 68040 the same oracle leaves both
-        // flags untouched (setchk2undefinedflags returns early for
-        // cpu_model 68040). [D] WinUAE @ Hatari e77819f7; the manual is
-        // silent. Fresh fuzz seeds 405/507/509/605 hit it, the pinned
-        // corpus did not.
-        if (cpuModel < Model::M68EC040) setUndefinedCHK2<C, S>(bound1, bound2, compare);
+        reg.sr.c = compare < bound1 && compare > bound2;
     }
+    reg.sr.z = compare == bound1 || compare == bound2;
+    setUndefinedCHK2<C, S>(bound1, bound2, compare);
 
     if ((ext & 0x800) && reg.sr.c) {
 
@@ -2384,132 +1856,68 @@ Moira::execClr(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
-    if constexpr (C == Core::C68000 || C == Core::C68020) {
+    int dst = _____________xxx(opcode);
 
-        int dst = _____________xxx(opcode);
+    if constexpr (C == Core::C68000) {
 
         u32 ea, data;
-
-        // [B] M68000PRM-1992 CLR: the read-before-clear note.
-        // POM68K Q3: the 68040 CLR is a pure store (gencpu genastore) —
-        // no destination read (which would fault/update U where the
-        // oracle only writes); flags final before the last write.
-        //
-        // POM68K (2026-11-07): so is the 68020's and the 68030's. Only the
-        // 68000 and 68008 read the destination before clearing it.
-        // M68000PRM-1992, CLR, note: "In the MC68000 and MC68008 a memory
-        //     location is read before it is cleared."
-        // [D] WinUAE gencpu i_CLR @ Hatari e77819f7: the read is generated
-        //     for cpu_level 0 only.
-        // The dummy read was a bus cycle no 68020 Macintosh performs — on a
-        // device register it is a read side effect that never happened.
-        // Gate: sst68030_rmw (write faults: frame $A, flags already final).
-        if (C == Core::C68020) {
-
-            ea = computeEA<C, M, S>(dst);
-            updateAn<M, S>(dst);
-            prefetch<C, POLL>();
-
-            reg.sr.n = 0;
-            reg.sr.z = 1;
-            reg.sr.v = 0;
-            reg.sr.c = 0;
-
-            writeOp<C, M, S>(dst, ea, 0);
-
-        } else {
-
         readOp<C, M, S, STD_AE_FRAME>(dst, &ea, &data);
 
-        prefetch<C, POLL>();
+        // MAME sets the flags first
+        setMoveFlags<S>(0);
 
-        if constexpr (S == Long && isRegMode(M)) SYNC(2);
+        try {
 
-        if constexpr (MOIRA_MIMIC_MUSASHI) {
-            writeOp<C, M, S>(dst, ea, 0);
-        } else {
-            writeOp<C, M, S, REVERSE>(dst, ea, 0);
+            fetchIrc<C, POLL, (!isRegMode(M) || S == Long)>();
+            if constexpr (S == Long && isRegMode(M)) SYNC(2);
+            writeOp<C, M, S, REVERSE | CLRC>(dst, ea, 0);
+
+        } catch (BusError &) {
+
+            if constexpr (isRegMode(M)) writeD<S == Long ? Word : S>(dst, 0);
+            throw;
         }
 
-        reg.sr.n = 0;
-        reg.sr.z = 1;
-        reg.sr.v = 0;
-        reg.sr.c = 0;
+    } else if constexpr (C == Core::C68010) {
 
-        }
-    }
-
-    if constexpr (C == Core::C68010) {
-
-        int dst = _____________xxx(opcode);
-
+        constexpr Flags incA = S == Long ? AE_INC_A : 0;
         u32 ea = computeEA<C, M, S>(dst);
 
         switch (M) {
 
             case Mode::AI:
-
-                writeOp<C, M, S, POLL | AE_INC_PC>(dst, ea, 0);
-                looping<I>() ? noPrefetch<C>() : prefetch<C>();
-                if (looping<I>()) loopModeDelay = 4;
-                break;
-
             case Mode::PI:
 
                 writeOp<C, M, S, POLL | AE_INC_PC>(dst, ea, 0);
                 updateAnPI<M, S>(dst);
-                looping<I>() ? noPrefetch<C>() : prefetch<C>();
-                if (looping<I>()) loopModeDelay = 4;
+                if (looping<I>()) { noPrefetch<C>(); loopModeDelay = 4; } else { prefetch<C>(); }
                 break;
 
             case Mode::PD:
 
-                if constexpr (S == Long) {
-                    writeOp<C, M, S, REVERSE | POLL | AE_INC_PC | AE_INC_A>(dst, ea, 0);
-                } else {
-                    writeOp<C, M, S, REVERSE | POLL | AE_INC_PC>(dst, ea, 0);
-                }
+                writeOp<C, M, S, REVERSE | POLL | AE_INC_PC | incA>(dst, ea, 0);
                 updateAnPD<M, S>(dst);
-                looping<I>() ? noPrefetch<C>() : prefetch<C>();
-                if (looping<I>()) loopModeDelay = 4;
+                if (looping<I>()) { noPrefetch<C>(); loopModeDelay = 4; } else { prefetch<C>(); }
                 break;
 
             case Mode::DI:
-
-                reg.sr.n = 0;
-                reg.sr.z = 1;
-                reg.sr.v = 0;
-                reg.sr.c = 0;
-
-                prefetch<C, POLL>();
-                if constexpr (S == Long) {
-                    writeOp<C, M, S, REVERSE | AE_INC_PC | AE_INC_A>(dst, ea, 0);
-                } else {
-                    writeOp<C, M, S, REVERSE | AE_INC_PC>(dst, ea, 0);
-                }
-                break;
-
             case Mode::IX:
 
-                reg.sr.n = 0;
-                reg.sr.z = 1;
-                reg.sr.v = 0;
-                reg.sr.c = 0;
+                setMoveFlags<S>(0);
 
-                SYNC(2);
-                prefetch<C,POLL>();
-                if constexpr (S == Long) {
-                    writeOp<C, M, S, REVERSE | AE_INC_PC | AE_INC_A>(dst, ea, 0);
-                } else {
-                    writeOp<C, M, S, REVERSE | AE_INC_PC>(dst, ea, 0);
-                }
+                if constexpr (M == Mode::IX) SYNC(2);
+                fetchIrc<C, POLL>();
+                writeOp<C, M, S, REVERSE | AE_INC_PC | incA>(dst, ea, 0);
                 break;
 
             case Mode::AW:
             case Mode::AL:
 
-                prefetch<C, POLL>();
-                writeOp<C, M, S, REVERSE>(dst, ea, 0);
+                // Real hardware has updated the flags and reports the second word of a long write
+                setMoveFlags<S>(0);
+
+                fetchIrc<C, POLL>();
+                writeOp<C, M, S, REVERSE | incA>(dst, ea, 0);
                 break;
 
             default:
@@ -2518,10 +1926,21 @@ Moira::execClr(u16 opcode)
                 prefetch<C, POLL>();
         }
 
-        reg.sr.n = 0;
-        reg.sr.z = 1;
-        reg.sr.v = 0;
-        reg.sr.c = 0;
+        setMoveFlags<S>(0);
+
+    } else if constexpr (C == Core::C68020) {
+
+        // The 68020 does not read the operand before it clears it
+        u32 ea = computeEA<C, M, S>(dst);
+        updateAnPD<M, S>(dst);
+        updateAnPI<M, S>(dst);
+
+        // UAE sets the flags first
+        setMoveFlags<S>(0);
+
+        fetchIrc<C, POLL>();
+        if constexpr (S == Long && isRegMode(M)) SYNC(2);
+        writeOp<C, M, S>(dst, ea, 0);
     }
 
     //           00  10  20        00  10  20        00  10  20
@@ -2552,14 +1971,13 @@ Moira::execCmp(u16 opcode)
     if constexpr (C == Core::C68000) {
 
         cmp<C, S>(data, readD<S>(dst));
-        prefetch<C, POLL>();
+        prefetchLate<C, POLL, (S == Long)>();
 
         if constexpr (S == Long) SYNC(2);
 
     } else {
 
-        if constexpr (S == Long && isImmMode(M)) SYNC(2);
-        if constexpr (S == Long && isRegMode(M)) SYNC(2);
+        if constexpr (S == Long && (isRegMode(M) || isImmMode(M))) SYNC(2);
 
         cmp<C, S>(data, readD<S>(dst));
         POLL_IPL;
@@ -2600,7 +2018,7 @@ Moira::execCmpa(u16 opcode)
 
     if constexpr (C == Core::C68000) {
 
-        looping<I>() ? noPrefetch<C>() : prefetch<C, POLL>();
+        looping<I>() ? noPrefetch<C>() : prefetchLate<C, POLL>();
         SYNC(2);
 
     } else {
@@ -2633,13 +2051,14 @@ Moira::execCmpiRg(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
-    u32 src = readI<C, S>();
-    int dst = _____________xxx(opcode);
+    u32 src  = readI<C, S>();
+    int dst  = _____________xxx(opcode);
+    u32 data = readD<S>(dst);
 
-    prefetch<C, POLL>();
+    cmp<C, S>(src, data);
+    prefetchLate<C, POLL, (S == Long)>();
 
     if constexpr (S == Long && C == Core::C68000) SYNC(2);
-    cmp<C, S>(src, readD<S>(dst));
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -2662,14 +2081,13 @@ Moira::execCmpiEa(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
-    u32 src = readI<C, S>();
+    u32 src = readIFrame<C, S>();
     int dst = _____________xxx(opcode);
-
     u32 ea, data;
+    
     readOp<C, M, S, STD_AE_FRAME>(dst, &ea, &data);
-    prefetch<C, POLL>();
-
     cmp<C, S>(src, data);
+    prefetch<C, POLL>();
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -2699,15 +2117,44 @@ Moira::execCmpm(u16 opcode)
 
     if constexpr (C == Core::C68000) {
 
-        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-        // POM68K: no AE_INC_PC — data faults stack getPC()-2 uniformly
-        // (SingleStepTests/680x0)
-        readOp<C, M, S>(src, &ea1, &data1);
-        POLL_IPL;
-        readOp<C, M, S>(dst, &ea2, &data2);
+        if constexpr (compat == Compatibility::UAE) {
+
+            // UAE advances the source register by the number of words read (including the failing one)
+            try { readOp<C, M, S, AE_INC_PC>(src, &ea1, &data1); } catch (const BusError &e) {
+                if constexpr (S == Byte) updateAnPI<M, S>(src);
+                if constexpr (S == Long) U32_INC(reg.a[src], e.upperWord ? 2 : 4);
+                throw;
+            }
+            POLL_IPL;
+            readOp<C, M, S, AE_INC_PC>(dst, &ea2, &data2);
+
+        } else {
+
+            // MAME advances the source register by 2 if the upper word of a long operand fails
+            try { readOp<C, M, S, AE_INC_PC>(src, &ea1, &data1); }
+            catch (const AddressError &) { if constexpr (S == Long) U32_INC(reg.a[src], 2); throw; }
+            catch (const BusError &e) { if (S == Long && e.upperWord) U32_INC(reg.a[src], 2); throw; }
+            POLL_IPL;
+
+            // MAME does not advance the destination register if the read fails
+            u32 an = reg.a[dst];
+            try { readOp<C, M, S, AE_INC_PC>(dst, &ea2, &data2); }
+            catch (...) { reg.a[dst] = an; throw; }
+        }
 
         cmp<C, S>(data1, data2);
         prefetch<C>();
+
+    } else if constexpr (C == Core::C68010) {
+
+        // The 68010 stacks the PC of the executing instruction. A failing long read advances the source register by 2.
+        try { readOp<C, M, S, 0>(src, &ea1, &data1); }
+        catch (const AddressError &) { if constexpr (S == Long) U32_INC(reg.a[src], 2); throw; }
+        readOp<C, M, S, 0>(dst, &ea2, &data2);
+        POLL_IPL;
+
+        cmp<C, S>(data1, data2);
+        looping<I>() ? noPrefetch<C>(S == Long ? 2 : 0) : prefetch<C>();
 
     } else {
 
@@ -2731,6 +2178,8 @@ Moira::execCpBcc(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // First cycle of the coprocessor protocol
+    notifyCPCycle(opcode, CIR::CONDITION);
     execLineF<C, I, M, S>(opcode);
 
     FINALIZE
@@ -2741,6 +2190,8 @@ Moira::execCpDbcc(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // First cycle of the coprocessor protocol
+    notifyCPCycle(opcode, CIR::CONDITION);
     execLineF<C, I, M, S>(opcode);
 
     FINALIZE
@@ -2751,6 +2202,8 @@ Moira::execCpGen(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // First cycle of the coprocessor protocol
+    notifyCPCycle(opcode, CIR::COMMAND);
     execLineF<C, I, M, S>(opcode);
 
     FINALIZE
@@ -2762,6 +2215,8 @@ Moira::execCpRestore(u16 opcode)
     AVAILABILITY(Core::C68020)
     SUPERVISOR_MODE_ONLY
 
+    // First cycle of the coprocessor protocol
+    notifyCPCycle(opcode, CIR::RESTORE);
     execLineF<C, I, M, S>(opcode);
 
     FINALIZE
@@ -2771,7 +2226,6 @@ template <Core C, Instr I, Mode M, Size S> void
 Moira::execCpRestoreInvalid(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
-
     execLineF<C, I, M, S>(opcode);
 
     FINALIZE
@@ -2783,6 +2237,8 @@ Moira::execCpSave(u16 opcode)
     AVAILABILITY(Core::C68020)
     SUPERVISOR_MODE_ONLY
 
+    // First cycle of the coprocessor protocol
+    notifyCPCycle(opcode, CIR::SAVE);
     execLineF<C, I, M, S>(opcode);
 
     FINALIZE
@@ -2793,6 +2249,8 @@ Moira::execCpScc(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // First cycle of the coprocessor protocol
+    notifyCPCycle(opcode, CIR::CONDITION);
     execLineF<C, I, M, S>(opcode);
 
     FINALIZE
@@ -2803,6 +2261,8 @@ Moira::execCpTrapcc(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // First cycle of the coprocessor protocol
+    notifyCPCycle(opcode, CIR::CONDITION);
     execLineF<C, I, M, S>(opcode);
 
     FINALIZE
@@ -2813,205 +2273,103 @@ Moira::execDbcc(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K Q2: 68040 — the odd-displacement check precedes both the
-    // condition test and the Dn decrement (WinUAE op_51c8_31: the fault
-    // path returns before either); stacked PC = the DBcc instruction.
-    if constexpr (C == Core::C68020) {
-        if (cpuModel >= Model::M68EC040) {
-            u32 t40 = U32_ADD(reg.pc, (i16)ircWord());
-            if (oddFlowTarget(t40)) {
-                execAddressError040<C>(t40, reg.pc0);
-                FINALIZE
-                return;
-            }
-        }
-    }
-
-    auto exec68000 = [&]() {
+    if constexpr (C == Core::C68000) {
 
         SYNC(2);
         if (!cond<I>()) {
 
             int dn = _____________xxx(opcode);
-            u32 newpc = U32_ADD(reg.pc, (i16)ircWord());
-
+            u32 newpc = U32_ADD(reg.pc, (i16)queue.irc);
             bool takeBranch = readD<Word>(dn) != 0;
 
-            // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-            // Decrement loop counter
-            // POM68K: before the alignment check — the 68000 decrements Dn
-            // even when the branch target faults (SingleStepTests/680x0)
-            writeD<Word>(dn, U32_SUB(readD<Word>(dn), 1));
+            if (misalignedPC<C>(newpc)) {
 
-            // Check for address error
-            if (misaligned<C, S>(newpc)) {
-                throw AddressError(makeFrame<AE_PROG|AE_SET_CB3>(newpc, U32_SUB(newpc, 4)));
-            }
+                if constexpr (compat == Compatibility::UAE) {
 
-        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // POM68K O4 slice 4: 68030 odd instruction-flow target — WinUAE's
-    // mmu030 handlers raise vector 3 with a format $B frame
-    // (exception3_read_prefetch*); see execAddressError030.
-            // WinUAE DBcc: pc is advanced and Dn decremented first, and the
-            // fault fires EVEN when the loop counter expired (the odd check
-            // precedes the counter test); stacked PC = the odd target.
-            if constexpr (C == Core::C68020) {
-                if (cpuModel == Model::M68030 && oddFlowTarget(newpc)) {
-                    mmuLogReset();
-                    mmuLogExtWord(u16(ircWord()));
-                    execAddressError030<C>(newpc, newpc);
-                    return;
+                    // UAE stacks the target address plus 2
+                    reg.pc = newpc;
+                    throw earlyAddressError<C>(makeFrame<AE_INC_PC|AE_FETCH>(newpc));
+
+                } else if constexpr (compat == Compatibility::MAME) {
+
+                    // MAME stacks the address behind the extension word
+                    throw earlyAddressError<C>(makeFrame<AE_INC_PC|AE_FETCH>(newpc));
+
+                } else {
+
+                    // A real 68000 stacks the address of the extension word (vAmigaTS: addrerr40, addrerr41)
+                    throw earlyAddressError<C>(makeFrame<AE_FETCH>(newpc));
                 }
             }
 
-            // Branch
             if (takeBranch) {
-                reg.pc = newpc;
-                fullPrefetch<C, POLL | FLOW>();
+
+                // MAME decrements the counter after the first fetch at the branch target
+                fetchFirstAt<C>(newpc, reg.pc + 2);
+                writeD<Word>(dn, U32_SUB(readD<Word>(dn), 1));
+                prefetch<C, POLL>();
+                changeOfFlow<C>();
                 CYCLES_68000(10);
-                CYCLES_68020(6);
 
             } else {
 
-                // [B] MC68020UM-1992 §8.2.15: DBcc, count expired, cache case
-                // 10(0/0/0), worst case 10(0/3/0): the word at pc+2 is an
-                // instruction fetch, made on the bus only when it misses.
-                // POM68K: upstream read it straight from the bus on every
-                // core, past the 68020 cache (reproduced on unmodified
-                // ce28239, 2026-11-20). The fetch goes through readInstr for
-                // its FC, watchpoint and /BERR record, but its charge is
-                // dropped: the 10 above is the same with or without the
-                // bus cycle. Gate: icache020_test (DBF trace).
-                if constexpr (C == Core::C68020 && MOIRA_EMULATE_ICACHE) {
-                    if (cpuModel == Model::M68020 || cpuModel == Model::M68EC020) {
-                        auto cp = budget.cp;
-                        (void)readInstr<C>(reg.pc + 2);
-                        budget.cp = cp;
-                    } else {
-                        (void)read<C, AddrSpace::PROG, Word>(reg.pc + 2);
-                    }
-                } else {
-                    (void)read<C, AddrSpace::PROG, Word>(reg.pc + 2);
-                }
+                writeD<Word>(dn, U32_SUB(readD<Word>(dn), 1));
+                dummyProgRead<C>(reg.pc + 2);
                 CYCLES_68000(14);
-                CYCLES_68020(10);
-
-                reg.pc += 2;
-                fullPrefetch<C, POLL>();
+                fullPrefetchAt<C, POLL>(reg.pc + 2);
             }
 
         } else {
 
             SYNC(2);
             CYCLES_68000(12);
-            CYCLES_68020(6);
 
             // Fall through to next instruction
-            reg.pc += 2;
-            fullPrefetch<C, POLL>();
+            fullPrefetchAt<C, POLL>(reg.pc + 2);
         }
-    };
 
-    auto exec68010 = [&]() {
+    } else if constexpr (C == Core::C68010) {
 
-        if (!cond<I>()) {
+        if (looping<I>()) {
 
-            SYNC(2);
+            if (!cond<I>()) {
 
-            int dn = _____________xxx(opcode);
-            i16 disp = (i16)ircWord();
+                int dn = _____________xxx(opcode);
+                u32 newpc = U32_ADD(reg.pc, -4);
+                bool takeBranch = readD<Word>(dn) != 0;
 
-            u32 newpc = U32_ADD(reg.pc, disp);
+                if (misalignedPC<C>(newpc)) {
 
-            bool takeBranch = readD<Word>(dn) != 0;
-
-            // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-            // Decrement loop counter
-            // POM68K: before the alignment check — the 68000 decrements Dn
-            // even when the branch target faults (SingleStepTests/680x0)
-            writeD<Word>(dn, U32_SUB(readD<Word>(dn), 1));
-
-            // Check for address error
-            if (misaligned<C, S>(newpc)) {
-                throw AddressError(makeFrame<AE_PROG|AE_SET_CB3>(newpc, U32_SUB(newpc, 4)));
-            }
-
-            // Branch
-            if (takeBranch) {
-
-                reg.pc = newpc;
-                fullPrefetch<C, POLL>();
-
-                if (loop[queue.ird] && disp == -4) {
-
-                    // Enter loop mode
-                    flags |= State::LOOPING;
-                    queue.irc = opcode;
+                    reg.pc = newpc;
+                    throw earlyAddressError<C>(makeFrame<AE_INC_PC|AE_FETCH>(newpc));
                 }
 
-                if (MOIRA_MIMIC_MUSASHI) SYNC(2);
-                CYCLES_68010(12);
-                return;
+                // Decrement loop counter
+                writeD<Word>(dn, U32_SUB(readD<Word>(dn), 1));
+
+                if (takeBranch) {
+
+                    // Stay in loop mode
+                    SYNC(6);
+                    reg.pc = newpc;
+                    queue.ird = queue.irc;
+                    queue.irc = opcode;
+                    POLL_IPL;
+
+                } else {
+
+                    // Leave loop mode and fall through to next instruction
+                    if (loopModeDelay) SYNC(loopModeDelay);
+                    loopModeDelay = 2;
+                    reg.pc += 2;
+                    fullPrefetch<C, POLL>();
+                    flags &= ~State::LOOPING;
+                }
 
             } else {
 
-                (void)read<C, AddrSpace::PROG, Word>(reg.pc + 2);
-                SYNC(MOIRA_MIMIC_MUSASHI ? 4 : 2);
-                CYCLES_68010(8);
-
-                reg.pc += 2;
-                fullPrefetch<C, POLL>();
-            }
-
-        } else {
-
-            SYNC(2);
-            CYCLES_68010(2);
-
-            reg.pc += 2;
-            fullPrefetch<C, POLL>();
-        }
-
-        CYCLES_68010(10);
-    };
-
-    auto execLoop = [&]() {
-
-        if (!cond<I>()) {
-
-            int dn = _____________xxx(opcode);
-            u32 newpc = U32_ADD(reg.pc, -4);
-
-            bool takeBranch = readD<Word>(dn) != 0;
-
-            // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-            // Decrement loop counter
-            // POM68K: before the alignment check — the 68000 decrements Dn
-            // even when the branch target faults (SingleStepTests/680x0)
-            writeD<Word>(dn, U32_SUB(readD<Word>(dn), 1));
-
-            // Check for address error
-            if (misaligned<C, S>(newpc)) {
-                throw AddressError(makeFrame<AE_PROG|AE_SET_CB3>(newpc, U32_SUB(newpc, 4)));
-            }
-
-            // Branch
-            if (takeBranch) {
-
-                SYNC(6);
-                reg.pc = newpc;
-                reg.pc0 = reg.pc;
-                queue.ird = ircWord();
-                queue.irc = opcode;
-                POLL_IPL;
-                return;
-
-            } else {
-
-                // Fall through to next instruction
-                if (loopModeDelay) SYNC(loopModeDelay);
-                loopModeDelay = 2;
+                // Leave loop mode and fall through to next instruction
+                SYNC(4);
                 reg.pc += 2;
                 fullPrefetch<C, POLL>();
                 flags &= ~State::LOOPING;
@@ -3019,22 +2377,106 @@ Moira::execDbcc(u16 opcode)
 
         } else {
 
-            SYNC(4);
-            // Fall through to next instruction
-            reg.pc += 2;
-            fullPrefetch<C, POLL>();
-            flags &= ~State::LOOPING;
+            if (!cond<I>()) {
+
+                SYNC(2);
+
+                int dn = _____________xxx(opcode);
+                i16 disp = (i16)queue.irc;
+                u32 newpc = U32_ADD(reg.pc, disp);
+                bool takeBranch = readD<Word>(dn) != 0;
+
+                if (misalignedPC<C>(newpc)) {
+
+                    // A real 68010 stacks the address of the extension word, and the instruction
+                    // input buffer of the frame holds $FFFF (vAmigaTS: addrerr40, addrerr41)
+                    queue.irc = 0xFFFF;
+                    throw earlyAddressError<C>(makeFrame<AE_FETCH>(newpc));
+                }
+
+                // Decrement loop counter
+                writeD<Word>(dn, U32_SUB(readD<Word>(dn), 1));
+
+                if (takeBranch) {
+
+                    reg.pc = newpc;
+                    fullPrefetch<C, POLL>();
+
+                    // Enter loop mode if the loop body is a single loopable instruction
+                    if (loop[queue.ird] && disp == -4) {
+
+                        flags |= State::LOOPING;
+                        queue.irc = opcode;
+                    }
+
+                    if constexpr (compat == Compatibility::MUSASHI) SYNC(2);
+                    CYCLES_68010(12);
+
+                } else {
+
+                    dummyProgRead<C>(reg.pc + 2);
+                    SYNC((compat == Compatibility::MUSASHI) ? 4 : 2);
+                    CYCLES_68010(8);
+
+                    reg.pc += 2;
+                    fullPrefetch<C, POLL>();
+                    CYCLES_68010(10);
+                }
+
+            } else {
+
+                SYNC(2);
+                CYCLES_68010(2);
+
+                // Fall through to next instruction
+                reg.pc += 2;
+                fullPrefetch<C, POLL>();
+                CYCLES_68010(10);
+            }
         }
-    };
 
-    switch (C) {
+    } else if constexpr (C == Core::C68020) {
 
-        case Core::C68000: exec68000(); break;
-        case Core::C68010: looping<I>() ? execLoop() : exec68010(); break;
-        case Core::C68020: exec68000(); break;
+        SYNC(2);
+        if (!cond<I>()) {
 
-        default:
-            fatalError;
+            int dn = _____________xxx(opcode);
+            u32 newpc = U32_ADD(reg.pc, (i16)queue.irc);
+            bool takeBranch = readD<Word>(dn) != 0;
+
+            if (misalignedPC<C>(newpc) && takeBranch) {
+
+                // The 68020 has decremented the counter at this point
+                writeD<Word>(dn, U32_SUB(readD<Word>(dn), 1));
+                reg.pc = newpc;
+                throw earlyAddressError<C>(makeFrame<AE_INC_PC|AE_FETCH>(newpc));
+            }
+
+            if (takeBranch) {
+
+                // Like UAE, decrement the counter after the first fetch at the branch target
+                fetchFirstAt<C>(newpc, reg.pc + 2);
+                writeD<Word>(dn, U32_SUB(readD<Word>(dn), 1));
+                prefetch<C, POLL>();
+                changeOfFlow<C>();
+                CYCLES_68020(6);
+
+            } else {
+
+                writeD<Word>(dn, U32_SUB(readD<Word>(dn), 1));
+                dummyProgRead<C>(reg.pc + 2);
+                CYCLES_68020(10);
+                fullPrefetchAt<C, POLL>(reg.pc + 2);
+            }
+
+        } else {
+
+            SYNC(2);
+            CYCLES_68020(6);
+
+            // Fall through to next instruction
+            fullPrefetchAt<C, POLL>(reg.pc + 2);
+        }
     }
 
     FINALIZE
@@ -3049,14 +2491,14 @@ Moira::execExgDxDy(u16 opcode)
     int dst = ____xxx_________(opcode);
 
     std::swap(reg.d[src], reg.d[dst]);
-
-    prefetch<C, POLL>();
+    prefetchLate<C, POLL>();
     SYNC(2);
 
-    CYCLES_IP ( 0,  0,  0,       0,  0,  0,      6,  6,  2)
+    //           00  10  20        00  10  20        00  10  20
+    //           .b  .b  .b        .w  .w  .w        .l  .l  .l
+    CYCLES_IP   ( 0,  0,  0,        0,  0,  0,        6,  6,  2)
 
     FINALIZE
-
 }
 
 template <Core C, Instr I, Mode M, Size S> void
@@ -3068,14 +2510,14 @@ Moira::execExgAxDy(u16 opcode)
     int dst = ____xxx_________(opcode);
 
     std::swap(reg.a[src], reg.d[dst]);
-
-    prefetch<C, POLL>();
+    prefetchLate<C, POLL>();
     SYNC(2);
 
-    CYCLES_IP ( 0,  0,  0,       0,  0,  0,      6,  6,  2)
+    //           00  10  20        00  10  20        00  10  20
+    //           .b  .b  .b        .w  .w  .w        .l  .l  .l
+    CYCLES_IP   ( 0,  0,  0,        0,  0,  0,        6,  6,  2)
 
     FINALIZE
-
 }
 
 template <Core C, Instr I, Mode M, Size S> void
@@ -3087,8 +2529,7 @@ Moira::execExgAxAy(u16 opcode)
     int dst = ____xxx_________(opcode);
 
     std::swap(reg.a[src], reg.a[dst]);
-
-    prefetch<C, POLL>();
+    prefetchLate<C, POLL>();
     SYNC(2);
 
     //           00  10  20        00  10  20        00  10  20
@@ -3109,11 +2550,7 @@ Moira::execExt(u16 opcode)
     dn = (S == Long) ? SEXT<Word>(dn) : SEXT<Byte>(dn);
 
     writeD<S>(n, dn);
-    reg.sr.n = NBIT<S>(dn);
-    reg.sr.z = ZERO<S>(dn);
-    reg.sr.v = 0;
-    reg.sr.c = 0;
-
+    setMoveFlags<S>(dn);
     prefetch<C, POLL>();
 
     //           00  10  20        00  10  20        00  10  20
@@ -3134,11 +2571,7 @@ Moira::execExtb(u16 opcode)
     dn = SEXT<Byte>(dn);
 
     writeD(n, dn);
-    reg.sr.n = NBIT<S>(dn);
-    reg.sr.z = ZERO<S>(dn);
-    reg.sr.v = 0;
-    reg.sr.c = 0;
-
+    setMoveFlags<S>(dn);
     prefetch<C, POLL>();
 
     //           00  10  20        00  10  20        00  10  20
@@ -3158,60 +2591,22 @@ Moira::execJmp(u16 opcode)
     int src = _____________xxx(opcode);
     u32 ea  = computeEA<C, M, Long, SKIP_LAST_RD>(src);
 
-    [[maybe_unused]] const int delay[] = { 0,0,0,0,0,2,4,2,0,2,4,0 };
-    SYNC(delay[(int)M]);
+    // Indexed modes take 4 extra cycles, the other modes with an extension word 2 (except absolute long)
+    [[maybe_unused]] constexpr int delay =
+    (M == Mode::IX || M == Mode::IXPC) ? 4 :
+    (M == Mode::DI || M == Mode::AW || M == Mode::DIPC) ? 2 : 0;
+    SYNC(delay);
 
-    // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
     // Check for address error
-    // POM68K: the 68000 stacks PC = jump target with the I/N bit set
-    // (SingleStepTests/680x0; see extern/moira/POM68K_VENDOR.md)
-    if (misaligned<C, Word>(ea)) {
-        throw AddressError(makeFrame<AE_PROG|AE_SET_CB3>(ea, U32_SUB(ea, 4)));
-    }
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K O4 slice 4: 68030 odd instruction-flow target — WinUAE's
-    // mmu030 handlers raise vector 3 with a format $B frame; see
-    // execAddressError030.
-    // Stacked PC = instruction address + 2 for the plain EA modes; the
-    // indexed modes advance the pc per consumed extension word first
-    // (get_disp_ea_020_mmu030 uses next_iword), so their stacked PC is the
-    // running pc + 2 — the 040 rule below, on the same oracle mechanism
-    // ("random/off seed=807 #681": PC+6 for JMP (d8,A3,D4.L*8)). The EA
-    // extension words were logged at consumption (readExt/skipExt).
-    // [F] MC68030UM-1989 §8.1.3/§8.2 leave the stacked PC of an
-    // instruction-flow address error unstated, and the oracle's two rules
-    // (abs.L: PC+2, (bd.W,An,Xn): PC+8, both six bytes long) read as its own
-    // bookkeeping. Settled by: the frame a real 68030 stacks for
-    // JMP (d8,An,Xn) to an odd target.
-    if constexpr (C == Core::C68020) {
-        if (cpuModel == Model::M68030 && oddFlowTarget(ea)) {
-            execAddressError030<C>(ea, (M == Mode::IX || M == Mode::IXPC)
-                                           ? reg.pc + 2 : reg.pc0 + 2);
-            FINALIZE
-            return;
-        }
-        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // POM68K Q2: 68040 JMP — stacked PC = instruction + 2 for the
-        // plain EA modes (WinUAE op_4edx_31: m68k_incpci(2) before the
-        // fault, the d16/abs words are read without advancing the pc);
-        // the indexed modes advance the pc per consumed extension word
-        // first (x_get_disp_ea_020 uses next_iword), so the stacked PC
-        // is the running pc + 2.
-        if (cpuModel >= Model::M68EC040 && oddFlowTarget(ea)) {
-            u32 stackedPc = (M == Mode::IX || M == Mode::IXPC)
-                ? reg.pc + 2 : reg.pc0 + 2;
-            execAddressError040<C>(ea, stackedPc);
-            FINALIZE
-            return;
-        }
+    if (misalignedPC<C>(ea)) {
+        throw earlyAddressError<C>(makeFrame<AE_FETCH>(ea, oldpc));
     }
 
     // Jump to new address
-    reg.pc = ea;
+    // A fault on the first fetch stacks the address of the extension word
+    fullPrefetchAt<C, POLL>(ea, reg.pc0 + 2);
 
-    // Fill the prefetch queue
-    fullPrefetch<C, POLL | FLOW>();
+    changeOfFlow<C>();
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -3234,139 +2629,106 @@ Moira::execJsr(u16 opcode)
     int src = _____________xxx(opcode);
     u32 ea  = computeEA<C, M, Long, SKIP_LAST_RD>(src);
 
-    [[maybe_unused]] const int delay[] = { 0,0,0,0,0,2,4,2,0,2,4,0 };
-    SYNC(delay[(int)M]);
+    // Indexed modes take 4 extra cycles, the other modes with an extension word 2 (except absolute long)
+    [[maybe_unused]] constexpr int delay =
+    (M == Mode::IX || M == Mode::IXPC) ? 4 :
+    (M == Mode::DI || M == Mode::AW || M == Mode::DIPC) ? 2 : 0;
+    
+    SYNC(delay);
 
-    switch (C) {
+    if constexpr (C == Core::C68000) {
 
-        case Core::C68000:
+        // MAME keeps the program counter unchanged, UAE decrements it in (d,An) and (d,An,Xi) mode
+        constexpr Flags flags = isDspMode(M) && compat != Compatibility::MAME ? AE_DEC_PC : AE_FETCH;
+        checkEven<C, Word, flags>(ea);
 
-            // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-            // Check for address errors
-            // POM68K: I/N bit set on the 68000 (SingleStepTests/680x0)
-            if (misaligned<C>(ea)) {
-                throw AddressError(makeFrame<AE_PROG|AE_SET_CB3>(ea, U32_SUB(ea, 4)));
-            }
-
-            // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-            // POM68K: the first word of the target is fetched BEFORE the
-            // return address is pushed; the second follows the push.
-            // [D] SingleStepTests/680x0 v1 transactions (JSR.json).
+        // Fetch the first word of the subroutine before pushing
+        u32 ret = reg.pc;
+        reg.pc = ea;
+        bool pushing = false;
+        try {
             queue.irc = (u16)read<C, AddrSpace::PROG, Word>(ea);
+            pushing = true;
+            push<C, Long>(ret);
 
-            // Save return address on stack
-            push<C, Long>(reg.pc);
+        } catch (BusError &e) {
 
-            // Jump to new address
-            reg.pc = ea;
+            // MAME stacks the return address. UAE stacks the target address if the push fails.
+            u32 target = ea + 2 + (M == Mode::AW ? 2 : M == Mode::AL ? 4 : 0);
+            e.stackFrame.pc = (compat == Compatibility::UAE && pushing) ? target : ret;
+            throw;
 
-            prefetch<C, POLL>();
-            break;
+        } catch (AddressError &e) {
 
-        default:
+            // MAME stacks the return address of the subroutine call
+            e.stackFrame.pc = ret;
+            throw;
+        }
+        prefetch<C, POLL>();
 
-            // Check for address errors
-            if (misaligned<C>(ea) && misaligned<C>(reg.sp)) {
+    } else if constexpr (C == Core::C68010) {
+
+        if (misaligned<C>(reg.sp)) {
+
+            // Both addresses are misaligned
+            if (misaligned<C>(ea)) {
 
                 if constexpr (M == Mode::AI) {
 
+                    reg.pc = ea & ~1;
                     queue.irc = (u16)read<C, AddrSpace::PROG, Word>(ea & ~1);
-                    throw AddressError(makeFrame<AE_SET_IF|AE_SET_RW>(ea));
-                }
+                    throw earlyAddressError<C>(makeFrame<AE_FETCH>(ea));
 
-                else if (isAbsMode(M)) {
+                } else if constexpr (isAbsMode(M)) {
 
-                    auto frame = makeFrame<AE_SET_IF|AE_SET_RW>(ea);
+                    auto frame = makeFrame<AE_FETCH>(ea);
                     frame.pc -= 4;
-                    throw AddressError(frame);
-                }
-                else if (isDspMode(M)) {
+                    throw earlyAddressError<C>(frame);
 
-                    throw AddressError(makeFrame<AE_DEC_PC|AE_SET_IF|AE_SET_RW>(ea));
+                } else if constexpr (isDspMode(M)) {
+
+                    throw earlyAddressError<C>(makeFrame<AE_DEC_PC|AE_FETCH>(ea));
 
                 } else {
 
-                    throw AddressError(makeFrame(ea));
+                    throw earlyAddressError<C>(makeFrame<AE_FETCH>(ea));
                 }
             }
 
-            if (misaligned<C>(ea)) {
-
-                if (isDspMode(M)) {
-                    throw AddressError(makeFrame<AE_SET_IF|AE_SET_RW>(ea));
-                } else {
-                    throw AddressError(makeFrame(ea));
-                }
-            }
-
-            if (misaligned<C>(reg.sp)) {
-
-                prefetch<C>();
-                reg.sp -= 4;
-                pomSetWB<C>(u16(reg.pc >> 16));  // POM68K (host): 68010-only
-                throw AddressError(makeFrame<AE_DATA>(reg.sp));
-            }
-
-            // Save return address on stack
-            // [D] WinUAE cpuemu_31.c op_4e90 @ Hatari e77819f7: the 68040
-            // writes at A7-4 and only then decrements A7. The push is not a
-            // marked last write, so a fault there restarts the JSR with A7
-            // intact (mmu040Fault, bitfieldStoreRestarts040).
-            // The 68030 restarts too, and its handler sees A7 intact
-            // ("op=JSR_A7 #3369", opcells.py --set classes --mmu identity
-            // --user --stack data): the fork left it decremented.
-            if (C == Core::C68020 && (cpuModel >= Model::M68EC040 || cpuModel == Model::M68030)) {
-                write<C, AddrSpace::DATA, Long, POLL>(reg.sp - 4, reg.pc);
-                reg.sp -= 4;
-            } else {
-                push<C, Long, POLL>(reg.pc);
-            }
-
-            // Jump to new address
-            reg.pc = ea;
-
-            // [D] WinUAE @ Hatari e77819f7 — oracle reading ("040
-            // random/identity seed=3945 #676"). POM68K: on the 68030 and
-            // 68040 a fault on the target fetch is not the JSR's. The JSR
-            // has retired (return address pushed, PC at the target); the
-            // next instruction start refetches the target and takes the
-            // fault there, with the target as stacked PC, so the handler's
-            // RTE restarts the callee. Taken here, the 040 frame stacked
-            // the return address and an RTE skipped the call.
-            // Gate: moira_rules_test (jsrTargetFetchFault).
-            //
-            // An odd target is not read at all:
-            // [B] MC68030UM-1989 §8.1.3 — an instruction fetch from an odd
-            // address takes the address error without running the bus
-            // cycle, so no translation either and no descriptor U bit on
-            // the target's page.
-            // [D] WinUAE @ Hatari e77819f7 — the JSR retires and the next
-            // opcode fetch raises it (sst68030_solo --strict-ram, "random/tt
-            // seed=709 #204", a U bit the fork set and the oracle did not).
-            if constexpr (C == Core::C68020) {
-                if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) {
-                    if (!(ea & 1)) {
-                        try {
-                            queue.irc = (u16)read<C, AddrSpace::PROG, Word>(ea);
-                        } catch (const MmuBusError &) { }
-                    }
-                    prefetch<C>();
-                    break;
-                }
-            }
-            // POM68K (host): upstream 426e4a3 reloads through fullPrefetch, which
-            // flushes the 68020 i-cache latch and fetches the target through
-            // the cache; the fork keeps its explicit reload (fullPrefetch
-            // would also open the JIT fetch window, which this read has
-            // never used) and does those two things here. Without the cache
-            // both compile to the read it always was.
-            if constexpr (MOIRA_EMULATE_ICACHE) flushInstructionLatch();
-            queue.irc = readInstr<C>(ea);
+            // Only the stack pointer is misaligned
             prefetch<C>();
-            break;
+            reg.sp -= 4;
+            writeBuffer = (u16)READ<Word, 1>(reg.pc);
+            throw earlyAddressError<C>(makeFrame<AE_DATA>(reg.sp));
+        }
+        // A real 68010 stacks the address of the extension word in (d16,An) mode (vAmigaTS: addrerr42)
+        checkEvenPC<C, isDspMode(M) ? AE_DEC_PC|AE_FETCH : AE_FETCH>(ea);
+
+        // Save return address on stack
+        push<C, Long, POLL>(reg.pc);
+
+        // Jump to new address
+        reg.pc = ea;
+        fullPrefetch<C>();
+
+    } else if constexpr (C == Core::C68020) {
+
+        if (misalignedPC<C>(ea)) {
+
+            // UAE makes room for the return address on the stack (but does not write it)
+            reg.sp -= 4;
+            throw earlyAddressError<C>(makeFrame<AE_FETCH>(ea));
+        }
+
+        // Save return address on stack
+        push<C, Long, POLL>(reg.pc);
+
+        // Jump to new address
+        reg.pc = ea;
+        fullPrefetch<C>();
     }
 
-    if constexpr (C == Core::C68020) traceFlow();    // T0: a jump
+    changeOfFlow<C>();
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -3385,13 +2747,31 @@ template <Core C, Instr I, Mode M, Size S> void
 Moira::execLea(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
-    
+
     int src = _____________xxx(opcode);
     int dst = ____xxx_________(opcode);
 
-    reg.a[dst] = computeEA<C, M, S>(src);
-    if (isIdxMode(M)) SYNC(2);
+    if constexpr (C == Core::C68000 && M == Mode::AL) {
 
+        // Load the high word into the register first, then the complete address
+        reg.a[dst] = WRITE<Word, 1>(reg.a[dst], queue.irc);
+        readExt<C>();
+        reg.a[dst] = WRITE<Word, 0>(reg.a[dst], queue.irc);
+        readExtLast<C>();
+
+    } else if constexpr (C == Core::C68000 && (M == Mode::AW || M == Mode::DI || M == Mode::DIPC)) {
+
+        // Load the address register before the extension word is refilled
+        i16 d = (i16)queue.irc;
+        reg.a[dst] = M == Mode::AW ? (u32)d : U32_ADD(M == Mode::DI ? reg.a[src] : reg.pc, d);
+        readExt<C>();
+
+    } else {
+
+        reg.a[dst] = computeEA<C, M, S>(src);
+    }
+    
+    if (isIdxMode(M)) SYNC(2);
     prefetch<C, POLL>();
 
     //           00  10  20        00  10  20        00  10  20
@@ -3416,58 +2796,45 @@ Moira::execLink(u16 opcode)
 {
     AVAILABILITY(S == Long ? Core::C68020 : Core::C68000)
 
-    u16 ird  = getIRD();
-    u32 sp   = getSP() - 4;
+    u32 sp = getSP() - 4;
+    int ax = _____________xxx(opcode);
 
-    int ax   = _____________xxx(opcode);
-    i32 disp = SEXT <S> (readI<C, S>());
+    i32 disp;
+    try { disp = SEXT<S>(readI<C, S>()); } catch (BusError &e) {
+        
+        if constexpr (C == Core::C68000) { e.stackFrame.pc += 2; }
+        throw;
+    }
 
     // Check for address error
     if (misaligned<C>(sp)) {
 
-        pomSetWB<C>(u16(readA(ax) >> 16));  // POM68K (host): 68010-only
+        writeBuffer = (u16)READ<Word, 1>(readA(ax));
         writeA(ax, sp);
-        throw AddressError(makeFrame<AE_DATA|AE_WRITE>(sp, getPC() + 2, getSR(), ird));
+        throw earlyAddressError<C>(makeFrame<AE_DATA|AE_WRITE|AE_INC_PC>(sp));
     }
 
     POLL_IPL;
 
-    // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-    // Write to stack
-    // POM68K: LINK A7 pushes the DECREMENTED stack pointer under the native
-    // rules too, following SingleStepTests/680x0
-    // [B] M68000PRM-1992 LINK — "SP – 4 → SP; An → (SP); SP → An; SP + dn →
-    //     SP": the register is stored after the stack pointer moved, on the
-    //     whole family and for both sizes.
-    // [D] WinUAE @ Hatari e77819f7 — its 68040 table agrees; its 68030
-    //     table (cpuemu_32.c) reads the register first and pushes the entry
-    //     value. Ruling D42, oracle/README.md.
-    if (pomStoreEndsInstruction<C>()) {
-        // [D] WinUAE gencpu i_LINK @ Hatari e77819f7 ("op=LINK_W #29" and
-        // the 68040's "op=LINK_L #34", opcells.py --set classes --mmu
-        // identity --user --stack data). On the 68030 and 68040 the push
-        // is LINK's last write: An and the stack pointer already hold
-        // their final values when it faults, the 68030 stacks the short
-        // frame $A and both stack the next PC. Gate: moira_rules_test
-        // (stackStoreFaults).
-        const u32 value = readA(ax) - (ax == 7 ? 4 : 0);
-        writeA(ax, sp);
-        reg.sp = U32_ADD(sp, disp);
-        pomLastWrite030<C>();       // the 68040 write path arms its own
-        write<C, AddrSpace::DATA, Long>(sp, value);
-    } else {
-        push <C, Long>(readA(ax) - (ax == 7 ? 4 : 0));
+    // LINK A7 pushes the decremented stack pointer on the 68040
+    bool decremented = ax == 7 && cpuModel >= CPUModel::M68EC040;
 
-        // Modify address register and stack pointer
-        writeA(ax, sp);
-        reg.sp = U32_ADD(reg.sp, disp);
+    // Write to stack
+    try { push<C, Long, AE_INC_PC>(readA(ax) - (decremented ? 4 : 0)); } catch (BusError &) {
+
+        if constexpr (C == Core::C68000) { reg.sp += 4; writeA(ax, sp); }
+        throw;
     }
+
+    // Modify address register and stack pointer
+    writeA(ax, sp);
+    reg.sp = U32_ADD(reg.sp, disp);
 
     prefetch<C>();
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
-    CYCLES_IP   ( 0,  0,  0,       16, 16,  5,        0,  0,  6);
+    CYCLES_IP   ( 0,  0,  0,       16, 16,  5,        0,  0,  6)
 
     FINALIZE
 }
@@ -3484,13 +2851,8 @@ Moira::execMove0(u16 opcode)
 
     readOp<C, M, S, STD_AE_FRAME>(src, &ea, &data);
 
-    reg.sr.n = NBIT<S>(data);
-    reg.sr.z = ZERO<S>(data);
-    reg.sr.v = 0;
-    reg.sr.c = 0;
-
+    setMoveFlags<S>(data);
     writeOp<C, Mode::DN, S>(dst, data);
-
     prefetch<C, POLL>();
 
     //           00  10  20        00  10  20        00  10  20
@@ -3525,70 +2887,34 @@ Moira::execMove2(u16 opcode)
 
     if constexpr (C == Core::C68000) {
 
-        if constexpr (!isMemMode(M) && S == Long) {
+        // A failed write shows the flags set up in front of it
+        constexpr Flags F = AE_INC_PC | ((S == Long && !isMemMode(M)) ? POLL : 0);
+        writeBuffer = (u16)READ<Word, S == Long ? 1 : 0>(data);
+        u32 ea2 = readA(dst);
 
-            // [D] SST/680x0 68000/v1 @ e0d5ece9.
-            // POM68K: interim flags before the write (SST/680x0)
-            reg.sr.n = NBIT<Word>(data >> 16);
-            reg.sr.z = ZERO<Long>(data); // POM68K: full-long Z ([D] SST/680x0 68000/v1 @ e0d5ece9)
-        reg.sr.v = 0;
-        reg.sr.c = 0;
-            reg.sr.v = 0;
-            reg.sr.c = 0;
+        if constexpr (S == Long) {
 
-            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-            // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
-            // destination write (gencpu order) — a last-write fault stacks
-            // the updated CCR
-            if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) {
-                reg.sr.n = NBIT<S>(data);
-                reg.sr.z = ZERO<S>(data);
-                reg.sr.v = 0;
-                reg.sr.c = 0;
+            // First write: untouched flags (register source) or the flags of the low word (memory source)
+            if constexpr (isMemMode(M)) {
+                setMoveFlags<Word>(data);
             }
-            writeOp<C, Mode::AI, S, POLL>(dst, data);
+            writeM<C, Mode::AI, Word, AE_INC_PC | UAE_DEC_PC>(ea2, READ<Word, 1>(data));
 
-            reg.sr.n = NBIT<S>(data);
-            reg.sr.z = ZERO<S>(data);
-            reg.sr.v = 0;
-            reg.sr.c = 0;
-
-            looping<I>() ? noPrefetch<C>() : prefetch<C>();
+            // Second write: the flags of the low word (register source) or the final flags (memory source)
+            setMoveFlags<isMemMode(M) ? Long : Word>(data);
+            writeM<C, Mode::AI, Word, F | UAE_DEC_PC>(ea2 + 2, READ<Word>(data));
 
         } else {
 
-            // [D] SST/680x0 68000/v1 @ e0d5ece9.
-            // POM68K: interim flags before a faulting first write come
-            // from the HIGH word on Long, with cumulative Z (SST/680x0)
-            if constexpr (S == Long) {
-                reg.sr.n = NBIT<Word>(data >> 16);
-                reg.sr.z = ZERO<Long>(data); // POM68K: full-long Z ([D] SST/680x0 68000/v1 @ e0d5ece9)
-        reg.sr.v = 0;
-        reg.sr.c = 0;
-            } else {
-                reg.sr.n = NBIT<Word>(data);
-                reg.sr.z = ZERO<Word>(data);
-            }
-            reg.sr.v = 0;
-            reg.sr.c = 0;
-
-            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-            // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
-            // destination write (gencpu order) — a last-write fault stacks
-            // the updated CCR
-            if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) {
-                reg.sr.n = NBIT<S>(data);
-                reg.sr.z = ZERO<S>(data);
-                reg.sr.v = 0;
-                reg.sr.c = 0;
-            }
-            writeOp<C, Mode::AI, S>(dst, data);
-
-            reg.sr.n = NBIT<S>(data);
-            reg.sr.z = ZERO<S>(data);
-
-            looping<I>() ? noPrefetch<C>() : prefetch<C, POLL>();
+            setMoveFlags<S>(data);
+            writeM<C, Mode::AI, S, F | UAE_DEC_PC>(ea2, data);
         }
+
+        setMoveFlags<S>(data);
+
+        // The interrupt level is polled in the second write if it is the last bus cycle (register source)
+        if constexpr (S == Long && !isMemMode(M)) looping<I>() ? noPrefetch<C>() : prefetch<C>();
+        else looping<I>() ? noPrefetch<C>() : prefetch<C, POLL>();
 
     } else {
 
@@ -3596,56 +2922,19 @@ Moira::execMove2(u16 opcode)
 
             POLL_IPL;
 
-            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-            // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
-            // destination write (gencpu order) — a last-write fault stacks
-            // the updated CCR
-            if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) {
-                reg.sr.n = NBIT<S>(data);
-                reg.sr.z = ZERO<S>(data);
-                reg.sr.v = 0;
-                reg.sr.c = 0;
-            }
-            writeOp<C, Mode::AI, S>(dst, data);
+            writeOp<C, Mode::AI, S, AE_INC_PC>(dst, data);
 
-            reg.sr.n = NBIT<S>(data);
-            reg.sr.z = ZERO<S>(data);
-            reg.sr.v = 0;
-            reg.sr.c = 0;
+            setMoveFlags<S>(data);
 
             looping<I>() ? noPrefetch<C>() : prefetch<C>();
 
         } else {
 
-            // [D] SST/680x0 68000/v1 @ e0d5ece9.
-            // POM68K: interim flags before a faulting first write come
-            // from the HIGH word on Long, with cumulative Z (SST/680x0)
-            if constexpr (S == Long) {
-                reg.sr.n = NBIT<Word>(data >> 16);
-                reg.sr.z = ZERO<Long>(data); // POM68K: full-long Z ([D] SST/680x0 68000/v1 @ e0d5ece9)
-        reg.sr.v = 0;
-        reg.sr.c = 0;
-            } else {
-                reg.sr.n = NBIT<Word>(data);
-                reg.sr.z = ZERO<Word>(data);
-            }
-            reg.sr.v = 0;
-            reg.sr.c = 0;
+            setMoveFlags<S == Long ? Word : S>(data);
 
-            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-            // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
-            // destination write (gencpu order) — a last-write fault stacks
-            // the updated CCR
-            if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) {
-                reg.sr.n = NBIT<S>(data);
-                reg.sr.z = ZERO<S>(data);
-                reg.sr.v = 0;
-                reg.sr.c = 0;
-            }
-            writeOp<C, Mode::AI, S>(dst, data);
+            writeOp<C, Mode::AI, S, AE_INC_PC>(dst, data);
 
-            reg.sr.n = NBIT<S>(data);
-            reg.sr.z = ZERO<S>(data);
+            setMoveFlags<S>(data);
 
             looping<I>() ? noPrefetch<C>() : prefetch<C, POLL>();
             if (looping<I>() && S == Long) loopModeDelay = 0;
@@ -3684,36 +2973,30 @@ Moira::execMove3(u16 opcode)
 
     if constexpr (C == Core::C68000) {
 
-        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-        // POM68K: interim flags before a faulting write — Long uses the
-        // high-word N and full-long Z (SingleStepTests/680x0)
+        // A failed write shows the flags set up in front of it
+        constexpr Flags F = AE_INC_PC | (true ? POLL : 0);
+        writeBuffer = (u16)READ<Word, S == Long ? 1 : 0>(data);
+        u32 ea2 = readA(dst);
+
         if constexpr (S == Long) {
-            reg.sr.n = NBIT<Word>(data >> 16);
-            reg.sr.z = ZERO<Long>(data);
+
+            // First write: untouched flags (register source) or the flags of the low word (memory source)
+            if constexpr (isMemMode(M)) {
+                setMoveFlags<Word>(data);
+            }
+            writeM<C, Mode::PI, Word, AE_INC_PC | UAE_DEC_PC>(ea2, READ<Word, 1>(data));
+
+            // Second write: the flags of the low word (register source) or the final flags (memory source)
+            setMoveFlags<isMemMode(M) ? Long : Word>(data);
+            writeM<C, Mode::PI, Word, F | UAE_DEC_PC>(ea2 + 2, READ<Word>(data));
+
         } else {
-            reg.sr.n = NBIT<Word>(data);
-            reg.sr.z = ZERO<Word>(data);
+
+            setMoveFlags<S>(data);
+            writeM<C, Mode::PI, S, F | UAE_DEC_PC>(ea2, data);
         }
-        reg.sr.v = 0;
-        reg.sr.c = 0;
-
-        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
-        // destination write (gencpu order) — a last-write fault stacks
-        // the updated CCR
-        if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) {
-            reg.sr.n = NBIT<S>(data);
-            reg.sr.z = ZERO<S>(data);
-            reg.sr.v = 0;
-            reg.sr.c = 0;
-        }
-        writeOp<C, Mode::PI, S, POLL>(dst, data);
-
-        reg.sr.n = NBIT<S>(data);
-        reg.sr.z = ZERO<S>(data);
-        reg.sr.v = 0;
-        reg.sr.c = 0;
-
+        updateAnPI<Mode::PI, S>(dst);
+        setMoveFlags<S>(data);
         looping<I>() ? noPrefetch<C>() : prefetch<C>();
 
     } else {
@@ -3721,59 +3004,21 @@ Moira::execMove3(u16 opcode)
         if constexpr (!isMemMode(M)) {
 
             POLL_IPL;
+            writeOp<C, Mode::PI, S, AE_INC_PC>(dst, data);
 
-            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-            // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
-            // destination write (gencpu order) — a last-write fault stacks
-            // the updated CCR
-            if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) {
-                reg.sr.n = NBIT<S>(data);
-                reg.sr.z = ZERO<S>(data);
-                reg.sr.v = 0;
-                reg.sr.c = 0;
-            }
-            writeOp<C, Mode::PI, S>(dst, data);
-
-            reg.sr.n = NBIT<S>(data);
-            reg.sr.z = ZERO<S>(data);
-            reg.sr.v = 0;
-            reg.sr.c = 0;
+            setMoveFlags<S>(data);
 
             looping<I>() ? noPrefetch<C>() : prefetch<C>();
 
         } else {
 
-            // [D] SST/680x0 68000/v1 @ e0d5ece9.
-            // POM68K: interim flags before a faulting first write come
-            // from the HIGH word on Long, with cumulative Z (SST/680x0)
-            if constexpr (S == Long) {
-                reg.sr.n = NBIT<Word>(data >> 16);
-                reg.sr.z = ZERO<Long>(data); // POM68K: full-long Z ([D] SST/680x0 68000/v1 @ e0d5ece9)
-        reg.sr.v = 0;
-        reg.sr.c = 0;
-            } else {
-                reg.sr.n = NBIT<Word>(data);
-                reg.sr.z = ZERO<Word>(data);
-            }
-            reg.sr.v = 0;
-            reg.sr.c = 0;
+            setMoveFlags<S == Long ? Word : S>(data);
 
-            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-            // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
-            // destination write (gencpu order) — a last-write fault stacks
-            // the updated CCR
-            if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) {
-                reg.sr.n = NBIT<S>(data);
-                reg.sr.z = ZERO<S>(data);
-                reg.sr.v = 0;
-                reg.sr.c = 0;
-            }
-            writeOp<C, Mode::PI, S, POLL>(dst, data);
+            writeOp<C, Mode::PI, S, AE_INC_PC|POLL>(dst, data);
             looping<I>() ? noPrefetch<C>() : prefetch<C>();
             if (looping<I>() && S == Long) loopModeDelay = 0;
 
-            reg.sr.n = NBIT<S>(data);
-            reg.sr.z = ZERO<S>(data);
+            setMoveFlags<S>(data);
         }
     }
 
@@ -3816,80 +3061,65 @@ Moira::execMove4(u16 opcode)
      */
     readOp<C, M, S, STD_AE_FRAME>(src, &ea, &data);
 
-    // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-    // Determine next address error stack frame format
-    // POM68K: one uniform frame with the MOVE's own opcode in IRD/code, no
-    // CB3, independent of the S/C flags (SingleStepTests/680x0)
-    const u64 flags0 = AE_WRITE | AE_DATA;
-    const u64 flags1 = AE_WRITE | AE_DATA;
-    const u64 flags2 = AE_WRITE | AE_DATA;
-    int format = (S == Long) ? 0 : 1;
+    setMoveFlags<S>(data);
 
-    reg.sr.n = NBIT<S>(data);
-    reg.sr.z = ZERO<S>(data);
-    reg.sr.v = 0;
-    reg.sr.c = 0;
-
-    looping<I>() ? noPrefetch<C>(2) : prefetch<C, POLL>();
+    // MAME shows the flags of the low word if the prefetch fails
+    try { looping<I>() ? noPrefetch<C>(2) : fetchIrc<C, POLL>(); } catch (BusError &e) {
+        
+        if constexpr (S == Long) {
+            rethrow<C>(e, CCR::N | CCR::Z, (NBIT<Word>(data) ? CCR::N : 0) | (ZERO<Word>(data) ? CCR::Z : 0));
+        }
+        throw;
+    }
     if (looping<I>() && S == Long) loopModeDelay = 0;
 
     ea = computeEA<C, Mode::PD, S, IMPL_DEC>(dst);
-    pomSetWB<C>(u16(data));  // POM68K (host): 68010-only
+    writeBuffer = (u16)READ<Word>(data);
+
+    constexpr bool early = S != Long || C == Core::C68020;
+    if constexpr (early) updateAn<Mode::PD, S>(dst);
 
     // Check for address error
     if (misaligned<C, S>(ea)) {
 
-        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-        // POM68K: Long dest leaves An at init-2 (one word step) and takes
-        // +2 idle; frames carry the captured opcode (SingleStepTests/680x0)
-        if constexpr (S != Long) updateAn<Mode::PD, S>(dst);
-        else                     updateAn<Mode::PD, Word>(dst);
-        if (format == 0) { SYNC(2); throw AddressError(makeFrame<flags0>(ea + 2, reg.pc + 2, getSR(), ird)); }
-        if (format == 1) { SYNC(2); throw AddressError(makeFrame<flags1>(ea, reg.pc + 2, getSR(), ird)); }
-        if (format == 2) { SYNC(2); throw AddressError(makeFrame<flags2>(ea, reg.pc + 2, getSR(), ird)); }
+        // MAME has replaced the IRD when the address error is detected
+        commitIrd<C>();
+
+        if constexpr (compat == Compatibility::UAE) SYNC(2);
+        if constexpr (S == Long) throw earlyAddressError<C>(makeFrame<AE_WRITE|AE_DATA>(ea + 2, reg.pc, getSR(), ird));
+
+        SYNC(2);
+        throw AddressError(makeFrame<AE_WRITE|AE_DATA>(ea));
     }
 
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K O4 slice 3: 68030 — An is decremented before the write
-    // (gencpu Apdi order), the write is the instruction's last (format $A
-    // fault frame, updated CCR), and longs go out high word first
-    if constexpr (C == Core::C68020) {
-        if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) [[unlikely]] {
+    if constexpr (S == Long && C == Core::C68000 && compat == Compatibility::UAE) {
 
-            updateAn<Mode::PD, S>(dst);
-            mmuState[1] |= 0x0100;              // LASTWRITE (030 frames)
-            mmuLastWritePc = reg.pc;
-            mmu040LastWrite = true;             // POM68K (host) Q3 (040 frames)
-            mmu040LastWritePc = reg.pc;
-            // [D] Musashi @ 1efd694 (Runner/Musashi of upstream Moira), run by its Runner:
-            //     low word first, as the path below does on every model.
-            //     POM68K: asked for under MOIRA_MIMIC_MUSASHI; the bus
-            //     layers ignore it when they translate.
-            writeM<C, Mode::PD, S, MOIRA_MIMIC_MUSASHI ? REVERSE : 0>(ea, data);
-            mmu040LastWrite = false;
+        try {
 
-            //           00  10  20        00  10  20        00  10  20
-            //           .b  .b  .b        .w  .w  .w        .l  .l  .l
-            CYCLES_DN   ( 8,  8,  5,        8,  8,  5,       12, 14,  5)
-            CYCLES_AN   ( 0,  0,  0,        8,  8,  5,       12, 14,  5)
-            CYCLES_AI   (12, 12,  9,       12, 12,  9,       20, 22,  9)
-            CYCLES_PI   (12, 12,  9,       12, 12,  9,       20, 22,  9)
-            CYCLES_PD   (14, 14, 10,       14, 14, 10,       22, 24, 10)
-            CYCLES_DI   (16, 16, 10,       16, 16, 10,       24, 26, 10)
-            CYCLES_IX   (18, 18, 12,       18, 18, 12,       26, 28, 12)
-            CYCLES_AW   (16, 16,  9,       16, 16,  9,       24, 26,  9)
-            CYCLES_AL   (20, 20,  9,       20, 20,  9,       28, 30,  9)
-            CYCLES_DIPC (16, 16, 10,       16, 16, 10,       24, 26, 10)
-            CYCLES_IXPC (18, 18, 12,       18, 18, 12,       26, 28, 12)
-            CYCLES_IM   (12, 12,  7,       12, 12,  7,       20, 22,  9)
+            // The low word is written first. UAE decrements the register after both writes.
+            writeM<C, Mode::PD, Word>(ea + 2, READ<Word>(data));
+            writeM<C, Mode::PD, Word, COMMIT_IRD>(ea, READ<Word, 1>(data));
 
-            FINALIZE
-            return;
+        } catch (BusError &e) {
+
+            // UAE stacks the unmasked address
+            e.stackFrame.addr = (e.stackFrame.addr & 0xFFFFFF) | (ea & 0xFF000000);
+            throw;
         }
-    }
+        updateAn<Mode::PD, S>(dst);
 
-    writeM<C, Mode::PD, S, REVERSE>(ea, data);
-    updateAn<Mode::PD, S>(dst);
+    } else if constexpr (S == Long && C == Core::C68000) {
+
+        // The low word is written first. MAME decrements the register before the second write.
+        writeM<C, Mode::PD, Word>(ea + 2, READ<Word>(data));
+        updateAn<Mode::PD, S>(dst);
+        writeM<C, Mode::PD, Word, COMMIT_IRD>(ea, READ<Word, 1>(data));
+
+    } else {
+
+        writeM<C, Mode::PD, S, REVERSE | COMMIT_IRD>(ea, data);
+        if constexpr (!early) updateAn<Mode::PD, S>(dst);
+    }
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -3914,59 +3144,7 @@ Moira::execMove5(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
-    u32 ea, data;
-
-    int src = _____________xxx(opcode);
-    int dst = ____xxx_________(opcode);
-
-    readOp<C, M, S, STD_AE_FRAME>(src, &ea, &data);
-
-    if constexpr (S == Long && !isMemMode(M)) {
-
-        reg.sr.n = NBIT<Word>(data >> 16);
-        reg.sr.z = ZERO<Long>(data); // POM68K: full-long Z ([D] SST/680x0 68000/v1 @ e0d5ece9)
-        reg.sr.v = 0;
-        reg.sr.c = 0;
-
-        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
-        // destination write (gencpu order) — a last-write fault stacks
-        // the updated CCR
-        if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) {
-            reg.sr.n = NBIT<S>(data);
-            reg.sr.z = ZERO<S>(data);
-            reg.sr.v = 0;
-            reg.sr.c = 0;
-        }
-        writeOp<C, Mode::DI, S, POLL>(dst, data);
-
-        reg.sr.n = NBIT<S>(data);
-        reg.sr.z = ZERO<S>(data);
-        reg.sr.v = 0;
-        reg.sr.c = 0;
-
-        prefetch<C>();
-
-    } else {
-
-        reg.sr.n = NBIT<S>(data);
-        reg.sr.z = ZERO<S>(data);
-        reg.sr.v = 0;
-        reg.sr.c = 0;
-
-        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
-        // destination write (gencpu order) — a last-write fault stacks
-        // the updated CCR
-        if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) {
-            reg.sr.n = NBIT<S>(data);
-            reg.sr.z = ZERO<S>(data);
-            reg.sr.v = 0;
-            reg.sr.c = 0;
-        }
-        writeOp<C, Mode::DI, S>(dst, data);
-        prefetch<C, POLL>();
-    }
+    execMoveDisp<C, I, M, S, Mode::DI>(opcode);
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -3991,59 +3169,7 @@ Moira::execMove6(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
-    u32 ea, data;
-
-    int src = _____________xxx(opcode);
-    int dst = ____xxx_________(opcode);
-
-    readOp<C, M, S, STD_AE_FRAME>(src, &ea, &data);
-
-    if constexpr (S == Long && !isMemMode(M)) {
-
-        reg.sr.n = NBIT<Word>(data >> 16);
-        reg.sr.z = ZERO<Long>(data); // POM68K: full-long Z ([D] SST/680x0 68000/v1 @ e0d5ece9)
-        reg.sr.v = 0;
-        reg.sr.c = 0;
-
-        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
-        // destination write (gencpu order) — a last-write fault stacks
-        // the updated CCR
-        if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) {
-            reg.sr.n = NBIT<S>(data);
-            reg.sr.z = ZERO<S>(data);
-            reg.sr.v = 0;
-            reg.sr.c = 0;
-        }
-        writeOp<C, Mode::IX, S, POLL>(dst, data);
-
-        reg.sr.n = NBIT<S>(data);
-        reg.sr.z = ZERO<S>(data);
-        reg.sr.v = 0;
-        reg.sr.c = 0;
-
-        prefetch<C>();
-
-    } else {
-
-        reg.sr.n = NBIT<S>(data);
-        reg.sr.z = ZERO<S>(data);
-        reg.sr.v = 0;
-        reg.sr.c = 0;
-
-        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
-        // destination write (gencpu order) — a last-write fault stacks
-        // the updated CCR
-        if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) {
-            reg.sr.n = NBIT<S>(data);
-            reg.sr.z = ZERO<S>(data);
-            reg.sr.v = 0;
-            reg.sr.c = 0;
-        }
-        writeOp<C, Mode::IX, S>(dst, data);
-        prefetch<C, POLL>();
-    }
+    execMoveDisp<C, I, M, S, Mode::IX>(opcode);
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -4063,6 +3189,62 @@ Moira::execMove6(u16 opcode)
     FINALIZE
 }
 
+// MOVE to a destination with a displacement: (d16,An) or (d8,An,Xn)
+template <Core C, Instr I, Mode M, Size S, Mode DM> void
+Moira::execMoveDisp(u16 opcode)
+{
+    u32 ea, data;
+
+    int src = _____________xxx(opcode);
+    int dst = ____xxx_________(opcode);
+
+    readOp<C, M, S, STD_AE_FRAME>(src, &ea, &data);
+
+    if constexpr (C == Core::C68000) {
+
+        writeBuffer = (u16)READ<Word, S == Long ? 1 : 0>(data);
+        if constexpr (isMemMode(M)) setMoveFlags<S == Long ? Word : S>(data);
+        
+        u32 ea2 = computeEA<C, DM, S, NO_DEC_PC>(dst);
+
+        if constexpr (S == Long && !isMemMode(M)) {
+
+            // The first write shows the flags of the high word
+            reg.sr.n = NBIT<Word>(READ<Word, 1>(data));
+            reg.sr.z = ZERO<Word>(READ<Word, 1>(data)) && reg.sr.z;
+            writeM<C, DM, Word>(ea2, READ<Word, 1>(data));
+            setMoveFlags<Word>(data);
+
+            // The second write shows the flags of the low word
+            writeM<C, DM, Word, POLL>(ea2 + 2, READ<Word>(data));
+            setMoveFlags<S>(data);
+            prefetch<C>();
+
+        } else {
+
+            // A failed write shows the final flags
+            setMoveFlags<S>(data);
+            writeM<C, DM, S>(ea2, data);
+            prefetch<C, POLL>();
+        }
+
+    } else {
+
+        if constexpr (S == Long && !isMemMode(M)) {
+
+            writeOp<C, DM, S, POLL>(dst, data);
+            setMoveFlags<S>(data);
+            prefetch<C>();
+
+        } else {
+
+            writeOp<C, DM, S>(dst, data);
+            setMoveFlags<S>(data);
+            prefetch<C, POLL>();
+        }
+    }
+}
+
 template <Core C, Instr I, Mode M, Size S> void
 Moira::execMove7(u16 opcode)
 {
@@ -4075,22 +3257,23 @@ Moira::execMove7(u16 opcode)
 
     readOp<C, M, S, STD_AE_FRAME>(src, &ea, &data);
 
-    reg.sr.n = NBIT<S>(u64(data));
-    reg.sr.z = ZERO<S>(u64(data));
-    reg.sr.v = 0;
-    reg.sr.c = 0;
+    if constexpr (C == Core::C68000) {
 
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
-    // destination write (gencpu order) — a last-write fault stacks
-    // the updated CCR
-    if (cpuModel == Model::M68030) {
-        reg.sr.n = NBIT<S>(data);
-        reg.sr.z = ZERO<S>(data);
-        reg.sr.v = 0;
-        reg.sr.c = 0;
+        // A failed extension word fetch shows the flags of the (low word of the) operation
+        setMoveFlags<S == Long ? Word : S>(data);
+
+        writeBuffer = (u16)READ<Word, S == Long ? 1 : 0>(data);
+        u32 ea2 = computeEA<C, Mode::AW, S>(dst);
+
+        // A failed write shows the final flags
+        setMoveFlags<S>(data);
+        writeM<C, Mode::AW, S>(ea2, data);
+
+    } else {
+
+        writeOp<C, Mode::AW, S>(dst, data);
+        setMoveFlags<S>(data);
     }
-    writeOp<C, Mode::AW, S>(dst, data);
     prefetch<C, POLL>();
 
     //           00  10  20        00  10  20        00  10  20
@@ -4133,80 +3316,73 @@ Moira::execMove8(u16 opcode)
      *  operand is a data or address register, or immediate, then the behavior
      *  is the same as other MOVE variants (class 1 instruction)."
      */
-    if (isMemMode(M)) {
+    if constexpr (isMemMode(M)) {
 
         readOp<C, M, S, STD_AE_FRAME>(src, &ea, &data);
 
-        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-        // POM68K: Long-aware interim flags + 2 idle cycles on a faulting
-        // abs.l destination (SingleStepTests/680x0)
-        if constexpr (S == Long) {
-            reg.sr.n = NBIT<Long>(data);
-            reg.sr.z = ZERO<Long>(data);
+        if constexpr (C == Core::C68000) {
+
+            // A failed first extension word fetch shows the flags of the operation (untouched if long)
+            if constexpr (S != Long) setMoveFlags<S>(data);
+            u32 ea2 = queue.irc << 16;
+            readExt<C, NO_DEC_PC>();
+            ea2 |= queue.irc;
+
+            // An address error shows the flags of the (low word of the) operation
+            if constexpr (S == Long) setMoveFlags<Word>(data);
+            checkEven<C, S, AE_WRITE|AE_DATA>(ea2);
+
+            if constexpr (S == Long) {
+
+                // The first write shows the flags of the low word, the second one the final flags
+                writeM<C, Mode::AL, Word>(ea2, READ<Word, 1>(data));
+                setMoveFlags<S>(data);
+                writeM<C, Mode::AL, Word>(ea2 + 2, READ<Word>(data));
+
+            } else {
+
+                writeM<C, Mode::AL, S>(ea2, data);
+            }
+
         } else {
-            reg.sr.n = NBIT<Word>(data);
-            reg.sr.z = ZERO<Word>(data);
-        }
-        reg.sr.v = 0;
-        reg.sr.c = 0;
 
-        u32 ea2 = ircLong<C>();
+            u32 ea2 = queue.irc << 16;
+            readExt<C>();
+            ea2 |= queue.irc;
 
-        // Check for address error
-        if (misaligned<C, S>(ea2)) {
-            SYNC(2);
-            throw AddressError(makeFrame<AE_WRITE|AE_DATA>(ea2));
+            checkEven<C, S, AE_WRITE|AE_DATA>(ea2);
+            writeM<C, Mode::AL, S>(ea2, data);
         }
 
-        reg.sr.n = NBIT<S>(data);
-        reg.sr.z = ZERO<S>(data);
-        reg.sr.v = 0;
-        reg.sr.c = 0;
-
-        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // POM68K Q3: the ABS.L destination's second word is consumed
-        // AFTER the write (68000 prefetch order kept on this path) —
-        // pre-arm the last-write marker with the true next-instruction
-        // PC so a 68040 write fault stacks it
-        if (C == Core::C68020 && cpuModel >= Model::M68EC040) {
-            mmu040LastWrite = true;
-            mmu040LastWritePc = reg.pc + 2;
-        }
-        // [D] WinUAE gencpu.c gen_set_fault_pc @ Hatari e77819f7 — the
-        // 68030 marks the same store as the last write: a fault stacks the
-        // short format $A with the next instruction's PC, as writeOp does
-        // for every other MOVE destination. This path calls writeM itself
-        // and had no mark, so a memory-to-ABS.L MOVE stacked a $B frame.
-        // Gate: moira_rules_test (moveAbsLongLastWrite030).
-        if (C == Core::C68020 && cpuModel == Model::M68030) {
-            mmuState[1] |= 0x0100;                  // LASTWRITE
-            mmuLastWritePc = reg.pc + 2;
-        }
-        writeM<C, Mode::AL, S>(ea2, data);
-        if (C == Core::C68020 && cpuModel >= Model::M68EC040)
-            mmu040LastWrite = false;
-        readExt<C>();
+        setMoveFlags<S>(data);
+        readExt<C, NO_DEC_PC>();
 
     } else {
 
         readOp<C, M, S>(src, &ea, &data);
 
-        reg.sr.n = NBIT<S>(data);
-        reg.sr.z = ZERO<S>(data);
-        reg.sr.v = 0;
-        reg.sr.c = 0;
+        if constexpr (C == Core::C68000) {
 
-        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // POM68K O4 slice 3: the 68030 sets the final flags BEFORE the
-        // destination write (gencpu order) — a last-write fault stacks
-        // the updated CCR
-        if (cpuModel == Model::M68030 || cpuModel >= Model::M68EC040) {
-            reg.sr.n = NBIT<S>(data);
-            reg.sr.z = ZERO<S>(data);
-            reg.sr.v = 0;
-            reg.sr.c = 0;
+            // The first extension word is fetched with the flags untouched
+            writeBuffer = (u16)READ<Word, S == Long ? 1 : 0>(data);
+            u32 ea2 = queue.irc << 16;
+            readExt<C>();
+            ea2 |= queue.irc;
+            readBuffer = queue.irc;
+
+            // A failed fetch of the second extension word shows the flags of the (low word of the) operation
+            setMoveFlags<S == Long ? Word : S>(data);
+            readExtLast<C>();
+
+            // A failed write shows the final flags
+            setMoveFlags<S>(data);
+            writeM<C, Mode::AL, S>(ea2, data);
+
+        } else {
+
+            writeOp<C, Mode::AL, S>(dst, data);
+            setMoveFlags<S>(data);
         }
-        writeOp<C, Mode::AL, S>(dst, data);
     }
 
     prefetch<C, POLL>();
@@ -4239,14 +3415,11 @@ Moira::execMovea(u16 opcode)
 
     u32 ea = 0, data;
 
-    try { readOp<C, M, S>(src, &ea, &data); } catch (AddressError &exc) {
+    readOp<C, M, S, STD_AE_FRAME>(src, &ea, &data);
 
-        // Rectify the stack frame
-        exc.stackFrame = makeFrame<STD_AE_FRAME|AE_SET_RW|AE_SET_DF>(ea);
-        throw exc;
+    try { prefetch<C, POLL>(); } catch (BusError &e) {
+        rethrowA<C>(e, dst, SEXT<S>(data));
     }
-
-    prefetch<C, POLL>();
     writeA(dst, SEXT<S>(data));
 
     //           00  10  20        00  10  20        00  10  20
@@ -4270,7 +3443,7 @@ Moira::execMovea(u16 opcode)
 template <Core C, Instr I, Mode M, Size S> void
 Moira::execMovecRcRx(u16 opcode)
 {
-    AVAILABILITY(Core::C68000)
+    AVAILABILITY(Core::C68010)
     SUPERVISOR_MODE_ONLY
 
     SYNC(4);
@@ -4278,37 +3451,10 @@ Moira::execMovecRcRx(u16 opcode)
     auto arg = readI<C, Word>();
     int dst = xxxx____________(arg);
 
-    if constexpr (C == Core::C68010) {
+    if (!isValidMovecReg(arg & 0xFFF)) {
 
-        auto rc = arg & 0xFFF;
-
-        if (rc != 0x000 && rc != 0x001 && rc != 0x800 && rc != 0x801) {
-
-            execIllegal<C, I, M, S>(opcode);
-            return;
-        }
-    }
-    if constexpr (C == Core::C68020) {
-
-        auto rc = arg & 0xFFF;
-
-        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // POM68K Q2: legality is model-dependent (WinUAE newcpu_common.c
-        // movec_illg): the 040 gains $003-$007/$805-$807 and loses CAAR
-        // ($802); 020/030 keep the historic set.
-        if (cpuModel >= Model::M68EC040) {
-
-            if (!((rc & 0x7FF) < 8 && rc != 0x802)) {
-
-                execIllegal<C, I, M, S>(opcode);
-                return;
-            }
-        } else if (rc != 0x000 && rc != 0x001 && rc != 0x800 && rc != 0x801 &&
-                   rc != 0x002 && rc != 0x802 && rc != 0x803 && rc != 0x804) {
-
-            execIllegal<C, I, M, S>(opcode);
-            return;
-        }
+        execIllegal<C, I, M, S>(opcode);
+        return;
     }
 
     switch (arg & 0x0FFF) {
@@ -4321,27 +3467,21 @@ Moira::execMovecRcRx(u16 opcode)
         case 0x802: reg.r[dst] = getCAAR(); break;
         case 0x803: reg.r[dst] = reg.sr.m ? getSP() : getMSP(); break;
         case 0x804: reg.r[dst] = reg.sr.m ? getISP() : getSP(); break;
-
-        // [B] MC68040UM-1993 §3.1: MMU registers.
-        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // POM68K Q2: 68040 MMU registers (MC68040UM-1993 § 3.1; WinUAE
-        // m68k_movec2 68040 rows). Only reachable on 040 models — the
-        // legality gate above rejects them on 010/020/030.
-        case 0x003: reg.r[dst] = getTC040(); break;
-        case 0x004: reg.r[dst] = getITT0(); break;
-        case 0x005: reg.r[dst] = getITT1(); break;
-        case 0x006: reg.r[dst] = getDTT0(); break;
-        case 0x007: reg.r[dst] = getDTT1(); break;
-        case 0x805: reg.r[dst] = getMMUSR040(); break;
-        case 0x806: reg.r[dst] = getURP040(); break;
-        case 0x807: reg.r[dst] = getSRP040(); break;
+        case 0x003: reg.r[dst] = mmu.mmu040.tc; break;
+        case 0x004: reg.r[dst] = mmu.mmu040.itt0; break;
+        case 0x005: reg.r[dst] = mmu.mmu040.itt1; break;
+        case 0x006: reg.r[dst] = mmu.mmu040.dtt0; break;
+        case 0x007: reg.r[dst] = mmu.mmu040.dtt1; break;
+        case 0x805: reg.r[dst] = mmu.mmu040.mmusr; break;
+        case 0x806: reg.r[dst] = mmu.mmu040.urp; break;
+        case 0x807: reg.r[dst] = mmu.mmu040.srp; break;
     }
 
     prefetch<C, POLL>();
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
-    CYCLES_IP (   0,  0,  0,        0,  0,  0,        0, 12,  6);
+    CYCLES_IP   ( 0,  0,  0,        0,  0,  0,        0, 12,  6)
 
     FINALIZE
 }
@@ -4357,75 +3497,38 @@ Moira::execMovecRxRc(u16 opcode)
     auto arg = readI<C, Word>();
     int  src = xxxx____________(arg);
 
-    if constexpr (C == Core::C68010) {
+    if (!isValidMovecReg(arg & 0xFFF)) {
 
-        auto reg = arg & 0xFFF;
-
-        if (reg != 0x000 && reg != 0x001 && reg != 0x800 && reg != 0x801) {
-
-            execIllegal<C, I, M, S>(opcode);
-            return;
-        }
-    }
-    if constexpr (C == Core::C68020) {
-
-        auto reg = arg & 0xFFF;
-
-        // [B] M68000PRM-1992 MOVEC: the control registers each model has.
-        // POM68K Q2: same model-dependent legality as MOVEC Rc,Rx
-        if (cpuModel >= Model::M68EC040) {
-
-            if (!((reg & 0x7FF) < 8 && reg != 0x802)) {
-
-                execIllegal<C, I, M, S>(opcode);
-                return;
-            }
-        } else if (reg != 0x000 && reg != 0x001 && reg != 0x800 && reg != 0x801 &&
-                   reg != 0x002 && reg != 0x802 && reg != 0x803 && reg != 0x804) {
-
-            execIllegal<C, I, M, S>(opcode);
-            return;
-        }
+        execIllegal<C, I, M, S>(opcode);
+        return;
     }
 
     u32  val = readR(src);
     switch (arg & 0x0FFF) {
 
-        case 0x000: setSFC(val); break;
-        case 0x001: setDFC(val); break;
+        case 0x000: setSFC(u8(val)); break;
+        case 0x001: setDFC(u8(val)); break;
         case 0x800: setUSP(val); break;
         case 0x801: setVBR(val); break;
         case 0x002: setCACR(val); break;
         case 0x802: setCAAR(val); break;
         case 0x803: reg.sr.m ? setSP(val) : setMSP(val); break;
         case 0x804: reg.sr.m ? setISP(val) : setSP(val); break;
-
-        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // POM68K Q2: 68040 MMU registers — setter masks in Moira.h mirror
-        // WinUAE m68k_move2c (TC & $C000, ITT/DTT & $FFFFE364, URP/SRP/
-        // MMUSR full 32 bits)
-        // [B] MC68040UM-1993 §B.6: on the MC68EC040, MOVEC to URP and
-        // SRP "will produce indeterminate results" (no exception); $004-$007
-        // are the IACR0/1 and DACR0/1 access control registers, in the TTR
-        // format (§B.3.1). [F] This core stores URP/SRP and never reads
-        // them there (no table search). Settled by: a real MC68EC040.
-        case 0x003: setTC040(val); break;
-        case 0x004: setITT0(val); break;
-        case 0x005: setITT1(val); break;
-        case 0x006: setDTT0(val); break;
-        case 0x007: setDTT1(val); break;
-        case 0x805: setMMUSR040(val); break;
-        case 0x806: setURP040(val); break;
-        case 0x807: setSRP040(val); break;
+        case 0x003: if (cpuModel != CPUModel::M68EC040) mmu.mmu040.setTC(val); break;
+        case 0x004: mmu.mmu040.setITT0(val); break;
+        case 0x005: mmu.mmu040.setITT1(val); break;
+        case 0x006: mmu.mmu040.setDTT0(val); break;
+        case 0x007: mmu.mmu040.setDTT1(val); break;
+        case 0x805: mmu.mmu040.mmusr = val; break;
+        case 0x806: mmu.mmu040.urp = val; break;
+        case 0x807: mmu.mmu040.srp = val; break;
     }
 
     prefetch<C, POLL>();
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
-    CYCLES_IP   ( 0,  0,  0,        0,  0,  0,        0, 10, 12);
-
-    traceFlow040<C>();
+    CYCLES_IP   ( 0,  0,  0,        0,  0,  0,        0, 10, 12)
 
     FINALIZE
 }
@@ -4435,95 +3538,94 @@ Moira::execMovemEaRg(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
-    int src  = _____________xxx(opcode);
-    u16 mask = (u16)readI<C, Word>();
-    u32 ea   = computeEA<C, M, S, MMU_NOFIXUP>(src);
+    int src = _____________xxx(opcode);
 
-    int cnt = 0;
+    u16 mask;
+    u32 ea;
 
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K O4 slice 3: WinUAE MOVEM restart bookkeeping — the MOVEM1
-    // flag and the transfer counter (mmuState[0]) land in $B fault
-    // frames; the EA is logged (state_store_mmu030) but the transfers
-    // themselves are not, and the 68000 guard reads do not exist.
-    bool mmu030 = false;
-    bool logSave = false;
-    if constexpr (C == Core::C68020) {
-        if (cpuModel == Model::M68030) [[unlikely]] {
-            mmu030 = true;
-            mmuState[1] |= 0x4000;              // MOVEM1
-            mmuLogExtWord(ea);                  // srca = state_store(srca)
-            logSave = mmuLogging;
-            mmuLogging = false;
+    if constexpr (C == Core::C68000) {
+
+        try { mask = (u16)readI<C, Word>(); } catch (BusError &e) {
+
+            // The stacked PC is not decremented if the mask refill fails
+            if constexpr (M == Mode::AI || M == Mode::PI || M == Mode::PD) e.stackFrame.pc -= 2;
+            throw;
         }
-        // [B] MC68040UM-1993 §§8.4.6.2/8.4.6.7: RTE restores the
-        // saved EA for indexed/PC-relative modes; all transfers repeat.
-        // POM68K: a further fault consumes the latch into SSW.CM again.
-        if (cpuModel >= Model::M68EC040) [[unlikely]] {
-            if constexpr (M == Mode::IX || M == Mode::DIPC || M == Mode::IXPC)
-                if (mmu040MovemArmed) ea = mmu040MovemEa;
-            mmu040MovemArmed = true;
-            mmu040MovemEa = ea;
+
+        try { ea = computeEA<C, M, S>(src); } catch (BusError &e) {
+
+            // The stacked PC is the address of the consumed word
+            if constexpr (M == Mode::AW) e.stackFrame.pc -= 2;
+            throw;
         }
+
+    } else {
+
+        mask = (u16)readI<C, Word>();
+        ea = computeEA<C, M, S>(src);
     }
 
-    // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
     // Check for address error
-    // POM68K: +2 idle, uniform PC-2 frame, and (An)+ leaves An advanced by
-    // one word when the first transfer faults (SingleStepTests/680x0)
     if (misaligned<C, S>(ea)) {
 
-        SYNC(2);
+        // In indexed modes, the 68000 decrements the stacked PC (MAME does not). The 68010 does not
+        // decrement it either, and the data input buffer holds the next prefetch (vAmigaTS: addrerr43).
+        constexpr bool dec = C == Core::C68000 && compat != Compatibility::MAME;
+        constexpr Flags flags = (M == Mode::IX || M == Mode::IXPC) && dec ? AE_DEC_PC : AE_INC_PC;
+        if constexpr (C == Core::C68010) readBuffer = queue.irc;
         setFC<M>();
-        if constexpr (M == Mode::PI) U32_INC(reg.a[src], 2);
-        throw AddressError(makeFrame<AE_SET_DF|AE_SET_RW>(ea));
+        throw earlyAddressError<C>(makeFrame<flags>(ea));
     }
 
-    // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-    // POM68K Q3: the 68040 has no 68000-style guard reads either
-    // POM68K: on the 68000 the extra bus cycle of a long MOVEM load is not a
-    // guard read BEFORE the transfers but one word read AFTER the last, as
-    // for the word form. [D] SingleStepTests/680x0 v1 transactions
-    // (MOVEM.l.json). Other cores keep upstream's position.
-    // POM68K (ruling D46): the extra read uses the transfers' space, program
-    // space for a PC-relative source on the 68000-68030 (readM); NeoST e809c24.
-    if constexpr (S == Long && C != Core::C68000) { if (!mmu030 && cpuModel < Model::M68EC040) (void)readM<C, M, Word>(ea); }
+    // MAME does not read ahead, it reads one word too many at the end. UAE neither reads ahead nor too far.
+    if constexpr (S == Long && compat != Compatibility::MAME && compat != Compatibility::UAE) (void)read<C, AddrSpace::DATA, Word>(ea);
 
-    if constexpr (M == Mode(3)) {     // (An)+
+    if constexpr (C == Core::C68000) {
 
         for (int i = 0; i <= 15; i++) {
 
             // Only proceed if the mask bit is set
             if ((mask & (1 << i)) == 0) continue;
 
-            writeR(i, SEXT<S>(readM<C, M, S>(ea)));
+            if constexpr (S == Long) {
+
+                // The upper word is loaded first
+                u32 hi = readM<C, M, Word, AE_INC_PC>(ea);
+                writeR(i, WRITE<Word, 1>(reg.r[i], hi));
+                writeR(i, hi << 16 | readM<C, M, Word, AE_INC_PC>(ea + 2));
+
+            } else {
+
+                writeR(i, SEXT<S>(readM<C, M, S, AE_INC_PC>(ea)));
+            }
             ea += S;
-            cnt++;
-            if (mmu030) mmuState[0]++;
         }
 
-        writeA(src, ea);
+        // The 68000 reads one word too many
+        (void)read<C, isPrgMode(M) ? AddrSpace::PROG : AddrSpace::DATA, Word, AE_INC_PC>(ea);
+        
+        if constexpr (M == Mode::PI) writeA(src, ea);
 
     } else {
 
-        for(int i = 0; i <= 15; i++) {
+        for (int i = 0; i <= 15; i++) {
 
             // Only proceed if the mask bit is set
             if ((mask & (1 << i)) == 0) continue;
 
-            writeR(i, SEXT<S>(readM<C, M, S>(ea)));
+            writeR(i, SEXT<S>(readM<C, M, S, AE_INC_PC>(ea)));
             ea += S;
-            cnt++;
-            if (mmu030) mmuState[0]++;
         }
-    }
-    if constexpr (S == Word || C == Core::C68000) { if (!mmu030 && cpuModel < Model::M68EC040) (void)readM<C, M, Word>(ea); }
 
-    if (mmu030) mmuLogging = logSave;
-    if (cpuModel >= Model::M68EC040) mmu040MovemArmed = false;  // POM68K (host) Q3
+        // The word operation reads one word too many after the address register has been updated
+        if constexpr (M == Mode::PI) writeA(src, ea);
+        if constexpr (S == Word) (void)read<C, AddrSpace::DATA, Word, AE_INC_PC>(ea);
+    }
 
     prefetch<C, POLL>();
 
+    // Each register in the list causes one transfer
+    int cnt = std::popcount(mask);
     auto c = (C == Core::C68020 || S == Word) ? 4 * cnt : 8 * cnt;
 
     //           00  10  20        00    10    20        00    10    20
@@ -4545,44 +3647,24 @@ Moira::execMovemRgEa(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
-    int dst  = _____________xxx(opcode);
-    u16 mask = (u16)readI<C, Word>();
+    int dst = _____________xxx(opcode);
 
-    int cnt = 0;
+    u16 mask;
+    try { mask = (u16)readI<C, Word>(); } catch (BusError &e) {
 
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K O4 slice 3: WinUAE MOVEM store bookkeeping — transfers are
-    // unlogged with the value in the data buffer, the MOVEM1 flag and the
-    // transfer counter land in $B fault frames, and the FINAL transfer is
-    // a last-write ($A frame, base register updated before the write).
-    bool mmu030 = false;
-    bool logSave = false;
-    int total = 0;
-    if constexpr (C == Core::C68020) {
-        if (cpuModel == Model::M68030) [[unlikely]] {
-            mmu030 = true;
-            mmuState[1] |= 0x4000;              // MOVEM1
-            logSave = mmuLogging;
-            mmuLogging = false;
-            for (int i = 0; i < 16; i++) if (mask & (1 << i)) total++;
+        // MAME does not decrement the stacked PC if the mask refill fails
+        if constexpr (C == Core::C68000) {
+            e.stackFrame.pc += M == Mode::IX ? -2 : (M == Mode::AI || M == Mode::PI || M == Mode::PD) ? 2 : 0;
         }
+        throw;
     }
-    const bool m040 = C == Core::C68020 && cpuModel >= Model::M68EC040;
 
-    if constexpr (M == Mode(4)) {     // -(An)
+    if constexpr (M == Mode::PD) {
+
+        // The 68000 and the 68010 (like UAE) write the low word of a long word first
+        constexpr Flags wflags = (C != Core::C68020 ? REVERSE : 0) | AE_INC_PC;
 
         u32 ea = readA(dst);
-        const u32 initial = ea;
-
-        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // POM68K Q3: 68040 restart latch — the saved EA is the BASE
-        // (WinUAE op_48e0_31: decrements happen per transfer); An is
-        // only written at the end, and the base-in-list value is
-        // initial - S without the mid-loop writeA below
-        if (m040) {
-            mmu040MovemArmed = true;
-            mmu040MovemEa = ea;
-        }
 
         for (int i = 15; i >= 0; i--) {
 
@@ -4592,83 +3674,47 @@ Moira::execMovemRgEa(u16 opcode)
             // Check for address error
             if (misaligned<C, S>(ea)) {
 
-                SYNC(2);
                 setFC<M>();
-                pomSetRB<C>(mask);  // POM68K (host): 68010-only
-                pomSetWB<C>(u16(reg.r[i] & 0xFFFF));  // POM68K (host): 68010-only
-                throw AddressError(makeFrame<AE_WRITE>(U32_SUB(ea, 2)));
+                readBuffer = mask;
+                writeBuffer = (u16)READ<Word>(reg.r[i]);
+                throw earlyAddressError<C>(makeFrame<AE_INC_PC|AE_WRITE>(U32_SUB(ea, 2)));
             }
 
             // Write register contents into memory
             ea -= S;
-            // [B] M68000PRM-1992 MOVEM: base register in a predecrement list.
-            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-            // POM68K (two-oracle arbitrated 2026-07-15): on 020+, when
-            // the base register is part of the list, the value stored is
-            // the INITIAL value decremented by one operation size
-            // (M68000PRM-1992 MOVEM; WinUAE stores initial - S regardless of
-            // the register's position in the list) — not the running EA
-            // that upstream's per-iteration writeA produced.
-            // [D] Musashi @ 1efd694 (Runner/Musashi of upstream Moira), run by its Runner:
-            //     the initial value is stored, low word of a long first.
-            //     POM68K: so it is under MOIRA_MIMIC_MUSASHI on the 68030
-            //     and 68040 paths below, as the plain 68020 path already did.
-            if (mmu030) {
 
-                u32 value = (i == dst + 8 && !MOIRA_MIMIC_MUSASHI) ? U32_SUB(initial, S) : reg.r[i];
-                mmuDataBuffer = value;
-                if (cnt == total - 1) {         // [D] @ Hatari e77819f7: last write (gencpu)
-                    writeA(dst, ea);
-                    mmuState[1] |= 0x0100;      // LASTWRITE
-                    mmuState[1] &= u16(~0x4000);
-                    mmuLastWritePc = reg.pc;
-                }
-                writeM<C, M, S, MOIRA_MIMIC_MUSASHI ? REVERSE : 0>(ea, value);
-
-            } else if (m040) {
-
-                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-                // POM68K Q3: no mid-loop An update; base-in-list stores
-                // initial - S (WinUAE `areg - predec`, An untouched)
-                u32 value = (i == dst + 8 && !MOIRA_MIMIC_MUSASHI) ? U32_SUB(initial, S) : reg.r[i];
-                writeM<C, M, S, MOIRA_MIMIC_MUSASHI ? REVERSE : 0>(ea, value);
-
-            } else {
-
-                if constexpr (C == Core::C68020 && !MOIRA_MIMIC_MUSASHI) {
-                    if (cnt == 0) writeA(dst, U32_SUB(readA(dst), S));
-                }
-                // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-                // POM68K: a predecremented long goes out LOW word first on
-                // the 68000 ([D] SingleStepTests/680x0 transactions) — what
-                // upstream reserved for its optional compatibility mode.
-                writeM<C, M, S, (MOIRA_MIMIC_MUSASHI || C == Core::C68000) ? REVERSE : 0>(ea, reg.r[i]);
+            // If the address register is part of the list, the 68000 and the 68010 store its initial value
+            // and the 68020 stores the initial value minus the operand size (vAmigaTS, CPU/Misc/Movem/movem1).
+            // The address register is updated after the loop, so it still holds the initial value here.
+            u32 value = reg.r[i];
+            if constexpr (C == Core::C68020) {
+                if (i == 8 + dst) value -= S;
             }
-            cnt++;
-            if (mmu030) mmuState[0]++;
+            writeM<C, M, S, wflags>(ea, value);
         }
         writeA(dst, ea);
-        if (m040) mmu040MovemArmed = false;     // POM68K (host) Q3
 
     } else {
 
-        // [D] WinUAE cpuemu_34.c op_48e8_34_ff @ Hatari e77819f7: the
-        // extension words of the EA are fetched through the logged accessor
-        // (get_iword_mmu030c_state) like the mask; only the transfers are
-        // unlogged. A $B frame therefore counts them in idx/idx_done.
-        if (mmu030) mmuLogging = logSave;
-        u32 ea = computeEA<C, M, S, MMU_NOFIXUP>(dst);
-        if (mmu030) mmuLogging = false;
+        u32 ea;
+        if constexpr (C == Core::C68000) {
 
-        // POM68K (host) Q3: 68040 restart latch (see the -(An) branch)
-        if (m040) {
-            // [B] MC68040UM-1993 §8.4.6.2 limits saved-EA reuse to
-            // indexed/PC-relative modes, unlike the oracle's blanket reuse.
-            // [D] WinUAE cpuemu_31.c MOVEM @ Hatari e77819f7: all modes.
-            if constexpr (M == Mode::IX)
-                if (mmu040MovemArmed) ea = mmu040MovemEa;
-            mmu040MovemArmed = true;
-            mmu040MovemEa = ea;
+            // MAME stacks the address behind the faulting fetch
+            if constexpr (M == Mode::AL) {
+
+                ea = (u32)queue.irc << 16;
+                readExt<C>();
+                ea |= queue.irc;
+                try { readExtLast<C>(); } catch (BusError &e) { e.stackFrame.pc += 2; throw; }
+
+            } else {
+
+                try { ea = computeEA<C, M, S>(dst); } catch (BusError &e) { e.stackFrame.pc += (M == Mode::AW) ? 2 : 4; throw; }
+            }
+
+        } else {
+
+            ea = computeEA<C, M, S>(dst);
         }
 
         for(int i = 0; i < 16; i++) {
@@ -4679,35 +3725,21 @@ Moira::execMovemRgEa(u16 opcode)
             // Check for address error
             if (misaligned<C, S>(ea)) {
 
-                SYNC(2);
                 setFC<M>();
-                pomSetRB<C>(mask);  // POM68K (host): 68010-only
-                pomSetWB<C>(S == Long ? u16(reg.r[i] >> 16) : u16(reg.r[i] & 0xFFFF));  // POM68K (host): 68010-only
-                throw AddressError(makeFrame<AE_WRITE>(ea));
+                readBuffer = mask;
+                writeBuffer = (u16)READ<Word, S == Long ? 1 : 0>(reg.r[i]);
+                throw earlyAddressError<C>(makeFrame<AE_INC_PC|AE_WRITE>(ea));
             }
 
             // Write register contents into memory
-            if (mmu030) {
-
-                mmuDataBuffer = reg.r[i];
-                if (cnt == total - 1) {         // [D] @ Hatari e77819f7: last write (gencpu)
-                    mmuState[1] |= 0x0100;      // LASTWRITE
-                    mmuState[1] &= u16(~0x4000);
-                    mmuLastWritePc = reg.pc;
-                }
-            }
-            writeM<C, M, S>(ea, reg.r[i]);
+            writeM<C, M, S, AE_INC_PC>(ea, reg.r[i]);
             ea += S;
-            cnt++;
-            if (mmu030) mmuState[0]++;
         }
-        if (m040) mmu040MovemArmed = false;     // POM68K (host) Q3
     }
-
-    if (mmu030) mmuLogging = logSave;
-
     prefetch<C, POLL>();
 
+    // Each register in the list causes one transfer
+    int cnt = std::popcount(mask);
     auto c = (C == Core::C68020 || S == Word) ? 4 * cnt : 8 * cnt;
 
     //           00  10  20        00    10    20        00    10    20
@@ -4737,14 +3769,14 @@ Moira::execMovepDxEa(u16 opcode)
 
         case Long:
         {
-            writeM<C, M, Byte>(ea, (dx >> 24) & 0xFF); ea += 2;
-            writeM<C, M, Byte>(ea, (dx >> 16) & 0xFF); ea += 2;
+            writeM<C, M, Byte, AE_DEC_PC>(ea, READ<Byte, 3>(dx)); ea += 2;
+            writeM<C, M, Byte, AE_DEC_PC>(ea, READ<Byte, 2>(dx)); ea += 2;
             [[fallthrough]];
         }
         case Word:
         {
-            writeM<C, M, Byte>(ea, (dx >>  8) & 0xFF); ea += 2;
-            writeM<C, M, Byte>(ea, (dx >>  0) & 0xFF);
+            writeM<C, M, Byte, AE_DEC_PC>(ea, READ<Byte, 1>(dx)); ea += 2;
+            writeM<C, M, Byte, AE_DEC_PC>(ea, READ<Byte, 0>(dx));
         }
     }
     prefetch<C, POLL>();
@@ -4771,15 +3803,18 @@ Moira::execMovepEaDx(u16 opcode)
 
         case Long:
         {
-            dx |= read<C, AddrSpace::DATA, Byte>(ea) << 24; ea += 2;
-            dx |= read<C, AddrSpace::DATA, Byte>(ea) << 16; ea += 2;
+            dx = WRITE<Byte, 3>(dx, read<C, AddrSpace::DATA, Byte, AE_DEC_PC>(ea)); ea += 2;
+            dx = WRITE<Byte, 2>(dx, read<C, AddrSpace::DATA, Byte, AE_DEC_PC>(ea)); ea += 2;
+
+            // MAME stores the upper word right away
+            if constexpr (C == Core::C68000) writeD<Long>(dst, WRITE<Word, 1>(readD(dst), READ<Word, 1>(dx)));
             [[fallthrough]];
         }
         case Word:
         {
-            dx |= read<C, AddrSpace::DATA, Byte>(ea) << 8; ea += 2;
+            dx = WRITE<Byte, 1>(dx, read<C, AddrSpace::DATA, Byte, AE_DEC_PC>(ea)); ea += 2;
             POLL_IPL;
-            dx |= read<C, AddrSpace::DATA, Byte>(ea) << 0;
+            dx = WRITE<Byte, 0>(dx, read<C, AddrSpace::DATA, Byte, AE_DEC_PC>(ea));
         }
 
     }
@@ -4798,15 +3833,12 @@ Moira::execMoveq(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
-    i8  src = (i8)(opcode & 0xFF);
+    i8  src = (i8)opcode;
     int dst = ____xxx_________(opcode);
 
     writeD <Long> (dst, (i32)src);
 
-    reg.sr.n = NBIT<Byte>(src);
-    reg.sr.z = ZERO<Byte>(src);
-    reg.sr.v = 0;
-    reg.sr.c = 0;
+    setMoveFlags<Byte>(src);
 
     prefetch<C, POLL>();
 
@@ -4823,11 +3855,17 @@ Moira::execMoves(u16 opcode)
     AVAILABILITY(Core::C68010)
     SUPERVISOR_MODE_ONLY
 
-    auto old = ircWord();
+    // The extension word selects the direction and the register
+    u16 arg = (u16)readI<C, Word>();
 
-    if (ircWord() & 0x800) {    // Rg -> Ea
+    // Both directions spend the same number of cycles before the access
+    [[maybe_unused]] constexpr int delay =
+    M == Mode::PI ? 8 :
+    M == Mode::AI || M == Mode::PD || M == Mode::IX ? 6 :
+    M == Mode::DI || M == Mode::AW || M == Mode::AL ? 4 : 0;
 
-        auto arg = readI<C, Word>();
+    if (arg & 0x800) {          // Rg -> Ea
+
         int src = xxxx____________(arg);
         int dst = _____________xxx(opcode);
 
@@ -4836,118 +3874,48 @@ Moira::execMoves(u16 opcode)
         u32 ea = computeEA<C, M, S>(dst);
         updateAn<M, S>(dst);
 
-        // Take care of some special cases
-        if constexpr (M == Mode::PI) {
+        // MOVES An,(An)+ and MOVES An,-(An) store the modified register
+        if constexpr (M == Mode::PI || M == Mode::PD) {
 
             if (src == (dst | 0x8)) {
 
-                // MOVES An,(An)+
-                value += dst == 7 ? (S == Long ? 4 : 2) : S;
-            }
-        }
-        if constexpr (M == Mode::PD) {
-
-            if (src == (dst | 0x8)) {
-
-                // MOVES An,-(An)
-                value -= dst == 7 ? (S == Long ? 4 : 2) : S;
+                int delta = dst == 7 ? (S == Long ? 4 : 2) : S;
+                value = M == Mode::PI ? value + delta : value - delta;
             }
         }
 
-        if constexpr (M == Mode::AI) SYNC(6);
-        if constexpr (M == Mode::PI) SYNC(8);
-        if constexpr (M == Mode::PD) SYNC(6);
-        if constexpr (M == Mode::DI) SYNC(4);
-        if constexpr (M == Mode::IX) SYNC(6);
-        if constexpr (M == Mode::AW) SYNC(4);
-        if constexpr (M == Mode::AL) SYNC(4);
+        SYNC(delay);
 
         // Make the DFC register visible on the FC pins
         fcSource = 2;
 
-        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // POM68K Q3: 68040 MOVES — DFC drives the translation (super =
-        // dfc&4, data space), the store is the last write, and a fault
-        // mangles the SSW fc (WinUAE ismoves)
-        if constexpr (C == Core::C68020) {
-            if (cpuModel >= Model::M68EC040) [[unlikely]] {
-                mmu040Moves = int(reg.dfc);
-                mmu040LastWrite = true;
-                mmu040LastWritePc = reg.pc;
-            }
-        }
+        // A failing access resets the FC pins after the stack frame has been created
+        try { writeM<C, M, S, AE_INC_PC>(ea, value); } catch (const AddressError &) {
 
-        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // POM68K O4 slice 3: MOVES Rg,Ea is the instruction's last write
-        // on the 68030 (gencpu genastore_fc → gen_set_fault_pc), and the
-        // pending-write buffer holds the FULL source register (gencpu
-        // passes uae_u32 src = regs.regs[n], unclipped)
-        bool done030 = false;
-        if constexpr (C == Core::C68020) {
-            if (cpuModel == Model::M68030) [[unlikely]] {
-
-                mmuState[1] |= 0x0100;          // LASTWRITE
-                mmuLastWritePc = reg.pc;
-
-                bool logSave = mmuLogging;
-                if (logSave) {                  // ACCESS_CHECK_PUT
-                    pomMmuBumpIdx();
-                    mmuDataBuffer = readR(src);
-                    mmuLogging = false;
-                }
-                writeM<C, M, S, AE_INC_PC>(ea, value);
-                if (logSave) {                  // ACCESS_EXIT_PUT
-                    mmuLogging = true;
-                    if (mmuIdxDone < 10) mmuAd[mmuIdxDone] = mmuDataBuffer;
-                    pomMmuBumpIdxDone();
-                }
-
-                fcSource = 0;
-                done030 = true;
-            }
-        }
-
-        if (!done030) {
-
-            // writeOp<C, M, S>(dst, value);
-            try {
-                writeM<C, M, S, AE_INC_PC>(ea, value);
-                if (cpuModel >= Model::M68EC040) {          // POM68K (host) Q3
-                    mmu040Moves = -1;
-                    mmu040LastWrite = false;
-                }
-            } catch (AddressError &exc) {
-
-                pomSetWB<C>(S == Long ? u16(value >> 16) : u16(value & 0xFFFF));  // POM68K (host): 68010-only
-
-                // EXPERIMENTAL: CLEAN THIS UP (RENAME stackFrame.ird to irc?!)
-                fcSource = 0;
-                queue.irc = old;
-                throw exc;
-
-            } catch (BusError &) {
-
-                // [B] M68000PRM-1992 MOVES: SFC/DFC name only the operand access.
-                // POM68K: a host /BERR on the write releases DFC as well
-                // (see the read direction below). Gate: moira_rules_test.
-                fcSource = 0;
-                throw;
-            }
-
-            // Switch back to the old FC pin values
+            writeBuffer = (u16)READ<Word, S == Long ? 1 : 0>(value);
             fcSource = 0;
+            queue.irc = arg;
+            throw;
 
-            if (S == Long && (cpuModel == Model::M68020 || cpuModel == Model::M68EC020)) budget.cp += 2;
+        } catch (const BusError &) {
+
+            fcSource = 0;
+            throw;
+        }
+
+        // Switch back to the old FC pin values
+        fcSource = 0;
+
+        if constexpr (S == Long) {
+
+            if (cpuModel == CPUModel::M68020 || cpuModel == CPUModel::M68EC020) budget.penalty += 2;
         }
 
     } else {                    // Ea -> Rg
 
-        auto arg = readI<C, Word>();
         int src = _____________xxx(opcode);
         int dst = xxxx____________(arg);
 
-        // u32 ea, data;
-        // readOp<C, M, S, STD_AE_FRAME | SKIP_READ>(src, &ea, &data);
         u32 ea;
         try {
 
@@ -4956,65 +3924,22 @@ Moira::execMoves(u16 opcode)
 
         } catch (AddressError &exc) {
 
-            exc.stackFrame.ird = old;
-            throw exc;
-        }
-
-        // [D] WinUAE gencpu.c i_MOVES @ Hatari e77819f7: the generator
-        // emits the destination genamode of BOTH directions, so the
-        // memory-to-register (An)± fixup is its second slot, mmufixup[1]:
-        // a $B frame carries it in the wb3 status byte (offset $34), not in
-        // wb2 (offset $36). These are internal words the manual leaves
-        // undefined; the restore walks both slots either way.
-        // [F] What a real 68030 stores there. Settled by: a format-$B frame
-        // stacked by a real 68030 for a faulting MOVES (An)+,Dn.
-        // Gate: moira_rules_test (MOVES fixup slot), fresh sweep seed 9117.
-        if constexpr (C == Core::C68020) {
-            if (cpuModel == Model::M68030 && mmuFixupReg[0] && !mmuFixupReg[1]) {
-                mmuFixupReg[1] = mmuFixupReg[0];
-                mmuFixupVal[1] = mmuFixupVal[0];
-                mmuFixupReg[0] = 0;
-            }
+            exc.stackFrame.ird = arg;
+            throw;
         }
 
         // Make the SFC register visible on the FC pins
         fcSource = 1;
 
-        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // POM68K Q3: 68040 MOVES — SFC drives the translation and the
-        // SSW fc mangling on a fault (WinUAE ismoves / sfc_get_*)
-        if constexpr (C == Core::C68020) {
-            if (cpuModel >= Model::M68EC040) [[unlikely]]
-                mmu040Moves = int(reg.sfc);
-        }
+        SYNC(delay);
 
-        if constexpr (M == Mode::AI) SYNC(6);
-        if constexpr (M == Mode::PI) SYNC(8);
-        if constexpr (M == Mode::PD) SYNC(6);
-        if constexpr (M == Mode::DI) SYNC(4);
-        if constexpr (M == Mode::IX) SYNC(6);
-        if constexpr (M == Mode::AW) SYNC(4);
-        if constexpr (M == Mode::AL) SYNC(4);
-
-        // [B] MC68020UM-1992 §2.2: SFC/DFC give the function code of the
-        // MOVES operand access; every other access gets the automatic one.
-        // POM68K: upstream cleared fcSource on the normal path alone, so
-        // after an address error (or a host /BERR) on this read every later
-        // access, the stacking included, kept reporting SFC. The frame is
-        // built at the throw and keeps the SFC; the MMU fault path clears it
-        // in processException (row 37). Gate: moira_rules_test
-        // (movesFcAfterFault010).
+        // A failing access resets the FC pins after the stack frame has been created
         u32 data;
-        try {
-            data = readM<C, M, S>(ea);
-        } catch (AddressError &) {
-            fcSource = 0;
-            throw;
-        } catch (BusError &) {
+        try { data = readM<C, M, S>(ea); } catch (...) {
+
             fcSource = 0;
             throw;
         }
-        if (cpuModel >= Model::M68EC040) mmu040Moves = -1;
 
         if (dst < 8) {
             writeR<S>(dst, data);
@@ -5025,7 +3950,7 @@ Moira::execMoves(u16 opcode)
         // Switch back to the old FC pin values
         fcSource = 0;
 
-        if (cpuModel == Model::M68020 || cpuModel == Model::M68EC020) budget.cp += 2;
+        if (cpuModel == CPUModel::M68020 || cpuModel == CPUModel::M68EC020) budget.penalty += 2;
     }
 
     prefetch<C, POLL>();
@@ -5039,8 +3964,6 @@ Moira::execMoves(u16 opcode)
     CYCLES_IX   ( 0, 30, 12,        0, 30, 12,        0, 36, 12)
     CYCLES_AW   ( 0, 26,  9,        0, 26,  9,        0, 32,  9)
     CYCLES_AL   ( 0, 30,  9,        0, 30,  9,        0, 36,  9)
-
-    traceFlow040<C>();
 
     FINALIZE
 }
@@ -5072,42 +3995,10 @@ Moira::execMoveCcrEa(u16 opcode)
 
     int dst = _____________xxx(opcode);
 
-    if constexpr (M == Mode::AI) SYNC(2);
-    if constexpr (M == Mode::PI) SYNC(4);
-    if constexpr (M == Mode::PD) SYNC(2);
+    constexpr int delay = M == Mode::PI ? 4 : (M == Mode::AI || M == Mode::PD) ? 2 : 0;
+    if constexpr (delay) SYNC(delay);
 
-    auto val = getCCR();
-
-    // Compute effective address
-    u32 ea = computeEA<C, M, S>(dst);
-
-    // Emulate -(An) register modification
-    updateAnPD<M, S>(dst);
-
-    prefetch<C>();
-
-    if (misaligned<C>(ea)) {
-
-        pomSetWB<C>(u16(val & 0xFFFF));  // POM68K (host): 68010-only
-        updateAnPI<M, S>(dst);
-        setFC<M>();
-        throw AddressError(makeFrame<AE_WRITE|AE_INC_PC>(ea));
-    }
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading (opcells.py --set ea
-    // --mmu identity, 2026-11-20). The store ends the instruction on the
-    // 68030 and the 68040 as in writeOp: (An)+ steps first, and a fault
-    // stacks the 68030's short frame $A, not $B.
-    if (pomStoreEndsInstruction<C>()) {
-        updateAnPI<M, S>(dst);
-        writeOp<C, M, S, POLL>(dst, ea, val);
-    } else {
-        // Write to effective address
-        writeM<C, M, S, POLL>(ea, val);
-
-        // Emulate (An)+ register modification
-        updateAnPI<M, S>(dst);
-    }
+    writeStatusEa<C, M, S, AE_WRITE|AE_INC_PC>(dst, getCCR());
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -5135,16 +4026,8 @@ Moira::execMoveToCcr(u16 opcode)
     SYNC(4);
     setCCR((u8)data);
 
-    if constexpr (C == Core::C68000) {
-        // [D] NeoST @ d8d33bb — its microcode transcription (fx68k).
-        // POM68K (ported from NeoST d8d33bb): microcode 44c0..44fc —
-        // 301 rstw1 / 159 mstw1 (back two bytes) -> 321 stiw4 -> 1e1 malw3
-        // -> 363 b, like MOVE to SR.
-        fullPrefetch<C, POLL>();
-    } else {
-        pomRefillRead<C>();
-        prefetch<C, POLL>();
-    }
+    dummyProgRead<C>(C == Core::C68000 ? reg.pc : reg.pc + 2);
+    prefetch<C, POLL>();
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -5169,11 +4052,13 @@ Moira::execMoveSrRg(u16 opcode)
     AVAILABILITY(Core::C68000)
     if constexpr (C != Core::C68000) SUPERVISOR_MODE_ONLY
 
-        int dst = _____________xxx(opcode);
+    int dst = _____________xxx(opcode);
 
     u32 ea, data;
     readOp<C, M, S>(dst, &ea, &data);
-    prefetch<C, POLL>();
+    try { prefetchLate<C, POLL>(); } catch (BusError &e) {
+        rethrowD<C, S>(e, dst, getSR());
+    }
 
     if constexpr (C == Core::C68000) SYNC(2);
     writeD<S>(dst, getSR());
@@ -5191,54 +4076,22 @@ Moira::execMoveSrEa(u16 opcode)
     AVAILABILITY(Core::C68000)
     if constexpr (C != Core::C68000) SUPERVISOR_MODE_ONLY
 
-        int dst = _____________xxx(opcode);
+    int dst = _____________xxx(opcode);
 
     if constexpr (C == Core::C68000) {
 
         u32 ea, data;
         readOp<C, M, S, STD_AE_FRAME>(dst, &ea, &data);
-        prefetch<C>();
+        fetchIrc<C>();
 
-        writeOp<C, M, S, POLL>(dst, ea, getSR());
+        writeOp<C, M, S, POLL | COMMIT_IRD>(dst, ea, getSR());
 
     } else {
 
-        if constexpr (M == Mode::AI) SYNC(2);
-        if constexpr (M == Mode::PI) SYNC(4);
-        if constexpr (M == Mode::PD) SYNC(2);
+        constexpr int delay = M == Mode::PI ? 4 : (M == Mode::AI || M == Mode::PD) ? 2 : 0;
+        if constexpr (delay) SYNC(delay);
 
-        auto val = getSR();
-        u32 ea = computeEA<C, M, S>(dst);
-
-        // Emulate -(An) register modification
-        updateAnPD<M, S>(dst);
-
-        prefetch<C>();
-
-        if (misaligned<C>(ea)) {
-
-            pomSetWB<C>(u16(val & 0xFFFF));  // POM68K (host): 68010-only
-            updateAnPI<M, S>(dst);
-            setFC<M>();
-            throw AddressError(makeFrame<AE_WRITE|AE_INC_PC>(ea));
-        }
-
-        // The store ends the instruction: see execMoveCcrEa.
-        if (pomStoreEndsInstruction<C>()) {
-            updateAnPI<M, S>(dst);
-            writeOp<C, M, S, POLL>(dst, ea, val);
-        } else {
-            // Write to effective address
-            writeM<C, M, S, POLL>(ea, val);
-
-            // Emulate (An)+ register modification
-            updateAnPI<M, S>(dst);
-        }
-
-        /*
-        writeOp<C, M, S, POLL>(dst, getSR());
-        prefetch<C>();
-        */
+        writeStatusEa<C, M, S, AE_WRITE>(dst, getSR());
     }
 
     //           00  10  20        00  10  20        00  10  20
@@ -5262,6 +4115,9 @@ Moira::execMoveToSr(u16 opcode)
 
     SUPERVISOR_MODE_ONLY
 
+    // Trace on change of flow: T0 is sampled before the status register changes
+    changeOfFlow<C>();
+
     int src = _____________xxx(opcode);
 
     u32 ea, data;
@@ -5270,19 +4126,8 @@ Moira::execMoveToSr(u16 opcode)
     SYNC(4);
     setSR((u16)data);
 
-    if constexpr (C == Core::C68000) {
-        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-        // POM68K (ported from NeoST ce1cc52): microcode 301 rstw1 -> 321 stiw4
-        // -> 1e1 malw3 -> 363 b reloads BOTH prefetch words after the SR (so
-        // FC) change: the word at reg.pc is re-read, then reg.pc + 2. The old
-        // dummy read of reg.pc + 2 kept the stale opcode in IRD. The
-        // SingleStepTests transaction lists show exactly this pair, in the new
-        // FC (tests/data/sst68000/MOVEtoSR.json, every non-exception vector).
-        fullPrefetch<C, POLL>();
-    } else {
-        pomRefillRead<C>();
-        prefetch<C, POLL>();
-    }
+    dummyProgRead<C>(C == Core::C68000 ? reg.pc : reg.pc + 2);
+    prefetch<C, POLL>();
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -5311,7 +4156,9 @@ Moira::execMoveUspAn(u16 opcode)
 
     if constexpr (C >= Core::C68010) SYNC(2);
 
-    prefetch<C, POLL>();
+    try { prefetch<C, POLL>(); } catch (BusError &e) {
+        rethrowA<C>(e, an, getUSP());
+    }
     writeA(an, getUSP());
 
     //           00  10  20        00  10  20        00  10  20
@@ -5331,14 +4178,12 @@ Moira::execMoveAnUsp(u16 opcode)
 
     if constexpr (C >= Core::C68010) SYNC(2);
 
-    prefetch<C, POLL>();
     setUSP(readA(an));
+    prefetch<C, POLL>();
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
     CYCLES_IP   ( 0,  0,  0,        0,  0,  0,        4,  6,  2)
-
-    traceFlow040<C>();
 
     FINALIZE
 }
@@ -5348,11 +4193,7 @@ Moira::execMuls(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
-    if constexpr (MOIRA_MIMIC_MUSASHI) {
-        execMulsMusashi<C, I, M, S>(opcode);
-    } else {
-        execMulsMoira<C, I, M, S>(opcode);
-    }
+    execMulWord<C, I, M, S>(opcode);
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -5368,54 +4209,7 @@ Moira::execMuls(u16 opcode)
     CYCLES_IXPC ( 0,  0,  0,       64,  42,  34,      0,  0,  0)
     CYCLES_IM   ( 0,  0,  0,       58,  36,  29,      0,  0,  0)
 
-    FINALIZE;
-}
-
-template <Core C, Instr I, Mode M, Size S> void
-Moira::execMulsMoira(u16 opcode)
-{
-    u32 ea, data, result;
-
-    int src = _____________xxx(opcode);
-    int dst = ____xxx_________(opcode);
-
-    readOp<C, M, Word, STD_AE_FRAME>(src, &ea, &data);
-
-    if constexpr (C == Core::C68000) {
-
-        prefetch<C, POLL>();
-        result = muls<C>(data, readD<Word>(dst));
-        [[maybe_unused]] auto cycles = cyclesMul<C, I>(u16(data));
-        SYNC(cycles);
-
-    } else {
-
-        result = muls<C>(data, readD<Word>(dst));
-        [[maybe_unused]] auto cycles = cyclesMul<C, I>(u16(data));
-        SYNC(cycles);
-        prefetch<C, POLL>();
-    }
-
-    writeD(dst, result);
-}
-
-template <Core C, Instr I, Mode M, Size S> void
-Moira::execMulsMusashi(u16 opcode)
-{
-    u32 ea, data, result;
-
-    int src = _____________xxx(opcode);
-    int dst = ____xxx_________(opcode);
-
-    readOp<C, M, Word>(src, &ea, &data);
-
-    prefetch<C, POLL>();
-    result = muls<C>(data, readD<Word>(dst));
-
-    if constexpr (I == Instr::MULU) { SYNC_68000(50); SYNC_68010(26); }
-    if constexpr (I == Instr::MULS) { SYNC_68000(50); SYNC_68010(28); }
-
-    writeD(dst, result);
+    FINALIZE
 }
 
 template <Core C, Instr I, Mode M, Size S> void
@@ -5423,11 +4217,7 @@ Moira::execMulu(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
-    if constexpr (MOIRA_MIMIC_MUSASHI) {
-        execMuluMusashi<C, I, M, S>(opcode);
-    } else {
-        execMuluMoira<C, I, M, S>(opcode);
-    }
+    execMulWord<C, I, M, S>(opcode);
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -5443,11 +4233,11 @@ Moira::execMulu(u16 opcode)
     CYCLES_IXPC ( 0,  0,  0,       64,  40,  34,      0,  0,  0)
     CYCLES_IM   ( 0,  0,  0,       58,  34,  29,      0,  0,  0)
 
-    FINALIZE;
+    FINALIZE
 }
 
 template <Core C, Instr I, Mode M, Size S> void
-Moira::execMuluMoira(u16 opcode)
+Moira::execMulWord(u16 opcode)
 {
     u32 ea, data, result;
 
@@ -5456,39 +4246,33 @@ Moira::execMuluMoira(u16 opcode)
 
     readOp<C, M, Word, STD_AE_FRAME>(src, &ea, &data);
 
+    u32 factor = readD<Word>(dst);
+
     if constexpr (C == Core::C68000) {
 
-        prefetch<C, POLL>();
-        result = mulu<C>(data, readD<Word>(dst));
-        [[maybe_unused]] auto cycles = cyclesMul<C, I>(u16(data));
-        SYNC(cycles);
+        // The low word is cleared before the prefetch (which precedes the multiplication)
+        result = I == Instr::MULS ? muls<C>(data, factor) : mulu<C>(data, factor);
+        writeD<Word>(dst, 0);
+        
+        try { prefetchLate<C, POLL>(); } catch (BusError &e) {
+
+            e.stackFrame.pc -=
+            (M == Mode::PD) ? 0 :
+            (M == Mode::DI || M == Mode::IX || M == Mode::DIPC || M == Mode::IXPC) ? 4 : 2;
+
+            // MAME shows N=0, Z=1, V=0, C=0 in the frame of a failed prefetch
+            setMoveFlags<S>(0);
+            rethrow<C>(e);
+        }
+
+        SYNC((cyclesMul<C, I>(u16(data))));
 
     } else {
 
-        result = mulu<C>(data, readD<Word>(dst));
-        [[maybe_unused]] auto cycles = cyclesMul<C, I>(u16(data));
-        SYNC(cycles);
+        result = I == Instr::MULS ? muls<C>(data, factor) : mulu<C>(data, factor);
+        SYNC((cyclesMul<C, I>(u16(data))));
         prefetch<C, POLL>();
     }
-
-    writeD(dst, result);
-}
-
-template <Core C, Instr I, Mode M, Size S> void
-Moira::execMuluMusashi(u16 opcode)
-{
-    u32 ea, data, result;
-
-    int src = _____________xxx(opcode);
-    int dst = ____xxx_________(opcode);
-
-    readOp<C, M, Word>(src, &ea, &data);
-
-    prefetch<C, POLL>();
-    result = mulu<C>(data, readD<Word>(dst));
-
-    if constexpr (I == Instr::MULU) { SYNC_68000(50); SYNC_68010(26); }
-    if constexpr (I == Instr::MULS) { SYNC_68000(50); SYNC_68010(28); }
 
     writeD(dst, result);
 }
@@ -5498,10 +4282,50 @@ Moira::execMull(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    if constexpr (MOIRA_MIMIC_MUSASHI) {
-        execMullMusashi<C, I, M, S>(opcode);
-    } else {
-        execMullMoira<C, I, M, S>(opcode);
+    u64 result;
+    u32 ea, data;
+    u16 ext = (u16)readI<C, Word>();
+
+    int src = _____________xxx(opcode);
+    int dh  = _____________xxx(ext);
+    int dl  = _xxx____________(ext);
+
+    readOp<C, M, S>(src, &ea, &data);
+
+    prefetch<C, POLL>();
+
+    switch (____xx__________(ext)) {
+
+        case 0b00: { // Unsigned 32 bit
+
+            result = mullu<C, Word>(data, readD(dl));
+
+            writeD(dl, u32(result));
+            break;
+        }
+        case 0b01: // Unsigned 64 bit
+
+            result = mullu<C, Long>(data, readD(dl));
+
+            // Note: 68040 switched the write-order
+            writeD(dl, u32(result));
+            writeD(dh, u32(result >> 32));
+            break;
+
+        case 0b10: // Signed 32 bit
+
+            result = mulls<C, Word>(data, readD(dl));
+            writeD(dl, u32(result));
+            break;
+
+        case 0b11: // Signed 64 bit
+
+            result = mulls<C, Long>(data, readD(dl));
+
+            // Note: 68040 switched the write-order
+            writeD(dl, u32(result));
+            writeD(dh, u32(result >> 32));
+            break;
     }
 
     //           00  10  20        00  10  20        00  10  20
@@ -5518,117 +4342,7 @@ Moira::execMull(u16 opcode)
     CYCLES_IXPC ( 0,  0,  0,        0,  0, 50,        0,  0, 50)
     CYCLES_IM   ( 0,  0,  0,        0,  0, 47,        0,  0, 47)
 
-    FINALIZE;
-}
-
-template <Core C, Instr I, Mode M, Size S> void
-Moira::execMullMoira(u16 opcode)
-{
-    u64 result;
-    u32 ea, data;
-    u16 ext = (u16)readI<C, Word>();
-
-    int src = _____________xxx(opcode);
-    int dh  = _____________xxx(ext);
-    int dl  = _xxx____________(ext);
-
-    readOp<C, M, S>(src, &ea, &data);
-
-    prefetch<C, POLL>();
-
-    // The 64-bit product: Dl then Dh on the 68020/68030, Dh then Dl on the
-    // 68040. The order shows only when both halves name one register, which
-    // then keeps the high half below the 68040 and the low half on it.
-    // [D] WinUAE newcpu_common.c m68k_mull @ Hatari e77819f7 — "68040 is
-    //     different". Until 2026-11-20 the fork wrote Dl first on every
-    //     model: 18 of 19 class-balanced 68040 vectors with Dh = Dl differed.
-    // [F] The manuals call the result undefined when the two are the same
-    //     register. Settled by: MULS.L Dn,Dm:Dm on a real 68040.
-    // Gate: moira_rules_test (mullSameRegister).
-    const auto write64 = [&](u64 r) {
-        if (cpuModel >= Model::M68EC040) {
-            writeD(dh, u32(r >> 32));
-            writeD(dl, u32(r));
-        } else {
-            writeD(dl, u32(r));
-            writeD(dh, u32(r >> 32));
-        }
-    };
-
-    switch (____xx__________(ext)) {
-
-        case 0b00: { // Unsigned 32 bit
-
-            result = mullu<C, Word>(data, readD(dl));
-
-            writeD(dl, u32(result));
-            break;
-        }
-        case 0b01: // Unsigned 64 bit
-
-            result = mullu<C, Long>(data, readD(dl));
-
-            write64(result);
-            break;
-
-        case 0b10: // Signed 32 bit
-
-            result = mulls<C, Word>(data, readD(dl));
-            writeD(dl, u32(result));
-            break;
-
-        case 0b11: // Signed 64 bit
-
-            result = mulls<C, Long>(data, readD(dl));
-
-            write64(result);
-            break;
-    }
-}
-
-template <Core C, Instr I, Mode M, Size S> void
-Moira::execMullMusashi(u16 opcode)
-{
-    u64 result;
-    u32 ea, data;
-    u16 ext = (u16)readI<C, Word>();
-
-    int src = _____________xxx(opcode);
-    int dh  = _____________xxx(ext);
-    int dl  = _xxx____________(ext);
-
-    readOp<C, M, S>(src, &ea, &data);
-
-    prefetch<C, POLL>();
-
-    switch (____xx__________(ext)) {
-
-        case 0b00:
-
-            result = mullu<C, Word>(data, readD(dl));
-            writeD(dl, u32(result));
-            break;
-
-        case 0b01:
-
-            result = mullu<C, Long>(data, readD(dl));
-            writeD(dh, u32(result >> 32));
-            writeD(dl, u32(result));
-            break;
-
-        case 0b10:
-
-            result = mulls<C, Word>(data, readD(dl));
-            writeD(dl, u32(result));
-            break;
-
-        case 0b11:
-
-            result = mulls<C, Long>(data, readD(dl));
-            writeD(dh, u32(result >> 32));
-            writeD(dl, u32(result));
-            break;
-    }
+    FINALIZE
 }
 
 template <Core C, Instr I, Mode M, Size S> void
@@ -5636,19 +4350,13 @@ Moira::execDivs(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
-    bool divByZero = false;
-
-    if constexpr (MOIRA_MIMIC_MUSASHI) {
-        execDivsMusashi<C, I, M, S>(opcode, &divByZero);
-    } else {
-        execDivsMoira<C, I, M, S>(opcode, &divByZero);
-    }
+    bool divByZero = execDivWord<C, I, M, S>(opcode);
 
     if (divByZero) {
 
-        CYCLES_68000(38);
-        CYCLES_68010(44);
-        CYCLES_68020(38);
+        CYCLES_68000(38)
+        CYCLES_68010(44)
+        CYCLES_68020(38)
 
     } else {
 
@@ -5671,163 +4379,17 @@ Moira::execDivs(u16 opcode)
 }
 
 template <Core C, Instr I, Mode M, Size S> void
-Moira::execDivsMoira(u16 opcode, bool *divByZero)
-{
-    int src = _____________xxx(opcode);
-    int dst = ____xxx_________(opcode);
-
-    u32 ea = 0, divisor, result;
-
-    try { readOp<C, M, Word>(src, &ea, &divisor); } catch (AddressError &exc) {
-
-        // Rectify the stack frame
-        if constexpr (C == Core::C68000) {
-
-            exc.stackFrame = makeFrame<STD_AE_FRAME>(ea);
-
-        } else {
-
-            pomSetRB<C>((u16)readM<C, M, S>(ea & ~1));  // POM68K (host): 68010-only store; the dummy read stays on every core
-            updateAnPI<M, S>(src);
-            if (isAbsMode(M) || M == Mode::AI || M == Mode::PI || M == Mode::PD) {
-                SYNC(2);
-                exc.stackFrame = makeFrame<AE_SET_RW|AE_SET_DF>(ea);
-            } else {
-                SYNC(2);
-                exc.stackFrame = makeFrame<AE_DEC_PC|AE_SET_RW|AE_SET_DF>(ea);
-            }
-        }
-        throw exc;
-    }
-
-    u32 dividend = readD(dst);
-
-    if (divisor == 0) {
-
-        if constexpr (C == Core::C68020) {
-
-            if (cpuModel >= Model::M68EC040) {
-
-                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-                // POM68K Q2: 68040 div-zero — C=0 only, N/Z/V untouched
-                // (WinUAE divbyzero_special, 68040 row)
-                reg.sr.c = 0;
-
-            } else {
-
-                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-                // POM68K O4 slice 4: WinUAE-arbitrated 020/030 div-zero CCR
-                // (divbyzero_special: signed clears CZNV then sets Z)
-                reg.sr.v = 0;
-                reg.sr.c = 0;
-                setDivZeroDIVS<C, S>(dividend);
-            }
-
-        } else {
-
-            reg.sr.n = 0;
-            reg.sr.z = 0;
-            reg.sr.v = 0;
-            reg.sr.c = 0;
-        }
-
-        SYNC(8);
-        execException<C>(M68kException::DIVIDE_BY_ZERO);
-        *divByZero = true;
-        return;
-    }
-
-    result = divsMoira<C>(dividend, divisor);
-
-    // [D] Hatari @ f0736b24, as NeoST read it (op_80c0_13).
-    // POM68K (ported from NeoST 262f63a = upstream Moira f90fc50, "Fixed
-    // DIVU/DIVS prefetch timing"): on the 68000 the internal cycles precede
-    // the prefetch (Hatari CE op_80c0_13: do_cycles_ce000_internal, then
-    // get_word_ce000_prefetch). Every non-exception DIVS vector of
-    // tests/data/sst68000 shows the idle cycles before the final read,
-    // overflow exits included. divsMoira() touches no bus, so it runs first:
-    // V decides the early overflow exit below, and cyclesDiv() stays
-    // unreached on overflow (row 38's argument holds).
-    if constexpr (C == Core::C68000) {
-
-        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-        // POM68K: every overflow exits early at 16/18 cycles total
-        // (SingleStepTests/680x0)
-        const int cycles = reg.sr.v ? ((i32(dividend) < 0) ? 14 : 12)
-                                    : cyclesDiv<C, I>(dividend, (u16)divisor) - 4;
-        SYNC(cycles);
-        writeD(dst, result);
-        prefetch<C, POLL>();
-
-    } else {
-
-        writeD(dst, result);
-        prefetch<C, POLL>();
-
-        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-        // POM68K: every overflow exits early at 16/18 cycles total
-        // (SingleStepTests/680x0)
-        if (reg.sr.v) {
-            SYNC((i32(dividend) < 0) ? 14 : 12);
-            return;
-        }
-
-        [[maybe_unused]] auto cycles = cyclesDiv<C, I>(dividend, (u16)divisor) - 4;
-        SYNC(cycles);
-    }
-}
-
-template <Core C, Instr I, Mode M, Size S> void
-Moira::execDivsMusashi(u16 opcode, bool *divByZero)
-{
-    int src = _____________xxx(opcode);
-    int dst = ____xxx_________(opcode);
-
-    [[maybe_unused]] i64 c = clock;
-
-    u32 ea, divisor, result;
-    readOp<C, M, Word>(src, &ea, &divisor);
-
-    if (divisor == 0) {
-
-        if constexpr (C == Core::C68000) {
-            SYNC(8 - (int)(clock - c));
-        } else {
-            SYNC(10 - (int)(clock - c));
-        }
-        execException<C>(M68kException::DIVIDE_BY_ZERO);
-        *divByZero = true;
-        return;
-    }
-
-    u32 dividend = readD(dst);
-    result = divsMusashi<C>(dividend, divisor);
-
-    SYNC_68000(154);
-    SYNC_68010(118);
-
-    writeD(dst, result);
-    prefetch<C, POLL>();
-}
-
-template <Core C, Instr I, Mode M, Size S> void
 Moira::execDivu(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
-    bool divByZero = false;
-
-    if constexpr (MOIRA_MIMIC_MUSASHI) {
-        execDivuMusashi<C, I, M, S>(opcode, &divByZero);
-    } else {
-        execDivuMoira<C, I, M, S>(opcode, &divByZero);
-    }
+    bool divByZero = execDivWord<C, I, M, S>(opcode);
 
     if (divByZero) {
 
-        CYCLES_68000(38);
-        CYCLES_68010(44);
-        CYCLES_68020(38);
+        CYCLES_68000(38)
+        CYCLES_68010(44)
+        CYCLES_68020(38)
 
     } else {
 
@@ -5849,34 +4411,28 @@ Moira::execDivu(u16 opcode)
     FINALIZE
 }
 
-template <Core C, Instr I, Mode M, Size S> void
-Moira::execDivuMoira(u16 opcode, bool *divByZero)
+template <Core C, Instr I, Mode M, Size S> bool
+Moira::execDivWord(u16 opcode)
 {
+    constexpr bool sign = I == Instr::DIVS;
+
     int src = _____________xxx(opcode);
     int dst = ____xxx_________(opcode);
 
-    u32 ea = 0, divisor, result;
+    u32 ea = 0, divisor;
 
-    try { readOp<C, M, Word>(src, &ea, &divisor); } catch (AddressError &exc) {
+    try { readOp<C, M, Word, STD_AE_FRAME>(src, &ea, &divisor); }
+    catch (const AddressError &) {
 
-        // Rectify the stack frame
-        if constexpr (C == Core::C68000) {
+        // Rectify the stack frame (68010 and above). The register has been advanced by readOp already.
+        // The DIB still holds the last prefetch.
+        if constexpr (C != Core::C68000) {
 
-            exc.stackFrame = makeFrame<STD_AE_FRAME>(ea);
-            throw exc;
-
-        } else {
-
-            pomSetRB<C>((u16)readM<C, M, S>(ea & ~1));  // POM68K (host): 68010-only store; the dummy read stays on every core
-            updateAnPI<M, S>(src);
+            constexpr bool noDec = isAbsMode(M) || M == Mode::AI || M == Mode::PI || M == Mode::PD;
             SYNC(2);
-            if (isAbsMode(M) || M == Mode::AI || M == Mode::PI || M == Mode::PD) {
-                exc.stackFrame = makeFrame<AE_SET_RW|AE_SET_DF>(ea);
-            } else {
-                exc.stackFrame = makeFrame<AE_DEC_PC|AE_SET_RW|AE_SET_DF>(ea);
-            }
-            throw exc;
+            throw AddressError(makeFrame<noDec ? 0 : AE_DEC_PC>(ea));
         }
+        throw;
     }
 
     u32 dividend = readD(dst);
@@ -5884,91 +4440,46 @@ Moira::execDivuMoira(u16 opcode, bool *divByZero)
     // Check for division by zero
     if (divisor == 0) {
 
-        if constexpr (C == Core::C68020) {
+        if (cpuModel >= CPUModel::M68EC040) {
 
-            if (cpuModel >= Model::M68EC040) {
+            // The 68040 only clears the carry flag
+            reg.sr.c = 0;
 
-                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-                // POM68K Q2: 68040 div-zero — C=0 only, N/Z/V untouched
-                // (WinUAE divbyzero_special, 68040 row)
-                reg.sr.c = 0;
+        } else if constexpr (sign) {
 
-            } else {
-
-                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-                // POM68K O4 slice 4: WinUAE-arbitrated 020/030 div-zero CCR
-                // (divbyzero_special: unsigned takes N/Z from the dividend's
-                // HIGH word and sets V)
-                reg.sr.c = 0;
-                setDivZeroDIVU<C, S>(dividend);
-            }
+            setMoveFlags<S>(0);
+            setDivZeroDIVS<C, S>(dividend);
 
         } else {
 
-            reg.sr.n = 0;
-            reg.sr.z = 0;
+            reg.sr.n = NBIT<Long>(dividend);
+            reg.sr.z = (dividend & 0xFFFF0000) == 0;
             reg.sr.v = 0;
             reg.sr.c = 0;
+            setDivZeroDIVU<C, S>(dividend);
         }
 
         SYNC(8);
         execException<C>(M68kException::DIVIDE_BY_ZERO);
-        *divByZero = true;
-        return;
+        return true;
     }
 
-    [[maybe_unused]] auto cycles = cyclesDiv<C, I>(dividend, (u16)divisor) - 4;
-
-    // [D] Hatari @ f0736b24, as NeoST read it (op_80c0_13).
-    // POM68K (ported from NeoST 262f63a = upstream Moira f90fc50): on the
-    // 68000 the internal cycles precede the prefetch (Hatari CE op_80c0_13;
-    // every non-exception DIVU vector of tests/data/sst68000 agrees).
     if constexpr (C == Core::C68000) {
 
-        SYNC(cycles);
-        result = divuMoira<C>(dividend, divisor);
-        writeD(dst, result);
+        // The 68000 spends the division cycles before it writes the result
+        SYNC((cyclesDiv<C, I>(dividend, (u16)divisor) - 4));
+        writeD(dst, sign ? divs<C>(dividend, divisor) : divu<C>(dividend, divisor));
         prefetch<C, POLL>();
 
     } else {
 
-        result = divuMoira<C>(dividend, divisor);
-        writeD(dst, result);
+        // The 68010 spends the division cycles after the prefetch
+        writeD(dst, sign ? divs<C>(dividend, divisor) : divu<C>(dividend, divisor));
         prefetch<C, POLL>();
-        SYNC(cycles);
-    }
-}
-
-template <Core C, Instr I, Mode M, Size S> void
-Moira::execDivuMusashi(u16 opcode, bool *divByZero)
-{
-    int src = _____________xxx(opcode);
-    int dst = ____xxx_________(opcode);
-
-    [[maybe_unused]] i64 c = clock;
-    u32 ea, divisor, result;
-    readOp<C, M, Word>(src, &ea, &divisor);
-
-    // Check for division by zero
-    if (divisor == 0) {
-        if constexpr (C == Core::C68000) {
-            SYNC(8 - (int)(clock - c));
-        } else {
-            SYNC(10 - (int)(clock - c));
-        }
-        execException<C>(M68kException::DIVIDE_BY_ZERO);
-        *divByZero = true;
-        return;
+        SYNC((cyclesDiv<C, I>(dividend, (u16)divisor) - 4));
     }
 
-    u32 dividend = readD(dst);
-    result = divuMusashi<C>(dividend, divisor);
-
-    SYNC_68000(136);
-    SYNC_68010(104);
-
-    writeD(dst, result);
-    prefetch<C, POLL>();
+    return false;
 }
 
 template <Core C, Instr I, Mode M, Size S> void
@@ -5976,16 +4487,9 @@ Moira::execDivl(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    bool success;
-    bool divByZero = false;
+    bool divByZero = execDivLong<C, I, M, S>(opcode);
 
-    if constexpr (MOIRA_MIMIC_MUSASHI) {
-        success = execDivlMusashi<C, I, M, S>(opcode, &divByZero);
-    } else {
-        success = execDivlMoira<C, I, M, S>(opcode, &divByZero);
-    }
-
-    if (success) {
+    if (!divByZero) {
 
         //           00  10  20        00  10  20        00  10  20
         //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -6001,18 +4505,18 @@ Moira::execDivl(u16 opcode)
         CYCLES_IXPC ( 0,  0,  0,        0,  0,  0,        0,  0, 91)
         CYCLES_IM   ( 0,  0,  0,        0,  0,  0,        0,  0, 88)
 
-    } else if (divByZero) {
+    } else {
 
-        CYCLES_68000(38);
-        CYCLES_68010(44);
-        CYCLES_68020(38);
+        CYCLES_68000(38)
+        CYCLES_68010(44)
+        CYCLES_68020(38)
     }
 
     FINALIZE
 }
 
 template <Core C, Instr I, Mode M, Size S> bool
-Moira::execDivlMoira(u16 opcode, bool *divByZero)
+Moira::execDivLong(u16 opcode)
 {
     u64 dividend;
     u32 ea, divisor;
@@ -6022,13 +4526,6 @@ Moira::execDivlMoira(u16 opcode, bool *divByZero)
     int dh  = _____________xxx(ext);
     int dl  = _xxx____________(ext);
 
-    // POM68K: upstream wrapped this read in `catch(...) { return false; }`.
-    // Dead code there (a 68020+ data read never throws in stock Moira), it
-    // swallowed every 68030/68040 access fault here — a page fault or an
-    // external /BERR on the operand of DIVU.L/DIVS.L took NO exception and
-    // abandoned the instruction half-way. [B] a faulting operand read takes
-    // the bus error; [D] WinUAE @ Hatari e77819f7, fuzz vector
-    // "040 random/identity/8k seed=405 #120". Gate: moira_rules_test.
     readOp<C, M, S>(src, &ea, &divisor);
 
     if (ext & 0x400) {
@@ -6039,11 +4536,8 @@ Moira::execDivlMoira(u16 opcode, bool *divByZero)
 
     if (divisor == 0) {
 
-        if (cpuModel >= Model::M68EC040) {
+        if (cpuModel >= CPUModel::M68EC040) {
 
-            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-            // POM68K Q2: 68040 DIVL div-zero — C=0 only, N/Z/V untouched
-            // (WinUAE divsl_divbyzero / divul_divbyzero, 68040 rows)
             reg.sr.c = 0;
 
         } else if (ext & 0x800) {
@@ -6059,168 +4553,38 @@ Moira::execDivlMoira(u16 opcode, bool *divByZero)
         }
 
         execException<C>(M68kException::DIVIDE_BY_ZERO);
-        *divByZero = true;
-        return false;
+        return true;
     }
 
     prefetch<C, POLL>();
 
-    switch (____xx__________(ext)) {
-
-        case 0b00:
-        {
-            auto result = divluMoira<Word>(dividend, divisor);
-
-            writeD(dh, result.second);
-            writeD(dl, result.first);
-            break;
-        }
-        case 0b01:
-        {
-            auto result = divluMoira<Long>(dividend, divisor);
-
-            if(!reg.sr.v) {
-
-                writeD(dh, result.second);
-                writeD(dl, result.first);
-
-            } else if (cpuModel >= Model::M68EC040) {
-
-                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-                // POM68K Q2: 68040 — V=1, C=0, N/Z untouched
-                // (WinUAE divul_overflow, 68040 row)
-                reg.sr.c = 0;
-
-            } else {
-
-                setUndefinedDIVUL<C, S>(dividend, divisor);
-            }
-            break;
-        }
-        case 0b10:
-        {
-            auto result = divlsMoira<Word>(dividend, divisor);
-
-            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-            // POM68K O4 slice 4: $80000000 / -1 overflows — registers stay
-            // unchanged, undefined N/Z per WinUAE divsl_overflow
-            if(!reg.sr.v) {
-
-                writeD(dh, result.second);
-                writeD(dl, result.first);
-
-            } else if (cpuModel >= Model::M68EC040) {
-
-                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-                // POM68K Q2: 68040 — V=1, C=0, N/Z untouched
-                // (WinUAE divsl_overflow, 68040 row)
-                reg.sr.c = 0;
-
-            } else {
-
-                setUndefinedDIVSL<C, Word>(i64(i32(dividend)), i32(divisor));
-            }
-            break;
-        }
-        case 0b11:
-        {
-            auto result = divlsMoira<Long>(dividend, divisor);
-
-            if(!reg.sr.v) {
-
-                writeD(dh, result.second);
-                writeD(dl, result.first);
-
-            } else if (cpuModel >= Model::M68EC040) {
-
-                // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-                // POM68K Q2: 68040 — V=1, C=0, N/Z untouched
-                // (WinUAE divsl_overflow, 68040 row)
-                reg.sr.c = 0;
-
-            } else {
-
-                setUndefinedDIVSL<C, S>(dividend, divisor);
-            }
-            break;
-        }
-    }
-
-    return true;
-}
-
-template <Core C, Instr I, Mode M, Size S> bool
-Moira::execDivlMusashi(u16 opcode, bool *divByZero)
-{
-    u64 dividend;
-    u32 ea, divisor;
-    u16 ext = (u16)readI<C, Word>();
-
-    int src = _____________xxx(opcode);
-    int dh  = _____________xxx(ext);
-    int dl  = _xxx____________(ext);
-
-    try {
-        readOp<C, M, S>(src, &ea, &divisor);
-    } catch(...) {
-        // TODO: Change return type from bool to void
-        return false;
-    }
-
-    if (divisor == 0) {
-
-        execException<C>(M68kException::DIVIDE_BY_ZERO);
-        *divByZero = true;
-        return false;
-    }
-
-    prefetch<C, POLL>();
+    std::pair<u32, u32> result;
 
     switch (____xx__________(ext)) {
 
-        case 0b00:
-        {
-            dividend = readD(dl);
+        case 0b00: result = divlu<Word>(dividend, divisor); break;
+        case 0b01: result = divlu<Long>(dividend, divisor); break;
+        case 0b10: result = divls<Word>(dividend, divisor); break;
+        case 0b11: result = divls<Long>(dividend, divisor); break;
+    }
 
-            auto result = divluMusashi<Word>(dividend, divisor);
-            writeD(dh, result.second);
-            writeD(dl, result.first);
-            break;
-        }
-        case 0b01:
-        {
-            dividend = (u64)readD(dh) << 32 | readD(dl);
-            auto result = divluMusashi<Long>(dividend, divisor);
-            if(!reg.sr.v) {
+    if (!reg.sr.v) {
 
-                writeD(dh, result.second);
-                writeD(dl, result.first);
-            }
-            break;
-        }
-        case 0b10:
-        {
-            dividend = readD(dl);
-            auto result = divlsMusashi<Word>(dividend, divisor);
-            writeD(dh, result.second);
-            writeD(dl, result.first);
-            break;
-        }
-        case 0b11:
-        {
-            dividend = (u64)readD(dh) << 32 | readD(dl);
-            auto result = divlsMusashi<Long>(dividend, divisor);
+        writeD(dh, result.second);
+        writeD(dl, result.first);
 
-            if(!reg.sr.v) {
+    } else {
 
-                writeD(dh, result.second);
-                writeD(dl, result.first);
-            }
-            break;
+        // The 32-bit unsigned division (0b00) cannot overflow
+        switch (____xx__________(ext)) {
+
+            case 0b01: setUndefinedDIVUL<C, S>(dividend, divisor); break;
+            case 0b10: setUndefinedDIVSL<C, Word>(i64(i32(dividend)), divisor); break;
+            case 0b11: setUndefinedDIVSL<C, S>(dividend, divisor); break;
         }
     }
 
-    return true;
+    return false;
 }
 
 template <Core C, Instr I, Mode M, Size S> void
@@ -6228,11 +4592,15 @@ Moira::execNbcdRg(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
-    int reg = _____________xxx(opcode);
+    int dst = _____________xxx(opcode);
 
-    looping<I>() ? noPrefetch<C>() : prefetch<C, POLL>();
+    u32 data = readD<Byte>(dst);
+    u32 result = bcd<C, I, Byte>(data, 0);
+
+    looping<I>() ? noPrefetch<C>() : prefetchLate<C, POLL>();
+
     SYNC(2);
-    writeD<Byte>(reg, bcd<C, Instr::SBCD, Byte>(readD<Byte>(reg), 0));
+    writeD<Byte>(dst, result);
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -6246,27 +4614,26 @@ Moira::execNbcdEa(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
-    int reg = _____________xxx(opcode);
+    int dst = _____________xxx(opcode);
 
     u32 ea, data;
-    readOp<C, M, Byte>(reg, &ea, &data);
+    readOp<C, M, Byte, STD_AE_FRAME>(dst, &ea, &data);
+
+    u32 result = bcd<C, I, Byte>(data, 0);
 
     if (looping<I>()) {
+        
         if constexpr (M == Mode::AI) noPrefetch<C>(4);
         else if constexpr (M == Mode::PI) noPrefetch<C>(4);
         else if constexpr (M == Mode::PD) noPrefetch<C>(4);
         else noPrefetch<C>(2);
+    
     } else {
-        prefetch<C, POLL>();
+        
+        fetchIrc<C, POLL>();
     }
-    pomLastWrite030<C>();   // POM68K (host): the store below ends the instruction
-    const u32 raw = pomGencpuBcdValue(Instr::NBCD, data, 0, this->reg.sr.x);
-    const u32 result = bcd<C, Instr::SBCD, Byte>(data, 0);
-    if constexpr (C == Core::C68020) {
-        writeM<C, M, Byte, MMU_RAWBUF>(ea, (raw & ~0xFFu) | (result & 0xFF));
-    } else {
-        writeM<C, M, Byte>(ea, result);
-    }
+
+    writeM<C, M, Byte, COMMIT_IRD>(ea, result);
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -6286,13 +4653,15 @@ Moira::execNegRg(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
-    int dst = ( _____________xxx(opcode) );
+    int dst = _____________xxx(opcode);
     u32 ea, data;
 
     readOp<C, M, S>(dst, &ea, &data);
 
     data = logic<C, I, S>(data);
-    prefetch<C, POLL>();
+    try { prefetchLate<C, POLL, (S == Long)>(); } catch (BusError &e) {
+        rethrowD<C, S>(e, dst, data);
+    }
 
     if constexpr (S == Long) SYNC(2);
     writeD<S>(dst, data);
@@ -6309,37 +4678,23 @@ Moira::execNegEa(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
-    int dst = ( _____________xxx(opcode) );
+    int dst = _____________xxx(opcode);
     u32 ea, data;
 
     readOp<C, M, S, STD_AE_FRAME>(dst, &ea, &data);
 
-    [[maybe_unused]] const u32 operand = data;
-    [[maybe_unused]] const bool x = reg.sr.x;
-    data = logic<C, I, S>(data);
-    looping<I>() ? noPrefetch<C>(2) : prefetch<C, POLL>();
+    [[maybe_unused]] u8 ccr = getCCR();
+    u32 result = logic<C, I, S>(data);
 
-    if constexpr (MOIRA_MIMIC_MUSASHI) {
-        writeOp<C, M, S>(dst, ea, data);
-    } else if constexpr (I == Instr::NEG || I == Instr::NEG_LOOP) {
-        // [D] WinUAE gencpu flag_sub @ Hatari e77819f7: NEG stores
-        // `(uN)0 - (uN)src` as a uae_u32, so a faulting 68030 store stacks
-        // the unmasked difference as its pending write, as ADD and SUB do
-        // (execAddRgEa; addsub returns it). "op=NEG_postinc_B #803",
-        // opcells.py --set classes --mmu identity --user --stack data.
-        writeOp<C, M, S, REVERSE | MMU_RAWBUF>(dst, ea, data);
-    } else if constexpr (I == Instr::NEGX || I == Instr::NEGX_LOOP) {
-        // [D] WinUAE gencpu i_NEGX @ Hatari e77819f7: `0 - src - X` with src
-        // the sign-extended operand.
-        if constexpr (C == Core::C68020) {
-            const u32 raw = 0u - u32(SEXT<S>(operand)) - (x ? 1u : 0u);
-            writeOp<C, M, S, REVERSE | MMU_RAWBUF>(dst, ea, raw);
-        } else {
-            writeOp<C, M, S, REVERSE>(dst, ea, data);
-        }
-    } else {
-        writeOp<C, M, S, REVERSE>(dst, ea, data);
+    // MAME shows the flags of the low word operation if the prefetch of a long operation fails
+    try { looping<I>() ? noPrefetch<C>(2) : fetchIrc<C, POLL>(); } catch (BusError &e) {
+
+        // NEGX reads the X flag, which the long operation has modified already
+        if constexpr (S == Long) { setCCR(ccr); logic<C, I, Word>(data); }
+        rethrow<C>(e);
     }
+
+    writeOp<C, M, S, REVERSE | COMMIT_IRD>(dst, ea, result);
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -6364,8 +4719,6 @@ Moira::execNop(u16 opcode)
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
     CYCLES_IP   ( 0,  0,  0,        0,  0,  0,        4,  4,  2)
-
-    traceFlow040<C>();
 
     FINALIZE
 }
@@ -6400,55 +4753,18 @@ Moira::execPackPd(u16 opcode)
     int ax  = _____________xxx(opcode);
     int ay  = ____xxx_________(opcode);
 
-    if (MOIRA_MIMIC_MUSASHI) {
+    reg.a[ax]--;
+    auto data1 = read<C, AddrSpace::DATA, Byte>(readA(ax));
 
-        u32 ea1, data1;
-        readOp<C, M, Byte>(ax, &ea1, &data1);
+    u16 adj = (u16)readI<C, Word>();
 
-        u16 adj = (u16)readI<C, Word>();
+    reg.a[ax]--;
+    auto data2 = read<C, AddrSpace::DATA, Byte>(readA(ax));
 
-        u32 ea2, data2;
-        readOp<C, M, Byte>(ax, &ea2, &data2);
+    u32 src = (data2 << 8 | data1) + adj;
+    u32 dst = (src >> 4 & 0xF0) | (src & 0x0F);
 
-        u32 src = (data1 << 8 | data2) + adj;
-
-        writeOp<C, M, Byte>(ay, (src >> 4 & 0xF0) | (src & 0x0F));
-
-    } else {
-
-        // [D] WinUAE gencpu.c i_PACK @ Hatari e77819f7 (cpuemu_31/32
-        // op_8148): the source register gets its restart fixup before it
-        // is decremented, and the two packed bytes are ONE word read at
-        // Ax-2 — the 020/030/040 bus takes a word at any byte address, so
-        // a faulting read stacks SIZE=word with Ax back at its entry value.
-        // The open-coded decrement bypasses computeEA, which arms the fixup
-        // everywhere else. PACK is 020+ only (AVAILABILITY above).
-        // [F] Not checked against a manual or a real CPU. Settled by: a bus
-        // capture of PACK -(A0),-(A1) on a 68030.
-        // Gate: moira_rules_test packUnpkFaultRestoresAn; vector
-        // "040 random/identity seed=5205 #483" (fault SSW and A3).
-        if constexpr (C == Core::C68020) {
-            if (mmuPlain020() || cpuModel == Model::M68030 ||
-                cpuModel >= Model::M68EC040) [[unlikely]]
-                mmuArmFixup<Long>(ax, true);
-        }
-
-        reg.a[ax] -= 2;
-        u32 src = read<C, AddrSpace::DATA, Word>(readA(ax));
-
-        u16 adj = (u16)readI<C, Word>();
-
-        src += adj;
-        u32 dst = (src >> 4 & 0xF0) | (src & 0x0F);
-
-        // [D] WinUAE gencpu.c i_PACK @ Hatari e77819f7: the byte is an int
-        // expression over a uae_u16, so a faulting 68030 store stacks it
-        // zero-extended in the data output buffer (MMU_RAWBUF), as rows 83,
-        // 84 and 96 for FScc, ADD/SUB and the BCD stores. Fresh-seed vector
-        // "random/identity seed=76008 #1852" ($0000009A, not $FFFFFF9A).
-        // Gate: moira_rules_test packUnpkFaultRestoresAn (write buffer).
-        writeOp<C, M, Byte, MMU_RAWBUF>(ay, dst);
-    }
+    writeOp<C, M, Byte>(ay, dst);
 
     prefetch<C>();
 
@@ -6470,74 +4786,75 @@ Moira::execPea(u16 opcode)
 
     if (isIdxMode(M)) SYNC(2);
 
-    // Check for address error
-    if (misaligned<C>(reg.sp)) {
+    if constexpr (C == Core::C68000) {
 
-        U32_DEC(reg.sp, S);
+        if (misaligned<C>(reg.sp)) {
 
-        if constexpr (C == Core::C68000) {
-
-            if (isAbsMode(M)) {
-                throw AddressError(makeFrame<AE_WRITE|AE_DATA>(reg.sp));
-            } else {
-                throw AddressError(makeFrame<AE_WRITE|AE_DATA|AE_INC_PC>(reg.sp));
-            }
-
-        } else {
-
-            pomSetWB<C>(u16(ea >> 16));  // POM68K (host): 68010-only
-            if (isAbsMode(M)) {
-                pomSetRB<C>(queue.irc);  // POM68K (host): 68010-only
-                throw AddressError(makeFrame<AE_WRITE|AE_DATA>(reg.sp, U32_SUB(reg.pc, 4)));
-            } else if (isDspMode(M)) {
-                prefetch<C>();
-                throw AddressError(makeFrame<AE_WRITE|AE_DATA|AE_DEC_PC>(reg.sp));
-            } else {
-                prefetch<C>();
-                throw AddressError(makeFrame<AE_WRITE|AE_DATA>(reg.sp));
-            }
+            // MAME completes the prefetch before it detects the misaligned push
+            U32_DEC(reg.sp, S);
+            if constexpr (!isAbsMode(M)) fetchIrc<C>();
+            throw earlyAddressError<C>(makeFrame<AE_WRITE|AE_DATA>(reg.sp));
         }
-    }
 
-    if (isAbsMode(M)) {
+        if constexpr (isAbsMode(M)) {
 
-        if constexpr (C == Core::C68000) {
+            try { push<C, Long>(ea); } catch (BusError &e) {
 
-            push <C, Long> (ea);
+                // UAE stacks the PC two bytes further if the push fails
+                if constexpr (compat == Compatibility::UAE) e.stackFrame.pc += 2;
+                throw;
+            }
             prefetch<C, POLL>();
 
-        } else {
+        } else if constexpr (isIdxMode(M)) {
 
             POLL_IPL;
-            // [D] WinUAE gencpu i_PEA @ Hatari e77819f7 ("op=PEA.ixf
-            // #3408", opcells.py --set ea --mmu identity --user --stack
-            // data): the push is PEA's last write on the 68030 — short
-            // frame $A, next PC, A7 stepped.
-            pomLastWrite030<C>();
-            push <C, Long> (ea);
-            prefetch<C>();
-        }
-
-    } else if (isIdxMode(M)) {
-
-        if constexpr (C == Core::C68000) {
-
-            POLL_IPL;
-            prefetch<C>();
-            push <C, Long> (ea);
+            fetchIrc<C>();
+            push<C, Long, COMMIT_IRD>(ea);
 
         } else {
 
-            prefetch<C, POLL>();
-            pomLastWrite030<C>();   // POM68K (host): as the absolute modes above
-            push <C, Long> (ea);
+            fetchIrc<C, POLL>();
+            push<C, Long, COMMIT_IRD>(ea);
         }
 
-    } else {
+    } else if constexpr (C == Core::C68010) {
 
-        prefetch<C, POLL>();
-        pomLastWrite030<C>();       // POM68K (host): as the absolute modes above
-        push <C, Long>(ea);
+        if (misaligned<C>(reg.sp)) {
+
+            // The 68010 completes the prefetch in all modes (even the absolute ones) and
+            // stacks the address of the instruction plus two (recorded on real hardware)
+            U32_DEC(reg.sp, S);
+            writeBuffer = (u16)READ<Word, 1>(ea);
+            prefetch<C>();
+            throw AddressError(makeFrame<AE_WRITE|AE_DATA>(reg.sp, reg.pc0 + 2));
+        }
+
+        if constexpr (isAbsMode(M)) {
+
+            POLL_IPL;
+            push<C, Long>(ea);
+            prefetch<C>();
+
+        } else {
+
+            fetchIrc<C, POLL>();
+            push<C, Long>(ea);
+        }
+
+    } else if constexpr (C == Core::C68020) {
+
+        if constexpr (isAbsMode(M)) {
+
+            POLL_IPL;
+            push<C, Long>(ea);
+            prefetch<C>();
+
+        } else {
+
+            fetchIrc<C, POLL>();
+            push<C, Long>(ea);
+        }
     }
 
     //           00  10  20        00  10  20        00  10  20
@@ -6560,6 +4877,11 @@ Moira::execReset(u16 opcode)
 
     SUPERVISOR_MODE_ONLY
 
+    // Disable the MMU
+    mmu.mmu030.tc  &= ~(1 << 31);
+    mmu.mmu030.tt0 &= ~(1 << 15);
+    mmu.mmu030.tt1 &= ~(1 << 15);
+
     SYNC_68000(128);
     SYNC_68010(126);
 
@@ -6577,57 +4899,17 @@ Moira::execRtd(u16 opcode)
 {
     AVAILABILITY(Core::C68010)
 
-    // Check for address error
-    if (misaligned<C>(reg.sp)) {
+    checkEvenSP<C, M>();
 
-        setFC<M>();
-        pomSetRB<C>(u16(readM<C, M, Word>(reg.sp & ~1)));  // POM68K (host): 68010-only store; the dummy read stays on every core
-        throw AddressError(makeFrame<AE_SET_RW|AE_SET_DF>(reg.sp));
-    }
-
-    // [D] WinUAE gencpu i_RTD @ Hatari e77819f7 ("op=RTD #1793", opcells.py
-    // --set classes --mmu identity --user --stack data): the 68030 logs the
-    // displacement word before it pops, so a faulting pop stacks one
-    // completed entry.
-    if constexpr (C == Core::C68020) {
-        if (cpuModel == Model::M68030) [[unlikely]] mmuLogExtWord(u16(ircWord()));
-    }
     u32 newpc = readM<C, M, Long>(reg.sp);
-    reg.sp += 4 + i16(ircWord());
+    reg.sp += 4 + i16(queue.irc);
 
-    // Check for address error
-    if (misaligned<C>(newpc)) {
-        throw AddressError(makeFrame<AE_PROG>(newpc));
-    }
+    checkEvenPC<C, AE_PROG>(newpc);
 
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K O4 slice 4: 68030 odd instruction-flow target — WinUAE's
-    // mmu030 handlers raise vector 3 with a format $B frame; see
-    // execAddressError030.
-    // WinUAE logs the displacement word BEFORE the popped long; A7 keeps
-    // both adjustments; stacked PC = the RTD instruction.
-    if constexpr (C == Core::C68020) {
-        if (cpuModel == Model::M68030 && oddFlowTarget(newpc)) {
-            mmuLogReset();
-            mmuLogExtWord(u16(ircWord()));
-            mmuLogExtWord(newpc);
-            execAddressError030<C>(newpc, reg.pc0);
-            FINALIZE
-            return;
-        }
-        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // POM68K Q2: 68040 RTD restores A7 completely before faulting
-        // (WinUAE op_4e74_31: a7 -= 4 + offs); stacked PC = the RTD.
-        if (cpuModel >= Model::M68EC040 && oddFlowTarget(newpc)) {
-            reg.sp -= 4 + i16(ircWord());
-            execAddressError040<C>(newpc, reg.pc0);
-            FINALIZE
-            return;
-        }
-    }
+    reg.pc = newpc;
+    fullPrefetch<C, POLL>();
 
-    setPC(newpc);
-    fullPrefetch<C, POLL | FLOW>();
+    changeOfFlow<C>();
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -6640,546 +4922,36 @@ template <Core C, Instr I, Mode M, Size S> void
 Moira::execRte(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
+
+    const bool t0AtStart = C == Core::C68020 && reg.sr.t0 && !reg.sr.t1;
+
     SUPERVISOR_MODE_ONLY
 
     u16 newsr = 0;
     u32 newpc = 0;
-    [[maybe_unused]] u16 fword = 0;     // POM68K (host) slice 4: last format word
-    bool rte030WritePending = false;
-    bool rteFpuMid = false;
-    bool rerun040 = false;          // format $7: the faulted instruction reruns
-    u16 rte030WriteSsw = 0;
-    u32 rte030WriteAddr = 0, rte030WriteData = 0;
-    u8 rte030Fixup[2] = {};
 
-    switch (C) {
+    if constexpr (C == Core::C68000) {
 
-        case Core::C68000:
-        {
-            // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-            // POM68K: the 68000 unstacks PC high, then SR, then PC low —
-            // not bottom-up. [D] SingleStepTests/680x0 v1 transactions
-            // (RTE.json); `sst68000 --transactions`.
-            const u32 hi = read<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 2));
-            newsr = (u16)read<C, AddrSpace::DATA, Word>(reg.sp);
-            const u32 lo = read<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 4));
-            newpc = hi << 16 | lo;
-            reg.sp += 6;
-            break;
-        }
-        case Core::C68010:
-        {
-            u16 format = (u16)read<C, AddrSpace::DATA, Word>(reg.sp + 6);
+        readRteFrame68000<C>(newsr, newpc);
 
-            // Check the frame format
-            switch (format >> 12) {
+    } else if constexpr (C == Core::C68010) {
 
-                case 0b0000: // Short format
+        if (!readRteFrame68010<C>(newsr, newpc)) return;
 
-                    newsr = (u16)read<C, AddrSpace::DATA, Word>(reg.sp + 0);
-                    if ((format & 0xFF) == 0x10) {
-                        // SYNC(4); // ???? TODO: LOOKS WRONG
-                    }
-                    newpc = read<C, AddrSpace::DATA, Long>(reg.sp + 2);
-                    reg.sp += 8;
+    } else {
 
-                    break;
-
-                case 0b1000: // Long format (keep on reading)
-                {
-                    newsr = (u16)read<C, AddrSpace::DATA, Word>(reg.sp + 0);
-                    if ((format & 0xFF) == 0x10) {
-                        // SYNC(4); // ???? TODO: LOOKS WRONG
-                    }
-                    newpc = read<C, AddrSpace::DATA, Long>(reg.sp + 2);
-
-                    (void)read<C, AddrSpace::DATA, Word>(reg.sp + 8); // special status word
-                    (void)read<C, AddrSpace::DATA, Long>(reg.sp + 10); // fault address
-
-                    u16 value = (u16)read<C, AddrSpace::DATA, Word>(reg.sp + 26); // internal information, 16 words
-                    u16 version = (value >> 10) & 0xF;
-
-                    if (version != 0) { // TODO: PUT IN CPU VERSION NUMBER (GET FROM REAL CPU)
-
-                        SYNC(4);
-                        execException(M68kException::FORMAT_ERROR);
-                        return;
-                    }
-
-                    (void)read<C, AddrSpace::DATA, Word>(reg.sp + 28); // internal information, 16 words
-
-                    (void)read<C, AddrSpace::DATA, Word>(reg.sp + 14); // unused/reserved
-                    (void)read<C, AddrSpace::DATA, Word>(reg.sp + 16); // data output buffer
-                    (void)read<C, AddrSpace::DATA, Word>(reg.sp + 18); // unused/reserved
-                    (void)read<C, AddrSpace::DATA, Word>(reg.sp + 20); // data input buffer
-                    (void)read<C, AddrSpace::DATA, Word>(reg.sp + 22); // unused/reserved
-                    (void)read<C, AddrSpace::DATA, Word>(reg.sp + 24); // instruction input buffer
-
-                    (void)read<C, AddrSpace::DATA, Long>(reg.sp + 34); // internal information, 16 words
-                    (void)read<C, AddrSpace::DATA, Long>(reg.sp + 36); // internal information, 16 words
-                    (void)read<C, AddrSpace::DATA, Long>(reg.sp + 38); // internal information, 16 words
-                    (void)read<C, AddrSpace::DATA, Long>(reg.sp + 42); // internal information, 16 words
-                    (void)read<C, AddrSpace::DATA, Long>(reg.sp + 46); // internal information, 16 words
-                    (void)read<C, AddrSpace::DATA, Long>(reg.sp + 50); // internal information, 16 words
-                    (void)read<C, AddrSpace::DATA, Long>(reg.sp + 54); // internal information, 16 words
-
-                    reg.sp += 58;
-                    break;
-                }
-                default: // Format error
-
-                    if (!MOIRA_MIMIC_MUSASHI) {
-
-                        reg.sr.n = (format >> 12) & 0b1000;
-                        reg.sr.z = 0;
-                        reg.sr.v = 0;
-                    }
-
-                    SYNC(4);
-                    (void)read<C, AddrSpace::DATA, Long>(reg.sp + 2);
-
-                    // reg.sr.c = 1; // Check test case Exceptions/StackFrame/stackframe2
-                    execException(M68kException::FORMAT_ERROR);
-                    return;
-            }
-            break;
-        }
-        case Core::C68020:
-        {
-            // POM68K: a frame is popped word by word below. If one of those
-            // reads faults, A7 goes back to the frame's first word before
-            // the fault is taken: the new frame must not land on the words
-            // already read, and the rerun of this RTE must find its own
-            // frame. Before 2026-11-20 it reran from the moved A7 (PC
-            // $30000000 for $00003000 with the PC long faulting).
-            // [B] MC68030UM-1989 §8.2.1 — a faulted instruction is continued
-            //     after the handler's RTE.
-            // [B] MC68040UM-1993 §8.4.6 — and restarted on the 68040.
-            // Gate: fault_transparency_test (RTE formats $0 and $2).
-            u32 frameSp = reg.sp;
-            try {
-            while (1) {
-
-                frameSp = reg.sp;
-                fword = (u16)read<C, AddrSpace::DATA, Word>(reg.sp + 6);
-                u16 format = u16(fword >> 12);
-
-                if (format == 0b000) {  // Standard frame
-
-                    // Status register
-                    newsr = (u16)pop<C, Word>();
-                    
-                    // Program counter
-                    newpc = pop<C, Long>();
-                    
-                    //
-                    (void)pop<C, Word>();
-                    break;
-
-                } else if (format == 0b001) {  // Throwaway frame
-
-                    // Status register
-                    newsr = (u16)pop<C, Word>();
-                    
-                    //
-                    (void)pop<C, Long>();
-                    
-                    //
-                    (void)pop<C, Word>();
-                    
-                    setSR(newsr);
-                    continue;
-
-                } else if (format == 0b010) {  // Trap
-
-                    // Status register
-                    newsr = (u16)pop<C, Word>();
-
-                    // Program counter
-                    newpc = pop<C, Long>();
-
-                    //
-                    (void)pop<C, Word>();
-
-                    //
-                    (void)pop<C, Long>();
-                    break;
-
-                } else if (format == 0b011 && cpuModel >= Model::M68EC040) {
-
-                    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-                    // POM68K Q2: FP post-instruction frame (12 bytes) —
-                    // WinUAE op_4e73_31 frame 0x3: offset + 4
-                    newsr = (u16)pop<C, Word>();
-                    newpc = pop<C, Long>();
-                    (void)pop<C, Word>();
-                    (void)pop<C, Long>();          // effective address
-                    break;
-
-                } else if (format == 0b100 && cpuModel >= Model::M68EC040) {
-
-                    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-                    // POM68K Q2: 68040 FP-disabled / unimplemented frame
-                    // (16 bytes) — WinUAE frame 0x4: offset + 8
-                    newsr = (u16)pop<C, Word>();
-                    newpc = pop<C, Long>();
-                    (void)pop<C, Word>();
-                    (void)pop<C, Long>();          // effective address
-                    (void)pop<C, Long>();          // PC of faulted instruction
-                    break;
-
-                } else if (format == 0b111 && cpuModel >= Model::M68EC040) {
-
-                    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-                    // POM68K Q2: 68040 access-error frame (60 bytes) —
-                    // WinUAE op_4e73_31 frame 0x7 + m68k_do_rte_mmu040
-                    // (cpummu.c:1621-1642): SSW.CT copies the frame's raw
-                    // SR/PC and the +8 long to the popped position above
-                    // (a continuation mini-frame).
-                    u32 base = reg.sp;
-                    newsr = (u16)pop<C, Word>();
-                    newpc = pop<C, Long>();
-                    (void)pop<C, Word>();               // format | vector
-                    u32 savedEa040 = pop<C, Long>();     // effective address
-                    u16 ssw040 = (u16)pop<C, Word>();   // special status word
-                    for (int i = 0; i < 23; i++) (void)pop<C, Word>();
-
-                    // [B] MC68040UM-1993 §8.4.6.7: after a successful
-                    // format-$7 unstack, restore the MOVEM continuation.
-                    // POM68K: use the frame's EA, including a handler edit.
-                    if (ssw040 & 0x1000) {
-                        mmu040MovemEa = savedEa040;
-                        mmu040MovemArmed = true;
-                    }
-
-                    rerun040 = true;
-
-                    if (ssw040 & 0x2000) {              // MMU_SSW_CT
-                        u32 dst = base + 60;
-                        writeM<C, M, Word>(dst + 0, readM<C, M, Word>(base + 0));
-                        writeM<C, M, Long>(dst + 2, readM<C, M, Long>(base + 2));
-                        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-                        // the frame word at +6 is skipped (WinUAE comment)
-                        writeM<C, M, Long>(dst + 8, readM<C, M, Long>(base + 8));
-                    }
-                    break;
-
-                } else if (format == 0b1001 && cpuModel < Model::M68EC040) {
-
-                    // 68020/030 coprocessor mid-instruction continuation.
-                    // The four internal words are opaque to software; after
-                    // restoring them the MPU resumes polling the response CIR.
-                    newsr = (u16)pop<C, Word>();
-                    newpc = pop<C, Long>();
-                    (void)pop<C, Word>();               // format/vector
-                    (void)pop<C, Long>();               // instruction address
-                    for (int i = 0; i < 4; i++) (void)pop<C, Word>();
-                    rteFpuMid = true;
-                    break;
-
-                } else if (format == 0b1010 && cpuModel < Model::M68EC040) {
-
-                    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-                    // POM68K O6: short bus-fault frame ($A, 16 words) —
-                    // stacked by writeStackFrameShortBusFault on a
-                    // last-write fault (extBusError / MMU). PC = next
-                    // instruction; RTE completes the buffered bus write
-                    // below without rerunning the architectural instruction.
-
-                    // Status register
-                    newsr = (u16)pop<C, Word>();
-
-                    // Program counter
-                    newpc = pop<C, Long>();
-
-                    // 1010 | Vector offset
-                    (void)pop<C, Word>();
-
-                    // Internal register
-                    (void)pop<C, Word>();
-
-                    // Special status register
-                    rte030WriteSsw = (u16)pop<C, Word>();
-
-                    // Instruction pipe stage C
-                    (void)pop<C, Word>();
-
-                    // Instruction pipe stage B
-                    (void)pop<C, Word>();
-
-                    // Data cycle fault address
-                    rte030WriteAddr = pop<C, Long>();
-
-                    // Internal register (opcode storage)
-                    (void)pop<C, Long>();
-
-                    // Data output buffer
-                    rte030WriteData = pop<C, Long>();
-
-                    // Internal register (pipeline status)
-                    (void)pop<C, Long>();
-                    rte030WritePending = (rte030WriteSsw & 0x0100)
-                                      && !(rte030WriteSsw & 0x0040);
-                    break;
-
-                } else if (format == 0b1011 && cpuModel < Model::M68EC040) {
-
-                    // Status register
-                    newsr = (u16)pop<C, Word>();
-
-                    // Program counter
-                    newpc = pop<C, Long>();
-
-                    // 1011 | Vector offset
-                    (void)pop<C, Word>();
-
-                    // Internal register: state[1], whose two low bits say
-                    // which extended EAs were complete (DISP0, DISP1).
-                    [[maybe_unused]] const u16 state1 = (u16)pop<C, Word>();
-
-                    // Special status register
-                    [[maybe_unused]] u16 ssw = (u16)pop<C, Word>();
-
-                    // Instruction pipe stage C
-                    (void)pop<C, Word>();
-
-                    // Instruction pipe stage B
-                    (void)pop<C, Word>();
-
-                    // Data cycle fault address
-                    [[maybe_unused]] u32 faultAddr = pop<C, Long>();
-
-                    // Internal registers
-                    (void)pop<C, Word>();
-                    (void)pop<C, Word>();
-
-                    // Data output buffer
-                    (void)pop<C, Long>();
-
-                    // POM68K (host): the plain 020 saves its original instruction
-                    // PC here; the 030 retains its existing EA scratch word.
-                    u32 replayPc020 = pop<C, Long>();
-                    (void)pop<C, Long>();
-
-                    // Stage B address
-                    (void)pop<C, Long>();
-
-                    // Internal registers
-                    (void)pop<C, Long>();
-
-                    // Data input buffer
-                    [[maybe_unused]] u32 dataIn = pop<C, Long>();
-
-                    // Internal registers: state[0], wb2 address, state[2].
-                    // state[2].high carries the WB3 (An) fixup encoding.
-                    (void)pop<C, Word>();
-                    u32 packedState = pop<C, Long>();
-                    rte030Fixup[1] = u8(packedState >> 8);
-
-                    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-                    // POM68K O6.9: the handler cleared the SSW DF bit
-                    // (bit 9 marker still set) — the faulted data cycle
-                    // is done as far as software is concerned. Arm the
-                    // one-shot substitution consumed when the restarted
-                    // instruction re-issues that exact access (see
-                    // Moira.h; WinUAE m68k_do_rte_mmu030, RM excluded —
-                    // WinUAE treats RMW+cleared-DF as instruction done,
-                    // which Moira's restart model cannot express).
-                    // [B] MC68020UM-1992 §6.2.1 and §6.2.2: DF clear
-                    // completes a data cycle; bit 9 is reserved on the 020.
-                    // POM68K: a data cycle qualifies the one-shot retry —
-                    // FC/FB/RC/RB clear, as on the 030 below — without the
-                    // oracle-private marker. Not the data FC: a PC-relative
-                    // operand is a data cycle in program space (ruling D46).
-                    // POM68K (2026-11-19): the 68030 no longer keys on SSW
-                    // bit 9, the oracle's private "data fault" marker that
-                    // no 68030 writes (a frame a handler builds or edits
-                    // would lack it).
-                    // [B] MC68030UM-1989 §8.2.1 — "If the DF bit is set when
-                    //     the processor reads the stack frame, it reruns the
-                    //     faulted data access; otherwise, it assumes that the
-                    //     data input buffer value on the stack is valid for a
-                    //     read or that the data has been correctly written to
-                    //     memory for a write (or that no data fault
-                    //     occurred)". FC/FB/RC/RB (bits 15-12) mark the
-                    //     instruction-stream case; with none set and DF clear
-                    //     the frame names a data cycle software completed.
-                    if constexpr (C == Core::C68020) {
-                        if (((cpuModel == Model::M68030 && !(ssw & 0xF000)) ||
-                             (mmuPlain020() && !(ssw & 0xF000) && newpc == replayPc020)) &&
-                            !(ssw & 0x0100) && !(ssw & 0x0080)) {
-                            mmuRteSubstArmed = true;
-                            mmuRteSubstWrite = !(ssw & 0x0040);
-                            mmuRteSubstAddr = faultAddr;
-                            mmuRteSubstData = dataIn;
-                            mmuRteSubstPc = newpc;
-                        }
-                    }
-
-                    // Version#, internal information; high byte is WB2 fixup,
-                    // bits 7-4 the count of completed accesses (idx_done).
-                    const u16 version = pop<C, Word>();
-                    rte030Fixup[0] = u8(version >> 8);
-
-                    // Internal registers: the access log, stacked deepest
-                    // first (writeStackFrameLongBusFault), so the pops
-                    // return entries 8 down to 0.
-                    u32 log[9];
-                    for (int k = 8; k >= 0; k--) log[k] = pop<C, Long>();
-
-                    // POM68K (host): continue the instruction from this log on the
-                    // 68030 (Moira.h, mmuReplayArmed).
-                    if constexpr (C == Core::C68020) {
-                        if (cpuModel == Model::M68030) {
-                            const int done = (version >> 4) & 0xF;
-                            mmuReplayDone = u8(done < 9 ? done : 9);
-                            for (int k = 0; k < 9; k++) mmuReplayAd[k] = log[k];
-                            // The tenth slot, which no log entry reaches
-                            // (computeEAdisp030).
-                            mmuReplayAd[9] = state1 & 3;
-                            mmuReplayPc = newpc;
-                            mmuReplayArmed = mmuReplayDone > 0;
-                            if (mmuReplayArmed) flags |= State::RTE_REPLAY;
-                        }
-                    }
-                    break;
-
-                } else {
-
-                    execException(M68kException::FORMAT_ERROR);
-                    CYCLES_68020(4)
-                    return;
-                }
-            }
-            } catch (...) {
-                reg.sp = frameSp;
-                throw;
-            }
-            break;
-        }
+        if (!readRteFrame68020<C>(newsr, newpc)) return;
     }
 
     setSR(newsr);
 
-    // [D] WinUAE newcpu.c do_specialties @ Hatari e77819f7: after an RTE
-    // to a format-$7 frame (m68k_do_rte_mmu040 raises SPCFLAG_MMURESTART)
-    // the pending trace is not taken before the rerun — "can't have
-    // interrupt when 040/060 CPU reruns faulted instruction". It is
-    // deferred, not dropped: SPCFLAG_DOTRACE stays set and vector 9 is
-    // taken after the rerun instruction. That holds for the one-shot setSR
-    // arms when the old SR had T0 or T1 (the throwaway frame of "040
-    // core/off seed=81001 #1204", 2026-11-14) and for the RTE's own staged
-    // trace ("trace=t1" #1075 and #1284, core/off seed 11, 2026-11-19).
-    // Until 2026-11-20 the fork dropped both; the single-step loop vector
-    // "loop core/off seed=61 #128" shows the deferred frame. RTE_REPLAY
-    // tells execute() to run the next instruction before that trace. It is
-    // set only when a trace is pending: an untraced rerun stays free to run
-    // in generated code (jit_asset_free_lockstep_test, MOVEM CM guard).
-    // WinUAE also defers the interrupt to after the rerun; the fork does
-    // not model that. [F] for silicon. Settled by: a trace of a real 68040
-    // returning with T1 set into an access-error frame.
-    // Gate: moira_rules_test (rteRerunTakesNoTrace040).
-    if (rerun040 && (trace040Pending || (flags & State::TRACE_EXC))) {
-        trace040Pending = false;
-        flags |= State::TRACE_EXC | State::RTE_REPLAY;
-    }
+    checkEvenPC<C, AE_PROG>(newpc);
 
-    if (rteFpuMid) fpuCompleteBusy(true);
+    // A fault on the first fetch stacks the address of the following word
+    fullPrefetchAt<C, POLL>(newpc, reg.pc0 + 2);
 
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // Undo the live (An)+/-(An) adjustment encoded in a format-$B frame
-    // before the faulted instruction is freshly decoded. WinUAE performs
-    // the same inverse mmu030fixupmod while restoring WB2/WB3 state; without
-    // it a postincrementing operand advances a second time after RTE.
-    if constexpr (C == Core::C68020) {
-        if (cpuModel == Model::M68030) {
-            for (u8 enc : rte030Fixup) {
-                if (!(enc & 0x40)) continue;
-                const int n = enc & 7;
-                u32 amount = 1u << ((enc >> 3) & 3);
-                if (enc & 0x20) reg.a[n] += amount;
-                else            reg.a[n] -= amount;
-            }
-        }
-    }
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // A 68030 format-$A frame represents a fault on the instruction's last
-    // write. RTE does not rerun the architectural instruction; it completes
-    // the pending bus cycle from the frame's data-output buffer, unless the
-    // handler cleared SSW.DF. WinUAE m68k_do_rte_mmu030 restores exactly
-    // these three fields before resuming at the already-stacked next PC.
-    if constexpr (C == Core::C68020) {
-        if (cpuModel == Model::M68030 && rte030WritePending) {
-            const bool savedLogging = mmuLogging;
-            mmuLogging = false;
-            // If the replay faults again it is still the previous
-            // instruction's last write and must stack another short $A
-            // frame at the already-restored next PC.
-            mmuState[1] |= 0x0100;
-            mmuLastWritePc = newpc;
-            mmuDataBuffer = rte030WriteData;
-            switch (rte030WriteSsw & 0x0030) {
-                case 0x0010:
-                    write<C, AddrSpace::DATA, Byte>(rte030WriteAddr, rte030WriteData);
-                    break;
-                case 0x0020:
-                    write<C, AddrSpace::DATA, Word>(rte030WriteAddr, rte030WriteData);
-                    break;
-                default:
-                    write<C, AddrSpace::DATA, Long>(rte030WriteAddr, rte030WriteData);
-                    break;
-            }
-            mmuLogging = savedLogging;
-        }
-    }
-
-    // Check for address error
-    if (misaligned<C>(newpc)) {
-        throw AddressError(makeFrame<AE_PROG|AE_SET_CB3>(newpc, U32_SUB(newpc, 4)));
-    }
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K O4 slice 4: 68030 odd instruction-flow target — WinUAE's
-    // mmu030 handlers raise vector 3 with a format $B frame; see
-    // execAddressError030.
-    // New SR already applied, A7 stays popped. WinUAE's per-frame reads
-    // are SR, PC, FORMAT (three log entries — Moira peeks the format
-    // first, so the log is rebuilt); stacked PC = the RTE instruction.
-    if constexpr (C == Core::C68020) {
-        if (cpuModel == Model::M68030 && oddFlowTarget(newpc)) {
-            mmuLogReset();
-            mmuLogExtWord(newsr);
-            mmuLogExtWord(newpc);
-            mmuLogExtWord(fword);
-            execAddressError030<C>(newpc, reg.pc0);
-            FINALIZE
-            return;
-        }
-        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // POM68K Q2: 68040 RTE — the new SR is fully applied (setSR
-        // above) and A7 stays popped (WinUAE op_4e73_31); the frame's
-        // SR field carries the NEW SR (the Exception_normal RTR/RTE
-        // stacked-SR patch does not exist on the Exception_mmu path the
-        // oracle runs). Stacked PC = the RTE instruction.
-        if (cpuModel >= Model::M68EC040 && oddFlowTarget(newpc)) {
-            execAddressError040<C>(newpc, reg.pc0);
-            FINALIZE
-            return;
-        }
-    }
-
-    setPC(newpc);
-    // No FLOW here: RTE loads SR, and whether it is traced under T0 was
-    // decided by the T0 it BEGAN with — setSR staged that trace, and the
-    // rerun rule above may have dropped it. The T0 it loads traces nothing
-    // by itself, or a trace handler's own RTE would be traced for ever.
-    // [B] MC68030UM-1989 §8.1.7 — "The state of these bits when an
-    //     instruction begins execution determines whether the instruction
-    //     generates a trace exception".
-    // [D] WinUAE @ Hatari e77819f7 — RTE runs MakeFromSR_T0 (oldt0) and no
-    //     check_t0_trace. Single-step loop vectors of 2026-11-20.
-    fullPrefetch<C, POLL>();
+    // The trace bits are sampled at the start of the instruction (not the ones that RTE loads)
+    if (t0AtStart) flags |= State::TRACE_EXC;
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -7188,70 +4960,208 @@ Moira::execRte(u16 opcode)
     FINALIZE
 }
 
+template <Core C> void
+Moira::readRteFrame68000(u16 &newsr, u32 &newpc)
+{
+    if constexpr (compat != Compatibility::UAE) {
+
+        // MAME adjusts the stack pointer after the last read
+        newsr = (u16)read<C, AddrSpace::DATA, Word>(reg.sp);
+        newpc = (u32)read<C, AddrSpace::DATA, Word>(reg.sp + 2) << 16;
+        reg.sp += 6;
+        newpc |= read<C, AddrSpace::DATA, Word>(reg.sp - 2);
+
+    } else {
+
+        // UAE adjusts the stack pointer after the status register has been read
+        newsr = (u16)read<C, AddrSpace::DATA, Word, UAE_DEC_PC>(reg.sp);
+        reg.sp += 6;
+        newpc = (u32)read<C, AddrSpace::DATA, Word, UAE_DEC_PC>(reg.sp - 4) << 16;
+        newpc |= read<C, AddrSpace::DATA, Word, UAE_DEC_PC>(reg.sp - 2);
+    }
+}
+
+template <Core C> bool
+Moira::readRteFrame68010(u16 &newsr, u32 &newpc)
+{
+    // Sets the flags that the 68010 stacks with a format error
+    auto formatError = [&](bool n) {
+
+        reg.sr.n = n;
+        reg.sr.z = 0;
+        reg.sr.v = 0;
+        reg.sr.c = 1;
+
+        SYNC(4);
+    };
+
+    u16 format = (u16)read<C, AddrSpace::DATA, Word>(reg.sp + 6);
+
+    // The 68010 knows the short format (0000) and the long format (1000)
+    if (!supportsFrameFormat(cpuModel, format >> 12)) {
+
+        // Recorded on a real 68010 (vAmigaTS, StackFrame/stackframe2): N=0, Z=0, V=0, C=1 for format 0010.
+        // UAE sets N from the format word and leaves C alone.
+        formatError(NBIT<Word>(format));
+        (void)read<C, AddrSpace::DATA, Long>(reg.sp + 2);
+
+        execException(M68kException::FORMAT_ERROR);
+        return false;
+    }
+
+    newsr = (u16)read<C, AddrSpace::DATA, Word>(reg.sp + 0);
+    newpc = read<C, AddrSpace::DATA, Long>(reg.sp + 2);
+
+    if (format >> 12 == 0b0000) {
+
+        reg.sp += 8;
+        return true;
+    }
+
+    // The 68010 reads the rest of the frame (vAmigaTS: Timing2/RTE/RTE1). UAE skips it.
+    (void)read<C, AddrSpace::DATA, Word>(reg.sp + 8); // Special status word
+    (void)read<C, AddrSpace::DATA, Long>(reg.sp + 10); // Fault address
+
+    /* The first word of the internal information holds the version number of the processor that
+     * wrote the frame. The 68010 raises a format error if it differs from its own version number.
+     * Recorded on a real 68010 (vAmigaTS, StackFrame/addrerr37 and addrerr38): The version number
+     * is 2, and the stacked status register shows N=0, Z=0, V=0, C=1.
+     */
+    u16 version = (read<C, AddrSpace::DATA, Word>(reg.sp + 26) >> 10) & 0xF;
+    if (version != VERSION_68010) {
+
+        formatError(0);
+
+        execException(M68kException::FORMAT_ERROR);
+        return false;
+    }
+
+    (void)read<C, AddrSpace::DATA, Word>(reg.sp + 28); // Internal information
+
+    /* Unused, reserved (14), data output buffer (16), unused, reserved (18),
+     * data input buffer (20), unused, reserved (22), instruction input buffer (24)
+     */
+    for (u32 offset : { 14, 16, 18, 20, 22, 24 }) {
+        (void)read<C, AddrSpace::DATA, Word>(reg.sp + offset);
+    }
+
+    // Internal information (note: the first three long word reads overlap)
+    for (u32 offset : { 34, 36, 38, 42, 46, 50, 54 }) {
+        (void)read<C, AddrSpace::DATA, Long>(reg.sp + offset);
+    }
+
+    reg.sp += 58;
+    return true;
+}
+
+template <Core C> bool
+Moira::readRteFrame68020(u16 &newsr, u32 &newpc)
+{
+    bool rollback = false;
+
+    while (1) {
+
+        u32 frameBase = reg.sp;
+
+        // Like UAE, read the status register, the program counter and the format word, in this order
+        newsr = (u16)read<C, AddrSpace::DATA, Word>(frameBase);
+        newpc = read<C, AddrSpace::DATA, Long>(frameBase + 2);
+        u16 format = (u16)(read<C, AddrSpace::DATA, Word>(frameBase + 6) >> 12);
+
+        if (!supportsFrameFormat(cpuModel, format)) {
+
+            execException(M68kException::FORMAT_ERROR);
+            CYCLES_68020(4)
+            return false;
+        }
+
+        // Determine the frame size
+        u32 size = 0;
+
+        switch (format) {
+
+            case 0b0000: size = 8; break;   // Standard frame
+            case 0b0001: size = 8; break;   // Throwaway frame
+            case 0b0010: size = 12; break;  // Trap frame
+            case 0b0011: size = 12; break;  // Floating-point post-instruction frame
+            case 0b0100: size = 16; break;  // Unimplemented floating-point instruction frame
+            case 0b0111: size = 60; break;  // Access error frame
+            case 0b1001: size = 20; break;  // Coprocessor mid-instruction frame
+            case 0b1010: size = 32; break;  // Short bus fault frame
+            case 0b1011: size = 92; break;  // Long bus fault frame
+        }
+
+        /* A handler that has completed the faulted data cycle itself clears DF
+         * in the special status word. The processor then does not run the cycle
+         * again: it uses the data input buffer for a read and assumes that a
+         * write has been done (MC68020UM 6.2.1, MC68030UM 8.2.1 and 8.2.2).
+         * Moira restarts the instruction instead of continuing it, so the cycle
+         * is recorded here and served without a bus cycle when the restarted
+         * instruction issues it again.
+         */
+        if ((format == 0b1010 || format == 0b1011) && cpuModel < CPUModel::M68EC040) {
+
+            u16 ssw = (u16)read<C, AddrSpace::DATA, Word>(frameBase + 0xA);
+            bool data = !(ssw & (SSW030::FC | SSW030::FB | SSW030::RM | SSW030::DF));
+
+            completed.armed = false;
+            if (data) {
+
+                completed.write = !(ssw & SSW030::RW);
+                completed.addr = read<C, AddrSpace::DATA, Long>(frameBase + 0x10);
+                completed.data = completed.write ? 0 : read<C, AddrSpace::DATA, Long>(frameBase + 0x2C);
+                completed.armed = format == 0b1011 || completed.write;
+            }
+        }
+
+        // Like UAE, skip the rest of the frame without reading it
+        reg.sp = frameBase + size;
+
+        if (format == 0b1011) {
+
+            // If the handler has not touched the frame, restart the instruction
+            if (restart.valid && frameBase == restart.frameSp && newsr == restart.frameSr && newpc == restart.framePC) {
+
+                newpc = restart.pc;
+                newsr = restart.preSr;
+                rollback = true;
+            }
+            restart.valid = false;
+        }
+
+        // A throwaway frame is followed by another frame
+        if (format != 0b0001) break;
+        setSR(newsr);
+    }
+
+    // The completed cycle belongs to the instruction RTE returns to
+    if (completed.armed) completed.pc = newpc;
+
+    // Roll back the registers that the restarted instruction has modified
+    if (rollback) {
+
+        for (int i = 0; i < 15; i++) {
+            if (reg.r[i] == restart.fault.r[i]) reg.r[i] = restart.pre.r[i];
+        }
+
+        // The stack pointers (the instruction may have switched modes)
+        u32 preUsp = restart.pre.sr.s ? restart.pre.usp : restart.pre.sp;
+        u32 preIsp = restart.pre.sr.s ? restart.pre.sp : restart.pre.isp;
+        if (reg.sp == restart.entrySsp) reg.sp = preIsp;
+        if (reg.usp == restart.entryUsp) reg.usp = preUsp;
+    }
+
+    return true;
+}
+
 template <Core C, Instr I, Mode M, Size S> void
 Moira::execRtm(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    // [D] Musashi @ 1efd694 (Runner/Musashi of upstream Moira), run by its Runner:
-    //     RTM does nothing. POM68K: under MOIRA_MIMIC_MUSASHI this is
-    //     upstream Moira's body, unchanged (row 25 otherwise).
-    if constexpr (MOIRA_MIMIC_MUSASHI) {
+    fullPrefetch<C, POLL>();
 
-        fullPrefetch<C, POLL>();
-
-        CYCLES_68020(19)
-
-        FINALIZE
-        return;
-    }
-
-    const int moduleReg = opcode & 15;
-    const u32 frame = reg.sp;
-
-    // Read and validate the entire module frame before changing registers.
-    const u32 control = read<C, AddrSpace::DATA, Long>(frame + 0x00);
-    const u32 argControl = read<C, AddrSpace::DATA, Long>(frame + 0x04);
-    const u32 newPc = read<C, AddrSpace::DATA, Long>(frame + 0x0c);
-    const u32 oldModuleData = read<C, AddrSpace::DATA, Long>(frame + 0x10);
-    const u32 savedSp = read<C, AddrSpace::DATA, Long>(frame + 0x14);
-
-    const u8 opt = u8(control >> 29);
-    const u8 type = u8(control >> 24) & 0x1f;
-    // [B] MC68020UM-1992 §8.2.16 — RTM type $00, cache case: 19 (4/0/0).
-    // [F] RTM's format-error exits are charged that completion count; the
-    //     manual gives no format-error timing, and before 2026-11-20 they
-    //     charged nothing. Settled by: a bus capture of RTM with an invalid
-    //     frame.
-    // Gate: callm_rtm_test (formatErrorCycles).
-    if ((opt != 0 && opt != 4) || type > 1 || (control & 0x0000ff00) ||
-        (argControl & 0xffffff00)) {
-        execException<C>(M68kException::FORMAT_ERROR);
-        CYCLES_68020(19)
-        FINALIZE
-        return;
-    }
-
-    const u8 argc = u8(argControl);
-    u8 accessStatus = 1;
-    if (type == 1) {
-        setFC(FC::CPU_SPACE);
-        const bool ok =
-            writeModuleCpuSpace8(0x1000c, u8(control >> 16)) &&
-            readModuleCpuSpace8(0x10004, accessStatus);
-        if (!ok || accessStatus == 0 || accessStatus > 7) {
-            execException<C>(M68kException::FORMAT_ERROR);
-            CYCLES_68020(19)
-            FINALIZE
-            return;
-        }
-    }
-
-    setCCR(u8(control));
-    writeR(moduleReg, oldModuleData);
-    reg.sp = (type == 1 && accessStatus >= 4 ? savedSp : frame + 24) + argc;
-    reg.pc = newPc;
-    fullPrefetch<C, POLL | FLOW>();
+    changeOfFlow<C>();
 
     CYCLES_68020(19)
 
@@ -7263,94 +5173,39 @@ Moira::execRtr(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
-    // Check for address error
-    if (misaligned<C>(reg.sp)) {
-
-        setFC<M>();
-        pomSetRB<C>(u16(readM<C, M, Word>(reg.sp & ~1)));  // POM68K (host): 68010-only store; the dummy read stays on every core
-        throw AddressError(makeFrame<AE_SET_RW|AE_SET_DF>(reg.sp));
-    }
+    checkEvenSP<C, M>();
 
     u16 newccr;
     u32 newpc;
 
-    if constexpr (C == Core::C68000) {
+    // The 68010 and 68020 follow UAE in all modes
+    if constexpr (C == Core::C68000 && compat != Compatibility::UAE) {
 
-        // [D] SST/680x0 68000/v1 @ e0d5ece9 — PC high, CCR, PC low.
-        // POM68K: PC high, CCR, PC low — the RTE order (see execRte).
-        const u32 hi = read<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 2));
-        newccr = (u16)readM<C, M, Word>(reg.sp);
-        const u32 lo = read<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 4));
-        newpc = hi << 16 | lo;
-        reg.sp += 6;
+        // Adjust the stack pointer right before the last word is read
+        u32 sp = reg.sp;
+        newccr = (u16)readM<C, M, Word>(sp);
+        u32 hi = read<C, AddrSpace::DATA, Word>(sp + 2);
+        
+        // Load the condition codes before the last read
+        setCCR((u8)newccr);
+        reg.sp = sp + 6;
+        newpc = hi << 16 | read<C, AddrSpace::DATA, Word>(sp + 4);
 
     } else {
 
         newccr = (u16)readM<C, M, Word>(reg.sp);
-
-        bool popsTogether = false;
-        if constexpr (C == Core::C68020) popsTogether = pomStoreEndsInstruction<C>();
-        if (popsTogether) {
-            // [D] WinUAE cpuemu_31.c op_4e77 @ Hatari e77819f7 ("op=RTR
-            // #3620", opcells.py --set classes --mmu identity --edge --user
-            // --stack data): on the 68040 A7 moves once both pops are done,
-            // so a fault on the return address restarts RTR with A7 intact.
-            // The fork had stepped it over the CCR word, and the rerun
-            // popped two bytes further.
-            // [B] MC68030UM-1989 §8.2.1 — an RTE from a format-$B frame
-            // continues the faulted instruction. The 68030 gets the same
-            // order for that reason, against the oracle: its 68030 RTR
-            // (cpuemu_32.c op_4e77_32) steps A7 between the pops and arms no
-            // fixup, so its own continuation takes the logged CCR, steps A7
-            // again and reads the return address two bytes too far. Ruling
-            // D45, oracle/README.md.
-            // [F] What a 68030 handler sees in A7 at that point.
-            // Settled by: RTR with its return address on a non-resident page,
-            // on a real 68030. Gate: moira_rules_test (stackFaultRoundTrip).
-            newpc = read<C, AddrSpace::DATA, Long>(U32_ADD(reg.sp, 2));
-            reg.sp += 6;
-        } else {
-            reg.sp += 2;
-
-            newpc = read<C, AddrSpace::DATA, Long>(reg.sp);
-            reg.sp += 4;
-        }
+        reg.sp += 2;
+        newpc = read<C, AddrSpace::DATA, Long>(reg.sp);
+        reg.sp += 4;
+        setCCR((u8)newccr);
     }
 
-    setCCR((u8)newccr);
+    checkEvenPC<C, AE_PROG>(newpc);
 
-    // Check for address error
-    if (misaligned<C>(newpc)) {
-        throw AddressError(makeFrame<AE_PROG|AE_SET_CB3>(newpc, U32_SUB(newpc, 4)));
-    }
+    // MAME stacks the old PC if the first fetch at the return address fails
+    fullPrefetchAt<C, POLL>(newpc);
 
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K O4 slice 4: 68030 odd instruction-flow target — WinUAE's
-    // mmu030 handlers raise vector 3 with a format $B frame; see
-    // execAddressError030.
-    // CCR already updated, A7 stays popped, both pops are in the access
-    // log; stacked PC = instruction address + 2 (WinUAE oldpc + 2).
-    if constexpr (C == Core::C68020) {
-        if (cpuModel == Model::M68030 && oddFlowTarget(newpc)) {
-            execAddressError030<C>(newpc, reg.pc0 + 2);
-            FINALIZE
-            return;
-        }
-        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // POM68K Q2: 68040 RTR restores A7 (WinUAE op_4e77_31: a7 -= 6)
-        // with the popped CCR applied; stacked PC = the RTR. The frame
-        // carries the CCR-updated SR (Exception_mmu path — the
-        // Exception_normal secondarysr patch is not reached).
-        if (cpuModel >= Model::M68EC040 && oddFlowTarget(newpc)) {
-            reg.sp -= 6;
-            execAddressError040<C>(newpc, reg.pc0);
-            FINALIZE
-            return;
-        }
-    }
-
-    setPC(newpc);
-    fullPrefetch<C, POLL | FLOW>();
+    changeOfFlow<C>();
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -7364,48 +5219,17 @@ Moira::execRts(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
-    // Check for address error
-    if (misaligned<C>(reg.sp)) {
+    checkEvenSP<C, M>();
 
-        setFC<M>();
-        pomSetRB<C>(u16(readM<C, M, Word>(reg.sp & ~1)));  // POM68K (host): 68010-only store; the dummy read stays on every core
-        throw AddressError(makeFrame<AE_SET_RW|AE_SET_DF>(reg.sp));
-    }
-
-    u32 newpc = readM<C, M, Long>(reg.sp);
+    u32 newpc = readM<C, M, Long, UAE_DEC_PC>(reg.sp);
     reg.sp += 4;
 
-    // Check for address error
-    if (misaligned<C>(newpc)) {
-        throw AddressError(makeFrame<AE_PROG|AE_SET_CB3>(newpc, U32_SUB(newpc, 4)));
-    }
+    checkEvenPC<C, AE_PROG>(newpc);
 
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K O4 slice 4: 68030 odd instruction-flow target — WinUAE's
-    // mmu030 handlers raise vector 3 with a format $B frame; see
-    // execAddressError030.
-    // A7 stays popped; the popped long is in the access log (funnel);
-    // stacked PC = the RTS instruction.
-    if constexpr (C == Core::C68020) {
-        if (cpuModel == Model::M68030 && oddFlowTarget(newpc)) {
-            execAddressError030<C>(newpc, reg.pc0);
-            FINALIZE
-            return;
-        }
-        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // POM68K Q2: 68040 RTS re-pushes — A7 is restored to its
-        // pre-RTS value (WinUAE op_4e75_31: a7 -= 4 after the pop);
-        // stacked PC = the RTS instruction.
-        if (cpuModel >= Model::M68EC040 && oddFlowTarget(newpc)) {
-            reg.sp -= 4;
-            execAddressError040<C>(newpc, reg.pc0);
-            FINALIZE
-            return;
-        }
-    }
+    // MAME stacks the old PC if the first fetch at the return address fails
+    fullPrefetchAt<C, POLL>(newpc);
 
-    setPC(newpc);
-    fullPrefetch<C, POLL | FLOW>();
+    changeOfFlow<C>();
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -7419,14 +5243,40 @@ Moira::execSccRg(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
-    int dst = ( _____________xxx(opcode) );
+    int dst = _____________xxx(opcode);
     u32 ea, data;
 
     readOp<C, M, S>(dst, &ea, &data);
-
     data = cond<I>() ? 0xFF : 0;
-    prefetch<C, POLL>();
-    if constexpr (C == Core::C68000) { if (data) SYNC(2); }
+
+    if constexpr (C == Core::C68000) {
+
+        try {
+            // If the condition is met, write the register at the end and keep the IRD
+            if (data) prefetchLate<C, POLL>(); else prefetch<C, POLL>();
+        }
+        catch (BusError &e) {
+
+            // Clear the register before the prefetch
+            if (!data) writeD<S>(dst, 0);
+            rethrow<C>(e);
+        }
+        if (data) SYNC(2);
+
+    } else if constexpr (C == Core::C68010) {
+
+        try { prefetch<C, POLL>(); } catch (BusError &e) {
+
+            // Clear the register before the prefetch
+            if (!data) writeD<S>(dst, 0);
+            rethrow<C>(e);
+        }
+
+    } else {
+
+        // Write the register after the prefetch
+        prefetch<C, POLL>();
+    }
 
     writeD<S>(dst, data);
 
@@ -7442,33 +5292,28 @@ Moira::execSccEa(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
-    int dst = ( _____________xxx(opcode) );
+    int dst = _____________xxx(opcode);
     u32 ea, data;
 
     if constexpr (C == Core::C68000) {
 
-        readOp<C, M, Byte>(dst, &ea, &data);
+        readOp<C, M, Byte, STD_AE_FRAME>(dst, &ea, &data);
 
-        prefetch<C, POLL>();
+        fetchIrc<C, POLL>();
         data = cond<I>() ? 0xFF : 0;
-        writeOp<C, M, Byte>(dst, ea, data);
+        writeOp<C, M, Byte, COMMIT_IRD>(dst, ea, data);
 
     } else {
 
-        // readOp<C, M, Byte, SKIP_READ>(dst, &ea, &data);
         ea = computeEA<C, M, S>(dst);
         updateAn<M, S>(dst);
 
-        if constexpr (M == Mode::AI) SYNC(2);
-        if constexpr (M == Mode::PI) SYNC(4);
-        if constexpr (M == Mode::PD) SYNC(2);
-        if constexpr (M == Mode::IX) SYNC(2);
+        constexpr int delay = M == Mode::PI ? 4 : (M == Mode::AI || M == Mode::PD || M == Mode::IX) ? 2 : 0;
+        if constexpr (delay) SYNC(delay);
 
-        prefetch<C, POLL>();
+        fetchIrc<C, POLL>();
         data = cond<I>() ? 0xFF : 0;
-        // [D] WinUAE gencpu i_Scc @ Hatari e77819f7: `val` is an int, $FF or
-        // 0 — unsigned in the 68030 write buffer, as FScc (row 83).
-        writeOp<C, M, S, MMU_RAWBUF>(dst, ea, data);
+        writeOp<C, M, S, COMMIT_IRD>(dst, ea, data);
     }
 
     //           00  10  20        00  10  20        00  10  20
@@ -7491,32 +5336,28 @@ Moira::execStop(u16 opcode)
 
     SUPERVISOR_MODE_ONLY
 
-    // The M68000 User's Manual (Rev 8, instruction timing tables) gives
-    // STOP as 4(0/0) — no bus cycle.
-    // [D] fx68k @ 0602ee46 (nanowords 0x3A2/0x327 without an access);
-    //     Hatari op_4e72_13_ff, do_cycles_stop(4) @ f0736b24 ("STOP does
-    //     not prefetch anything").
-    // POM68K (back-port of NeoST 2fc53a8 / 9f20046): on the 68000 the
-    // operand is taken from IRC; readI would also have prefetched the next
-    // word on the bus. The 4 cycles are charged here, since the prefetch
-    // that carried them is gone. Leaving STOP (exception, then RTE) reloads
-    // the queue, so the stale IRC is never used.
     u16 src;
-    if constexpr (C == Core::C68000) { src = ircWord(); reg.pc += 2; SYNC(4); }
-    else                              { src = (u16)readI<C, Word>(); }
+
+    if constexpr (C == Core::C68000) {
+
+        src = queue.irc;
+        reg.pc += 2;
+        SYNC(4);
+
+    } else {
+
+        src = (u16)readI<C, Word>();
+    }
 
     setSR(src);
     flags |= State::STOPPED;
-    reg.pc0 = reg.pc;
+    POLL_IPL;
+
+    reg.pc += 2;
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
     CYCLES_IP   ( 0,  0,  0,        4,  4,  8,        0,  0,  0)
-
-    // [D] fx68k @ 0602ee46, as NeoST read it (Moira.h stopGraceUntil).
-    // POM68K: the first iteration tested the interrupt with the OLD mask
-    // (Moira.h § stopGraceUntil).
-    if constexpr (C == Core::C68000) stopGraceUntil = clock + 4;
 
     FINALIZE
 }
@@ -7526,18 +5367,14 @@ Moira::execSwap(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
-    int rg  = ( _____________xxx(opcode) );
+    int rg  = _____________xxx(opcode);
     u32 dat = readD(rg);
 
-    prefetch<C, POLL>();
+    dat = std::rotl(dat, 16);
 
-    dat = (dat >> 16) | (dat & 0xFFFF) << 16;
     writeD(rg, dat);
-
-    reg.sr.n = NBIT<Long>(dat);
-    reg.sr.z = ZERO<Long>(dat);
-    reg.sr.v = 0;
-    reg.sr.c = 0;
+    setMoveFlags<Long>(dat);
+    prefetch<C, POLL>();
 
     //           00  10  20        00  10  20        00  10  20
     //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -7551,20 +5388,20 @@ Moira::execTasRg(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
-    int dst = ( _____________xxx(opcode) );
+    int dst = _____________xxx(opcode);
 
     u32 ea, data;
     readOp<C, M, Byte>(dst, &ea, &data);
 
-    reg.sr.n = NBIT<Byte>(data);
-    reg.sr.z = ZERO<Byte>(data);
-    reg.sr.v = 0;
-    reg.sr.c = 0;
+    setMoveFlags<Byte>(data);
 
     data |= 0x80;
     writeD<S>(dst, data);
-
     prefetch<C, POLL>();
+
+    //           00  10  20        00  10  20        00  10  20
+    //           .b  .b  .b        .w  .w  .w        .l  .l  .l
+    CYCLES_DN   ( 4,  4,  4,        0,  0,  0,        0,  0,  0)
 
     FINALIZE
 }
@@ -7574,72 +5411,69 @@ Moira::execTasEa(u16 opcode)
 {
     AVAILABILITY(Core::C68000)
 
-    int dst = ( _____________xxx(opcode) );
+    int dst = _____________xxx(opcode);
 
     u32 ea, data;
 
     if constexpr (C == Core::C68000) {
 
-        // [B] M68000PRM-1992 TAS: a locked read-modify-write transfer.
-        // POM68K (ported from NeoST ce1cc52): /RMC forbids a bus grant
-        // between the read and the write. Release the lock as well if
-        // readOp/writeOp throws (address or bus error).
-        setBusLock(true);
-        try {
+        constexpr Flags tas = AE_INC_PC;
 
-            readOp<C, M, Byte>(dst, &ea, &data);
+        try { readOp<C, M, Byte, tas>(dst, &ea, &data); } catch (BusError &e) {
 
-            reg.sr.n = NBIT<Byte>(data);
-            reg.sr.z = ZERO<Byte>(data);
-            reg.sr.v = 0;
-            reg.sr.c = 0;
-            data |= 0x80;
+            // Only a failing read cycle is special (not a failing extension word fetch)
+            if ((e.stackFrame.fc & 3) != 2) {
 
-            if (!isRegMode(M)) SYNC(2);
-            writeOp<C, M, S>(dst, ea, data);
+                if constexpr (compat != Compatibility::UAE) {
 
-        } catch (...) { setBusLock(false); throw; }
-        setBusLock(false);
+                    // MAME completes a failed read like a failed write
+                    e.stackFrame.code &= ~0x10;
+                    
+                    // Set N=0, Z=1, V=0, C=0
+                    e.stackFrame.sr = (e.stackFrame.sr & ~0x0F) | 0x04;
+                    
+                    setMoveFlags<S>(0);
+                }
+                if constexpr (compat == Compatibility::UAE && M != Mode::PD) {
 
+                    // UAE does not advance the stacked PC for a bus error in the read cycle
+                    e.stackFrame.pc -= (M == Mode::DI || M == Mode::IX) ? 4 : 2;
+                }
+            }
+            throw;
+        }
+
+        setMoveFlags<Byte>(data);
+        data |= 0x80;
+
+        if (!isRegMode(M)) SYNC(2);
+        writeOp<C, M, S, tas>(dst, ea, data);
         prefetch<C, POLL>();
 
     } else {
 
-        if constexpr (M == Mode::AI) SYNC(2);
-        if constexpr (M == Mode::PI) SYNC(4);
-        if constexpr (M == Mode::PD) SYNC(2);
-        if constexpr (M == Mode::IX) SYNC(2);
-
-        // [B] M68000PRM-1992 TAS: a locked read-modify-write transfer.
-        // POM68K O4 slice 3: TAS = locked RMW cycle on the 68030
-        if constexpr (C == Core::C68020) {
-            if (mmuPlain020() || cpuModel == Model::M68030) [[unlikely]] mmuRmw = true;
-            // POM68K (host) Q3: 68040 locked RMW (see CAS)
-            if (cpuModel >= Model::M68EC040) [[unlikely]] mmu040Lrmw = true;
-        }
+        constexpr int delay = M == Mode::PI ? 4 : (M == Mode::AI || M == Mode::PD || M == Mode::IX) ? 2 : 0;
+        if constexpr (delay) SYNC(delay);
 
         readOp<C, M, Byte>(dst, &ea, &data);
 
-        reg.sr.n = NBIT<Byte>(data);
-        reg.sr.z = ZERO<Byte>(data);
-        reg.sr.v = 0;
-        reg.sr.c = 0;
+        setMoveFlags<Byte>(data);
         data |= 0x80;
 
-        // if (!isRegMode(M)) SYNC(2);
         writeOp<C, M, S>(dst, ea, data);
-
-        // POM68K (host): the 68040 lock covers the read and the write, not what
-        // follows. mmu040InstrStart clears the flag for the next
-        // interpreted instruction, but generated code does not run it: a
-        // block entered after TAS, CAS or CAS2 translated every data read as
-        // a locked write and set M on pages it only read. Gate:
-        // moira_rules_test (lockEndsWithTheInstruction040).
-        if constexpr (C == Core::C68020) mmu040Lrmw = false;
-
         prefetch<C, POLL>();
         SYNC(2);
     }
+
+    //           00  10  20        00  10  20        00  10  20
+    //           .b  .b  .b        .w  .w  .w        .l  .l  .l
+    CYCLES_AI   (18, 18, 18,        0,  0,  0,        0,  0,  0)
+    CYCLES_PI   (18, 18, 18,        0,  0,  0,        0,  0,  0)
+    CYCLES_PD   (20, 20, 20,        0,  0,  0,        0,  0,  0)
+    CYCLES_DI   (22, 22, 22,        0,  0,  0,        0,  0,  0)
+    CYCLES_IX   (24, 24, 24,        0,  0,  0,        0,  0,  0)
+    CYCLES_AW   (22, 22, 22,        0,  0,  0,        0,  0,  0)
+    CYCLES_AL   (26, 26, 26,        0,  0,  0,        0,  0,  0)
 
     FINALIZE
 }
@@ -7668,17 +5502,56 @@ Moira::execTrapv(u16 opcode)
 
     if (reg.sr.v) {
 
-        if constexpr (C == Core::C68000) {
-            (void)read<C, AddrSpace::PROG, Word>(reg.pc + 2);
+        if constexpr (C == Core::C68000 && compat == Compatibility::UAE) {
+
+            try { (void)read<C, AddrSpace::PROG, Word>(reg.pc + 2); } catch (BusError &e) {
+
+                // A bus error at this point is raised after the exception has already been entered
+                setSupervisorMode(true);
+                clearTraceFlags();
+                e.stackFrame.sr = (e.stackFrame.sr | 0x2000) & ~0x8000; // Stacked with S set and T cleared
+                e.stackFrame.code = (e.stackFrame.code & ~7) | 6;       // Supervisor program space
+                throw;
+            }
+
+        } else if constexpr (C == Core::C68000) {
+
+            // Read the word in supervisor mode
+            bool s = reg.sr.s; reg.sr.s = true;
+
+            try { (void)read<C, AddrSpace::PROG, Word>(reg.pc + 2); } catch (BusError &e) {
+
+                // A bus error at this point is raised after the exception has already been entered
+                reg.sr.s = s;
+                setSupervisorMode(true);
+                clearTraceFlags();
+                e.stackFrame.sr = (e.stackFrame.sr | 0x2000) & ~0x8000; // Stacked with S set and T cleared
+                throw;
+            }
+            reg.sr.s = s;
+
+        } else if constexpr (C == Core::C68010 && compat == Compatibility::UAE) {
+
+            // UAE's 68010 doesn't read the next word. It spends two internal cycles instead.
+            SYNC(2);
+
         } else {
-            (void)pomProgWord<C>(reg.pc + 2);   // POM68K (host): cached on the 68020
+
+            dummyProgRead<C>(reg.pc + 2);
             SYNC(2);
         }
+
         execException<C>(M68kException::TRAPV);
+
+        // The 68010 takes 40 cycles, as in precise timing mode: It stacks an additional
+        // format word (4 cycles) and waits 2 more cycles after reading the next word.
+        // Musashi counts 34 cycles, UAE 36.
+        [[maybe_unused]] constexpr int c10 =
+        compat == Compatibility::MUSASHI ? 34 : compat == Compatibility::UAE ? 36 : 40;
 
         //           00  10  20        00  10  20        00  10  20
         //           .b  .b  .b        .w  .w  .w        .l  .l  .l
-        CYCLES_IP   ( 0,  0,  0,        0,  0,  0,       34, 34, 20)
+        CYCLES_IP   ( 0,  0,  0,        0,  0,  0,       34, c10, 20)
 
     } else {
 
@@ -7732,10 +5605,7 @@ Moira::execTst(u16 opcode)
     u32 ea, data;
     readOp<C, M, S, STD_AE_FRAME>(rg, &ea, &data);
 
-    reg.sr.n = NBIT<S>(data);
-    reg.sr.z = ZERO<S>(data);
-    reg.sr.v = 0;
-    reg.sr.c = 0;
+    setMoveFlags<S>(data);
 
     looping<I>() ? noPrefetch<C>(S == Long ? 4 : 2) : prefetch<C, POLL>();
     if (looping<I>() && S == Long) loopModeDelay = 0;
@@ -7765,27 +5635,18 @@ Moira::execUnlk(u16 opcode)
 
     int an = _____________xxx(opcode);
 
-    // Check for address error
-    if (misaligned<C>(readA(an))) {
-        throw AddressError(makeFrame<AE_DATA|AE_INC_PC|AE_SET_DF|AE_SET_RW>(readA(an)));
-    }
+    checkEven<C, Word, AE_DATA|AE_INC_PC>(readA(an));
 
+    // Move address register to stack pointer
+    u32 oldsp = reg.sp;
+    reg.sp = readA(an);
+
+    // Update address register
     u32 ea, data;
-    if (pomStoreEndsInstruction<C>()) {
-        // [D] WinUAE gencpu i_UNLK @ Hatari e77819f7 ("op=UNLK #93" on the
-        // 68040, "op=UNLK #68" on the 68030; opcells.py --set classes --mmu
-        // identity --user --stack data): the old frame pointer is read
-        // through An, and A7 moves once the read is done. A faulting read
-        // restarts UNLK with A7 intact; the fork had copied An into A7
-        // first. Gate: moira_rules_test (stackStoreFaults).
-        readOp<C, Mode::AI, Long, AE_DATA|AE_INC_PC|POLL>(an, &ea, &data);
-        reg.sp = ea;
-    } else {
-        // Move address register to stack pointer
-        reg.sp = readA(an);
+    try { readOp<C, Mode::AI, Long, AE_DATA|AE_INC_PC|POLL>(7, &ea, &data); } catch (BusError &) {
 
-        // Update address register
-        readOp<C, Mode::AI, Long, AE_DATA|AE_INC_PC|POLL>(7, &ea, &data);
+        reg.sp = oldsp;
+        throw;
     }
     writeA(an, data);
 
@@ -7831,65 +5692,14 @@ Moira::execUnpkPd(u16 opcode)
     int ay = ____xxx_________(opcode);
 
     u32 ea, data;
-    bool sourceRead = false;
-    if constexpr (C == Core::C68020) {
-        if (cpuModel == Model::M68030 && !MOIRA_MIMIC_MUSASHI) [[unlikely]] {
-            // [D] WinUAE gencpu.c i_UNPK @ Hatari e77819f7 ("op=UNPK_M #708",
-            // opcells.py --set classes --trace t1 --mmu identity --user
-            // --stack data): gencpu gives UNPK no size, so the source
-            // register's restart fixup is encoded as a long, as PACK's is
-            // (execPackPd). A faulting source read stacked the byte
-            // encoding. Gate: moira_rules_test (stackStoreFaults).
-            mmuArmFixup<Long>(ax, true);
-            reg.a[ax] -= ax == 7 ? 2 : 1;
-            ea = readA(ax);
-            data = read<C, AddrSpace::DATA, Byte>(ea);
-            sourceRead = true;
-        }
-    }
-    if (!sourceRead) readOp<C, M, Byte>(ax, &ea, &data);
+    readOp<C, M, Byte>(ax, &ea, &data);
 
     u16 adj = (u16)readI<C, Word>();
     u32 dst = ((data << 4 & 0x0F00) | (data & 0x000F)) + adj;
 
-    if (MOIRA_MIMIC_MUSASHI) {
-
-        writeOp<C, M, Byte>(ay, dst >> 8 & 0xFF);
-        writeOp<C, M, Byte>(ay, dst & 0xFF);
-
-    } else {
-
-        // [D] WinUAE gencpu.c i_UNPK @ Hatari e77819f7 (cpuemu_31/32
-        // op_8188): the unpacked pair is ONE word write at Ay-2 and it is
-        // the instruction's last write — the 68030 arms Ay's fixup and
-        // stacks LASTWRITE, the 68040 stacks the next PC with Ay already
-        // decremented, exactly as writeOp does for an ordinary -(An)
-        // destination. [F] Not checked against a manual or a real CPU.
-        // Settled by: a bus capture of UNPK -(A0),-(A1) on a 68030.
-        // Gate: moira_rules_test packUnpkFaultRestoresAn.
-        if constexpr (C == Core::C68020) {
-            if (mmuPlain020() || cpuModel == Model::M68030) [[unlikely]]
-                mmuArmFixup<Long>(ay, true);
-        }
-        reg.a[ay] -= 2;
-        const u32 ea = readA(ay);
-
-        if constexpr (C == Core::C68020) {
-            if (cpuModel == Model::M68030) [[unlikely]] {
-                mmuState[1] |= 0x0100;              // LASTWRITE
-                mmuLastWritePc = reg.pc;
-            }
-            if (cpuModel >= Model::M68EC040) [[unlikely]] {
-                mmu040LastWrite = true;
-                mmu040LastWritePc = reg.pc;
-                write<C, AddrSpace::DATA, Word, MMU_RAWBUF>(ea, dst & 0xFFFF);
-                mmu040LastWrite = false;
-                goto unpkWritten;
-            }
-        }
-        write<C, AddrSpace::DATA, Word, MMU_RAWBUF>(ea, dst & 0xFFFF);
-    unpkWritten:;
-    }
+    // The result is written as a single (possibly misaligned) word (vAmigaTS, CPU/68020/Misc/unpk1)
+    reg.a[ay] -= 2;
+    write<C, AddrSpace::DATA, Word>(readA(ay), dst);
 
     prefetch<C>();
 
@@ -7900,37 +5710,23 @@ Moira::execUnpkPd(u16 opcode)
     FINALIZE
 }
 
-// [B] MC68040UM-1993 §4.2: cache-management instructions.
-// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-// POM68K Q2: CINV/CPUSH execute on the 040 models (MC68040UM-1993 § 4.2).
-// Since M2 (docs/CACHE_040.md) they act on data-bearing architectural
-// caches when armed (POM68K_040_DCACHE); CPUSH writes dirty longwords
-// before invalidating its selected lines. Scope 00 is
-// not a valid encoding (WinUAE cpudefs registers only the
-// $F408/$F410/$F418 rows, mask $FF38) and falls to Line-F even in
-// supervisor mode; the cache field (bits 7-6) is a don't-care for the
-// DECODE, including 00 — it selects which caches the op reaches.
 template <Core C, Instr I, Mode M, Size S> void
 Moira::execCinv(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    if ((opcode & 0x18) == 0) {
-
-        execLineF<C, I, M, S>(opcode);
-        return;
-    }
+    // Scope 0 is reserved
+    if (___________xx___(opcode) == 0) { execLineF<C, I, M, S>(opcode); return; }
 
     SUPERVISOR_MODE_ONLY
 
-    if (pomCache040On) pomCacheOp040(opcode);
+    // The caches of the 68040 are not emulated. Invalidating them has no effect.
+    // CINV triggers a trace on change of flow.
+    changeOfFlow<C>();
 
     prefetch<C, POLL>();
 
-    CYCLES_68020(4)
-
-    traceFlow040<C>();
-
+    CYCLES_68020(8);
     FINALIZE
 }
 
@@ -7939,59 +5735,52 @@ Moira::execCpush(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    if ((opcode & 0x18) == 0) {
-
-        execLineF<C, I, M, S>(opcode);
-        return;
-    }
+    // Scope 0 is reserved
+    if (___________xx___(opcode) == 0) { execLineF<C, I, M, S>(opcode); return; }
 
     SUPERVISOR_MODE_ONLY
 
-    if (pomCache040On) pomCacheOp040(opcode);
+    // The caches of the 68040 are not emulated. Pushing them has no effect.
+    // CPUSH triggers a trace on change of flow.
+    changeOfFlow<C>();
 
     prefetch<C, POLL>();
 
-    CYCLES_68020(4)
-
-    traceFlow040<C>();
-
+    CYCLES_68020(8);
     FINALIZE
 }
 
-// [B] M68000PRM-1992 MOVE16: aligned line transfer.
-// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-// POM68K Q2: MOVE16 (M68000PRM-1992 MOVE16), modelled on the WinUAE mmu040
-// handlers (generated/cpuemu_31.c op_f6xx + cpummu.c mmu_get/put_move16):
-// both line addresses are masked & ~15, the absolute-long operand is
-// consumed first, the 16 bytes move as four longs read-then-written, and
-// the postincrement lands after the transfer. In the (Ax)+,(Ay)+ form the
-// outer register comes from bits 14-12 of the extension word and a shared
-// register increments only once.
+template <Core C> void
+Moira::move16(u32 src, u32 dst)
+{
+    // MOVE16 transfers a complete line. The lower four address bits are ignored.
+    src &= ~15;
+    dst &= ~15;
+
+    u32 line[4];
+    for (int i = 0; i < 4; i++) line[i] = read<C, AddrSpace::DATA, Long>(src + 4 * i);
+    for (int i = 0; i < 4; i++) write<C, AddrSpace::DATA, Long>(dst + 4 * i, line[i]);
+}
+
 template <Core C, Instr I, Mode M, Size S> void
 Moira::execMove16PiPi(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
+    // MOVE16 (Ax)+,(Ay)+
     int ax = _____________xxx(opcode);
-    u16 ext = u16(readI<C, Word>());
-    int ay = xxxx____________(ext) & 7;
+    int ay = xxxx____________(queue.irc) & 7;
+    readExt<C>();
 
-    u32 src = reg.a[ax] & ~u32(15);
-    u32 dst = reg.a[ay] & ~u32(15);
+    move16<C>(readA(ax), readA(ay));
 
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K Q3: the line moves through translation with the MOVE16
-    // fault conventions (SSW SIZE_CL|TT0, line buffer in the frame)
-    mmu040GetMove16<C>(src);
-    mmu040PutMove16<C>(dst);
-
-    if (ax != ay) reg.a[ax] += 16;
-    reg.a[ay] += 16;
+    // If Ax and Ay are the same register, it is incremented only once
+    if (ax != ay) writeA(ax, readA(ax) + 16);
+    writeA(ay, readA(ay) + 16);
 
     prefetch<C, POLL>();
 
-    CYCLES_68020(4)
-
+    CYCLES_68020(18);
     FINALIZE
 }
 
@@ -8000,21 +5789,16 @@ Moira::execMove16PiAl(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    int an = _____________xxx(opcode);
-    u32 abs = u32(readI<C, Long>());
+    // MOVE16 (Ay)+,(xxx).L
+    int ay = _____________xxx(opcode);
+    u32 dst = readI<C, Long>();
 
-    u32 src = reg.a[an] & ~u32(15);
-    u32 dst = abs & ~u32(15);
-
-    mmu040GetMove16<C>(src);        // POM68K (host) Q3: translated line transfer
-    mmu040PutMove16<C>(dst);
-
-    reg.a[an] += 16;
+    move16<C>(readA(ay), dst);
+    writeA(ay, readA(ay) + 16);
 
     prefetch<C, POLL>();
 
-    CYCLES_68020(8)
-
+    CYCLES_68020(18);
     FINALIZE
 }
 
@@ -8023,21 +5807,16 @@ Moira::execMove16AlPi(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    int an = _____________xxx(opcode);
-    u32 abs = u32(readI<C, Long>());
+    // MOVE16 (xxx).L,(Ay)+
+    int ay = _____________xxx(opcode);
+    u32 src = readI<C, Long>();
 
-    u32 src = abs & ~u32(15);
-    u32 dst = reg.a[an] & ~u32(15);
-
-    mmu040GetMove16<C>(src);        // POM68K (host) Q3: translated line transfer
-    mmu040PutMove16<C>(dst);
-
-    reg.a[an] += 16;
+    move16<C>(src, readA(ay));
+    writeA(ay, readA(ay) + 16);
 
     prefetch<C, POLL>();
 
-    CYCLES_68020(8)
-
+    CYCLES_68020(18);
     FINALIZE
 }
 
@@ -8046,19 +5825,15 @@ Moira::execMove16AiAl(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    int an = _____________xxx(opcode);
-    u32 abs = u32(readI<C, Long>());
+    // MOVE16 (Ay),(xxx).L
+    int ay = _____________xxx(opcode);
+    u32 dst = readI<C, Long>();
 
-    u32 src = reg.a[an] & ~u32(15);
-    u32 dst = abs & ~u32(15);
-
-    mmu040GetMove16<C>(src);        // POM68K (host) Q3: translated line transfer
-    mmu040PutMove16<C>(dst);
+    move16<C>(readA(ay), dst);
 
     prefetch<C, POLL>();
 
-    CYCLES_68020(8)
-
+    CYCLES_68020(18);
     FINALIZE
 }
 
@@ -8067,19 +5842,15 @@ Moira::execMove16AlAi(u16 opcode)
 {
     AVAILABILITY(Core::C68020)
 
-    int an = _____________xxx(opcode);
-    u32 abs = u32(readI<C, Long>());
+    // MOVE16 (xxx).L,(Ay)
+    int ay = _____________xxx(opcode);
+    u32 src = readI<C, Long>();
 
-    u32 src = abs & ~u32(15);
-    u32 dst = reg.a[an] & ~u32(15);
-
-    mmu040GetMove16<C>(src);        // POM68K (host) Q3: translated line transfer
-    mmu040PutMove16<C>(dst);
+    move16<C>(src, readA(ay));
 
     prefetch<C, POLL>();
 
-    CYCLES_68020(8)
-
+    CYCLES_68020(18);
     FINALIZE
 }
 

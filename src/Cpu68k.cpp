@@ -12,7 +12,7 @@
 Cpu68k::Cpu68k(MacMemory& mem, const jit::ResolvedConfig& jitConfig)
     : mem_(mem), jit_(*this, pom68k::makeJitMemoryHooks(mem),
            jit::kGuest68000, jitConfig) {
-    setModel(moira::Model::M68000);
+    setModel(moira::CPUModel::M68000);
     setPomExceptionDiag(jitConfig.exceptionDiag);   // the core reads no environment
     // Hand the window this machine's bus model. Without it a windowed fetch
     // would skip the video/RAM contention read16() carries, and the Mac
@@ -113,6 +113,7 @@ void Cpu68k::jitBusStall(void* self, moira::u32 addr) {
 // touch no device; the RAM mirror at $600000 takes the slow lane with the
 // devices, which is merely conservative.
 moira::u8 Cpu68k::read8(moira::u32 addr) const {
+    pomBusAddr = addr;            // the address a host bus error reports
     applyContention(addr);
     if (!isDevice(addr)) [[likely]] return mem_.read8(addr);
     auto* self = const_cast<Cpu68k*>(this);
@@ -122,6 +123,7 @@ moira::u8 Cpu68k::read8(moira::u32 addr) const {
     return v;
 }
 moira::u16 Cpu68k::read16(moira::u32 addr) const {
+    pomBusAddr = addr;            // the address a host bus error reports
     applyContention(addr);
     if (!isDevice(addr)) [[likely]] return mem_.read16(addr);
     auto* self = const_cast<Cpu68k*>(this);
@@ -131,6 +133,7 @@ moira::u16 Cpu68k::read16(moira::u32 addr) const {
     return v;
 }
 void Cpu68k::write8(moira::u32 addr, moira::u8 v) const {
+    pomBusAddr = addr;            // the address a host bus error reports
     applyContention(addr);
     if (!isDevice(addr)) [[likely]] { mem_.write8(addr, v); return; }
     auto* self = const_cast<Cpu68k*>(this);
@@ -139,6 +142,7 @@ void Cpu68k::write8(moira::u32 addr, moira::u8 v) const {
     self->flushTicks();
 }
 void Cpu68k::write16(moira::u32 addr, moira::u16 v) const {
+    pomBusAddr = addr;            // the address a host bus error reports
     applyContention(addr);
     if (!isDevice(addr)) [[likely]] { mem_.write16(addr, v); return; }
     auto* self = const_cast<Cpu68k*>(this);

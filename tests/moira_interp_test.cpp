@@ -1,6 +1,6 @@
 // Compare the same unaccelerated CPU workload with and without the JIT seam.
 // The transcript covers each instruction's portable state and ordered bus I/O.
-#include "Moira.h"
+#include "MoiraCompat.h"
 
 #include <cstdio>
 #include <type_traits>
@@ -12,6 +12,12 @@ template<class T> concept HasDtlb = requires(T c) { c.pomJitDtlbR; };
 template<class T> concept HasPublication = requires(T c) { c.pomJitCache040R; };
 template<class T> concept HasStep = requires(T c) { c.pomJitExecOne(); };
 template<class T> concept HasProbe = requires(T c) { c.pomJitBeginTiming(); };
+// Dirk Hoffmann's core carries no JIT seam: until POM68K's engine is rebuilt
+// on it (TODO.md), the full and bare builds are the same core and this gate
+// only proves that their transcripts agree. The seam checks return with it.
+#ifndef MOIRA_ENABLE_JIT
+#define MOIRA_ENABLE_JIT 0
+#endif
 static_assert(HasWindow<moira::Moira> == bool(MOIRA_ENABLE_JIT));
 static_assert(HasDtlb<moira::Moira> == bool(MOIRA_ENABLE_JIT));
 static_assert(HasProbe<moira::Moira> == bool(MOIRA_ENABLE_JIT));
@@ -49,7 +55,7 @@ struct Digest {
     template<class... T> void operator()(const T&... v) { (add(v), ...); }
 };
 
-class Cpu : public moira::Moira {
+class Cpu : public MoiraCompat {
 public:
     std::vector<moira::u8> mem = std::vector<moira::u8>(1 << 20);
     mutable Digest bus;
@@ -75,7 +81,7 @@ private:
     }
 };
 
-bool run(moira::Model model, int mapping, bool cache) {
+bool run(moira::CPUModel model, int mapping, bool cache) {
     Cpu c;
     c.setModel(model);
     c.lng(0, 0x80000); c.lng(4, 0x1000);
@@ -92,7 +98,7 @@ bool run(moira::Model model, int mapping, bool cache) {
     c.reset(); c.setSR(0x2700); c.setD(1, 15);
     const uint32_t data = mapping ? 0x10000000 : 0x50000;
     c.setA(0, data);
-    if (mapping && model == moira::Model::M68030) {
+    if (mapping && model == moira::CPUModel::M68030) {
         // 32K pages, one short-descriptor level, identity code/stack and
         // a non-identity operand page. Hardware-rule gates hold the encoding.
         c.lng(0x40000, 0x19);
@@ -140,11 +146,11 @@ bool run(moira::Model model, int mapping, bool cache) {
 
 int main() {
     bool ok = true;
-    for (auto m : {moira::Model::M68000, moira::Model::M68010, moira::Model::M68020,
-                   moira::Model::M68030, moira::Model::M68LC040, moira::Model::M68040}) {
+    for (auto m : {moira::CPUModel::M68000, moira::CPUModel::M68010, moira::CPUModel::M68020,
+                   moira::CPUModel::M68030, moira::CPUModel::M68LC040, moira::CPUModel::M68040}) {
         ok &= run(m, 0, false);
-        if (m == moira::Model::M68030) ok &= run(m, 1, false);
-        if (m >= moira::Model::M68LC040) {
+        if (m == moira::CPUModel::M68030) ok &= run(m, 1, false);
+        if (m >= moira::CPUModel::M68LC040) {
             for (int mapping : {1, 2}) ok &= run(m, mapping, false);
             for (int mapping : {0, 1, 2}) ok &= run(m, mapping, true);
         }

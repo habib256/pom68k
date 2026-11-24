@@ -143,10 +143,10 @@ int main() {
     check((bsr & Ncr5380::BSR_IRQ) != 0, "DATA->STATUS under DMA latched BSR.IRQ");
     check(!(bsr & Ncr5380::BSR_DRQ), "receive mismatch: DRQ stays low");
     bool berr = false;
-    try { (void)mem.read8(0xF06000); } catch (moira::MmuBusError&) { berr = true; }
+    try { (void)mem.read8(0xF06000); } catch (moira::BusError&) { berr = true; }
     check(berr, "trailing window read raises a bus error, not a data byte");
     berr = false;
-    try { mem.write8(0xF06000, 0); } catch (moira::MmuBusError&) { berr = true; }
+    try { mem.write8(0xF06000, 0); } catch (moira::BusError&) { berr = true; }
     check(berr, "window write without DRQ raises a bus error");
 
     // R0 under MODE_DMA with DRQ low is a bus latch: the status byte is

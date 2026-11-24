@@ -766,7 +766,10 @@ protected:
             // always lands on an instruction boundary and needs no lock.
             case Cmd::CpuEngine:
                 cpu.setEngine(c.a);
-                stEngine_.store(c.a, std::memory_order_relaxed);
+                // Publish the engine that runs, not the one requested: a
+                // qualified session may refuse the swap, and a build without
+                // the JIT keeps the interpreter.
+                stEngine_.store(cpu.engine(), std::memory_order_relaxed);
                 break;
         }
         }

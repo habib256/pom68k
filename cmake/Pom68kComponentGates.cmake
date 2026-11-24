@@ -1,5 +1,12 @@
 # Component, repository and shared-subsystem CTest registrations.
 # Included by the repository root while POM68K_TESTS is enabled.
+# A CPU test held against its known divergences (tests/known/<list>.txt,
+# tools/known_failures.py): an unlisted failure fails the gate.
+function(pom68k_known_test name target list)
+    add_test(NAME ${name} COMMAND python3 tools/known_failures.py
+             --known tests/known/${list}.txt -- $<TARGET_FILE:${target}>
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+endfunction()
 
 # Behavioural GUI gate: a real hidden GLFW/ImGui window renders three
 # frames, switches CPU engine, writes a save state, closes through RAII

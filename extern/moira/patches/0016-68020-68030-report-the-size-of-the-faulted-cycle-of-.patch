@@ -1,0 +1,106 @@
+From 1979cc714a3881ca432efc7edeb1d11db0b6823f Mon Sep 17 00:00:00 2001
+From: VERHILLE Arnaud <gist974@gmail.com>
+Date: Tue, 24 Nov 2026 01:21:44 +0400
+Subject: [PATCH 16/17] 68020/68030: report the size of the faulted cycle of a
+ split long word
+
+When the second word of a long word access faults, the special status word
+now reports a word, not a long word.
+
+The evidence is read from three passages rather than quoted from one: the
+SSW size is that of "the operand access for the data cycle" (MC68020UM
+6.2.1, MC68030UM 8.2.1); the handler completes the cycle through the data
+buffers, where "byte, word, and 3-byte operands are right-justified"
+(MC68030UM 8.2.2), and a 3-byte operand only arises as the rest of a split
+access; and the 68040 manual says explicitly that its own SIZE field is the
+original access size (MC68040UM 8.4.6.2), which reads as a deliberate
+difference. A handler that completes the second word must be told it is a
+word. Settled for good by a 68030 on a 16-bit port.
+---
+ Moira/MoiraDataflow.h     |  3 ++-
+ Moira/MoiraDataflow_cpp.h | 20 ++++++++++++++------
+ 2 files changed, 16 insertions(+), 7 deletions(-)
+
+diff --git a/Moira/MoiraDataflow.h b/Moira/MoiraDataflow.h
+index 7862e60..e3c5c76 100644
+--- a/Moira/MoiraDataflow.h
++++ b/Moira/MoiraDataflow.h
+@@ -175,7 +175,8 @@ template <Flags F = 0> StackFrame makeFrame(u32 addr, u32 pc);
+ template <Flags F = 0> StackFrame makeFrame(u32 addr);
+ 
+ // Adds the special status word to a bus error signaled by the host (68030 and 68040)
+-template <Size S, bool W> void completeBusError(BusError &e);
++// (addr is the address of the operand, which tells a split long word's cycles apart)
++template <Size S, bool W> void completeBusError(BusError &e, u32 addr);
+ 
+ // Creates an address error that is raised before the bus cycle has started
+ template <Core C> AddressError earlyAddressError(const StackFrame &frame);
+diff --git a/Moira/MoiraDataflow_cpp.h b/Moira/MoiraDataflow_cpp.h
+index 9716b8b..f51be21 100644
+--- a/Moira/MoiraDataflow_cpp.h
++++ b/Moira/MoiraDataflow_cpp.h
+@@ -858,7 +858,7 @@ try
+ catch (BusError &e)
+ {
+     // Tell the fault handler whether the access was a read or a write (68030 and UAE bus error frames)
+-    if constexpr (C == Core::C68020) { e.stackFrame.write = false; completeBusError<S, false>(e); }
++    if constexpr (C == Core::C68020) { e.stackFrame.write = false; completeBusError<S, false>(e, addr); }
+     throw;
+ }
+ 
+@@ -913,7 +913,7 @@ Moira::readInstr(u32 addr)
+         } catch (BusError &e) {
+ 
+             e.stackFrame.write = false;
+-            completeBusError<Word, false>(e);
++            completeBusError<Word, false>(e, addr);
+             throw;
+         }
+         // The 68020 timing tables are the manual's cache-only case: the
+@@ -1088,7 +1088,7 @@ try
+ catch (BusError &e)
+ {
+     // Tell the fault handler whether the access was a read or a write and what data it carried
+-    if constexpr (C == Core::C68020) { e.stackFrame.write = true; e.stackFrame.data = val; completeBusError<S, true>(e); }
++    if constexpr (C == Core::C68020) { e.stackFrame.write = true; e.stackFrame.data = val; completeBusError<S, true>(e, addr); }
+     throw;
+ }
+ 
+@@ -1113,7 +1113,7 @@ Moira::readDataCache(u32 addr)
+     } catch (BusError &e) {
+         // The line fill has failed
+         e.stackFrame.write = false;
+-        completeBusError<S, false>(e);
++        completeBusError<S, false>(e, addr);
+         throw;
+     }
+ 
+@@ -1234,7 +1234,7 @@ Moira::misaligned(u32 addr)
+ }
+ 
+ template <Size S, bool W> void
+-Moira::completeBusError(BusError &e)
++Moira::completeBusError(BusError &e, u32 addr)
+ {
+     /* A host that throws BusError(addr) only provides the fault address. The
+      * 68030 and 68040 also report the cause of the fault in the special status
+@@ -1257,7 +1257,15 @@ Moira::completeBusError(BusError &e)
+ 
+         // On the 68020 and 68030, a fault in program space belongs to the
+         // instruction pipe. Both use this layout (MC68020UM 6.2.1, MC68030UM 8.2.1).
+-        u16 size = S == Byte ? SSW030::SIZ_B : S == Word ? SSW030::SIZ_W : SSW030::SIZ_L;
++        //
++        // The size is that of the faulted cycle: a word when the second word of
++        // a long word access fails. The handler completes that word through the
++        // data buffers, where byte, word and 3-byte operands are right-justified
++        // (MC68030UM 8.2.2; a 3-byte operand only exists as the rest of a split
++        // access). The 68040, in contrast, reports the original access size
++        // (MC68040UM 8.4.6.2).
++        bool rest = S == Long && e.stackFrame.addr == ((addr + 2) & addrMask<Core::C68020>());
++        u16 size = S == Byte ? SSW030::SIZ_B : (S == Word || rest) ? SSW030::SIZ_W : SSW030::SIZ_L;
+         bool prog = (fc & 3) == 2;
+ 
+         e.stackFrame.ssw = (prog ? SSW030::FB | SSW030::RB : SSW030::DF) | size | (fc & 7);
+-- 
+2.54.0 (Apple Git-157)
+

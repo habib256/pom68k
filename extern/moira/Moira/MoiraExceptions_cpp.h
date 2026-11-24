@@ -8,75 +8,78 @@
 template <Core C> void
 Moira::writeStackFrameAEBE(StackFrame &frame)
 {
-    // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-    // POM68K: the 68000 does not stack its group-0 frame top-down. The bus
-    // order is PC low, SR, PC high, IR, access address low, status word,
-    // access address high — the three-word order of writeStackFrame0000,
-    // continued. Upstream pushed the seven words strictly downwards.
-    // [D] SingleStepTests/680x0 v1, `transactions` of every address-error
-    //     vector (e.g. "426a [CLR.w (d16, A2)] 1"); counted by
-    //     `sst68000 --transactions`.
-    U32_DEC(reg.sp, 14);
-    write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 12) & ~1, (u16)frame.pc);
-    write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp,  8) & ~1, frame.sr);
-    write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 10) & ~1, frame.pc >> 16);
-    write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp,  6) & ~1, frame.ird);
-    write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp,  4) & ~1, (u16)frame.addr);
-    write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp,  0) & ~1, frame.code);
-    write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp,  2) & ~1, frame.addr >> 16);
+    if constexpr (C == Core::C68000) {
+
+        U32_DEC(reg.sp, 14);
+        write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 12), READ<Word>(frame.pc));
+        write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 8), frame.sr);
+        write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 10), READ<Word, 1>(frame.pc));
+        write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 6), frame.ird);
+        write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 4), (u16)frame.addr);
+        write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 0), frame.code);
+        write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 2), frame.addr >> 16);
+        return;
+    }
+
+    // Push PC
+    push<C, Word>(READ<Word>(frame.pc));
+    push<C, Word>(READ<Word, 1>(frame.pc));
+
+    // Push SR and IRD
+    push<C, Word>(frame.sr);
+    push<C, Word>(frame.ird);
+
+    // Push address
+    push<C, Word>((u16)frame.addr);
+    push<C, Word>(frame.addr >> 16);
+
+    // Push memory access type and function code
+    push<C, Word>(frame.code);
 }
 
 template <Core C> void
 Moira::writeStackFrame0000(u16 sr, u32 pc, u16 nr)
 {
+    // The 68020 does not align the stack pointer
+    constexpr u32 mask = C == Core::C68020 ? ~0u : ~1u;
+
     switch (C) {
 
         case Core::C68000:
 
-            if constexpr (MOIRA_MIMIC_MUSASHI) {
+            U32_DEC(reg.sp, 6);
+            if constexpr (compat != Compatibility::UAE) {
 
-                push<C, Long>(pc);
-                push<C, Word>(sr);
+                // MAME has not adjusted the stack pointer yet if the first write fails
+                try { write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 4) & mask, READ<Word>(pc)); }
+                catch (BusError &) { U32_INC(reg.sp, 6); throw; }
 
             } else {
 
-                U32_DEC(reg.sp, 6);
-                write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 4) & ~1, pc & 0xFFFF);
-                write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 0) & ~1, sr);
-                write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 2) & ~1, pc >> 16);
+                write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 4) & mask, READ<Word>(pc));
             }
+            write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 0) & mask, sr);
+            write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 2) & mask, READ<Word, 1>(pc));
             break;
 
         case Core::C68010:
+
+            // The write order follows UAE (it only matters if a write fails)
+            U32_DEC(reg.sp, 8);
+            write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 4) & mask, READ<Word>(pc));
+            write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 0) & mask, sr);
+            write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 2) & mask, READ<Word, 1>(pc));
+            write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 6) & mask, 4 * nr);
+            break;
+
         case Core::C68020:
 
-            if constexpr (MOIRA_MIMIC_MUSASHI) {
-
-                push<C, Word>(nr << 2);
-                push<C, Long>(pc);
-                push<C, Word>(sr);
-
-            } else {
-
-                // [B] MC68030UM-1989 §7.2.2: no alignment restriction on
-                // data operands; a misaligned one takes extra bus cycles.
-                // POM68K (LC II, 2026-07-17): write the frame at the TRUE
-                // stack addresses — no `& ~1`. The A0 masking is 68000 bus
-                // behaviour; the 020/030 write misaligned frames byte-exact
-                // (the mode-5 mmuWrite splits odd accesses), while a 68010,
-                // a 68000 bus, takes the address error in write<>,
-                // and execRte reads back at the true addresses. With the
-                // masking, an interrupt taken while SP is odd (QuickDraw's
-                // 3-byte-per-pixel stack temps make odd SPs routine)
-                // stacked a frame shifted one byte low → RTE read garbage
-                // → spurious FORMAT ERROR → ROM system error at app
-                // launch (Lode Runner freeze; repro scratchpad/oddframe).
-                U32_DEC(reg.sp, 8);
-                write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 6), 4 * nr);
-                write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 4), pc & 0xFFFF);
-                write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 0), sr);
-                write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 2), pc >> 16);
-            }
+            // The write order follows UAE (it only matters if a write fails)
+            U32_DEC(reg.sp, 8);
+            write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 6) & mask, 4 * nr);
+            write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 2) & mask, READ<Word, 1>(pc));
+            write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 4) & mask, READ<Word>(pc));
+            write<C, AddrSpace::DATA, Word>(U32_ADD(reg.sp, 0) & mask, sr);
             break;
     }
 }
@@ -115,11 +118,69 @@ Moira::writeStackFrame0010(u16 sr, u32 pc, u32 ia, u16 nr)
 }
 
 template <Core C> void
+Moira::writeStackFrame0011(u16 sr, u32 pc, u32 ea, u16 nr)
+{
+    assert(C == Core::C68020);
+
+    // Effective address
+    push<C, Long>(ea);
+
+    // 0011 | Vector offset
+    push<C, Word>(0x3000 | nr << 2);
+
+    // Program counter
+    push<C, Long>(pc);
+
+    // Status register
+    push<C, Word>(sr);
+}
+
+template <Core C> void
+Moira::writeStackFrame0111(u16 sr, u32 pc, u16 nr, u16 ssw, u32 addr, u32 dataOut)
+{
+    // Write-back 1 (unused)
+    for (int i = 0; i < 4; i++) push<C, Long>(0);   // PD3 ... PD0
+    push<C, Long>(0);                               // WB1A
+
+    // Write-back 2 (unused)
+    push<C, Long>(0);                               // WB2D
+    push<C, Long>(0);                               // WB2A
+
+    // Write-back 3 (the faulting write)
+    bool write = !(ssw & SSW040::RW);
+    push<C, Long>(dataOut);                         // WB3D
+    push<C, Long>(write ? addr : 0);                // WB3A
+
+    // Fault address
+    push<C, Long>(addr);
+
+    // Write-back status words
+    push<C, Word>(0);                               // WB1S
+    push<C, Word>(0);                               // WB2S
+    push<C, Word>(write ? 0x80 | (ssw & 0x7F) : 0); // WB3S
+
+    // Special status word
+    push<C, Word>(ssw);
+
+    // Effective address
+    push<C, Long>(addr);
+
+    // 0111 | Vector offset
+    push<C, Word>(0x7000 | nr << 2);
+
+    // Program counter
+    push<C, Long>(pc);
+
+    // Status register
+    push<C, Word>(sr);
+}
+
+template <Core C> void
 Moira::writeStackFrame1000(StackFrame &frame, u16 sr, u32 pc, u32 ia, u16 nr, u32 addr)
 {
     assert(C == Core::C68010);
 
-    // Internal information
+    // Internal information (the first word holds the version number, the rest is not emulated)
     push<C, Long>(0);
     push<C, Long>(0);
     push<C, Long>(0);
@@ -127,7 +188,7 @@ Moira::writeStackFrame1000(StackFrame &frame, u16 sr, u32 pc, u32 ia, u16 nr, u3
     push<C, Long>(0);
     push<C, Long>(0);
     push<C, Long>(0);
-    push<C, Long>(0);
+    push<C, Long>(u32(VERSION_68010 << 10) << 16);
 
     // Instruction input buffer
     push<C, Word>(queue.irc);
@@ -166,46 +227,34 @@ Moira::writeStackFrame1000(StackFrame &frame, u16 sr, u32 pc, u32 ia, u16 nr, u3
 template <Core C> void
 Moira::writeStackFrame1001(u16 sr, u32 pc, u32 ia, u16 nr)
 {
-    // Four opaque continuation words. The software-visible contract is
-    // their presence and preservation by RTE; the pending FPU dialog lives
-    // in `fpu.busy`, while these words mirror the two prefetched words and
-    // the command so diagnostics see deterministic non-zero context.
-    push<C, Word>(fpu.busyExt);
-    push<C, Word>(fpu.busyOpcode);
-    push<C, Word>(queue.irc);
-    push<C, Word>(queue.ird);
 
-    push<C, Long>(ia);                         // instruction address
-    push<C, Word>(u16(0x9000 | nr << 2));     // format $9 | vector offset
-    push<C, Long>(pc);                         // next word to fetch
-    push<C, Word>(sr);
 }
 
 template <Core C> void
-Moira::writeStackFrame1010(u16 sr, u32 pc, u16 nr)
+Moira::writeStackFrame1010(u16 sr, u32 pc, u16 nr, u16 ssw, u32 addr, u32 dataOut, u16 stageC, u16 stageB)
 {
     // Internal registers
     push<C, Word>(0);
     push<C, Word>(0);
 
     // Data output buffer
-    push<C, Long>(0);
+    push<C, Long>(dataOut);
 
     // Internal registers
     push<C, Word>(0);
     push<C, Word>(0);
 
     // Data cycle fault address
-    push<C, Long>(0);
+    push<C, Long>(addr);
 
     // Instruction pipe stage B
-    push<C, Word>(0);
+    push<C, Word>(stageB);
 
     // Instruction pipe stage C
-    push<C, Word>(0);
+    push<C, Word>(stageC);
 
     // Special status word
-    push<C, Word>(0);
+    push<C, Word>(ssw);
 
     // Internal register
     push<C, Word>(0);
@@ -221,7 +270,7 @@ Moira::writeStackFrame1010(u16 sr, u32 pc, u16 nr)
 }
 
 template <Core C> void
-Moira::writeStackFrame1011(u16 sr, u32 pc, u32 ia, u16 nr)
+Moira::writeStackFrame1011(u16 sr, u32 pc, u32 ia, u16 nr, u16 ssw, u32 addr, u32 dataOut, u16 stageC, u16 stageB)
 {
     // Internal registers
     push<C, Long>(0);
@@ -255,23 +304,23 @@ Moira::writeStackFrame1011(u16 sr, u32 pc, u32 ia, u16 nr)
     push<C, Long>(0);
 
     // Data output buffer
-    push<C, Long>(0);
+    push<C, Long>(dataOut);
 
     // Internal registers
     push<C, Word>(0);
     push<C, Word>(0);
 
     // Data cycle fault address
-    push<C, Long>(0);
+    push<C, Long>(addr);
 
     // Instruction pipe stage B
-    push<C, Word>(0);
+    push<C, Word>(stageB);
 
     // Instruction pipe stage C
-    push<C, Word>(0);
+    push<C, Word>(stageC);
 
     // Special status register
-    push<C, Word>(0);
+    push<C, Word>(ssw);
 
     // Internal register
     push<C, Word>(0);
@@ -286,272 +335,43 @@ Moira::writeStackFrame1011(u16 sr, u32 pc, u32 ia, u16 nr)
     push<C, Word>(sr);
 }
 
-// [B] MC68030UM-1989 §8.4: frame formats, not opaque internal encodings.
-// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-//
-// POM68K O4 slice 3 — 68030 MMU bus-fault frames (MC68030UM-1989 § 8.4),
-// byte-for-byte replicas of WinUAE Exception_build_stack_frame cases
-// $A/$B (newcpu_common.c) as produced by the mode-5 68030+MMU core:
-// prefetch020[] and the pipeline words are always zero there, the
-// internal words carry the access log, the pending-fixup encodings and
-// the MOVEM/EA restart state. See POM68K_VENDOR.md § MMU bus layer.
-
-template <Core C> void
-Moira::writeStackFrameShortBusFault(u16 sr, u32 pc)
+/* The following code reproduces the 68020 bus error and address error frames of UAE.
+ * UAE reports the stacked PC, the SSW and the pipe stages by simple rules. Many internal
+ * words are not modeled. All frames use the long format ($B).
+ */
+static bool hasIndexedOperand(u16 ird)
 {
-    push<C, Long>(0);                           // internal (pipeline status)
-    push<C, Long>(mmuWb3Data);                  // data output buffer
-    push<C, Long>(mmuOpcodeV & 0xFFFF);         // internal (opcode storage)
-    push<C, Long>(mmuFaultAddr);                // data cycle fault address
-    push<C, Word>(0);                           // instr. pipe stage B
-    push<C, Word>(0);                           // instr. pipe stage C
-    push<C, Word>(mmuSsw);                      // special status word
-    push<C, Word>(mmuWb2Address);               // internal (= mmuState[1])
-    push<C, Word>(u16(0xA000 | (2 << 2)));      // format $A | vector offset
-    push<C, Long>(pc);
-    push<C, Word>(sr);
+    auto indexed = [](u16 m, u16 r) { return m == 6 || (m == 7 && r == 3); };
+
+    switch (ird >> 12) {
+
+        case 0x6: case 0x7: case 0xA: case 0xF: return false;
+        case 0xE: if (((ird >> 6) & 3) != 3) return false; break;
+        case 0x4: if ((ird & 0xFF80) == 0x4E00) return false; break;   // TRAP, LINK, UNLK, RTS, ...
+    }
+    if (indexed((ird >> 3) & 7, ird & 7)) return true;
+
+    // MOVE has a second effective address
+    return (ird & 0xC000) == 0 && (ird & 0x3000) && indexed((ird >> 6) & 7, (ird >> 9) & 7);
 }
 
 template <Core C> void
-Moira::writeStackFrameLongBusFault(u16 sr, u32 pc, int nr)
+Moira::writeStackFrame1011UAE(u16 sr, u16 nr, u32 pc, u16 ssw, u32 addr, u32 end, bool write, u32 dataOut)
 {
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // A faulting write parks the pending value in the access log so RTE
-    // can retry it (WinUAE: mmu030_ad[idx_done].val = wb3_data)
-    if (!(mmuSsw & 0x0040) && mmuIdxDone < 10) mmuAd[mmuIdxDone] = mmuWb3Data;
-
-    const u32 ps = (mmuOpcodeV == 0xFFFFFFFF) ? 0x80000000 : 0;
-    const int done = mmuIdxDone < 9 ? mmuIdxDone : 8;
-
-    int i;
-    for (i = 0; i < done + 1; i++) push<C, Long>(mmuAd[i]);     // access log
-    for (; i < 9; i++) {
-        // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-        // POM68K O5: during an FMOVEM (state[1] FMOVEM flag) the padding
-        // slots MAX-2/MAX-1 carry the first two longs of the register in
-        // flight (WinUAE Exception_build_stack_frame case 0xB,
-        // newcpu_common.c: mmu030_fmovem_store)
-        u32 v = 0;
-        if (mmuState[1] & 0x2000) {
-            if (i == 7) v = mmuFmovemStore[0];
-            if (i == 8) v = mmuFmovemStore[1];
-        }
-        push<C, Long>(v);
+    u16 stageC = 0, stageB = 0;
+    if (nr == 2 && !write) {
+        stageC = peekInstr((end + 2) & addrMask<C>());
+        stageB = peekInstr((end + 4) & addrMask<C>());
     }
-    push<C, Word>(u16((mmuIdx & 0xf) | ((mmuIdxDone & 0xf) << 4)
-                      | (mmuWb2Status << 8)));  // version / internal info
-    push<C, Word>(u16(mmuState[2] | (mmuWb3Status << 8)));
-    push<C, Word>(mmuWb2Address);
-    push<C, Word>(mmuState[0]);                 // MOVEM counter
-    push<C, Long>(mmuFaultAddr);                // data input buffer
-    push<C, Long>(ps);
-    push<C, Long>(mmuStageB);                   // stage B address
-    push<C, Long>(mmuDispStore[1]);
-    push<C, Long>(mmuDispStore[0]);
-    push<C, Long>(mmuWb3Data);                  // data output buffer
-    push<C, Long>(mmuOpcodeV & 0xFFFF);         // internal (opcode storage)
-    push<C, Long>(mmuFaultAddr);                // data cycle fault address
-    push<C, Word>(0);                           // instr. pipe stage B
-    push<C, Word>(0);                           // instr. pipe stage C
-    push<C, Word>(mmuSsw);
-    push<C, Word>(mmuWb2Address);
-    push<C, Word>(u16(0xB000 | (nr << 2)));     // format $B | vector offset
-    push<C, Long>(pc);
-    push<C, Word>(sr);
-}
-
-// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-// POM68K O4 slice 4 — 68030 address error on an odd instruction-flow
-// target (WinUAE Exception_mmu030 nr == 3, reached from the exception3_*
-// hooks in the mmu030 gencpu handlers): vector 3, format $B frame with
-// SSW = RW|SIZE_W|FC 6 (constant — S is already set when WinUAE evaluates
-// it), fault address = the odd target, restart state and data buffers
-// zeroed. The caller has already applied every architectural side effect
-// that precedes the fault (pops, (An) updates, CCR/SR changes) and passes
-// the stacked PC required by the faulting instruction's convention.
-template <Core C> void
-Moira::execAddressError030(u32 target, u32 stackedPc)
-{
-    mmuLogging = false;
-
-    willExecute(M68kException::ADDRESS_ERROR, 3);
-
-    u16 status = getSR();
-
-    setSupervisorMode(true);
-    clearTraceFlags();
-    flags &= ~State::TRACE_EXC;
-    SYNC(8);
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // WinUAE zeroes the restart state; the wb*/stage-B capture is left
-    // to the deterministic reset values (oracle_set_state zeroes them)
-    mmuState[0] = mmuState[1] = 0;
-    mmuDataBuffer = 0;
-    mmuFaultAddr = target;
-    mmuStageB = 0;
-    mmuWb2Address = 0;
-    mmuWb2Status = mmuWb3Status = 0;
-    mmuWb3Data = 0;
-    mmuSsw = 0x0066;                            // RW | SIZE_W | FC = 6
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // The vector is fetched before the frame is stacked (WinUAE order)
-    u32 vectorAddr = (reg.vbr & ~u32(0x1)) + 4 * 3;
-    u32 newpc = read<C, AddrSpace::DATA, Long>(vectorAddr);
-
-    writeStackFrameLongBusFault<C>(status, stackedPc, 3);
-
-    if (newpc & 1) { halt(); return; }          // double fault
-
-    reg.pc = reg.pc0 = newpc;
-
-    if (debugger.catchpointMatches(3)) didReachCatchpoint(u8(3));
-    didJumpToVector(3, reg.pc);
-
-    didExecute(M68kException::ADDRESS_ERROR, 3);
-}
-
-// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-// POM68K Q2 — 68040 address error on an odd instruction-flow target
-// (WinUAE Exception_mmu nr == 3, reached from the exception3_* hooks in
-// the mmu040 gencpu handlers): vector 3, format $2 frame, address field
-// = the odd target with bit 0 cleared (exception3f: addr &= ~1 on
-// 68040+). The caller has already applied the WinUAE per-instruction
-// conventions (A7 restores/re-pushes, CCR/SR pops) and passes the
-// stacked PC. The vector is fetched before the frame (Exception_mmu
-// order); an odd handler address double-faults into HALT.
-template <Core C> void
-Moira::execAddressError040(u32 target, u32 stackedPc)
-{
-    willExecute(M68kException::ADDRESS_ERROR, 3);
-
-    trace040Pending = false;        // exceptions cancel a pending trace
-
-    u16 status = getSR();
-
-    setSupervisorMode(true);
-    clearTraceFlags();
-    flags &= ~State::TRACE_EXC;
-    SYNC(8);
-
-    u32 vectorAddr = reg.vbr + 4 * 3;
-    u32 newpc = read<C, AddrSpace::DATA, Long>(vectorAddr);
-
-    writeStackFrame0010<C>(status, stackedPc, target & ~u32(1), 3);
-
-    if (newpc & 1) { halt(); return; }          // double fault
-
-    reg.pc = reg.pc0 = newpc;
-    fullPrefetch<C, POLL>();
-
-    if (debugger.catchpointMatches(3)) didReachCatchpoint(u8(3));
-    didJumpToVector(3, reg.pc);
-
-    didExecute(M68kException::ADDRESS_ERROR, 3);
-}
-
-// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-// Bus-error exception processing for MMU translation faults, mirroring
-// the CATCH block of WinUAE m68k_run_mmu030 + Exception_mmu030: frame $A
-// for a fault on the instruction's last write (PC = next instruction,
-// CCR kept), frame $B otherwise (PC = faulted instruction, CCR and the
-// (An)± fixups restored; a prefetch-phase fault sets bit 31 of the
-// pipeline-status long).
-template <Core C> void
-Moira::execMmuBusError()
-{
-    mmuLogging = false;
-
-    u32 currpc;
-
-    // POM68K (host): AVAILABILITY seeds plain-020 restart state before the
-    // handler can prefetch and advance pc0. Roll back the replay's CCR/EA
-    // adjustments before exposing the exception handler; no 030 private
-    // fixup encoding is needed in this model's frame.
-    const bool mode5 = (cpuModel == Model::M68030);
-
-    if (mmuPlain020()) {
-
-        currpc = mmuLastWritePc;
-        if (mmuSsw & 1) {
-            setCCR(u8(mmuCcrSave));
-            for (int i = 0; i < 2; ++i)
-                if (mmuFixupReg[i]) reg.a[mmuFixupReg[i] & 7] = mmuFixupVal[i];
-        }
-
-    } else if (!mode5) {
-
-        currpc = reg.pc0;
-
-    } else if (mmuOpcodeV == 0xFFFFFFFF) {      // fault on the opcode fetch
-
-        currpc = reg.pc0;
-
-    } else if (mmuState[1] & 0x0100) {          // fault on the last write
-
-        currpc = mmuLastWritePc;
-
-    } else {
-
-        setCCR(u8(mmuCcrSave));                 // pre-instruction CCR
-        for (int i = 0; i < 2; i++)             // cpu_restore_fixup
-            if (mmuFixupReg[i]) reg.a[mmuFixupReg[i] & 7] = mmuFixupVal[i];
-        currpc = reg.pc0;
-    }
-
-    willExecute(M68kException::BUS_ERROR, 2);
-
-    u16 status = getSR();
-
-    setSupervisorMode(true);
-    clearTraceFlags();
-    flags &= ~State::TRACE_EXC;
-    SYNC(8);
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // The vector is fetched before the frame is stacked (WinUAE order);
-    // both go through address translation
-    u32 vectorAddr = (reg.vbr & ~u32(0x1)) + 4 * 2;
-    u32 newpc = read<C, AddrSpace::DATA, Long>(vectorAddr);
-
-    if (mode5 && (mmuState[1] & 0x0100)) {      // stale latch on plain core
-        writeStackFrameShortBusFault<C>(status, currpc);
-    } else {
-        // POM68K (host): retain the original PC in each plain-020 frame's private
-        // internal words, including nested faults. A handler that redirects
-        // the stacked PC must not lend its completed cycle to a new opcode.
-        if (mmuPlain020()) mmuDispStore[0] = currpc;
-        writeStackFrameLongBusFault<C>(status, currpc);
-    }
-
-    if (newpc & 1) { halt(); return; }          // double fault (vector 2)
-
-    reg.pc = reg.pc0 = newpc;
-
-    // POM68K (host) Phase C (Mac LC, 2026-07-24): the mode-5 loops (M68030 via
-    // mmuExecuteStart, ≥M68EC040 via mmu040InstrStart) refetch the opcode
-    // from reg.pc at every instruction, so the handler jump lands there.
-    // The plain-queue models (68020/EC020/EC030) kept executing the STALE
-    // queue.ird — the faulted instruction re-ran at the handler PC and
-    // re-faulted forever (the LC ROM's AddrMapFlags probe: MOVEM.L from
-    // $50FC0000 looped its own bus-error frame until HALT). Refill the
-    // queue like execAddressError040 does; a fault during this prefetch
-    // propagates to the caller's catch → halt() = a true double fault.
-    if (cpuModel != Model::M68030 && cpuModel < Model::M68EC040) {
-        fullPrefetch<C, POLL>();
-    }
-
-    if (debugger.catchpointMatches(2)) didReachCatchpoint(u8(2));
-    didJumpToVector(2, reg.pc);
-
-    didExecute(M68kException::BUS_ERROR, 2);
+    // The data output buffer holds the value of a faulting write (MC68020UM 6.2.2)
+    writeStackFrame1011<C>(sr, 0, pc, nr, ssw, addr, write ? dataOut : 0, stageC, stageB);
 }
 
 template <Core C> void
 Moira::execAddressError(StackFrame frame, int delay)
 {
     u16 status = getSR();
+    u32 pc0Now = reg.pc0;
 
     // Inform the delegate
     willExecute(M68kException::ADDRESS_ERROR, 3);
@@ -565,25 +385,57 @@ Moira::execAddressError(StackFrame frame, int delay)
     // Disable tracing
     clearTraceFlags();
     flags &= ~State::TRACE_EXC;
-    // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-    // POM68K: SingleStepTests/680x0 — on the 68000, data faults take 8 idle
-    // cycles fewer than upstream Moira, instruction-flow faults 6 fewer.
-    // The I/N bit (code bit 3, set at the throw sites) is the discriminator:
-    // PC-relative OPERAND reads are data faults too (FC=data).
-    // POM68K: and the two idle cycles upstream spent AFTER the frame sit
-    // BEFORE it on the 68000 — same total, same corpus evidence as the
-    // stacking order in writeStackFrameAEBE.
-    SYNC(C == Core::C68000 ? ((frame.code & 0x8) ? 4 : 2) : 8);
+
+    // Interrupts are taken at an instruction boundary
+    reg.pc = reg.pc0;
+    if constexpr (C == Core::C68000 && compat == Compatibility::DEFAULT) {
+        // The 68000 group-0 address-error idle depends on the I/N bit.
+        // SingleStepTests/680x0 measures the start of each frame write.
+        SYNC((frame.code & 0x8) ? 4 : 2);
+    } else {
+        SYNC(8);
+    }
 
     // A misaligned stack pointer will cause a double fault
     if (misaligned<C>(reg.sp)) throw DoubleFault();
 
     // Write stack frame
     if constexpr (C == Core::C68000) {
+
+        if constexpr (compat != Compatibility::DEFAULT) SYNC(2);
         writeStackFrameAEBE<C>(frame);
-    } else {
+
+    } else if constexpr (C == Core::C68010) {
+
         writeStackFrame1000<C>(frame, status, frame.pc, reg.pc0, 3, frame.addr);
         SYNC(2);
+
+    } else if (cpuModel >= CPUModel::M68EC040) {
+
+        // The 68040 has no bus fault frames. It reports an address error with a frame of
+        // format 2 (MC68040UM, 8.4.3). Like UAE, the frame holds the address of the
+        // instruction and the fault address with bit 0 cleared.
+        writeStackFrame0010<C>(status, pc0Now, frame.addr & ~1, 3);
+
+    } else {
+
+        // The 68020 reports an odd instruction fetch with a frame of format B. According
+        // to recordings made on a real A1200, the stacked PC is always the address of the
+        // instruction (JMP, JSR, BSR, DBcc, RTS, RTR).
+        u16 op = peekInstr(pc0Now & addrMask<C>());
+
+        // Stage C and B are not emulated faithfully (UAE shows the next instruction word)
+        bool ix = (op & 0xFFC0) == 0x4EC0 && hasIndexedOperand(op);
+        u16 stageC = ix ? queue.irc : 0, stageB = (op == 0x4E75 || op == 0x4E77) ? queue.irc : 0;
+
+        // Special status word as recorded on the A1200: Rerun flags for stage C (always) and
+        // stage B (except for JMP d16(An) and BSR), supervisor program space, and the data
+        // direction / size bits of the stack read performed by RTS and RTR
+        bool jmpD16 = (op & 0xFFF8) == 0x4EE8;
+        u16 ssw = 0x2005 | ((jmpD16 || (op >> 8) == 0x61) ? 0 : 0x1000);
+        if (op == 0x4E75) ssw |= 0x40;
+        if (op == 0x4E77) ssw |= 0x60;
+        writeStackFrame1011<C>(status, 0, pc0Now, 3, ssw, frame.addr, 0, stageC, stageB);
     }
 
     // Jump to exception vector
@@ -594,9 +446,14 @@ Moira::execAddressError(StackFrame frame, int delay)
 }
 
 template <Core C> void
-Moira::execBusError(StackFrame frame, int delay)
+Moira::execBusError(StackFrame frame, int delay, const Registers *saved)
 {
+    // A new fault cancels a cycle completed by the previous handler
+    completed.armed = false;
+
     u16 status = getSR();
+    // A completed fault carries its special status word (DF or FB/RB, RW, size, FC)
+    u16 ssw = frame.ssw ? frame.ssw : u16(0x60 | (getFC() & 7));
 
     // Inform the delegate
     willExecute(M68kException::BUS_ERROR, 2);
@@ -605,7 +462,9 @@ Moira::execBusError(StackFrame frame, int delay)
     sync(delay);
 
     // Enter supervisor mode
+    Registers faultReg = reg;
     setSupervisorMode(true);
+    u32 entrySsp = reg.sp, entryUsp = reg.usp;
 
     // Disable tracing
     clearTraceFlags();
@@ -617,17 +476,170 @@ Moira::execBusError(StackFrame frame, int delay)
 
     // Write stack frame
     if constexpr (C == Core::C68000) {
+
+        // MAME completes the faulting bus cycle and delays the frame instead of the vector fetch
+        sync(4);
         writeStackFrameAEBE<C>(frame);
-    } else {
+
+    } else if constexpr (C == Core::C68010) {
+
         writeStackFrame1000<C>(frame, status, frame.pc, reg.pc0, 2, frame.addr);
+        SYNC(2);
+
+    } else if (cpuModel >= CPUModel::M68EC040) {
+
+        // The write-back buffer 3 holds the data of a faulting write
+        bool write = !(frame.ssw & SSW040::RW);
+        writeStackFrame0111<C>(status, reg.pc0, 2, frame.ssw, frame.addr, write ? frame.data : 0);
+
+    } else if (cpuModel >= CPUModel::M68EC030) {
+
+        /* The 68030 reports the cause of the fault in the special status word
+         * and the logical fault address. A fault in a write cycle is reported
+         * with the short format ($A), all others with the long format ($B).
+         */
+
+        // The pipe stages hold the two instruction words behind the opcode
+        bool supervisor = status & 0x2000;
+        auto peek = [&](u32 addr) -> u16 {
+
+            addr &= addrMask<C>();
+            if (mmu.isEnabled()) {
+                auto phys = mmu.translate(addr, supervisor ? FC::SUPERVISOR_PROG : FC::USER_PROG, false);
+                if (!phys) return 0;
+                addr = phys.value() & addrMask<C>();
+            }
+            return peekInstr(addr);
+        };
+        u16 stageC = peek(reg.pc0 + 2);
+        u16 stageB = peek(reg.pc0 + 4);
+
+        // The data output buffer holds the value of a faulting write
+        bool write = !(frame.ssw & SSW030::RW) && (frame.ssw & SSW030::DF);
+        u32 dataOut = write ? frame.data : 0;
+
+        if (write) {
+            writeStackFrame1010<C>(status, reg.pc0, 2, frame.ssw, frame.addr, dataOut, stageC, stageB);
+        } else {
+            writeStackFrame1011<C>(status, frame.pc, reg.pc0, 2, frame.ssw, frame.addr, dataOut, stageC, stageB);
+        }
+
+    } else {
+
+        // The 68020 follows UAE
+        u16 op = peekInstr(reg.pc0 & addrMask<C>());
+        auto indexed = [](u16 m, u16 r) { return m == 6 || (m == 7 && r == 3); };
+        bool move = (op & 0xC000) == 0 && (op & 0x3000);
+        u16 srcMode = (op >> 3) & 7, srcReg = op & 7;
+        u16 dstMode = (op >> 6) & 7, dstReg = (op >> 9) & 7;
+
+        // UAE stacks the start of the instruction. Indexed operands move it behind the instruction words.
+        // The extension word of the destination of a MOVE is consumed after the source has been read.
+        bool ix = hasIndexedOperand(op);
+        if (ix && move && !indexed(srcMode, srcReg) && !frame.write) ix = false;
+
+        // Determine the address behind the instruction words that have been consumed when the fault occurred.
+        u32 end = reg.pc0 + 2;
+
+        if constexpr (MOIRA_ENABLE_DASM) {
+
+            // The length of the instruction is determined by the disassembler handlers of the CPU model.
+            // Without MOIRA_ENABLE_DASM, the length is unknown and we fall back to the first extension word.
+            end = reg.pc0 + peekInstrLength(reg.pc0);
+
+            // The destination extension words of a MOVE are consumed after the source has been accessed
+            if (move) {
+                u32 destBytes = (dstMode == 5 || dstMode == 6) ? 2 : (dstMode == 7 && dstReg == 0) ? 2 : (dstMode == 7 && dstReg == 1) ? 4 : 0;
+                if (!frame.write) end -= destBytes;
+                else if (dstMode == 7 && dstReg == 1) end -= 2;
+            }
+        }
+
+        u32 pc = ix ? end : reg.pc0;
+
+        // If the source of a MOVE is indexed, UAE stacks the address of the extension words of the destination
+        if (ix && move && frame.write && indexed(srcMode, srcReg)) {
+            if (dstMode == 5 || (dstMode == 7 && dstReg <= 1)) pc -= 2;
+        }
+        writeStackFrame1011UAE<C>(status, 2, pc, ssw, frame.addr, end, frame.write, frame.data);
+
+        // Remember how to restart the instruction
+        restart.valid = saved != nullptr;
+        if (restart.valid) {
+
+            restart.pre = *saved;
+            restart.fault = faultReg;
+            auto sr = reg.sr; reg.sr = saved->sr; restart.preSr = getSR(); reg.sr = sr;
+            restart.pc = reg.pc0;
+            restart.frameSp = reg.sp;
+            restart.frameSr = status;
+            restart.framePC = pc;
+            restart.entrySsp = entrySsp;
+            restart.entryUsp = entryUsp;
+        }
     }
-    SYNC(2);
 
     // Jump to exception vector
     jumpToVector<C>(2);
 
     // Inform the delegate
     didExecute(M68kException::BUS_ERROR, 2);
+}
+
+template <Core C> void
+Moira::processException(const std::exception &exc, const Registers *saved)
+{
+    // A fault aborts the instruction and terminates loop mode
+    flags &= ~State::LOOPING;
+
+    try {
+
+        if (auto ae = dynamic_cast<const AddressError *>(&exc); ae) {
+
+            execAddressError<C>(ae->stackFrame);
+            return;
+        }
+
+        if (auto be = dynamic_cast<const BusError *>(&exc); be) {
+
+            // Abort the current instruction. It will be restarted by RTE.
+            // Like UAE, the 68020 keeps the registers as they are and rolls
+            // them back when the handler returns (see Restart).
+            bool deferred = cpuModel <= CPUModel::M68020;
+            if (saved && !deferred) restoreRegisters(*saved);
+
+            // UAE decrements an address register after the access has succeeded
+            u16 op = (saved && deferred) ? peekInstr(reg.pc0 & addrMask<C>()) : 0;
+            if (saved && deferred) undoPredecrement(be->stackFrame, *saved, op);
+
+            // UAE sets the condition codes of a MOVE before it writes the result
+            if (saved && deferred && be->stackFrame.write && (op >> 12) >= 1 && (op >> 12) <= 3) {
+
+                int bits = (op >> 12) == 1 ? 8 : (op >> 12) == 3 ? 16 : 32;
+                u32 mask = bits == 32 ? 0xFFFFFFFF : (1u << bits) - 1;
+                reg.sr.n = (be->stackFrame.data >> (bits - 1)) & 1;
+                reg.sr.z = (be->stackFrame.data & mask) == 0;
+                reg.sr.v = 0;
+                reg.sr.c = 0;
+            }
+
+            // A bus error while processing a bus error is a double bus fault
+            try { execBusError<C>(be->stackFrame, 0, saved); } catch (const BusError &) { halt(); }
+            return;
+        }
+
+        if (auto df = dynamic_cast<const DoubleFault *>(&exc); df) {
+
+            throw *df;
+        }
+
+    } catch (const DoubleFault &) {
+
+        halt();
+        return;
+    }
+
+    throw exc;
 }
 
 // The following definitions are not templated. They are compiled into the
@@ -639,57 +651,172 @@ Moira::execException(M68kException exc, int nr)
 {
     switch (cpuModel) {
 
-        case Model::M68000: execException<Core::C68000>(exc, nr); break;
-        case Model::M68010: execException<Core::C68010>(exc, nr); break;
+        case CPUModel::M68000: execException<Core::C68000>(exc, nr); break;
+        case CPUModel::M68010: execException<Core::C68010>(exc, nr); break;
         default:            execException<Core::C68020>(exc, nr); break;
+    }
+}
+
+void
+Moira::undoPredecrement(const StackFrame &frame, const Registers &saved, u16 ird)
+{
+    /* UAE decrements an address register after the operand has been read, and before
+     * a pure write. Hence, only a faulting read has to be taken back. A write fault
+     * sees the register as it is.
+     */
+    if (frame.write) return;
+    u32 addr = frame.addr;
+
+    int regs[2] = { -1, -1 };
+    u32 size = 0;
+
+    switch (ird >> 12) {
+
+        case 0x1: case 0x2: case 0x3:   // MOVE
+
+            size = (ird >> 12) == 1 ? 1 : (ird >> 12) == 3 ? 2 : 4;
+            if (((ird >> 3) & 7) == 4) regs[0] = ird & 7;
+            if (((ird >> 6) & 7) == 4) regs[1] = (ird >> 9) & 7;
+            break;
+
+        case 0x8: case 0x9: case 0xC: case 0xD:
+
+            // SBCD, SUBX, ABCD, ADDX in memory-to-memory form
+            if ((ird & 0x0138) == 0x0108 && (ird & 0xC0) != 0xC0) {
+                regs[0] = ird & 7; regs[1] = (ird >> 9) & 7;
+                size = ((ird >> 12) == 8 || (ird >> 12) == 0xC) ? 1 : 1 << ((ird >> 6) & 3);
+            }
+            else if (((ird >> 3) & 7) == 4) regs[0] = ird & 7;
+            break;
+
+        case 0x4:
+
+            // MOVEM stacks its registers in its own way
+            if ((ird & 0xFB80) == 0x4880) break;
+            if (((ird >> 3) & 7) == 4) regs[0] = ird & 7;
+            break;
+
+        case 0x0: case 0x5: case 0xB: case 0xE:
+
+            if (((ird >> 3) & 7) == 4) regs[0] = ird & 7;
+            break;
+
+        default:
+            break;
+    }
+
+    for (int i = 0; i < 2; i++) {
+
+        int r = regs[i];
+        if (r < 0 || reg.a[r] != addr || saved.a[r] == reg.a[r]) continue;
+
+        // Both operands may use the same register
+        bool both = regs[0] == regs[1];
+        u32 delta = saved.a[r] - reg.a[r];
+        reg.a[r] += (both && size) ? (r == 7 && size == 1 ? 2 : size) : delta;
+        break;
+    }
+}
+
+void
+Moira::restoreRegisters(const Registers &saved)
+{
+    u8 ipl = reg.ipl;
+    reg = saved;
+    iCache.refresh();
+    dCache.refresh();
+    reg.ipl = ipl;
+
+    // Bring the dependent flags in sync with the restored status register
+    flags &= ~(State::TRACING | State::TRACE_EXC);
+    if (reg.sr.t1) flags |= State::TRACING;
+    flags |= State::CHECK_IRQ;
+}
+
+void
+Moira::processException(const std::exception &exc, const Registers *saved)
+{
+    switch (cpuModel) {
+
+        case CPUModel::M68000: processException<Core::C68000>(exc, saved); break;
+        case CPUModel::M68010: processException<Core::C68010>(exc, saved); break;
+        
+        default:
+            processException<Core::C68020>(exc, saved);
     }
 }
 
 #endif
 
 template <Core C> void
-Moira::execException(M68kException exc, int nr)
+Moira::execFpuTrap(u16 vector, bool post, u32 ea)
 {
-    // [B] MC68040UM-1993 §3.5 — an A-line, illegal, CHK or unimplemented
-    // instruction in the last word of a page, the next page not resident:
-    // the ATC access error is reported instead (POM68K, Moira.h § ircPoison).
-    // [D] WinUAE @ Hatari e77819f7 takes the instruction's own exception
-    // (no lookahead to fault); the manual wins, NOTES.md D39.
-    if constexpr (C == Core::C68020) {
-        if (cpuModel >= Model::M68EC040 &&
-            (exc == M68kException::LINEA || exc == M68kException::LINEF ||
-             exc == M68kException::ILLEGAL || exc == M68kException::CHK)) {
-            ircPoisonPreempts040();
-        }
-    }
-
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K O4 slice 3: exception stacking is not part of the 68030
-    // instruction-restart access log (WinUAE uses non-state accessors)
-    mmuLogging = false;
-
     u16 status = getSR();
 
-    // Determine the exception vector number
-    u16 vector = (exc == M68kException::TRAP) ? u16(exc) + u16(nr) : (exc == M68kException::BKPT) ? 4 : u16(exc);
-
     // Inform the delegate
-    willExecute(exc, vector);
+    willExecute(M68kException::FPU_ARITHMETIC, vector);
 
-    // Remember the exception vector
-    exception = vector;
+    // Exceptions terminate loop mode and clear any pending trace event
+    flags &= ~(State::LOOPING | State::TRACE_EXC);
 
     // Enter supervisor mode and leave trace mode
     setSupervisorMode(true);
     clearTraceFlags();
 
-    // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-    // POM68K Q2: on the 68040 any exception cancels a pending trace
-    // (WinUAE exception_check_trace: SPCFLAG_DOTRACE is unset, and the
-    // <68040 internal-exception retention branch does not apply)
-    if (cpuModel >= Model::M68EC040 && exc != M68kException::TRACE) {
-        trace040Pending = false;
-        flags &= ~State::TRACE_EXC;
+    // Write stack frame
+    if (post) {
+        writeStackFrame0011<C>(status, reg.pc, ea, vector);
+    } else {
+        writeStackFrame0000<C>(status, reg.pc0, vector);
+    }
+
+    // Branch to exception handler
+    jumpToVector<C, AE_SET_CB3>(vector);
+
+    // Inform the delegate
+    didExecute(M68kException::FPU_ARITHMETIC, vector);
+}
+
+template <Core C> bool
+Moira::takePendingFpuTrap()
+{
+    if (!fpu.pendingTrap) return false;
+
+    // The exception is taken once. A handler that returns continues with the instruction.
+    u16 vector = fpu.pendingTrap;
+    fpu.pendingTrap = 0;
+    execFpuTrap<C>(vector);
+
+    return true;
+}
+
+template <Core C> void
+Moira::execException(M68kException exc, int nr)
+{
+    u16 status = getSR();
+
+    // Determine the exception vector number
+    u16 vector =
+    exc == M68kException::TRAP ? u16(exc) + u16(nr) :
+    exc == M68kException::BKPT ? 4 :
+    exc == M68kException::FPU_UNIMPLEMENTED ? 11 : u16(exc);
+
+    // Inform the delegate
+    willExecute(exc, vector);
+
+    // Exceptions terminate loop mode
+    flags &= ~State::LOOPING;
+
+    // Trace on change of flow (T0) also follows the exceptions that instructions raise
+    [[maybe_unused]] const bool t0 = C == Core::C68020 && reg.sr.t0 && !reg.sr.t1;
+
+    // Enter supervisor mode and leave trace mode
+    setSupervisorMode(true);
+    clearTraceFlags();
+
+    // A misaligned stack pointer causes a double fault
+    if constexpr (C == Core::C68000) {
+        if (exc != M68kException::BUS_ERROR && misaligned<C>(reg.sp)) throw DoubleFault();
     }
 
     switch (exc) {
@@ -713,6 +840,17 @@ Moira::execException(M68kException exc, int nr)
             SYNC(4);
 
             // Write stack frame
+            if constexpr (C == Core::C68000) {
+
+                // MAME marks bus errors during the exception sequence as "not instruction" cycles
+                try {
+                    try { writeStackFrame0000<C>(status, reg.pc - 2, vector); }
+                    catch (BusError &e) { e.stackFrame.pc -= 2; throw; }
+                    jumpToVector<C, AE_SET_CB3>(vector);
+                }
+                catch (BusError &e) { e.stackFrame.code |= 0x8; throw; }
+                break;
+            }
             if constexpr (C == Core::C68010 || C == Core::C68020) {
                 writeStackFrame0000<C>(status, reg.pc0, vector);
             } else {
@@ -729,18 +867,7 @@ Moira::execException(M68kException exc, int nr)
             flags &= ~State::TRACE_EXC;
 
             SYNC(2);
-            // [D] WinUAE @ Hatari e77819f7: BKPT is op_illg on the 68020 up,
-            // no access at all. Upstream stands in for the breakpoint
-            // acknowledge cycle with a data read at PC; on the 020/030/040
-            // that cycle is a CPU-space acknowledge, never a translated data
-            // read, and the stand-in walked the tables of the BKPT's own page
-            // (U set where the opcode came through a transparent window) and
-            // could fault there. Kept for the 68010, which has no MMU.
-            // Fresh-seed vector "040 random/ttvar seed=77012 #456".
-            // [F] Bus timing of the 020+ acknowledge cycle. Settled by: a bus
-            // capture of BKPT on a real 68030 or 68040.
-            // Gate: moira_rules_test (bkptMakesNoDataAccess).
-            if constexpr (C != Core::C68020) (void)readM<C, Mode::DN, Word>(reg.pc);
+            (void)readM<C, Mode::DN, Word>(reg.pc);
             SYNC(2);
 
             // Write stack frame
@@ -750,32 +877,30 @@ Moira::execException(M68kException exc, int nr)
             jumpToVector<C, AE_SET_CB3>(vector);
             break;
 
+        case M68kException::FPU_UNIMPLEMENTED:
+
+            // Clear any pending trace event
+            flags &= ~State::TRACE_EXC;
+
+            // The 68040 stacks the address of the next instruction and the effective
+            // address of the operand, which is passed in nr (MC68040UM, 9.6.1)
+            writeStackFrame0010<C>(status, reg.pc, u32(nr), vector);
+
+            // Branch to exception handler
+            jumpToVector<C, AE_SET_CB3>(vector);
+            break;
+
         case M68kException::DIVIDE_BY_ZERO:
         case M68kException::CHK:
         case M68kException::TRAPV:
 
-            // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
-            // POM68K: divide-by-zero stacks the DIV instruction's own
-            // address; CHK/TRAPV stack the next instruction
-            // (SingleStepTests/680x0: the DIV instruction address).
-            // [B] MC68030UM-1989 Table 8-7:
-            // POM68K: format $2 resumes at the next PC but identifies the
-            // instruction that caused the exception in its address field.
-
-            // [B] MC68040UM-1993 §8.4.3 confirms the same two addresses.
-            // Gate: moira_rules_test (group2InstructionAddress).
+            // Write stack frame
             C == Core::C68020 ?
             writeStackFrame0010<C>(status, reg.pc, reg.pc0, vector) :
-            writeStackFrame0000<C>(status,
-                // [D] Musashi @ 1efd694 (Runner/Musashi of upstream Moira), run by its Runner:
-                //     a zero divide stacks the next PC. POM68K: so it does
-                //     under MOIRA_MIMIC_MUSASHI, which that Runner uses.
-                (exc == M68kException::DIVIDE_BY_ZERO && !MOIRA_MIMIC_MUSASHI) ? reg.pc0 : reg.pc,
-                vector);
+            writeStackFrame0000<C>(status, reg.pc, vector);
 
             // Branch to exception handler
-            jumpToVector<C,AE_SET_RW|AE_SET_IF>(vector);
-            traceInstructionTrap<C>(status);
+            jumpToVector<C,AE_FETCH>(vector);
             break;
 
         case M68kException::PRIVILEGE:
@@ -786,6 +911,16 @@ Moira::execException(M68kException exc, int nr)
             SYNC(4);
 
             // Write stack frame
+            if constexpr (C == Core::C68000) {
+
+                try {
+                    try { writeStackFrame0000<C>(status, reg.pc - 2, vector); }
+                    catch (BusError &e) { e.stackFrame.pc -= 2; throw; }
+                    jumpToVector<C,AE_SET_CB3>(vector);
+                }
+                catch (BusError &e) { e.stackFrame.code |= 0x8; throw; }
+                break;
+            }
             writeStackFrame0000<C>(status, reg.pc - 2, vector);
 
             // Branch to exception handler
@@ -802,22 +937,12 @@ Moira::execException(M68kException exc, int nr)
 
             SYNC(4);
 
-            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-            // Write stack frame
-            // POM68K Q2: the 68040 stacks a format $2 frame whose address
-            // field is WinUAE's regs.trace_pc (Exception_build_stack_
-            // frame_common nr == 9; 0 unless the staged path latched it)
-            // [B] MC68020UM-1992 Table 6-5 — Trace is listed under the
-            //     six-word format $2 frame.
-            // [B] MC68030UM-1989 Table 8-7 — the same; the instruction
-            //     address is that of the instruction that caused the trace.
-            // [D] WinUAE @ Hatari e77819f7 — same frame on the 68020/68030,
-            //     address field regs.trace_pc.
-            // POM68K: until 2026-11-19 the 68020 and 68030 stacked the
-            // four-word format $0 frame here.
-            // Gate: sst68030 trace cells (tests/cpu_vectors).
-            if (C == Core::C68020) {
-                writeStackFrame0010<C>(status, reg.pc, tracePc040, vector);
+            // Trace exceptions are taken at an instruction boundary
+            reg.pc = reg.pc0;
+
+            // Write stack frame (the 68020 stacks the address of the traced instruction)
+            if constexpr (C == Core::C68020) {
+                writeStackFrame0010<C>(status, reg.pc, reg.prev_pc0, vector);
             } else {
                 writeStackFrame0000<C>(status, reg.pc, vector);
             }
@@ -832,11 +957,7 @@ Moira::execException(M68kException exc, int nr)
             flags &= ~State::TRACE_EXC;
 
             // Write stack frame
-            if (MOIRA_MIMIC_MUSASHI) {
-                writeStackFrame0000<C>(status, reg.pc, vector);
-            } else {
-                writeStackFrame0000<C>(status, reg.pc - 2, vector);
-            }
+            writeStackFrame0000<C>(status, reg.pc - 2, vector);
 
             // Branch to exception handler
             jumpToVector<C, AE_SET_CB3>(vector);
@@ -849,11 +970,17 @@ Moira::execException(M68kException exc, int nr)
 
             // Branch to exception handler
             jumpToVector<C>(vector);
-            traceInstructionTrap<C>(status);
             break;
 
         default:
             break;
+    }
+
+    if constexpr (C == Core::C68020) {
+        if (t0 && (exc == M68kException::TRAP || exc == M68kException::CHK ||
+                   exc == M68kException::TRAPV || exc == M68kException::DIVIDE_BY_ZERO)) {
+            flags |= State::TRACE_EXC;
+        }
     }
 
     // Inform the delegate
@@ -862,15 +989,65 @@ Moira::execException(M68kException exc, int nr)
 
 // The following definitions are not templated. They are compiled into the
 // main translation unit only (see MoiraCore_cpp.h).
+template <Core C> void
+Moira::rethrow(BusError &e, u8 mask, u8 ccr)
+{
+    // The reference CPUs have already changed the flags when the access fails
+    setCCR((getCCR() & ~mask) | (ccr & mask));
+
+    // Show the flags in the stacked status register (a frame supplied by the host is left alone)
+    if (!e.custom) e.stackFrame.sr = (e.stackFrame.sr & ~CCR::ALL) | getCCR();
+
+    throw;
+}
+
+template <Core C> void
+Moira::rethrow(BusError &e)
+{
+    rethrow<C>(e, CCR::ALL, getCCR());
+}
+
+template <Core C, Size S> void
+Moira::rethrowD(BusError &e, int n, u32 value)
+{
+    // MAME updates the register (lower word for longs) before the prefetch
+    if constexpr (C == Core::C68000) writeD<S == Long ? Word : S>(n, value);
+    rethrow<C>(e);
+}
+
+template <Core C, Size S> void
+Moira::rethrowA(BusError &e, int n, u32 value)
+{
+    if constexpr (C == Core::C68000) writeA<S>(n, value);
+    rethrow<C>(e);
+}
+
 #ifdef MOIRA_MAIN_TU
+
+u8
+Moira::shiftPendingCCR(Instr I, Size S, u32 operand) const
+{
+    // Long operands are processed word by word
+    u32 nbit = S == Byte ? 0x80 : 0x8000;
+    u32 zmask = S == Byte ? 0xFF : 0xFFFF;
+
+    u8 ccr = 0;
+    if (operand & nbit) ccr |= CCR::N;
+    if ((operand & zmask) == 0) ccr |= CCR::Z;
+
+    // ROXL and ROXR copy the X flag into C
+    if ((I == Instr::ROXL || I == Instr::ROXR) && reg.sr.x) ccr |= CCR::C;
+
+    return ccr;
+}
 
 void
 Moira::execInterrupt(u8 level)
 {
     switch (cpuModel) {
 
-        case Model::M68000: execInterrupt<Core::C68000>(level); break;
-        case Model::M68010: execInterrupt<Core::C68010>(level); break;
+        case CPUModel::M68000: execInterrupt<Core::C68000>(level); break;
+        case CPUModel::M68010: execInterrupt<Core::C68010>(level); break;
         
         default:
             execInterrupt<Core::C68020>(level);
@@ -884,23 +1061,17 @@ Moira::execInterrupt(u8 level)
 {
     assert(level < 8);
 
-    // POM68K (host) O4 slice 3: see execException
-    mmuLogging = false;
-
     // Notify delegate
     willInterrupt(level);
+
+    // Level 7 is edge triggered
+    if (level == 7) nmiTaken = true;
 
     // Remember the current value of the status register
     u16 status = getSR();
 
     // Recover from stop state and terminate loop mode
     flags &= ~(State::STOPPED | State::LOOPING);
-
-    // [B] MC68030UM-1989 §8.1.9: level 7 is transition sensitive.
-    // POM68K: this acknowledge answers the pending level-7 transition
-    // (Moira.h, nmiLatch); a later one needs a new transition or a mask
-    // lowered below 7.
-    if (level == 7) nmiLatch = false;
 
     // Clear the polled IPL value
     reg.ipl = 0;
@@ -918,47 +1089,27 @@ Moira::execInterrupt(u8 level)
     switch (C) {
 
         case Core::C68000:
-        {
-            // [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-            // NEOST: cycle-exact diagnostic of the exception sequence
-            // (setPomExceptionDiag) — the clock at each step, for a step-by-step
-            // diff against WinUAE Exception_ce000.
-            const bool excDiag = pomExceptionDiag;
-            i64 t0 = excDiag ? getClock() : 0;
 
             SYNC(6);
             reg.sp -= 6;
-            write<C, AddrSpace::DATA, Word>(reg.sp + 4, reg.pc & 0xFFFF);
-            i64 t1 = excDiag ? getClock() : 0;
+            write<C, AddrSpace::DATA, Word>(reg.sp + 4, READ<Word>(reg.pc - 2));
 
-            // NEOST: IACK cycles delegated (stock = 4/4). Lets a host port Hatari's
-            // `iack_cycle` faithfully: E-clock (before) + the IACK/idle block
-            // (after), computed at the real IACK point — see Moira.h
-            // iackSyncBefore/After.
-            SYNC(iackSyncBefore(level));
+            SYNC(4);
             queue.ird = getIrqVector(level);
 
-            SYNC(iackSyncAfter(level));
-            i64 t2 = excDiag ? getClock() : 0;
+            SYNC(4);
             write<C, AddrSpace::DATA, Word>(reg.sp + 0, status);
-            write<C, AddrSpace::DATA, Word>(reg.sp + 2, reg.pc >> 16);
-            if (excDiag) {
-                i64 t3 = getClock();
-                fprintf(stderr, "[EXC] lvl=%d t0=%lld idle+PClo=%lld iack=%lld SR/PChi=%lld\n",
-                        level, (long long)t0, (long long)(t1-t0), (long long)(t2-t1),
-                        (long long)(t3-t2));
-            }
+            write<C, AddrSpace::DATA, Word>(reg.sp + 2, READ<Word, 1>(reg.pc - 2));
             break;
-        }
 
         case Core::C68010:
 
             SYNC(12);
             reg.sp -= 8;
             queue.ird = getIrqVector(level);
-            write<C, AddrSpace::DATA, Word>(reg.sp + 4, reg.pc & 0xFFFF);
+            write<C, AddrSpace::DATA, Word>(reg.sp + 4, READ<Word>(reg.pc - 2));
             write<C, AddrSpace::DATA, Word>(reg.sp + 0, status);
-            write<C, AddrSpace::DATA, Word>(reg.sp + 2, reg.pc >> 16);
+            write<C, AddrSpace::DATA, Word>(reg.sp + 2, READ<Word, 1>(reg.pc - 2));
             write<C, AddrSpace::DATA, Word>(reg.sp + 6, 4 * queue.ird);
             break;
 
@@ -966,63 +1117,13 @@ Moira::execInterrupt(u8 level)
 
             queue.ird = getIrqVector(level);
 
-            // POM68K (host) (2026-07-17): pass the RAW vector — the frame writers
-            // scale by 4 themselves (`4 * nr` / `nr << 2`, as every
-            // execException call site relies on). Passing 4*queue.ird
-            // double-scaled the stacked vector-offset word ($190 instead
-            // of $64 for autovector 25). The format nibble stayed 0, so
-            // RTE never noticed — but any handler reading the offset saw
-            // a wrong vector. Found with the Lode Runner odd-SP frame bug
-            // (scratchpad/oddframe.cpp shows both).
-            if (fpuMidInterruptFrame && cpuModel < Model::M68EC040)
-                writeStackFrame1001<C>(status, reg.pc, fpu.busyIa, queue.ird);
-            else
-                writeStackFrame0000<C>(status, reg.pc, queue.ird);
+            // Both frame writers take the vector number, not the vector offset
+            writeStackFrame0000<C>(status, reg.pc - 2, queue.ird);
 
-            {
-                const bool masterStack = reg.sr.m;
-                if (masterStack) {
+            if (reg.sr.m) {
 
-                    // POM68K (2026-11-20): the frame above went on the
-                    // master stack; clear M first, so the throwaway lands
-                    // on the interrupt stack, and stack the SR with S set.
-                    // Until then both frames went on the master stack and
-                    // M stayed set (as upstream Moira had it before eb9529c).
-                    // [B] MC68020UM-1992 §6.1.9 — "the processor clears the
-                    //     M bit and creates a throwaway exception stack frame
-                    //     on top of the interrupt stack [...] exactly the
-                    //     same as that placed on the master stack except
-                    //     that the S bit is set [...] The resulting status
-                    //     register [...] has the S bit set and the M bit
-                    //     cleared."
-                    // [B] MC68030UM-1989 §8.1.9 — the same text.
-                    // [D] WinUAE @ Hatari e77819f7 — newcpu.c
-                    //     Exception_normal and Exception_mmu030
-                    //     (`regs.m && interrupt`): the same, below the 68060.
-                    // [F] The 68040 takes this path on the two manuals
-                    //     above; the interrupt section of its own manual
-                    //     was not re-read. Settled by: that section.
-                    // Gate: moira_rules_test (masterStackInterrupt).
-                    setMasterMode(false);
-                    writeStackFrame0001<C>(status | 0x2000, reg.pc, queue.ird);
-                }
-                // POM68K: the interrupt sequence is billed like the other
-                // exceptions of this core (TRAP #n: CYCLES_68020(20)) —
-                // until 2026-11-19 it cost 0 cycles, so a burst of
-                // interrupts was free in guest time.
-                // [B] MC68020UM-1992 §8.2.17 — Interrupt (I-Stack)
-                //     26 (2/0/4), (M-Stack) 41 (2/0/8): the "cache case"
-                //     column, the one this core's TRAP #n 20 (1/0/4) uses.
-                //     The two reads, four (eight) writes are included.
-                // [B] MC68030UM-1989 §11.6.17 — the 68030's own figures,
-                //     Interrupt (I-Stack) 23 (2/0/4), (M-Stack) 33, i-cache
-                //     case; its TRAP #n is 18 where this core charges 20.
-                // [F] The core keeps one 68020 timing table for the 68020,
-                //     68030 and 68040 alike, as it does for TRAP; the
-                //     68040 manual gives no exception timing. Settled by: a
-                //     bus trace of an autovectored interrupt on a real
-                //     68030 and 68040.
-                sync(masterStack ? 41 : 26);
+                setMasterMode(false);
+                writeStackFrame0001<C>(status | 0x2000, reg.pc - 2, queue.ird);
             }
     }
 

@@ -30,7 +30,7 @@
 // restores the state-only comparison (it is what 68010/020 experiments on
 // this corpus need).
 
-#include "Moira.h"
+#include "MoiraCompat.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -78,9 +78,9 @@ struct Vector {
 };
 
 // ── Flat 16 MB test bus (no Mac hardware, no contention) ─────────────────
-class TestCpu : public moira::Moira {
+class TestCpu : public MoiraCompat {
 public:
-    TestCpu() : mem(1 << 24, 0) { setModel(moira::Model::M68000); }
+    TestCpu() : mem(1 << 24, 0) { setModel(moira::CPUModel::M68000); }
     std::vector<uint8_t> mem;
     // --transactions: every bus cycle of the vector in flight, stamped with
     // the clock at the callback.

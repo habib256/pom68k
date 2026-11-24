@@ -1,0 +1,55 @@
+From 547cc544bab5de4be19decb9fb3ca75b8cf53941 Mon Sep 17 00:00:00 2001
+From: VERHILLE Arnaud <gist974@gmail.com>
+Date: Tue, 24 Nov 2026 01:15:08 +0400
+Subject: [PATCH 13/17] FPU: a restarted arithmetic instruction starts from its
+ own operands
+
+An arithmetic FPU instruction stores its result and then prefetches. A bus
+error on that prefetch restarts the instruction, but the snapshot taken for
+a restart holds the integer registers only: FADD.X (d16,A1),FP1 faulting on
+its last prefetch added twice when it was rerun. The FP data registers,
+FPSR, FPIAR and the pending trap are now kept at the start of the
+instruction and restored when the prefetch faults.
+---
+ Moira/MoiraExecFPU_cpp.h | 18 +++++++++++++++++-
+ 1 file changed, 17 insertions(+), 1 deletion(-)
+
+diff --git a/Moira/MoiraExecFPU_cpp.h b/Moira/MoiraExecFPU_cpp.h
+index 294cc7b..b415f09 100644
+--- a/Moira/MoiraExecFPU_cpp.h
++++ b/Moira/MoiraExecFPU_cpp.h
+@@ -1224,6 +1224,15 @@ Moira::execFGeneric(u16 opcode)
+ 
+     fpu.resetState = false;
+     readI<C, Word>();
++
++    // A bus error on the prefetch below restarts the instruction after the
++    // result has been stored. Keep the FPU state it changes, so that the rerun
++    // starts from the same operands (FADD FPn,FPn would otherwise add twice).
++    MFloat80 entryFpr[8];
++    std::copy(std::begin(fpu.fpr), std::end(fpu.fpr), entryFpr);
++    u32 entryFpsr = fpu.getFPSR(), entryFpiar = fpu.getFPIAR();
++    u16 entryTrap = fpu.pendingTrap;
++
+     fpu.clearExcStatusByte();
+ 
+     // The 68040 FPU updates FPIAR on every data operation, older FPUs only if an
+@@ -1341,7 +1350,14 @@ Moira::execFGeneric(u16 opcode)
+ 
+     finishFpuOp(dst, old);
+ 
+-    prefetch<C, POLL>();
++    try { prefetch<C, POLL>(); } catch (...) {
++
++        std::copy(std::begin(entryFpr), std::end(entryFpr), fpu.fpr);
++        fpu.setFPSR(entryFpsr);
++        fpu.setFPIAR(entryFpiar);
++        fpu.pendingTrap = entryTrap;
++        throw;
++    }
+ 
+     FINALIZE
+ }
+-- 
+2.54.0 (Apple Git-157)
+

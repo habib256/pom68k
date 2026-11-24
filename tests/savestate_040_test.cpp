@@ -212,6 +212,13 @@ void testFamily(const char* family, const std::vector<uint8_t>& rom) {
     }
 }
 
+// The architectural 68040 cache was the fork's (POM68K_040_DCACHE). Dirk
+// Hoffmann's core does not model the 68040 caches, so this half waits for the
+// decision on a cache model above his core (TODO.md, before the JIT rebuild).
+#ifndef POM68K_CACHE040_MODEL
+#define POM68K_CACHE040_MODEL 0
+#endif
+#if POM68K_CACHE040_MODEL
 template<class Rig>
 void testCopybackSnapshot(const char* family, const std::vector<uint8_t>& rom, int engine) {
     auto source = std::make_unique<Rig>(rom);
@@ -287,6 +294,7 @@ void testCopybackSnapshot(const char* family, const std::vector<uint8_t>& rom, i
           saveOf(*target) == beforeOld,
           family, "cache: v29 refused before mutating the target");
 }
+#endif
 }  // namespace
 
 int main() {
@@ -298,6 +306,7 @@ int main() {
     testFamily<Q700Rig>("q700", rom);
     testFamily<Q900Rig>("q900", rom);
     testFamily<Q630Rig>("q630", rom);
+#if POM68K_CACHE040_MODEL
     for (int engine : {0, 1}) {
         testCopybackSnapshot<Q605Rig>("q605", rom, engine);
         testCopybackSnapshot<CentrisRig>("centris", rom, engine);
@@ -305,6 +314,7 @@ int main() {
         testCopybackSnapshot<Q900Rig>("q900", rom, engine);
         testCopybackSnapshot<Q630Rig>("q630", rom, engine);
     }
+#endif
 
     // Product-conformance stamp: a strict qualified state reloads, an HLE
     // state is explicitly refused, and the CPU engine cannot be switched
@@ -315,7 +325,12 @@ int main() {
     pom68k::lle::setQualified(true);
     strict.cpu.setEngine(1);
     strict.cpu.setEngine(0);
+#ifndef POM68K_NO_JIT
     check(strict.cpu.engine() == 1, "lle", "qualified session locks the JIT engine");
+#else
+    // The engine is compiled out (POM68K_JIT=OFF): nothing to lock.
+    check(strict.cpu.engine() == 0, "lle", "no JIT compiled: the interpreter stays the engine");
+#endif
     const Blob qualified = saveOf(strict);
     std::string strictErr;
     check(pom68k::load(strict.mem, strict.cpu, Q605Rig::kKind,

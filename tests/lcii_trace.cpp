@@ -264,7 +264,7 @@ int main(int argc, char** argv) {
     auto safeDasm = [&](char* out, uint32_t a) -> int {
         try {
             return cpu.disassemble(out, a);
-        } catch (moira::MmuBusError&) {
+        } catch (moira::BusError&) {
             std::snprintf(out, 16, "<bus error>");
             return 2;
         }

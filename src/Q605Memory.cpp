@@ -162,7 +162,7 @@ void Q605Memory::reset() {
 void Q605Memory::busError(uint32_t addr, bool write) const {
     if (onBusError) onBusError(addr, write);
     if (cpu_) cpu_->extBusError040();
-    throw moira::MmuBusError{};
+    throw moira::BusError(0u);
 }
 
 int Q605Memory::iplLevel() const {

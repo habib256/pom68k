@@ -40,14 +40,16 @@ Cpu040::LockstepDebug Cpu040::lockstepDebug() const {
     d.lastPeriphClock = lastPeriphClock_;
     d.periphAccum = periphAccum_;
     d.periphDeadline = periphDeadline_;
-    d.iplChangeClock = iplChangeClock;
-    d.iplChangeClockPrev = iplChangeClockPrev;
+    // Dirk's core samples the IPL pins without the fork's deferred-IPL
+    // history (NeoST's setIplDelay); those fields stay zero.
+    d.iplChangeClock = 0;
+    d.iplChangeClockPrev = 0;
     d.flags = flags;
-    d.iplDeferred = iplDeferred;
+    d.iplDeferred = 0;
     d.irqDelay = irqDelay;
     d.iplPin = ipl;
     d.iplSampled = reg.ipl;
-    d.iplPrev = iplPrev;
+    d.iplPrev = 0;
     return d;
 }
 

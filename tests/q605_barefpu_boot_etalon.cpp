@@ -156,8 +156,8 @@ int main() {
     }
     Cpu040 cpu(mem, jit::defaultResolvedConfig(), core.cpu, core.diagnostics);
     mem.setCpu(&cpu);
-    if (cpu.getModel() != moira::Model::M68LC040 ||
-        cpu.getFPUModel() != moira::FPUModel::NONE) {
+    if (cpu.getModel() != moira::CPUModel::M68LC040 ||
+        cpu.getFPUModel() != MoiraFpu::NONE) {
         std::fprintf(stderr, "FAIL: NOFPU=2 should select M68LC040 + bare NONE\n");
         return 1;
     }

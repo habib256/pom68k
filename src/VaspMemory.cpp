@@ -116,7 +116,7 @@ void VaspMemory::reset() {
 
 void VaspMemory::busError() const {
     if (cpu_) cpu_->extBusError();
-    throw moira::MmuBusError{};
+    throw moira::BusError(0u);
 }
 
 int VaspMemory::iplLevel() const {

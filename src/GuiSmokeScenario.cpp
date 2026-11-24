@@ -37,8 +37,15 @@ void GuiSmokeScenario::frame(GuiSessionState& session, GLFWwindow* window,
 
     if (!engineRequested_ && session.cpu.setCpuEngine &&
         session.cpu.getCpuEngine) {
+#ifndef POM68K_NO_JIT
         targetEngine_ = session.cpu.getCpuEngine() == 0 ? 1 : 0;
         session.cpu.setCpuEngine(targetEngine_);
+#else
+        // The engine is compiled out (POM68K_JIT=OFF): a request for it goes
+        // through the queue and the machine reports the interpreter it runs.
+        targetEngine_ = 0;
+        session.cpu.setCpuEngine(1);
+#endif
         engineRequested_ = true;
         return;
     }

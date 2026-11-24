@@ -1,0 +1,19 @@
+# Known divergences of berr020_test on Dirk Hoffmann's Moira (2026-11-24).
+# Format: <count><TAB><failure line without its file:line>. Gate:
+# tools/known_failures.py. A failure outside this list fails the gate; lower
+# a count when a failure disappears. Every heading says why its rows fail.
+
+# Ruling: the fork wrote a long -(An) operand low word first, after WinUAE.
+# MC68020UM-1992 §5.2.1 (dynamic bus sizing) writes the high word first, as
+# Dirk's core does; the size, output buffer and fault address follow from it.
+64	SSW preserves transfer size, direction and address space
+32	output buffer contains the pending transfer at the faulted size
+
+# Restart model (Dirk's design): the rerun issues the operand's earlier bus
+# cycles again; only the completed one is served from the frame (patch 6).
+16	no data bus callback for the completed operand
+2	redirected PC: identical next opcode must issue a new data access
+
+# OPEN DEFECT: the SSW of a fault in a locked read-modify-write (TAS, CAS,
+# CAS2) does not set RM (MC68020UM-1992 §6.2.1). To fix in the queue.
+6	TAS/CAS/CAS2: frame identifies a locked RMW data fault

@@ -14,17 +14,6 @@
 #endif
 #define fatalError      assert(false); unreachable
 
-// POM68K (host): the cycle budget (syncCp) exists to spend the fractional discounts
-// of the 68020 i-cache. Without the cache the charge stays sync(c + cp),
-// exactly as before 426e4a3: syncCp holds back odd cycles and borrows after
-// four stalled instructions, which would move the timing of every model on
-// the 68020 core.
-#if MOIRA_EMULATE_ICACHE
-#define SYNC_CP(c)      syncCp(c)
-#else
-#define SYNC_CP(c)      sync(c)
-#endif
-
 #if MOIRA_PRECISE_TIMING == true
 
 #define SYNC(x)         { if constexpr (C != Core::C68020) sync(x); }
@@ -33,7 +22,7 @@
 
 #define CYCLES_68000(c) { }
 #define CYCLES_68010(c) { }
-#define CYCLES_68020(c) { if constexpr (C == Core::C68020) SYNC_CP((c) + budget.cp); }
+#define CYCLES_68020(c) { if constexpr (C == Core::C68020) syncCyclePenalty((c) + budget.penalty); }
 
 #else
 
@@ -43,7 +32,7 @@
 
 #define CYCLES_68000(c) { if constexpr (C == Core::C68000) sync(c); }
 #define CYCLES_68010(c) { if constexpr (C == Core::C68010) sync(c); }
-#define CYCLES_68020(c) { if constexpr (C == Core::C68020) SYNC_CP((c) + budget.cp); }
+#define CYCLES_68020(c) { if constexpr (C == Core::C68020) syncCyclePenalty((c) + budget.penalty); }
 
 #endif
 
@@ -72,12 +61,7 @@
 #define CYCLES_IM(b0,b1,b2,w0,w1,w2,l0,l1,l2)     CYCLES_MBWL(Mode::IM,   b0,b1,b2,w0,w1,w2,l0,l1,l2)
 #define CYCLES_IP(b0,b1,b2,w0,w1,w2,l0,l1,l2)     CYCLES_MBWL(Mode::IP,   b0,b1,b2,w0,w1,w2,l0,l1,l2)
 
-// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-// NEOST_IPLFETCH: deferred IPL recognition (a faithful port of WinUAE
-// ipl_fetch_next). pollIpl() ≡ reg.ipl = ipl when the feature is off
-// (iplDelay4 == 0, the default). NeoST's design note: its
-// docs/MOIRA_WINUAE_CONVERGENCE.md (not part of this tree).
-#define POLL_IPL pollIpl()
+#define POLL_IPL reg.ipl = ipl
 
 #define REVERSE_8(x) (u8)(((x) * 0x0202020202ULL & 0x010884422010ULL) % 1023)
 #define REVERSE_16(x) (u16)((REVERSE_8((x) & 0xFF) << 8) | REVERSE_8(((x) >> 8) & 0xFF))

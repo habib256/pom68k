@@ -53,13 +53,6 @@ template <Core C, Mode M, Size S, Flags F = 0> u32 computeEA(u32 n);
 template <Core C, Mode M, Size S, Flags F = 0> u32 computeEAbrief(u32 an);
 template <Core C, Mode M, Size S, Flags F = 0> u32 computeEAfull(u32 an);
 
-// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-// POM68K O4 slice 3: 68030 extended EA with WinUAE disp-store semantics
-template <Core C, Mode M, Size S, Flags F = 0> u32 computeEAdisp030(u32 base);
-
-// POM68K (host) O4 slice 3: PC skip that still logs the consumed word (68030)
-template <Core C> void skipExt();
-
 /* Reads an operand
  *
  * The source of the operand is determined by the addressing mode M. If the
@@ -70,6 +63,9 @@ template <Core C> void skipExt();
 template <Core C, Mode M, Size S = Word, Flags F = 0>
 void readOp(int n, u32 *ea, u32 *result);
 
+// Reads a 64-bit operand (used by the MMU)
+template <Core C, Mode M, Flags F = 0> void readOp64(int n, u32 *ea, u64 *result);
+
 
 /* Writes an operand
  *
@@ -78,6 +74,13 @@ void readOp(int n, u32 *ea, u32 *result);
  */
 template <Core C, Mode M, Size S, Flags F = 0> void writeOp(int n, u32 val);
 template <Core C, Mode M, Size S, Flags F = 0> void writeOp(int n, u32 ea, u32 val);
+
+// Writes a 64-bit operand (used by the MMU)
+template <Core C, Mode M, Flags F = 0> void writeOp64(int n, u64 val);
+
+// Writes a status register value to memory (MOVE from SR/CCR on the 68010 and above).
+// F is the frame type of the address error raised for a misaligned address.
+template <Core C, Mode M, Size S, Flags F> void writeStatusEa(int n, u16 val);
 
 // Emulates the address register modification for modes (An)+, (An)- (DEPRECATED)
 template <Mode M, Size S> void updateAn(int n);
@@ -101,30 +104,32 @@ template <Core C, Mode M, Size S, Flags F = 0> u32 readM(u32 addr);
 // Reads a value from a specific address space
 template <Core C, AddrSpace AS, Size S, Flags F = 0> u32 read(u32 addr);
 
+// Reads from memory without consulting the data cache
+template <Core C, Size S, Flags F = 0> u32 readBus(u32 addr);
+
+// Reads data via the data cache (68030)
+template <Core C, Size S, Flags F = 0> u32 readDataCache(u32 addr);
+
 // Reads an instruction word, either from memory or the instruction cache
-// POM68K (host): without the cache (MOIRA_EMULATE_ICACHE false, or a model other
-// than the 68020/EC020) this is read<C, AddrSpace::PROG, Word, F>, unchanged.
 template <Core C, Flags F = 0> u16 readInstr(u32 addr);
 
-// POM68K (host): whether read<>/write<> split an access by the port width dsack()
-// reports. Upstream does it unconditionally on the 68020 core; the fork
-// compiles it with the 68020 i-cache only (MoiraConfig.h), so that with the
-// cache off the host sees the access sequence it saw before a4c273b and
-// the hot path carries no dsack() call. With it compiled in, it is asked
-// of the 68020/EC020 only (pomSized020): the 68030 and 68040 have their own
-// bus layers, and an EC030 on the plain path keeps its plain accesses
-// whatever its host's dsack() says.
-template <Core C> static constexpr bool busSizing =
-    C == Core::C68020 && MOIRA_EMULATE_ICACHE;
-bool pomSized020() const {
-    return cpuModel == Model::M68020 || cpuModel == Model::M68EC020;
-}
+// Performs a program read whose word an instruction discards (MOVE to SR/CCR,
+// ANDI/ORI/EORI to SR/CCR, DBcc on expiry, TRAPV). On the 68020 core it is an
+// instruction access that the cache can serve.
+template <Core C> void dummyProgRead(u32 addr);
+
 
 // Writes an operand to memory (without or with address error checking)
 template <Core C, Mode M, Size S, Flags F = 0> void writeM(u32 addr, u32 val);
 
 // Writes a value to a specific address space
 template <Core C, AddrSpace AS, Size S, Flags F = 0> void write(u32 addr, u32 val);
+
+// Writes to memory without updating the data cache
+template <Core C, Size S, Flags F = 0> void writeBus(u32 addr, u32 val, bool *ci = nullptr);
+
+// Writes data via the data cache (68030)
+template <Core C, Size S, Flags F = 0> void writeDataCache(u32 addr, u32 val);
 
 /* Bus transfer helpers used by read() and write() to split a wide access
  * into the bus cycles a narrower port requires. Factored out because the
@@ -151,6 +156,9 @@ template <Core C, Flags F = 0> void writeLongSplit(u32 addr, u32 val);
 // Reads an immediate value from memory
 template <Core C, Size S> u32 readI();
 
+// Same as readI, but stacks the PC as MAME does if the refill fails
+template <Core C, Size S> u32 readIFrame();
+
 // Pushes a value onto the stack
 template <Core C, Size S, Flags F = 0> void push(u32 value);
 
@@ -159,34 +167,69 @@ template <Core C, Size S, Flags F = 0> u32 pop();
 
 // Checks whether the provided address should trigger an address error
 template <Core C, Size S = Word> bool misaligned(u32 addr);
-
-// [B] MC68030UM-1989 §8.1.3: a prefetch at an odd address is an address
-// error, vector 3, short or long bus fault frame.
-// [D] WinUAE @ Hatari e77819f7 — oracle reading, cited below.
-// POM68K: an odd instruction-flow target on the 68030/68040 (vector 3,
-// format $B / $2; the 68040's format $2 is the oracle's, execAddressError040). Gated like misaligned(): MOIRA_EMULATE_ADDRESS_ERROR
-// false removes every such check, as upstream does for the 68000/68010.
-static constexpr bool oddFlowTarget(u32 addr) {
-    return MOIRA_EMULATE_ADDRESS_ERROR && (addr & 1);
-}
+template <Core C> bool misalignedPC(u32 addr);
 
 // Creates an address error stack frame
 template <Flags F = 0> StackFrame makeFrame(u32 addr, u32 pc, u16 sr, u16 ird);
 template <Flags F = 0> StackFrame makeFrame(u32 addr, u32 pc);
 template <Flags F = 0> StackFrame makeFrame(u32 addr);
 
+// Adds the special status word to a bus error signaled by the host (68030 and 68040)
+// (addr is the address of the operand, which tells a split long word's cycles apart)
+template <Size S, bool W> void completeBusError(BusError &e, u32 addr);
+
+// Creates an address error that is raised before the bus cycle has started
+template <Core C> AddressError earlyAddressError(const StackFrame &frame);
+
+// Raises an early address error with a frame of type F if the provided address is misaligned
+template <Core C, Size S = Word, Flags F = 0> void checkEven(u32 addr);
+template <Core C, Flags F = 0> void checkEvenPC(u32 addr);
+
+// Raises an address error if the stack pointer is misaligned before a value is popped
+template <Core C, Mode M> void checkEvenSP();
+
 // Prefetches the next instruction
 template <Core C, Flags F = 0> void prefetch();
 
+// Early prefetch (68000): Reads the next word, but leaves the prefetch queue untouched
+// until commitIrd is called. The real CPU replaces the IRD when the last bus cycle of the
+// instruction starts. If ON is false, the call is an ordinary prefetch.
+template <Core C, Flags F = 0, bool ON = true> void fetchIrc();
+template <Core C> void commitIrd();
+template <Core C, Flags F = 0, bool ON = true> void prefetchLate();
+
 // Performs a full prefetch cycle
 template <Core C, Flags F = 0, int delay = 0> void fullPrefetch();
+
+// Jumps to a new address. MAME stacks the old PC if the first fetch fails.
+// Jumps to newpc and fetches the first word. A failing fetch stacks framePc (68000)
+template <Core C> void fetchFirstAt(u32 newpc, u32 framePc);
+template <Core C, Flags F = 0> void fullPrefetchAt(u32 newpc);
+template <Core C, Flags F = 0> void fullPrefetchAt(u32 newpc, u32 framePc);   // A failing first fetch stacks framePc (68000)
 
 // prefetch replacement if loop mode is active
 template <Core C> void noPrefetch(int delay = 0);
 
 // Reads an extension word from memory
-template <Core C> void readExt();
-template <Core C, Size S> u32 readExt();
+template <Core C, Flags F = 0> void readExt();
+template <Core C> void readExtLast();
+
+/* Reads and writes floating-point operands. Depending on the addressing mode,
+ * the operand is located in a data register, in memory, or in the instruction
+ * stream. The operand format is given as an FpuFormat. Operands in memory
+ * advance the address register for the modes (An)+ and -(An).
+ */
+template <Core C, Mode M> MFloat80 readFpuOp(int n, FpuFormat fmt);
+template <Core C> MFloat80 readFpuOpRg(int n, FpuFormat fmt);
+template <Core C> MFloat80 readFpuOpIm(FpuFormat fmt);
+template <Core C, Mode M> MFloat80 readFpuOpEa(int n, u32 ea, FpuFormat fmt);
+
+template <Core C, Mode M> void writeFpuOp(int n, const MFloat80 &val, FpuFormat fmt, int k);
+template <Core C> void writeFpuOpRg(int n, const MFloat80 &val, FpuFormat fmt);
+template <Core C, Mode M> void writeFpuOpEa(int n, u32 ea, const MFloat80 &val, FpuFormat fmt, int k);
+
+// Computes the effective address of a floating-point operand
+template <Core C, Mode M> u32 computeFpuEA(int n, FpuFormat fmt);
 
 // Jumps to an exception vector
 template <Core C, Flags F = 0> void jumpToVector(int nr);

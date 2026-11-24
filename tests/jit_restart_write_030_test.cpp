@@ -60,7 +60,7 @@ public:
                           injectedJitConfig())
         : mem(1u << 24, 0), jit(*this, hooks(this), jit::kGuest68030,
                                 config) {
-        setModel(moira::Model::M68030);
+        setModel(moira::CPUModel::M68030);
     }
 
     struct IcacheObservation {

@@ -145,7 +145,7 @@ public:
     // The overlay's CONTENT (tags + valid bits), for the 030 lockstep gate:
     // counters can agree while the cached lines have parted, and the state
     // skew then reads as a timing drift thousands of steps later.
-    const moira::Moira::PomIcache& icacheState() const { return pomIcache; }
+    const MoiraCompat::PomIcache& icacheState() const { return pomIcache; }
     bool icacheEnabled() const { return (getCACR() & 0x1) != 0; }
 
     // ── Save states (chunk "CPU ") ──────────────────────────────────────

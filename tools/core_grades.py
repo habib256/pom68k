@@ -191,8 +191,14 @@ def other_emulator_problems(text):
 
 
 def core_files():
-    return sorted(glob.glob(os.path.join(CORE, "*.h")) +
-                  glob.glob(os.path.join(CORE, "*.cpp")))
+    """The core files whose comments are POM68K's: those carrying a POM68K
+    marker. Since 2026-11-23 extern/moira/Moira is Dirk Hoffmann's Moira
+    with a patch queue written in his style for upstream (POM68K_VENDOR.md):
+    his comments are not graded here, and the queue's evidence lives in its
+    commit messages and tools/dirk_moira/findings_repro.cpp."""
+    every = sorted(glob.glob(os.path.join(CORE, "**", "*.h"), recursive=True) +
+                   glob.glob(os.path.join(CORE, "**", "*.cpp"), recursive=True))
+    return [f for f in every if "POM68K" in open(f, encoding="utf-8").read()]
 
 
 def comment_start(line):
@@ -340,8 +346,9 @@ def check():
     if ungraded_count < UNGRADED_CEILING:
         print(f"note {ungraded_count} ungraded POM68K comment units: lower "
               f"UNGRADED_CEILING ({UNGRADED_CEILING}) in tools/core_grades.py")
-    print(f"{'ok  ' if not problems else 'FAIL'} {blocks} WinUAE-citing comment blocks in the "
-          f"core, {sst_blocks} SingleStepTests blocks, {manual_blocks} manual blocks, "
+    print(f"{'ok  ' if not problems else 'FAIL'} {len(core_files())} POM68K-owned core file(s), "
+          f"{blocks} WinUAE-citing comment blocks, "
+          f"{sst_blocks} SingleStepTests blocks, {manual_blocks} manual blocks, "
           f"{len(problems)} problem(s)")
     return 1 if problems else 0
 

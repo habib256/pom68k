@@ -959,7 +959,7 @@ void catchSurvivesReset(MacMemory& mem, Cpu68k& cpu) {
     // Moira calls catchpointMatches() unconditionally, so the trap above
     // fires either way; what the reset used to lose was CHECK_CP itself —
     // the flag that keeps the accelerated engine out while a stop is armed.
-    check(!cpu.pomJitIdle(), fam, "and still keeps the accelerated engine out");
+    check(cpu.pomCatchpointsChecked(), fam, "and the reset kept CHECK_CP armed");
     cpu.debugger.catchpoints.removeAll();
     cpu.setDebugStopHook(nullptr);
 }
@@ -1043,7 +1043,9 @@ int main() {
         scenario(fam, m, *cpu, engine, 0x50F00000, [&] { (void)m.read8(0xA00000); });
     };
     lcii("68030", 0);
+#ifndef POM68K_NO_JIT   // the accelerated engine is compiled out
     lcii("68030 accelerated", 1);
+#endif
     auto q605 = [&](const char* fam, int engine) {
         auto mem = std::make_unique<Q605Memory>(cfg, 8u << 20);
         auto cpu = std::make_unique<Cpu040>(*mem, jit::defaultResolvedConfig(),
@@ -1055,7 +1057,9 @@ int main() {
         else saveStateIsolation(m, *cpu);
     };
     q605("68040", 0);
+#ifndef POM68K_NO_JIT   // the accelerated engine is compiled out
     q605("68040 accelerated", 1);
+#endif
     q605(nullptr, 0);
     std::printf("%s\n", gFails ? "debug_session_test: FAILED"
                                : "debug_session_test: all checks passed");

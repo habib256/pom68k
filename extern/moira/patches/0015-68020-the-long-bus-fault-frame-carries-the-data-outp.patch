@@ -1,0 +1,62 @@
+From 64b8b633d229cadc47554ea688ef236c20996ab9 Mon Sep 17 00:00:00 2001
+From: VERHILLE Arnaud <gist974@gmail.com>
+Date: Tue, 24 Nov 2026 01:20:00 +0400
+Subject: [PATCH 15/17] 68020: the long bus fault frame carries the data output
+ buffer
+
+MC68020UM 6.2.2: "For data write faults, the handler must transfer the
+properly sized data from the data output buffer on the stack frame" (SP +
+$18). The 68020 frame stacked 0 there, so a handler could not complete a
+faulted write.
+---
+ Moira/MoiraExceptions.h     | 2 +-
+ Moira/MoiraExceptions_cpp.h | 7 ++++---
+ 2 files changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/Moira/MoiraExceptions.h b/Moira/MoiraExceptions.h
+index 9262ff7..f59f142 100644
+--- a/Moira/MoiraExceptions.h
++++ b/Moira/MoiraExceptions.h
+@@ -28,7 +28,7 @@ template <Core C> void writeStackFrame0111(u16 sr, u32 pc, u16 nr, u16 ssw, u32
+ template <Core C> void writeStackFrame1000(StackFrame &frame, u16 sr, u32 pc, u32 ia, u16 nr, u32 addr);
+ template <Core C> void writeStackFrame1001(u16 sr, u32 pc, u32 ia, u16 nr);
+ template <Core C> void writeStackFrame1010(u16 sr, u32 pc, u16 nr, u16 ssw = 0, u32 addr = 0, u32 dataOut = 0, u16 stageC = 0, u16 stageB = 0);
+-template <Core C> void writeStackFrame1011UAE(u16 sr, u16 nr, u32 pc, u16 ssw, u32 addr, u32 end, bool write);
++template <Core C> void writeStackFrame1011UAE(u16 sr, u16 nr, u32 pc, u16 ssw, u32 addr, u32 end, bool write, u32 dataOut);
+ template <Core C> void writeStackFrame1011(u16 sr, u32 pc, u32 ia, u16 nr, u16 ssw = 0, u32 addr = 0, u32 dataOut = 0, u16 stageC = 0, u16 stageB = 0);
+ 
+ // Emulates an exception other than address errors, bus errors, and interrupts
+diff --git a/Moira/MoiraExceptions_cpp.h b/Moira/MoiraExceptions_cpp.h
+index 6c3cb87..db70dc9 100644
+--- a/Moira/MoiraExceptions_cpp.h
++++ b/Moira/MoiraExceptions_cpp.h
+@@ -356,14 +356,15 @@ static bool hasIndexedOperand(u16 ird)
+ }
+ 
+ template <Core C> void
+-Moira::writeStackFrame1011UAE(u16 sr, u16 nr, u32 pc, u16 ssw, u32 addr, u32 end, bool write)
++Moira::writeStackFrame1011UAE(u16 sr, u16 nr, u32 pc, u16 ssw, u32 addr, u32 end, bool write, u32 dataOut)
+ {
+     u16 stageC = 0, stageB = 0;
+     if (nr == 2 && !write) {
+         stageC = peekInstr((end + 2) & addrMask<C>());
+         stageB = peekInstr((end + 4) & addrMask<C>());
+     }
+-    writeStackFrame1011<C>(sr, 0, pc, nr, ssw, addr, 0, stageC, stageB);
++    // The data output buffer holds the value of a faulting write (MC68020UM 6.2.2)
++    writeStackFrame1011<C>(sr, 0, pc, nr, ssw, addr, write ? dataOut : 0, stageC, stageB);
+ }
+ 
+ template <Core C> void
+@@ -555,7 +556,7 @@ Moira::execBusError(StackFrame frame, int delay, const Registers *saved)
+         if (ix && move && frame.write && indexed(srcMode, srcReg)) {
+             if (dstMode == 5 || (dstMode == 7 && dstReg <= 1)) pc -= 2;
+         }
+-        writeStackFrame1011UAE<C>(status, 2, pc, ssw, frame.addr, end, frame.write);
++        writeStackFrame1011UAE<C>(status, 2, pc, ssw, frame.addr, end, frame.write, frame.data);
+ 
+         // Remember how to restart the instruction
+         restart.valid = saved != nullptr;
+-- 
+2.54.0 (Apple Git-157)
+

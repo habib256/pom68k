@@ -99,6 +99,13 @@ divergence list. Missing data, changed bytes, empty data or a harness that
 returns success after soft-skipping all fail the gate. Cycle accuracy is
 not claimed for these 030/040 vectors.
 
+Since 2026-11-24 the core is Dirk Hoffmann's Moira, whose restart model and
+MMU edge cases disagree with WinUAE on part of these vectors
+(`docs/MOIRA_CONVERGENCE.md`). The vectors are unchanged; each model's
+manifest entry carries a `floor`, the number of vectors measured to agree,
+and the gate fails if fewer agree (030: 811 of 1,128; 040: 383 of 576).
+Every vector must still run. Raise the floor as rulings and fixes land.
+
 JIT replay forces profit score zero so short 030 vectors can compile. Its
 footer must report executed work. AArch64 and x86-64 backends must report
 compiled/executed blocks and native instructions. Threaded replay remains

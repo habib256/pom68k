@@ -26,6 +26,13 @@ class FrameContract(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        if cls.tag == '@D23a':
+            # Ruling 2026-11-24: the D23a vector stacks WinUAE's post-instruction
+            # frame for a 68882 FMOVE; MC68881UM-1989 §6.1 says the 6888x reports
+            # no post-instruction exception, and Dirk Hoffmann's core takes none.
+            # There is no frame left to rule; the D12 contracts below keep the
+            # --known mechanism under test.
+            raise unittest.SkipTest('D23a: no post-instruction frame on the 6888x (MC68881UM §6.1)')
         fixture = Path(__file__).with_name('cpu_vectors') / cls.fixture
         cls.original = json.loads(fixture.read_text())[0]
         cls.frame = cls.original['final']['a7'] & 0xFFFFFF

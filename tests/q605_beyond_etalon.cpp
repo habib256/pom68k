@@ -392,7 +392,7 @@ int main() {
         const int untypeable = guestkbd::type(
             kTypedName, /*azertyGuest=*/true,
             [&](uint8_t code, bool down) { mem.keyEvent(code, down); },
-            [&](long frames) { runFrames(frames); });
+            [&](long frames) { runFrames(frames); }, /*hold=*/12, /*gap=*/12);
         keyHold(0x24, 150);                  // Return — commit it
         runFrames(900);
         const long typedAfter = folderprobe::count(disk, kTypedName);

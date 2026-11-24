@@ -152,7 +152,11 @@ def git(*args, binary=False):
 def tracked(rev, spec):
     """Tracked files under one export entry, at `rev` or in the worktree."""
     if rev is None:
-        names = git("ls-files", "-z", "--", spec).split("\0")
+        # The worktree as it stands: tracked or new (not ignored) files that
+        # exist, so an uncommitted rename or deletion is exported as such.
+        names = git("ls-files", "-z", "--cached", "--others", "--exclude-standard",
+                    "--", spec).split("\0")
+        names = sorted({n for n in names if n and (ROOT / n).is_file()})
     else:
         names = git("ls-tree", "-r", "-z", "--name-only", rev, "--", spec).split("\0")
     names = [n for n in names if n]

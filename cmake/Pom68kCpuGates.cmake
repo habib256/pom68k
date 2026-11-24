@@ -22,34 +22,32 @@ if(NOT EMSCRIPTEN)
     set(POM68K_CPU_CONTEXT_THREADS Threads::Threads)
 endif()
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Pom68kInterpGates.cmake)
+# Waiting for an equivalent on Dirk Hoffmann's core, and recorded absent
+# (cmake/pom68k_pending_gates.tsv, Pom68kGatePolicy.cmake): cache040_test (the
+# fork's 68040 cache model; he models no 040 cache), callm_rtm_test (his
+# CALLM/RTM are stubs) and mmu040_atc_test (the fork's ATC, to rewrite on his
+# MMU040). TODO.md lists them.
 foreach(cpu_gate IN ITEMS
-    cache040_test       # cache data, policy, physical management and snooping
     fpu_sanity          # external FPU, format-$9 IRQ and BUSY resume
     fpu040_test         # integrated FPU and FPSP exception frames
     fpu_context_test    # independent arithmetic state under nested/parallel CPUs
-    callm_rtm_test      # 68020 module protocol
     berr020_test        # 020/EC020 software-completed format-$B cycles
     moira_rules_test fault_transparency_test # rule cells; each cycle faulted, RTE, same state
-    moira_state_test    # instruction-boundary PMMU/FPU continuations
-    mmu040_atc_test)    # multi-instruction I/D and FC2 translations
+    moira_state_test)   # instruction-boundary PMMU/FPU continuations
     add_executable(${cpu_gate} tests/${cpu_gate}.cpp)
     target_link_libraries(${cpu_gate} PRIVATE moira)
-    add_test(NAME ${cpu_gate} COMMAND ${cpu_gate})
+    if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/known/${cpu_gate}.txt)
+        pom68k_known_test(${cpu_gate} ${cpu_gate} ${cpu_gate})
+    else()
+        add_test(NAME ${cpu_gate} COMMAND ${cpu_gate})
+    endif()
 endforeach()
 target_link_libraries(fpu_context_test PRIVATE ${POM68K_CPU_CONTEXT_THREADS})
-# cache040_test's fault matrices take ~20 s in Release but 243 s under
-# ASan/UBSan on the M4 (2026-11-10), and the Linux nightly leg (GCC ASan,
-# `-j nproc`) timed out at the 600 s default (run 42802857141). 1800 is the
-# instrumented cost with margin, as for jit_asset_free_lockstep_test; the
-# plain tiers finish it in ~20 s.
-set_tests_properties(cache040_test PROPERTIES TIMEOUT 1800)
-# GCC ASan on the nightly runner needs ~2 400 s (run 43222539870; 246 s
-# under AppleClang ASan on the M4). Instrumented builds only.
 # fault_transparency_test faults every bus cycle of 1 023 instructions: a
 # few seconds plain, past the 600 s default under GCC ASan/UBSan on the
 # nightly runner (run 44724906324, 2026-11-20).
 if(POM68K_SANITIZE)
-    set_tests_properties(cache040_test fault_transparency_test PROPERTIES TIMEOUT 3600)
+    set_tests_properties(fault_transparency_test PROPERTIES TIMEOUT 3600)
 endif()
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Pom68kSstGates.cmake)
@@ -62,9 +60,10 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Pom68kSstGates.cmake)
 add_test(NAME core_grades_test
          COMMAND python3 tests/core_grades_test.py
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-# The standalone Moira/JIT release builds without POM68K: its include closure.
-add_test(NAME moira_release_test COMMAND python3 tools/moira_release.py --check
-         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+# moira_release_test (the standalone release of the fork, 2026-11-22) is
+# retired: since 2026-11-23 the core is Dirk Hoffmann's Moira and POM68K's
+# changes go to him as pull requests (extern/moira/patches). The tool stays
+# to rebuild that release from its commit (main @ 228e63a5).
 
 # Corpus identity: present files must match tests/sst_corpora.lock; absent ones skip.
 add_test(NAME sst_corpora_lock_test
@@ -91,6 +90,7 @@ add_test(NAME sst_corpora_lock_test
 # The plain sst gates judge the interpreter against WinUAE; these judge the
 # translator against the interpreter on the same states (TODO.md § Moteur ›
 # Socle). They soft-skip without the optional corpus directories.
+if(POM68K_JIT)   # JIT gates: not registered while the engine is compiled out (POM68K_JIT=OFF)
 add_executable(sst68040_jit tests/sst68040.cpp)
 target_compile_definitions(sst68040_jit PRIVATE SST_JIT=1)
 target_link_libraries(sst68040_jit PRIVATE pom68k_core)
@@ -119,3 +119,4 @@ foreach(model IN ITEMS 030 040)
     set_tests_properties(cpu_vectors${model}_jit_test PROPERTIES
         LABELS "cpu-vectors;jit" TIMEOUT 180)
 endforeach()
+endif()

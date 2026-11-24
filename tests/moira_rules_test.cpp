@@ -48,8 +48,11 @@
 //    willProcessFault sees the frame of an address error. All three are
 //    no-ops by default, which the corpora prove; this proves the hooks fire.
 
-#include "Moira.h"
-#include "MoiraMmu030Walk.h"
+#include "MoiraCompat.h"
+#ifndef MOIRA_ENABLE_JIT
+#define MOIRA_ENABLE_JIT 0   // Dirk's core: no JIT seam until the engine is rebuilt
+#endif
+#include "Mmu030Walk.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -63,9 +66,9 @@ namespace {
 
 constexpr uint32_t kHole = 0x080000;   // a byte the test board answers with /BERR
 
-class TestCpu : public moira::Moira {
+class TestCpu : public MoiraCompat {
 public:
-    explicit TestCpu(moira::Model model) : mem(1 << 20, 0), model_(model) {
+    explicit TestCpu(moira::CPUModel model) : mem(1 << 20, 0), model_(model) {
         setModel(model);
     }
     std::vector<uint8_t> mem;
@@ -104,14 +107,14 @@ private:
         bus += std::to_string(a - busBase);
     }
 
-    moira::Model model_;
+    moira::CPUModel model_;
 
     // The board's /BERR, through the entry point of the model's core.
     void berr(moira::u32 a, bool write) const {
         ++holeTrips;
         auto& self = *const_cast<TestCpu*>(this);
-        if (model_ >= moira::Model::M68EC040) self.extBusError040();
-        else if (model_ >= moira::Model::M68EC020) self.extBusError();
+        if (model_ >= moira::CPUModel::M68EC040) self.extBusError040();
+        else if (model_ >= moira::CPUModel::M68EC020) self.extBusError();
         else self.extBusError000(a, write);
     }
     bool hole(moira::u32 a) const { return holeArmed && (a & 0xffffff) == holeAt; }
@@ -123,12 +126,14 @@ private:
     }
 
     moira::u8 read8(moira::u32 a) const override {
+        pomBusAddr = a;                       // the address a /BERR reports
         traceAccess('b', a);
         if (hole(a) && !holeWritesOnly) berr(a, false);
         events += 'r';
         return mem[a & 0xfffff];
     }
     moira::u16 read16(moira::u32 a) const override {
+        pomBusAddr = a;                       // the address a /BERR reports
         if (logFc) fcLog.push_back({ a, readFC(), false });
         observeMovem(a, false);
         traceAccess('w', a);
@@ -136,12 +141,14 @@ private:
         return moira::u16((mem[a & 0xfffff] << 8) | mem[(a + 1) & 0xfffff]);
     }
     void write8(moira::u32 a, moira::u8 v) const override {
+        pomBusAddr = a;                       // the address a /BERR reports
         traceAccess('B', a);
         if (hole(a)) berr(a, true);
         events += 'w';
         const_cast<TestCpu*>(this)->mem[a & 0xfffff] = v;
     }
     void write16(moira::u32 a, moira::u16 v) const override {
+        pomBusAddr = a;                       // the address a /BERR reports
         if (logFc) fcLog.push_back({ a, readFC(), true });
         observeMovem(a, true);
         traceAccess('W', a);
@@ -149,8 +156,10 @@ private:
         auto& m = const_cast<TestCpu*>(this)->mem;
         m[a & 0xfffff] = moira::u8(v >> 8); m[(a + 1) & 0xfffff] = moira::u8(v);
     }
-    bool illegalOpcodeHook(moira::u16) override { return handleIllegal; }
-    void pomDidReachWatchpoint(moira::u32 a, moira::Size S, bool write, bool) override {
+    // Fork-only hooks: Dirk's interface has no such delegates, so they are
+    // never called and the cells that relied on them fail visibly.
+    bool illegalOpcodeHook(moira::u16) { return handleIllegal; }
+    void pomDidReachWatchpoint(moira::u32 a, moira::Size S, bool write, bool) {
         char line[32];
         std::snprintf(line, sizeof line, "%c%X:%d ", write ? 'w' : 'r', unsigned(a), int(S));
         watch += line;
@@ -165,9 +174,18 @@ public:
     // Cell "bus error during a table search": the 68030 PMMU registers,
     // set directly (after stage(), whose reset() clears them).
     void mmu030(moira::u32 tc, moira::u64 crp, moira::u32 tt0, moira::u32 tt1) {
-        reg.tc = tc; reg.crp = crp; reg.tt0 = tt0; reg.tt1 = tt1;
+        setTC(tc); setCRP(crp); setTT0(tt0); setTT1(tt1);
     }
-    moira::u16 mmusr() const { return moira::u16(reg.mmusr); }
+    moira::u16 mmusr() const { return getMMUSR(); }
+    // A supervisor data read of a word through the MMU, outside an
+    // instruction: the translation sets the descriptor history bits as the
+    // bus access would.
+    bool supervisorDataRead16(moira::u32 a, moira::u32& v) {
+        auto phys = mmu.translate(a, 5, false);
+        if (!phys) return false;
+        v = moira::u32(mem[*phys & 0xfffff]) << 8 | mem[(*phys + 1) & 0xfffff];
+        return true;
+    }
     void armIcacheOverlay() {
         pomIcache.armed = true;
         pomIcache.missPenalty = 17;
@@ -175,8 +193,8 @@ public:
     }
     moira::i64 overlayFetches() const { return pomIcache.fetches; }
 private:
-    void setBusLock(bool locked) override { events += locked ? 'L' : 'U'; }
-    void willProcessFault(const moira::StackFrame& frame) override {
+    void setBusLock(bool locked) { events += locked ? 'L' : 'U'; }
+    void willProcessFault(const moira::StackFrame& frame) {
         faults++; faultAddr = frame.addr;
     }
 };
@@ -220,7 +238,7 @@ void stage(TestCpu& c, uint16_t opcode, uint8_t ccr)
 }
 
 struct ModelRow {
-    moira::Model model;
+    moira::CPUModel model;
     const char* name;
     uint8_t ccrFromAllSet;      // CCR after the divide when it entered as $1F
     long cycles;                // -1: not pinned (020+ cycles are advisory)
@@ -255,19 +273,19 @@ void group2InstructionAddress()
         {"FTRAPT.L", {0xf27b, 0x000f, 0x1234, 0x5678}, 7, 0, true},
     };
     unsigned cases = 0;
-    for (auto model : {moira::Model::M68EC020, moira::Model::M68020,
-                       moira::Model::M68EC030, moira::Model::M68030,
-                       moira::Model::M68EC040, moira::Model::M68LC040,
-                       moira::Model::M68040}) {
+    for (auto model : {moira::CPUModel::M68EC020, moira::CPUModel::M68020,
+                       moira::CPUModel::M68EC030, moira::CPUModel::M68030,
+                       moira::CPUModel::M68EC040, moira::CPUModel::M68LC040,
+                       moira::CPUModel::M68040}) {
         for (const auto& row : rows) {
-            const bool external = model < moira::Model::M68EC040;
-            if (row.fpu && !external && model != moira::Model::M68040) continue;
+            const bool external = model < moira::CPUModel::M68EC040;
+            if (row.fpu && !external && model != moira::CPUModel::M68040) continue;
             for (unsigned fpu = 0; fpu < (row.fpu && external ? 2u : 1u); ++fpu) {
                 TestCpu c(model);
                 stage(c, row.words[0], 2);         // TRAPV taken
                 if (row.fpu) c.setFPUModel(external ?
-                    (fpu ? moira::FPUModel::M68882 : moira::FPUModel::M68881) :
-                    moira::FPUModel::M68040);
+                    (fpu ? MoiraFpu::M68882 : MoiraFpu::M68881) :
+                    MoiraFpu::M68040);
                 unsigned offset = 0;
                 for (auto word : row.words) { p16(c, kCode + offset, word); offset += 2; }
                 p16(c, kCode + offset, kNop); p16(c, kCode + offset + 2, kNop);
@@ -305,12 +323,12 @@ void divsOfIntMin()
     // X N Z V C. Entering with $1F shows what is preserved; entering with
     // $00 shows what is set.
     static const ModelRow rows[] = {
-        { moira::Model::M68000,   "68000",   0x1e, 18 },
-        { moira::Model::M68010,   "68010",   0x1e, -1 },
-        { moira::Model::M68020,   "68020",   0x12, -1 },
-        { moira::Model::M68030,   "68030",   0x12, -1 },
-        { moira::Model::M68LC040, "68LC040", 0x1e, -1 },
-        { moira::Model::M68040,   "68040",   0x1e, -1 },
+        { moira::CPUModel::M68000,   "68000",   0x1e, 18 },
+        { moira::CPUModel::M68010,   "68010",   0x1e, -1 },
+        { moira::CPUModel::M68020,   "68020",   0x12, -1 },
+        { moira::CPUModel::M68030,   "68030",   0x12, -1 },
+        { moira::CPUModel::M68LC040, "68LC040", 0x1e, -1 },
+        { moira::CPUModel::M68040,   "68040",   0x1e, -1 },
     };
     static const uint16_t divisors[] = { 0x0001, 0x7fff, 0x8000, 0xffff };
     constexpr uint16_t kDivsD1D0 = 0x81c1;          // DIVS.W D1,D0
@@ -364,7 +382,7 @@ void externalBusError000()
         { 0x1080, true,  0x1085, 0x2704, "MOVE.B D0,(A0), write" }, // IR&$FFE0 | W | FC5
     };
     for (const Case& k : cases) {
-        TestCpu c(moira::Model::M68000);
+        TestCpu c(moira::CPUModel::M68000);
         p32(c, 2 * 4, kHandler);                    // vector 2: bus error
         p16(c, kHandler, kNop);
         stage(c, k.opcode, 0);
@@ -399,7 +417,7 @@ void hostHooks()
 {
     constexpr uint16_t kIllegal = 0x4afc;
     {   // unhandled: vector 4, as upstream
-        TestCpu c(moira::Model::M68000);
+        TestCpu c(moira::CPUModel::M68000);
         p32(c, 4 * 4, kHandler);
         p16(c, kHandler, kNop);
         stage(c, kIllegal, 0);
@@ -407,7 +425,7 @@ void hostHooks()
         CHECK(c.getPC0() == kHandler, "unhandled ILLEGAL: PC0=%08X", c.getPC0());
     }
     {   // handled: consumed like a NOP
-        TestCpu c(moira::Model::M68000);
+        TestCpu c(moira::CPUModel::M68000);
         p32(c, 4 * 4, kHandler);
         stage(c, kIllegal, 0);
         c.handleIllegal = true;
@@ -419,7 +437,7 @@ void hostHooks()
               (long long)(c.getClock() - c0));
     }
     {   // TAS (A0): lock, read, write, unlock
-        TestCpu c(moira::Model::M68000);
+        TestCpu c(moira::CPUModel::M68000);
         stage(c, 0x4ad0, 0);
         c.setA(0, 0x3000);
         c.events.clear();
@@ -429,7 +447,7 @@ void hostHooks()
         CHECK(c.mem[0x3000] == 0x80, "TAS (A0) wrote %02X", c.mem[0x3000]);
     }
     {   // TAS on the faulting byte still releases the lock
-        TestCpu c(moira::Model::M68000);
+        TestCpu c(moira::CPUModel::M68000);
         p32(c, 2 * 4, kHandler);
         p16(c, kHandler, kNop);
         stage(c, 0x4ad0, 0);
@@ -442,7 +460,7 @@ void hostHooks()
               int(contained), c.events.c_str());
     }
     {   // an address error reaches willProcessFault with its frame
-        TestCpu c(moira::Model::M68000);
+        TestCpu c(moira::CPUModel::M68000);
         p32(c, 3 * 4, kHandler);
         p16(c, kHandler, kNop);
         stage(c, 0x4a50, 0);                        // TST.W (A0)
@@ -456,10 +474,10 @@ void hostHooks()
 
 void divlOperandFault()
 {
-    static const struct { moira::Model model; const char* name; } models[] = {
-        { moira::Model::M68020,   "68020" },
-        { moira::Model::M68030,   "68030" },
-        { moira::Model::M68LC040, "68LC040" },
+    static const struct { moira::CPUModel model; const char* name; } models[] = {
+        { moira::CPUModel::M68020,   "68020" },
+        { moira::CPUModel::M68030,   "68030" },
+        { moira::CPUModel::M68LC040, "68LC040" },
     };
     for (const auto& m : models) {
         for (uint16_t ext : { uint16_t(0x0000), uint16_t(0x0800) }) {   // DIVU.L, DIVS.L
@@ -495,12 +513,12 @@ void chk2FlagsOn040()
     // CMP2.B (A0),D0 with bounds [1, 5], entered with every flag set ($1F).
     // In range: Z = 0, C = 0. On a bound: Z = 1. N and V: cleared by the
     // 68020/68030 table for these operands, left as they were by the 68040.
-    struct Row { moira::Model model; const char* name; uint8_t inRange, onBound; };
+    struct Row { moira::CPUModel model; const char* name; uint8_t inRange, onBound; };
     static const Row rows[] = {
-        { moira::Model::M68020,   "68020",   0x10, 0x14 },
-        { moira::Model::M68030,   "68030",   0x10, 0x14 },
-        { moira::Model::M68LC040, "68LC040", 0x1a, 0x1e },
-        { moira::Model::M68040,   "68040",   0x1a, 0x1e },
+        { moira::CPUModel::M68020,   "68020",   0x10, 0x14 },
+        { moira::CPUModel::M68030,   "68030",   0x10, 0x14 },
+        { moira::CPUModel::M68LC040, "68LC040", 0x1a, 0x1e },
+        { moira::CPUModel::M68040,   "68040",   0x1a, 0x1e },
     };
     for (const Row& row : rows) {
         for (int onBound = 0; onBound < 2; onBound++) {
@@ -532,8 +550,8 @@ void fpuUnimplementedBeforeDatatype040()
         { 0x22, 55, "FADD.P #imm,FP0 (implemented)" },
     };
     for (const Case& k : cases) {
-        TestCpu c(moira::Model::M68040);
-        c.setFPUModel(moira::FPUModel::M68040);
+        TestCpu c(moira::CPUModel::M68040);
+        c.setFPUModel(MoiraFpu::M68040);
         p32(c, 11 * 4, kHandler);
         p32(c, 55 * 4, kHandler + 0x40);
         p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
@@ -568,7 +586,7 @@ void flineShapesOn68LC040()
         { 0x0078,  4, 0x0010,  8, 4, "opmode $78 (illegal vector)" },
     };
     for (const Case& k : cases) {
-        TestCpu c(moira::Model::M68LC040);
+        TestCpu c(moira::CPUModel::M68LC040);
         p32(c, 4 * 4, kHandler + 0x40);
         p32(c, 11 * 4, kHandler);
         p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
@@ -594,9 +612,9 @@ void flineShapesOn68LC040()
 void fbccPredicateIsFiveBits()
 {
     // FBcc.W with predicate $21: bit 5 is ignored, so it is FBEQ.
-    static const struct { moira::Model cpu; moira::FPUModel fpu; const char* name; } rigs[] = {
-        { moira::Model::M68030, moira::FPUModel::M68882, "68030+68882" },
-        { moira::Model::M68040, moira::FPUModel::M68040, "68040" },
+    static const struct { moira::CPUModel cpu; MoiraFpu fpu; const char* name; } rigs[] = {
+        { moira::CPUModel::M68030, MoiraFpu::M68882, "68030+68882" },
+        { moira::CPUModel::M68040, MoiraFpu::M68040, "68040" },
     };
     for (const auto& rig : rigs) {
         for (int z = 0; z < 2; z++) {
@@ -626,8 +644,8 @@ void fpuStoreFaultRestarts040()
     // FMOVE.L FP0,(A0)+ onto a /BERR byte: the instruction restarts — the
     // frame holds its own address and A0 is back where it was. No FPU
     // instruction ends on a "last write".
-    TestCpu c(moira::Model::M68040);
-    c.setFPUModel(moira::FPUModel::M68040);
+    TestCpu c(moira::CPUModel::M68040);
+    c.setFPUModel(MoiraFpu::M68040);
     p32(c, 2 * 4, kHandler);
     p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
     stage(c, 0xf218, 0);                            // FMOVE.L FP0,(A0)+
@@ -653,7 +671,7 @@ void fpuStoreFaultRestarts040()
 void movepFaultRestarts040()
 {
     unsigned sequences = 0;
-    for (auto model : {moira::Model::M68LC040, moira::Model::M68040})
+    for (auto model : {moira::CPUModel::M68LC040, moira::CPUModel::M68040})
     for (unsigned mmu = 0; mmu < 3; ++mmu)      // off, 4K, 8K
     for (unsigned path = 0; path < 3; ++path)   // bus, data window, cache
     for (bool load : {false, true}) {
@@ -696,6 +714,7 @@ void movepFaultRestarts040()
                 c.mem[physical + 2 * i] = uint8_t(0x10 + i);
                 c.mem[physical + 2 * i + 1] = 0xA5;
             }
+#if MOIRA_ENABLE_JIT
             if (path == 1 && fault != 0) {
                 // Only the good page is exposed. The faulting page has no
                 // window entry and must return to the physical/MMU path.
@@ -709,6 +728,7 @@ void movepFaultRestarts040()
                 e.tag = c.pomJitDataTag(base, true); e.codeMask = 0;
                 e.host = c.mem.data() + (pa & ~0xFFFu);
             }
+#endif
             CHECK(executeContained(c), "MOVEP fault escaped execute()");
             CHECK(c.getA(1) == an && (c.getSR() & 31) == 0x1F && !c.isHalted(),
                   "MOVEP changed An/CCR or halted");
@@ -730,9 +750,11 @@ void movepFaultRestarts040()
                           "MOVEP writeback does not contain the failed byte");
                 CHECK(c.getD(3) == source && (mmu || c.holeTrips == 1),
                       "MOVEP source/destination changed early or /BERR did not fire once");
+#if MOIRA_ENABLE_JIT
                 if (path == 1 && fault != 0)
                     CHECK(c.pomJitDataW1.host != nullptr,
                           "MOVEP prefix did not exercise the data window");
+#endif
             } else {
                 const uint32_t loaded = bytes == 2 ? 0x89AB1011 : 0x10111213;
                 CHECK(c.getPC() == kCode + 4 && c.getSP() == 0x8000 &&
@@ -774,10 +796,17 @@ void movepFaultRestarts040()
 // for indexed/PC-relative MOVEM and repeats all operand accesses. Other
 // modes calculate from the current registers. Memory indirection is not
 // repeated, even if the handler changed the pointer or the index/base.
+// Excluded on Dirk Hoffmann's core: the 68040 CM continuation of MOVEM
+// (MC68040UM-1993 8.4.6.2, 8.4.6.7) has no equivalent in its restart model.
+// An upstream gap to raise with him (TODO.md), not a fork artifact.
+#ifndef POM68K_CONTINUATION_040
+#define POM68K_CONTINUATION_040 0
+#endif
+#if POM68K_CONTINUATION_040
 void movemRestart040()
 {
     unsigned sequences = 0;
-    for (auto model : {moira::Model::M68EC040, moira::Model::M68LC040, moira::Model::M68040})
+    for (auto model : {moira::CPUModel::M68EC040, moira::CPUModel::M68LC040, moira::CPUModel::M68040})
     for (unsigned mmu = 0; mmu < 3; ++mmu)
     for (bool super : {false, true})
     for (bool cache : {false, true})
@@ -788,7 +817,7 @@ void movemRestart040()
     for (unsigned action = 0; action < 3; ++action) { // CM, cleared CM, edited EA
         const bool indexed = mode >= 2 && mode <= 5, indirect = mode == 3 || mode == 5;
         const bool pd = mode == 7;
-        if ((mmu && (model == moira::Model::M68EC040 || pd)) ||
+        if ((mmu && (model == moira::CPUModel::M68EC040 || pd)) ||
             (load ? pd : mode == 4 || mode == 5 || mode == 6) || (!indexed && action == 2)) continue;
         const auto before = failures;
         TestCpu c(model);
@@ -913,13 +942,14 @@ void movemRestart040()
     }
     std::printf("  MOVEM 040 CM restart: %u sequences\n", sequences);
 }
+#endif
 
 void ordinaryStoreStillAdvances040()
 {
     // [D] WinUAE cpuemu_31.c @ Hatari e77819f7: ordinary MOVE stores
     // call gen_set_fault_pc. The MOVEP exception must not capture them.
     unsigned sequences = 0;
-    for (auto model : {moira::Model::M68LC040, moira::Model::M68040})
+    for (auto model : {moira::CPUModel::M68LC040, moira::CPUModel::M68040})
     for (unsigned mmu = 0; mmu < 3; ++mmu)
     for (bool cache : {false, true})
     for (uint16_t opcode : {0x1343, 0x3343, 0x2343}) { // MOVE.B/W/L D3,d16(A1)
@@ -968,7 +998,7 @@ void ttrTableFollowsRegisters()
     // The operand sits at $40003000 (the test board mirrors its megabyte);
     // the stack stays in $00, outside every register above, so the frame
     // of the fault can be written.
-    TestCpu c(moira::Model::M68040);
+    TestCpu c(moira::CPUModel::M68040);
     for (const Step& k : steps) {
         p32(c, 2 * 4, kHandler);
         p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
@@ -997,11 +1027,11 @@ void clrReadsOnlyOn68000()
     // memory location is read before it is cleared"). The rig logs an 'r'
     // or a 'w' per byte cycle; the instruction fetch is a word and logs
     // nothing.
-    static const struct { moira::Model model; const char* name; const char* want; } rows[] = {
-        { moira::Model::M68000,   "68000",   "rw" },
-        { moira::Model::M68020,   "68020",   "w"  },
-        { moira::Model::M68030,   "68030",   "w"  },
-        { moira::Model::M68LC040, "68LC040", "w"  },
+    static const struct { moira::CPUModel model; const char* name; const char* want; } rows[] = {
+        { moira::CPUModel::M68000,   "68000",   "rw" },
+        { moira::CPUModel::M68020,   "68020",   "w"  },
+        { moira::CPUModel::M68030,   "68030",   "w"  },
+        { moira::CPUModel::M68LC040, "68LC040", "w"  },
     };
     for (const auto& row : rows) {
         TestCpu c(row.model);
@@ -1046,9 +1076,9 @@ void bitfieldMemoryAccesses()
         { 0xefd0, 0x1304, "BFINS D1,(A0){12:4}", "b1 B1",
           {0xff, 0xff, 0xff}, {0xff, 0xfa, 0xff}, 0xa },
     };
-    static const struct { moira::Model model; const char* name; } models[] = {
-        { moira::Model::M68020, "68020" }, { moira::Model::M68030, "68030" },
-        { moira::Model::M68LC040, "68LC040" },
+    static const struct { moira::CPUModel model; const char* name; } models[] = {
+        { moira::CPUModel::M68020, "68020" }, { moira::CPUModel::M68030, "68030" },
+        { moira::CPUModel::M68LC040, "68LC040" },
     };
     for (const auto& m : models) {
         for (const Case& k : cases) {
@@ -1102,7 +1132,7 @@ void ptestFlagsInvalidAtTheLimit()
     // say both — N = 1, I. The fuzz generator's tree: TC = E, PS = 15,
     // IS = 8, TIA = 9, one level of short descriptors at $4000; CRP points
     // there with DT = 2 (valid 4-byte). Found by "mmu/tt seed=1006 #1188".
-    TestCpu c(moira::Model::M68030);
+    TestCpu c(moira::CPUModel::M68030);
     p32(c, 11 * 4, kHandler);
     stage(c, 0xf010, 0);                            // PTEST (A0)
     p16(c, kCode + 2, 0x8615);                      // PTESTR, level 1, FC #5
@@ -1130,7 +1160,7 @@ void ptestLongDescriptorLimits()
     for (bool rootLimit : {false, true}) for (bool lower : {false, true})
     for (int delta : {-1, 0, 1}) for (bool read : {false, true})
     for (int depth : {1, 2}) {
-        TestCpu c(moira::Model::M68030);
+        TestCpu c(moira::CPUModel::M68030);
         stage(c, 0xf010, 0);                       // PTEST (A0)
         const uint16_t modes = uint16_t(0x8100 | (depth << 10) |
                                        (read ? 0x0200 : 0) | (1 << 5) | 5);
@@ -1178,7 +1208,7 @@ void readonlyWalk030(const TestCpu& c, uint32_t logical, uint8_t fc,
     uint16_t status = 0;
     int count = 0, writes = 0;
     bool ci = false;
-    moira::mmu030::tableWalk<false>(c.getTC(), c.getCRP(), c.getSRP(),
+    pom68k::mmu030::tableWalk<false>(c.getTC(), c.getCRP(), c.getSRP(),
         logical, fc, false, 0, [&](uint32_t a) { return g32(c, a); },
         [&](uint32_t, uint32_t) { ++writes; }, page, ci, status, descriptor, count);
     CHECK(status == expectedStatus && writes == 0 &&
@@ -1195,7 +1225,7 @@ void ptestEarlyAndIndirect030()
     for (int stride : {4, 8}) for (bool lower : {false, true})
     for (int delta : {-1, 0, 1}) for (int depth : {1, 2})
     for (int fc : {1, 5}) {
-        TestCpu c(moira::Model::M68030);
+        TestCpu c(moira::CPUModel::M68030);
         stage(c, 0xf010, 0);
         const uint16_t ext = uint16_t(0x8130 | (depth << 10) | fc);
         p16(c, kCode + 2, ext); c.setIRC(ext);
@@ -1220,7 +1250,7 @@ void ptestEarlyAndIndirect030()
     for (int stride : {4, 8}) for (int targetStride : {4, 8})
     for (int kind : {0, 1, 2, 3}) for (int depth : {1, 2, 3, 4})
     for (int fc : {1, 5}) {
-        TestCpu c(moira::Model::M68030);
+        TestCpu c(moira::CPUModel::M68030);
         stage(c, 0xf010, 0);
         const uint16_t ext = uint16_t(0x8330 | (depth << 10) | fc);
         p16(c, kCode + 2, ext); c.setIRC(ext);
@@ -1262,7 +1292,7 @@ void ptestDescriptorFaults030()
     for (int faultLevel : {1, 2, 3}) for (int depth : {1, 2, 3, 4}) {
         const int faultSize = faultLevel == 3 ? targetStride : stride;
         for (int offset = 0; offset < faultSize; offset += 4) {
-            TestCpu c(moira::Model::M68030);
+            TestCpu c(moira::CPUModel::M68030);
             stage(c, 0xf010, 0);
             const uint16_t ext = uint16_t(0x8335 | (depth << 10));
             p16(c, kCode + 2, ext); c.setIRC(ext);
@@ -1302,7 +1332,7 @@ void directRootFclLimits030()
     for (bool fcl : {false, true}) for (bool lower : {false, true})
     for (int delta : {-1, 0, 1}) for (int depth : {1, 7})
     for (int fc : {1, 5}) for (bool read : {false, true}) {
-        TestCpu c(moira::Model::M68030);
+        TestCpu c(moira::CPUModel::M68030);
         stage(c, 0xf010, 0);
         const uint16_t ext = uint16_t(0x8130 | (depth << 10) | (read ? 0x200 : 0) | fc);
         p16(c, kCode + 2, ext); c.setIRC(ext);
@@ -1319,7 +1349,7 @@ void directRootFclLimits030()
     }
     for (bool fcl : {false, true}) for (bool lower : {false, true})
     for (int delta : {-1, 0, 1}) for (bool read : {false, true}) {
-        TestCpu c(moira::Model::M68030);
+        TestCpu c(moira::CPUModel::M68030);
         stage(c, 0x0e90, 0);
         p16(c, kCode + 2, read ? 0 : 0x0800);
         c.setTC(0x80c86600u | (fcl ? 0x01000000u : 0));
@@ -1350,7 +1380,7 @@ void directRootWrites030()
     // constant offset. No memory descriptor exists to acquire an M bit.
     for (int size : {1, 2, 4}) for (bool moves : {false, true})
     for (int fc : {1, 5}) {
-        TestCpu c(moira::Model::M68030);
+        TestCpu c(moira::CPUModel::M68030);
         const uint16_t store = moves ? uint16_t(0x0e10 | (size == 1 ? 0 : size == 2 ? 0x40 : 0x80))
                                     : uint16_t(size == 1 ? 0x1080 : size == 2 ? 0x3080 : 0x2080);
         const uint16_t load = moves ? store : uint16_t(size == 1 ? 0x1010 : size == 2 ? 0x3010 : 0x2010);
@@ -1407,15 +1437,15 @@ void directRootWrites030()
 // converts it to a data reference (FC 5).
 void pcRelativeOperandSpace()
 {
-    struct Row { moira::Model model; unsigned fc; const char* name; };
+    struct Row { moira::CPUModel model; unsigned fc; const char* name; };
     const Row rows[] = {
-        { moira::Model::M68000,   6, "68000" },
-        { moira::Model::M68010,   6, "68010" },
-        { moira::Model::M68EC020, 6, "68EC020" },
-        { moira::Model::M68020,   6, "68020" },
-        { moira::Model::M68EC030, 6, "68EC030" },
-        { moira::Model::M68030,   6, "68030" },
-        { moira::Model::M68LC040, 5, "68LC040" },
+        { moira::CPUModel::M68000,   6, "68000" },
+        { moira::CPUModel::M68010,   6, "68010" },
+        { moira::CPUModel::M68EC020, 6, "68EC020" },
+        { moira::CPUModel::M68020,   6, "68020" },
+        { moira::CPUModel::M68EC030, 6, "68EC030" },
+        { moira::CPUModel::M68030,   6, "68030" },
+        { moira::CPUModel::M68LC040, 5, "68LC040" },
     };
     for (const Row& r : rows) {
         TestCpu c(r.model);
@@ -1458,8 +1488,8 @@ void pcRelativeOperandSpace()
                 CHECK(a.fc == r.fc, "%s: MOVEM (d16,PC) read at %06X FC=%u, want %u",
                       r.name, unsigned(a.addr), unsigned(a.fc), r.fc);
             }
-        const bool extra = r.model < moira::Model::M68EC030 ||
-                           r.model == moira::Model::M68EC030;
+        const bool extra = r.model < moira::CPUModel::M68EC030 ||
+                           r.model == moira::CPUModel::M68EC030;
         CHECK(reads == (extra ? 2u : 1u) && (c.getD(0) & 0xFFFF) == 0xBEEF,
               "%s: MOVEM (d16,PC) made %u read(s), want %u (D0=%08X)",
               r.name, reads, extra ? 2u : 1u, c.getD(0));
@@ -1482,7 +1512,7 @@ void pcRelativeOperandCycle()
         constexpr uint32_t kTt0 = 0x00008124u;          // E, RWM, FC 2/6 (program)
         constexpr uint32_t kTable = 0x60000;            // zeros: invalid
         constexpr uint64_t kCrp = uint64_t(0x7FFF0002u) << 32 | kTable;
-        TestCpu c(moira::Model::M68030);
+        TestCpu c(moira::CPUModel::M68030);
         p32(c, 2 * 4, kHandler);
         p16(c, kHandler, kNop);
         stage(c, 0x303A, 0);
@@ -1496,8 +1526,8 @@ void pcRelativeOperandCycle()
               "(want %08X, BEEF: no data-space table search)",
               c.getPC0(), c.getD(0), kCode + 4);
     }
-    for (moira::Model m : { moira::Model::M68EC020, moira::Model::M68020,
-                            moira::Model::M68030 }) {
+    for (moira::CPUModel m : { moira::CPUModel::M68EC020, moira::CPUModel::M68020,
+                            moira::CPUModel::M68030 }) {
         TestCpu c(m);
         p32(c, 2 * 4, kHandler);
         p16(c, kHandler, 0x4E73);                       // RTE
@@ -1542,8 +1572,8 @@ void pcRelativeOperandCycle()
 // the control.
 void ec040AccessControlUnit()
 {
-    for (moira::Model model : { moira::Model::M68EC040, moira::Model::M68LC040 }) {
-        const bool ec = model == moira::Model::M68EC040;
+    for (moira::CPUModel model : { moira::CPUModel::M68EC040, moira::CPUModel::M68LC040 }) {
+        const bool ec = model == moira::CPUModel::M68EC040;
         const char* name = ec ? "68EC040" : "68LC040";
 
         // MOVEC D0,TC then MOVEC TC,D1: E/P never stick on the EC040.
@@ -1565,7 +1595,7 @@ void ec040AccessControlUnit()
 
         // A TC set under another model does not survive a switch to EC040.
         {
-            TestCpu c(moira::Model::M68LC040);
+            TestCpu c(moira::CPUModel::M68LC040);
             c.setTC040(0x4000);
             c.setModel(model);
             CHECK(c.getTC040() == (ec ? 0u : 0x4000u),
@@ -1649,16 +1679,21 @@ void ec030UsesPlain020Path()
     // maps code/stack but makes the operand's page invalid: the 68030
     // control must fault, whereas the two plain-020 models read RAM.
     // This pins this fork's declared scope; it is not a silicon corpus.
-    for (moira::Model model : { moira::Model::M68020, moira::Model::M68EC030,
-                                moira::Model::M68030 }) {
+    for (moira::CPUModel model : { moira::CPUModel::M68020, moira::CPUModel::M68EC030,
+                                moira::CPUModel::M68030 }) {
         TestCpu c(model);
         const auto checkWindowRefused = [&] {
-            if (model != moira::Model::M68EC030) return;
+            if (!MOIRA_ENABLE_JIT) return;     // a JIT code-window check
+            if (model != moira::CPUModel::M68EC030) return;
             for (bool super : { false, true }) {
                 moira::u32 pa = 0, base = 0, len = 0;
+#if MOIRA_ENABLE_JIT
                 CHECK(!c.pomJitProbeCode(kCode, super, pa, base, len),
                       "68EC030: code-window probe accepted super=%d TC=%08X",
                       int(super), c.getTC());
+#else
+                (void)super; (void)pa; (void)base; (void)len;
+#endif
             }
         };
         p32(c, 2 * 4, kHandler);
@@ -1676,7 +1711,7 @@ void ec030UsesPlain020Path()
         c.armIcacheOverlay();
         CHECK((c.getCACR() & 1) != 0,
               "model %d: cache-enable precondition was masked off", int(model));
-        const bool mmu = model == moira::Model::M68030;
+        const bool mmu = model == moira::CPUModel::M68030;
         CHECK(c.hasMMU() == mmu, "model %d: hasMMU()", int(model));
         const bool contained = executeContained(c);
         CHECK(contained, "model %d: execute() leaked a fault", int(model));
@@ -1707,14 +1742,14 @@ void ec030UsesPlain020Path()
 // 8-byte format $0 frame (vector offset $02C) on the 68010.
 void fpuIgnoredOn68000And68010()
 {
-    struct Row { moira::Model model; const char* name; int frameBytes; };
+    struct Row { moira::CPUModel model; const char* name; int frameBytes; };
     static const Row rows[] = {
-        { moira::Model::M68000, "68000", 6 },
-        { moira::Model::M68010, "68010", 8 },
+        { moira::CPUModel::M68000, "68000", 6 },
+        { moira::CPUModel::M68010, "68010", 8 },
     };
     for (const Row& r : rows) {
-        for (moira::FPUModel fpu : { moira::FPUModel::NONE, moira::FPUModel::M68881,
-                                     moira::FPUModel::M68882 }) {
+        for (MoiraFpu fpu : { MoiraFpu::NONE, MoiraFpu::M68881,
+                                     MoiraFpu::M68882 }) {
             TestCpu c(r.model);
             c.setFPUModel(fpu);
             p32(c, 11 * 4, kHandler);
@@ -1724,7 +1759,7 @@ void fpuIgnoredOn68000And68010()
             c.setIRC(0x0000);
             const uint32_t sp = c.getSP();
             c.execute();
-            const bool fmtOk = r.model == moira::Model::M68000 ||
+            const bool fmtOk = r.model == moira::CPUModel::M68000 ||
                                g16(c, c.getSP() + 6) == 0x002c;
             CHECK(c.getPC0() == kHandler && sp - c.getSP() == uint32_t(r.frameBytes) &&
                   g32(c, c.getSP() + 2) == kCode && fmtOk,
@@ -1738,8 +1773,8 @@ void fpuIgnoredOn68000And68010()
     // Control: the same staging on a 68020 with a 68881 does reach the FPU —
     // FMOVE FP0,FP0 retires and the next instruction is the NOP after it —
     // so the rows above are not a harness that can never execute F-line.
-    TestCpu c(moira::Model::M68020);
-    c.setFPUModel(moira::FPUModel::M68881);
+    TestCpu c(moira::CPUModel::M68020);
+    c.setFPUModel(MoiraFpu::M68881);
     p32(c, 11 * 4, kHandler);
     stage(c, 0xf200, 0);
     p16(c, kCode + 2, 0x0000);
@@ -1768,7 +1803,7 @@ void movesFixupSlot030()
     // @ Hatari e77819f7 allocates the memory-to-register fixup as its second
     // slot; the manual leaves these internal words undefined (POM68K_VENDOR.md
     // row 80). Found by the fresh sweep "core/identity seed=9117 #575".
-    TestCpu c(moira::Model::M68030);
+    TestCpu c(moira::CPUModel::M68030);
     p32(c, 2 * 4, kHandler);
     p16(c, kHandler, kNop);
     stage(c, 0x0e9c, 0);                            // MOVES.L (A4)+,D0
@@ -1799,7 +1834,7 @@ void movemExtensionLog030()
     // stopped logging before the d16 fetch and reported $11 (POM68K_VENDOR.md
     // row 81; "core/identity seed=802 #139", "core/tt seed=803 #635").
     for (uint32_t odd : {0u, 1u}) {
-        TestCpu c(moira::Model::M68030);
+        TestCpu c(moira::CPUModel::M68030);
         p32(c, 2 * 4, kHandler);
         p16(c, kHandler, kNop);
         stage(c, 0x48e8, 0);                        // MOVEM.L D0-D1,d16(A0)
@@ -1851,7 +1886,7 @@ void jmpOddTargetPc030()
         { 0x4ef0, {0x1120, 0x0010}, 2, 0x3001 - 0x10, kCode + 8, "JMP (16.W,A0,D1)" },
     };
     for (const auto& k : cases) {
-        TestCpu c(moira::Model::M68030);
+        TestCpu c(moira::CPUModel::M68030);
         p32(c, 3 * 4, kHandler);
         p16(c, kHandler, kNop);
         stage(c, k.opcode, 0);
@@ -1884,7 +1919,7 @@ void fbccOddTarget040()
         { 0xF248, 0x0000, 0x0011, false, "FDBF D0 with an odd offset" },
     };
     for (const Case& k : cases) {
-        TestCpu c(moira::Model::M68040);
+        TestCpu c(moira::CPUModel::M68040);
         p32(c, 3 * 4, kHandler);
         p32(c, 48 * 4, kHandler + 0x10);
         p16(c, kHandler, kNop); p16(c, kHandler + 0x10, kNop);
@@ -1929,7 +1964,7 @@ void jsrTargetFetchFault()
         { 0x4e90, kNop,   kHole,        "JSR (A0)" },
         { 0x4ea8, 0x0010, kHole - 0x10, "JSR 16(A0)" },
     };
-    for (auto model : {moira::Model::M68030, moira::Model::M68LC040, moira::Model::M68040})
+    for (auto model : {moira::CPUModel::M68030, moira::CPUModel::M68LC040, moira::CPUModel::M68040})
     for (const auto& k : cases) {
         TestCpu c(model);
         p32(c, 2 * 4, kHandler);
@@ -1976,7 +2011,7 @@ void deferredPrefetchFault()
         { 0x4afc, kNop,   kHole - 2, 4,  2,  "ILLEGAL on the last word" },
         { 0x4181, kNop,   kHole - 2, 6,  2,  "CHK D1,D0 out of bounds on the last word" },
     };
-    for (auto model : {moira::Model::M68030, moira::Model::M68LC040, moira::Model::M68040})
+    for (auto model : {moira::CPUModel::M68030, moira::CPUModel::M68LC040, moira::CPUModel::M68040})
     for (const auto& k : cases) {
         TestCpu c(model);
         for (int v : {2, 4, 6, 10}) p32(c, 4 * uint32_t(v), kHandler + 0x10 * uint32_t(v));
@@ -1988,7 +2023,7 @@ void deferredPrefetchFault()
         c.setIRD(k.op); c.setIRC(k.at == kHole - 4 ? k.ext : kNop);
         c.setD(0, 0x8000); c.setD(1, 0x10);
         c.holeArmed = true;
-        const bool is040 = model >= moira::Model::M68EC040;
+        const bool is040 = model >= moira::CPUModel::M68EC040;
         const int vector = is040 ? k.vector040 : k.vector030;
         const bool contained = executeContained(c);
         if (!vector) {
@@ -2028,7 +2063,7 @@ void stop68000()
         p16(c, kCode + 2, sr); c.setIRC(sr);
     };
     {   // no bus cycle, 4 cycles, PC past the operand
-        TestCpu c(moira::Model::M68000);
+        TestCpu c(moira::CPUModel::M68000);
         stop(c, 0x2700);
         p32(c, 2 * 4, kHandler + 0x40);                 // a prefetch would land here
         c.holeArmed = true; c.holeAt = kCode + 4;
@@ -2041,14 +2076,14 @@ void stop68000()
               (long long)(c.getClock() - c0), c.getPC(), kCode + 4);
     }
     {   // an interrupt already pending, unmasked by the operand: STOP+8
-        TestCpu c(moira::Model::M68000);
+        TestCpu c(moira::CPUModel::M68000);
         stop(c, 0x2000);
         c.setIPL(3);
         const moira::i64 c0 = c.getClock();
         c.execute();                                    // STOP
         const moira::i64 afterStop = c.getClock() - c0;
         for (int i = 0; i < 16 && c.isStopped(); i++) c.execute();   // held, then taken
-        TestCpu ref(moira::Model::M68000);              // the same exception, no STOP
+        TestCpu ref(moira::CPUModel::M68000);              // the same exception, no STOP
         p32(ref, 27 * 4, kHandler);
         p16(ref, kHandler, kNop); p16(ref, kHandler + 2, kNop);
         stage(ref, kNop, 0);
@@ -2066,7 +2101,7 @@ void stop68000()
               (long long)plain, c.getPC0());
     }
     {   // the 68020 still prefetches
-        TestCpu c(moira::Model::M68020);
+        TestCpu c(moira::CPUModel::M68020);
         stop(c, 0x2700);
         c.holeArmed = true; c.holeAt = kCode + 4;
         executeContained(c);
@@ -2080,7 +2115,7 @@ void reset68000()
     // [D] fx68k @ 0602ee46 — back-port of NeoST 9f20046: the 68000 reset
     // spends 6 cycles between its two prefetch reads, two more than the
     // 68010 path of this core.
-    TestCpu m000(moira::Model::M68000), m010(moira::Model::M68010);
+    TestCpu m000(moira::CPUModel::M68000), m010(moira::CPUModel::M68010);
     for (TestCpu* c : { &m000, &m010 }) {
         p32(*c, 0, 0x8000); p32(*c, 4, kCode);
         p16(*c, kCode, kNop); p16(*c, kCode + 2, kNop);
@@ -2153,7 +2188,7 @@ void atcReplayCopyOnWrite040()
     using P = moira::PomAtcProbe;
     static const uint32_t wantSaved[] = { 0, 8, 4, 8, 8, 12, 12, 12, 12 };
     for (int kind = 0; kind <= 8; kind++) {
-        TestCpu c(moira::Model::M68040);
+        TestCpu c(moira::CPUModel::M68040);
         P::seed(c);
         const P::Image before = P::image(c);
         moira::Moira::PomJitAtcReplay040 r;
@@ -2205,7 +2240,7 @@ void fullEaLongDisplacementLog030()
     // the extension word, the LONG base displacement as one entry, and the
     // outer displacement; three done, the fourth in flight. The fork logged
     // the base displacement as two words.
-    TestCpu c(moira::Model::M68030);
+    TestCpu c(moira::CPUModel::M68030);
     p32(c, 2 * 4, kHandler);
     p16(c, kHandler, kNop);
     stage(c, 0x32b2, 0);
@@ -2235,8 +2270,8 @@ void fsccWriteBuffer030()
     // it unsigned: $000000FF, where the integer core's signed operands give
     // $FFFFFFFF (POM68K_VENDOR.md row 83; "fpu/identity seed=811 #1003",
     // "fpuraw/identity seed=722 #1890").
-    TestCpu c(moira::Model::M68030);
-    c.setFPUModel(moira::FPUModel::M68882);
+    TestCpu c(moira::CPUModel::M68030);
+    c.setFPUModel(MoiraFpu::M68882);
     p32(c, 2 * 4, kHandler);
     p16(c, kHandler, kNop);
     stage(c, 0xf250, 0);                            // FScc.B (A0)
@@ -2269,7 +2304,7 @@ void aluWriteBuffer030()
         { 0xd310, 0xff, 0xff, 0x000001fe, "ADD.B D1,(A0) $FF+$FF" },
     };
     for (const auto& k : cases) {
-        TestCpu c(moira::Model::M68030);
+        TestCpu c(moira::CPUModel::M68030);
         p32(c, 2 * 4, kHandler);
         p16(c, kHandler, kNop);
         stage(c, k.opcode, 0);
@@ -2296,7 +2331,7 @@ void aluWriteBuffer030()
 // e77819f7 ("random/identity seed=72008 #106", fresh-seed sweep 2026-11-14).
 void moveAbsLongLastWrite030()
 {
-    TestCpu c(moira::Model::M68030);
+    TestCpu c(moira::CPUModel::M68030);
     p32(c, 2 * 4, kHandler);
     p16(c, kHandler, kNop);
     stage(c, 0x33d1, 0);                            // MOVE.W (A1),(xxx).L
@@ -2329,10 +2364,10 @@ void moveAbsLongLastWrite030()
 // CACR back.
 void cacrStrobesReadZero()
 {
-    static const struct { moira::Model model; const char* name; uint32_t want; } rows[] = {
-        { moira::Model::M68020,   "68020",   0x00000003 },
-        { moira::Model::M68EC030, "68EC030", 0x00003313 },
-        { moira::Model::M68030,   "68030",   0x00003313 },
+    static const struct { moira::CPUModel model; const char* name; uint32_t want; } rows[] = {
+        { moira::CPUModel::M68020,   "68020",   0x00000003 },
+        { moira::CPUModel::M68EC030, "68EC030", 0x00003313 },
+        { moira::CPUModel::M68030,   "68030",   0x00003313 },
     };
     for (const auto& r : rows) {
         TestCpu c(r.model);
@@ -2363,7 +2398,7 @@ void tableSearchBusError030()
     const uint16_t ptestR0 = 0x8215, ptestR7 = 0x9e15;   // PTESTR #5,(A0),#n
 
     {   // 1-2: the access faults on its logical address; the B entry stays
-        TestCpu c(moira::Model::M68030);
+        TestCpu c(moira::CPUModel::M68030);
         p32(c, 2 * 4, kHandler);
         p16(c, kHandler, 0xf010); p16(c, kHandler + 2, ptestR0);
         p16(c, kHandler + 4, kNop);
@@ -2383,7 +2418,7 @@ void tableSearchBusError030()
               "ATC entry's B with I)", c.mmusr());
     }
     {   // 3: PTEST's own search meets the /BERR — a report, not an exception
-        TestCpu c(moira::Model::M68030);
+        TestCpu c(moira::CPUModel::M68030);
         p32(c, 2 * 4, kHandler);
         stage(c, 0xf010, 0);
         p16(c, kCode + 2, ptestR7);
@@ -2407,7 +2442,7 @@ void unresetFpZero()
 {
     alignas(TestCpu) static unsigned char raw[sizeof(TestCpu)];
     std::memset(raw, 0xA5, sizeof raw);
-    TestCpu* c = new (raw) TestCpu(moira::Model::M68000);
+    TestCpu* c = new (raw) TestCpu(moira::CPUModel::M68000);
     for (int n = 0; n < 8; n++) {
         moira::u32 w[3]; c->getFP(n, w);
         CHECK(w[0] == 0 && w[1] == 0 && w[2] == 0,
@@ -2429,7 +2464,7 @@ void irqDelayAfterMaskLowering()
     // drops an armed delay. The 68000 and 68010 have no delay.
     constexpr uint32_t kAfterRte = kCode + 0x100;
     enum Form { MoveToSr, AndiToSr, Rte, StillMasked, AlreadyLow, ResetBetween };
-    const auto landing = [&](moira::Model m, Form form, bool& taken) {
+    const auto landing = [&](moira::CPUModel m, Form form, bool& taken) {
         TestCpu c(m);
         p32(c, 27 * 4, kHandler);                       // level-3 autovector
         for (int i = 0; i < 8; i++) p16(c, kHandler + 2 * i, kNop);
@@ -2463,12 +2498,12 @@ void irqDelayAfterMaskLowering()
         taken = c.getPC0() == kHandler;
         return taken ? g32(c, c.getSP() + 2) : 0;       // the stacked return PC
     };
-    struct Row { moira::Model model; const char* name; uint32_t delayed; };
-    for (const Row& row : { Row{ moira::Model::M68000, "68000", 0 },
-                            Row{ moira::Model::M68010, "68010", 0 },
-                            Row{ moira::Model::M68020, "68020", 4 },
-                            Row{ moira::Model::M68030, "68030", 4 },
-                            Row{ moira::Model::M68040, "68040", 4 } }) {
+    struct Row { moira::CPUModel model; const char* name; uint32_t delayed; };
+    for (const Row& row : { Row{ moira::CPUModel::M68000, "68000", 0 },
+                            Row{ moira::CPUModel::M68010, "68010", 0 },
+                            Row{ moira::CPUModel::M68020, "68020", 4 },
+                            Row{ moira::CPUModel::M68030, "68030", 4 },
+                            Row{ moira::CPUModel::M68040, "68040", 4 } }) {
         bool taken = false;
         uint32_t ret = landing(row.model, MoveToSr, taken);
         CHECK(taken && ret == kCode + 4 + row.delayed,
@@ -2509,7 +2544,7 @@ void level7TransitionSensitive()
     // 68010 keep upstream Moira's level-sensitive reading, pinned here so
     // that changing them is a decision.
     // `moveSr`: the handler's first instruction lowers the mask to 5.
-    const auto entries = [](moira::Model m, bool retransition, bool moveSr) {
+    const auto entries = [](moira::CPUModel m, bool retransition, bool moveSr) {
         TestCpu c(m);
         p32(c, 31 * 4, kHandler);                       // level-7 autovector
         for (int i = 0; i < 64; i++) p16(c, kHandler + 2 * i, kNop);
@@ -2529,8 +2564,8 @@ void level7TransitionSensitive()
         }
         return n;
     };
-    for (moira::Model m : { moira::Model::M68020, moira::Model::M68030,
-                            moira::Model::M68040 }) {
+    for (moira::CPUModel m : { moira::CPUModel::M68020, moira::CPUModel::M68030,
+                            moira::CPUModel::M68040 }) {
         const int held = entries(m, false, false);
         CHECK(held == 1, "model %d: a held level 7 entered the handler %d times, want 1",
               int(m), held);
@@ -2541,7 +2576,7 @@ void level7TransitionSensitive()
         CHECK(compared >= 2, "model %d: a mask lowered below a held level 7 "
               "entered the handler %d times, want a second entry", int(m), compared);
     }
-    for (moira::Model m : { moira::Model::M68000, moira::Model::M68010 }) {
+    for (moira::CPUModel m : { moira::CPUModel::M68000, moira::CPUModel::M68010 }) {
         const int held = entries(m, false, false);
         CHECK(held > 1, "model %d: the 68000/68010 level-sensitive level 7 "
               "changed (%d entries)", int(m), held);
@@ -2554,8 +2589,8 @@ void interruptSequenceBilled()
     // 41 (2/0/8), the column the 020 core's TRAP #n (20) uses. An execute()
     // that takes the interrupt runs no instruction, so the clock moves by
     // the sequence alone. Until 2026-11-19 it moved by 0.
-    for (moira::Model m : { moira::Model::M68020, moira::Model::M68030,
-                            moira::Model::M68040 }) {
+    for (moira::CPUModel m : { moira::CPUModel::M68020, moira::CPUModel::M68030,
+                            moira::CPUModel::M68040 }) {
         for (bool master : { false, true }) {
             TestCpu c(m);
             p32(c, 27 * 4, kHandler);                   // level-3 autovector
@@ -2604,8 +2639,8 @@ void masterStackInterrupt()
     // set. Taken from supervisor ($3000) and from user mode with M set
     // ($1000), where the two SR copies differ by S.
     constexpr uint32_t kIsp = 0x6000, kMsp = 0x8000, kUsp = 0x4000;
-    for (moira::Model m : { moira::Model::M68020, moira::Model::M68030,
-                            moira::Model::M68040 }) {
+    for (moira::CPUModel m : { moira::CPUModel::M68020, moira::CPUModel::M68030,
+                            moira::CPUModel::M68040 }) {
         for (uint16_t sr : { uint16_t(0x3000), uint16_t(0x1000) }) {
             TestCpu c(m);
             p32(c, 27 * 4, kHandler);                   // level-3 autovector
@@ -2655,8 +2690,8 @@ void movesReleasesAlternateFc()
     // fetch, or the handler runs in the faulting access's address space.
     // `v8_ramsize` holds it on a V8 board for the 68020 and the 68030, in
     // the read direction; this holds both directions on the 68040 too.
-    for (moira::Model m : { moira::Model::M68020, moira::Model::M68030,
-                            moira::Model::M68040 }) {
+    for (moira::CPUModel m : { moira::CPUModel::M68020, moira::CPUModel::M68030,
+                            moira::CPUModel::M68040 }) {
         for (bool write : { false, true }) {
             TestCpu c(m);
             p32(c, 2 * 4, kHandler);                    // vector 2: bus error
@@ -2696,7 +2731,7 @@ void movesFcAfterFault010()
                     Case{ true,  false, "write, address error" },
                     Case{ false, true,  "read, /BERR" },
                     Case{ true,  true,  "write, /BERR" } }) {
-        TestCpu c(moira::Model::M68010);
+        TestCpu c(moira::CPUModel::M68010);
         p32(c, 2 * 4, kHandler);                    // vector 2: bus error
         p32(c, 3 * 4, kHandler);                    // vector 3: address error
         p16(c, kHandler, kNop);
@@ -2751,8 +2786,8 @@ void divslOverflowKeepsRegisters()
     // the 020 core, in a build with asserts or without.
     // [B] M68000PRM-1992 DIVS: on overflow V is set and the destination
     // operands are unaffected.
-    for (moira::Model m : { moira::Model::M68020, moira::Model::M68030,
-                            moira::Model::M68040 }) {
+    for (moira::CPUModel m : { moira::CPUModel::M68020, moira::CPUModel::M68030,
+                            moira::CPUModel::M68040 }) {
         for (bool wide : { false, true }) {
             TestCpu c(m);
             const uint16_t ext = wide ? 0x0c01 : 0x0800;     // D1:D0 / D0
@@ -2781,7 +2816,7 @@ void watchpointsUnderMmu()
     // only consumer and `debug_session_test` runs a 68000, so none of the
     // four had a gate.
     constexpr uint32_t kData = 0x40000;
-    for (moira::Model m : { moira::Model::M68030, moira::Model::M68040 }) {
+    for (moira::CPUModel m : { moira::CPUModel::M68030, moira::CPUModel::M68040 }) {
         for (bool write : { false, true }) {
             TestCpu c(m);
             stage(c, write ? 0x2080 : 0x2010, 0);       // MOVE.L D0,(A0) / (A0),D0
@@ -2799,7 +2834,7 @@ void watchpointsUnderMmu()
         constexpr uint32_t kTable = 0x60000, kLogical = 0x00123010, kPhysical = 0x50010;
         constexpr uint64_t kCrp = uint64_t(0x7FFF0002u) << 32 | kTable;
         for (uint32_t armed : { kLogical, kPhysical }) {
-            TestCpu c(moira::Model::M68030);
+            TestCpu c(moira::CPUModel::M68030);
             p32(c, kTable, (kTable + 0x1000) | 2);      // TIA 0: a short table
             p32(c, kTable + 0x1000 + 0x123 * 4, (kPhysical & ~0xFFFu) | 1);   // TIB $123: the page
             p32(c, kPhysical, 0xCAFE1234);
@@ -2827,7 +2862,7 @@ void externalBusError020()
     // (2) the format-$B frame carries the address of the sub-access that
     // faulted, the second word of a longword included; (3) CCR and the
     // address registers are those of the program, not a stale mode-5 save.
-    for (moira::Model m : { moira::Model::M68020, moira::Model::M68EC020 }) {
+    for (moira::CPUModel m : { moira::CPUModel::M68020, moira::CPUModel::M68EC020 }) {
         struct Case { uint16_t opcode; uint32_t a0; const char* what; };
         for (const Case& k : { Case{ 0x2010, kHole,     "MOVE.L (A0),D0" },
                                Case{ 0x2080, kHole,     "MOVE.L D0,(A0)" },
@@ -2874,8 +2909,8 @@ void oddStackInterruptFrame()
     // The 68010 is not here: it shares the writer but its own interrupt
     // entry does not survive an odd SSP, as a 16-bit bus would not.
     constexpr uint32_t kOddSp = 0x8001, kFormatError = kHandler + 0x80;
-    for (moira::Model m : { moira::Model::M68020, moira::Model::M68030,
-                            moira::Model::M68040 }) {
+    for (moira::CPUModel m : { moira::CPUModel::M68020, moira::CPUModel::M68030,
+                            moira::CPUModel::M68040 }) {
         TestCpu c(m);
         p32(c, 27 * 4, kHandler);                       // level-3 autovector
         p32(c, 14 * 4, kFormatError);
@@ -2925,7 +2960,7 @@ void prefetchPipeAndIplPoll030()
         constexpr uint32_t kTc = 0x80000000u | 0xCu << 20 | 0xAu << 12 | 0xAu << 8;
         constexpr uint32_t kTable = 0x60000, kShadow = 0x70000, kTcAt = 0x50000;
         constexpr uint64_t kCrp = uint64_t(0x7FFF0002u) << 32 | kTable;
-        TestCpu c(moira::Model::M68030);
+        TestCpu c(moira::CPUModel::M68030);
         p32(c, kTable, (kTable + 0x1000) | 2);          // TIA 0: a short table
         p32(c, kTable + 0x1000 + 0 * 4, 0x0000 | 1);    // page 0 on itself
         p32(c, kTable + 0x1000 + 1 * 4, kShadow | 1);   // the code page elsewhere
@@ -2950,8 +2985,8 @@ void prefetchPipeAndIplPoll030()
     // (2) [C] LC II ROM $A00820, TimeDBRA: a `dbra D0,*` with no data
     // access must still sample the interrupt lines at every boundary. One
     // more iteration runs (the pin's own latency), not the rest of the loop.
-    for (moira::Model m : { moira::Model::M68020, moira::Model::M68030,
-                            moira::Model::M68040 }) {
+    for (moira::CPUModel m : { moira::CPUModel::M68020, moira::CPUModel::M68030,
+                            moira::CPUModel::M68040 }) {
         TestCpu c(m);
         p32(c, 27 * 4, kHandler);
         p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
@@ -2988,7 +3023,7 @@ void cas2IsReadModifyWrite030()
     for (const Case& k : { Case{ 0x0cfc, {0x8080, 0x90c1, kNop}, 2, true,  "CAS2.W, compare failing" },
                            Case{ 0x0cd0, {0x0080, kNop, kNop},   1, false, "CAS.W, compare failing" },
                            Case{ 0x4ad0, {kNop, kNop, kNop},     0, false, "TAS" } }) {
-        TestCpu c(moira::Model::M68030);
+        TestCpu c(moira::CPUModel::M68030);
         p32(c, kTable, kPages | 2);                     // TIA 0: a short table
         for (uint32_t page : { 0u, 1u, 0x40u, 0x41u })  // each on itself
             p32(c, kPages + page * 4, page << 12 | 1);
@@ -3029,7 +3064,7 @@ void lockEndsWithTheInstruction040()
     for (const Case& k : { Case{ 0x4ad0, {kNop, kNop, kNop},     0, "TAS (A0)" },
                            Case{ 0x0cd0, {0x0080, kNop, kNop},   1, "CAS.W, compare failing" },
                            Case{ 0x0cfc, {0x8080, 0x90c1, kNop}, 2, "CAS2.W, compare failing" } }) {
-        TestCpu c(moira::Model::M68040);
+        TestCpu c(moira::CPUModel::M68040);
         p32(c, kRoot, kPtr | 2);
         p32(c, kPtr, kPages | 2);
         for (uint32_t page = 0; page < 64; page++)       // identity, 256 KB
@@ -3050,7 +3085,7 @@ void lockEndsWithTheInstruction040()
         CHECK((desc(kFirst) & 0x10) != 0,
               "68040 %s: the operand page is not modified (%08X)", k.what, desc(kFirst));
         uint32_t value = 0;
-        const bool read = c.pomJitReadData(kRead, 2, value);
+        const bool read = c.supervisorDataRead16(kRead, value);
         CHECK(read && value == 0x9ABC && (desc(kRead) & 0x18) == 0x08,
               "68040 %s, then a data read: read=%d value=%04X descriptor %08X "
               "(want U without M)", k.what, read, value, desc(kRead));
@@ -3070,7 +3105,7 @@ void indirectPointerNotLocked040()
     struct Case { uint16_t opcode; uint16_t ext[4]; const char* what; };
     for (const Case& k : { Case{ 0x0af0, {0x0040, 0x01f1, 0x0003, 0xf000}, "CAS.B D0,D1,([bd.L])" },
                            Case{ 0x4af0, {0x01f1, 0x0003, 0xf000, kNop},   "TAS ([bd.L])" } }) {
-        TestCpu c(moira::Model::M68040);
+        TestCpu c(moira::CPUModel::M68040);
         p32(c, kRoot, kPtr | 2);
         p32(c, kPtr, kPages | 2);
         for (uint32_t page = 0; page < 64; page++)       // identity, 256 KB
@@ -3105,7 +3140,7 @@ void bkptMakesNoDataAccess()
     // page is invalid in the tables. [D] WinUAE (op_illg) @ Hatari e77819f7;
     // "040 random/ttvar seed=77012 #456", fresh-seed sweep 2026-11-14.
     constexpr uint32_t kRoot = 0x4000, kPtr = 0x4200, kPages = 0x6000;
-    TestCpu c(moira::Model::M68040);
+    TestCpu c(moira::CPUModel::M68040);
     p32(c, kRoot, kPtr | 2);
     p32(c, kPtr, kPages | 2);
     for (uint32_t page = 0; page < 64; page++)
@@ -3141,7 +3176,7 @@ void bitfieldStoreRestarts040()
     struct Case { uint16_t opcode, ext; bool user; const char* what; };
     for (const Case& k : { Case{ 0xeed0, 0x0008, false, "BFSET (A0){0:8}" },
                            Case{ 0x4e90, kNop,   true,  "JSR (A0) from user mode, push faulting" } }) {
-        TestCpu c(moira::Model::M68040);
+        TestCpu c(moira::CPUModel::M68040);
         p32(c, kRoot, kPtr | 2);
         p32(c, kPtr, kPages | 2);
         for (uint32_t page = 0; page < 64; page++)
@@ -3182,7 +3217,7 @@ void srWriteRefillIsAFetch()
     // the next instruction's page. [D] WinUAE @ Hatari e77819f7 (no data
     // access); "040 random/tt seed=79011 #1749", fresh-seed sweep 2026-11-14.
     constexpr uint32_t kRoot = 0x4000, kPtr = 0x4200, kPages = 0x6000;
-    TestCpu c(moira::Model::M68040);
+    TestCpu c(moira::CPUModel::M68040);
     p32(c, kRoot, kPtr | 2);
     p32(c, kPtr, kPages | 2);
     for (uint32_t page = 0; page < 64; page++)
@@ -3209,7 +3244,7 @@ void rteRerunTakesNoTrace040()
     // one-shot trace. [D] WinUAE newcpu.c do_specialties (SPCFLAG_MMURESTART)
     // @ Hatari e77819f7; "040 core/off seed=81001 #1204", fresh-seed sweep
     // 2026-11-14.
-    TestCpu c(moira::Model::M68040);
+    TestCpu c(moira::CPUModel::M68040);
     p32(c, 9 * 4, kHandler);                        // trace
     p16(c, kHandler, kNop);
     p16(c, 0x3000, kNop);
@@ -3252,11 +3287,11 @@ void traceFollowsTheTracedInstruction()
     // Until 2026-11-19 the 68020 and 68030 stacked a format $0 frame, and
     // the 68040 ran one more instruction before the exception. The 68000
     // and 68010 keep their four-word frames.
-    struct Row { moira::Model model; const char* name; bool sixWord; };
+    struct Row { moira::CPUModel model; const char* name; bool sixWord; };
     static const Row rows[] = {
-        { moira::Model::M68000, "68000", false }, { moira::Model::M68010, "68010", false },
-        { moira::Model::M68020, "68020", true },  { moira::Model::M68030, "68030", true },
-        { moira::Model::M68040, "68040", true },
+        { moira::CPUModel::M68000, "68000", false }, { moira::CPUModel::M68010, "68010", false },
+        { moira::CPUModel::M68020, "68020", true },  { moira::CPUModel::M68030, "68030", true },
+        { moira::CPUModel::M68040, "68040", true },
     };
     for (const Row& r : rows) {
         TestCpu c(r.model);
@@ -3271,8 +3306,8 @@ void traceFollowsTheTracedInstruction()
         bool contained = executeContained(c);       // the traced MOVEQ
         contained = contained && executeContained(c);   // its trace exception
         const uint32_t sp = c.getSP();
-        const uint32_t size = r.sixWord ? 12 : (r.model == moira::Model::M68000 ? 6 : 8);
-        const bool frame = r.model == moira::Model::M68000
+        const uint32_t size = r.sixWord ? 12 : (r.model == moira::CPUModel::M68000 ? 6 : 8);
+        const bool frame = r.model == moira::CPUModel::M68000
             ? true
             : g16(c, sp + 6) == (r.sixWord ? 0x2024 : 0x0024);
         CHECK(contained && c.getPC0() == kHandler && c.getD(1) == 0x55 && c.getD(2) == 0 &&
@@ -3297,10 +3332,10 @@ void traceOnChangeOfFlow()
     //     for the 68030 and 68040. An instruction trap is traced after its
     //     own exception on the 68020/68030 and not on the 68040.
     // Until 2026-11-20 T0 was stored and had no effect.
-    struct Row { moira::Model model; const char* name; bool is040; };
+    struct Row { moira::CPUModel model; const char* name; bool is040; };
     static const Row rows[] = {
-        { moira::Model::M68020, "68020", false }, { moira::Model::M68030, "68030", false },
-        { moira::Model::M68040, "68040", true },
+        { moira::CPUModel::M68020, "68020", false }, { moira::CPUModel::M68030, "68030", false },
+        { moira::CPUModel::M68040, "68040", true },
     };
     constexpr uint32_t sp0 = 0x8000, kTrapHandler = kHandler + 0x40;
     for (const Row& r : rows) {
@@ -3363,10 +3398,10 @@ void mullSameRegister()
     // register: the 68020 and 68030 leave the high half there, the 68040 the
     // low half. [D] WinUAE newcpu_common.c m68k_mull @ Hatari e77819f7
     // ("68040 is different"); class-balanced cells of 2026-11-20.
-    struct Row { moira::Model model; const char* name; bool low; };
+    struct Row { moira::CPUModel model; const char* name; bool low; };
     static const Row rows[] = {
-        { moira::Model::M68020, "68020", false }, { moira::Model::M68030, "68030", false },
-        { moira::Model::M68040, "68040", true },
+        { moira::CPUModel::M68020, "68020", false }, { moira::CPUModel::M68030, "68030", false },
+        { moira::CPUModel::M68040, "68040", true },
     };
     for (const Row& r : rows) {
         for (const bool isSigned : { false, true }) {
@@ -3392,10 +3427,10 @@ void cas2SameCompareRegister()
     // memory operand 1 on the 68020 and 68030 ([B] M68000PRM-1992 CAS2),
     // operand 2 on the 68040 ([D] WinUAE gencpu.c i_CAS2 @ Hatari e77819f7,
     // "68040: register update order swapped"; ruling D44).
-    struct Row { moira::Model model; const char* name; uint32_t want; };
+    struct Row { moira::CPUModel model; const char* name; uint32_t want; };
     static const Row rows[] = {
-        { moira::Model::M68020, "68020", 0x11111234 }, { moira::Model::M68030, "68030", 0x11111234 },
-        { moira::Model::M68040, "68040", 0x11115678 },
+        { moira::CPUModel::M68020, "68020", 0x11111234 }, { moira::CPUModel::M68030, "68030", 0x11111234 },
+        { moira::CPUModel::M68040, "68040", 0x11115678 },
     };
     for (const Row& r : rows) {
         TestCpu c(r.model);
@@ -3424,8 +3459,8 @@ void packUnpkFaultRestoresAn()
     // UNPK -(A3),-(A2) writes its pair as ONE word at A2-2, the
     // instruction's last write: the frame holds the next PC and A2 stays
     // decremented, A3 too (its read completed).
-    for (auto model : {moira::Model::M68030, moira::Model::M68040}) {
-        const bool is040 = model == moira::Model::M68040;
+    for (auto model : {moira::CPUModel::M68030, moira::CPUModel::M68040}) {
+        const bool is040 = model == moira::CPUModel::M68040;
         {   // PACK: the source word read takes /BERR, then RTE re-runs it
             TestCpu c(model);
             p32(c, 2 * 4, kHandler);
@@ -3491,7 +3526,7 @@ void packUnpkFaultRestoresAn()
                                    "PACK -(A3),-(A2) byte $9A" },
                             Store{ 0x858b, 0x7700, 0x98, 0x00, 0x30001, kHole + 2, 0x00008008,
                                    "UNPK -(A3),-(A2),#$7700 word $8008" } }) {
-        TestCpu c(moira::Model::M68030);
+        TestCpu c(moira::CPUModel::M68030);
         p32(c, 2 * 4, kHandler);
         p16(c, kHandler, kNop);
         stage(c, k.opcode, 0);
@@ -3515,7 +3550,7 @@ void cas2ExtensionLog030()
     // two extension words as one long: a fault on the first operand read
     // stacks a format-$B access log of ONE entry, the second in flight.
     // The fork logged two words.
-    TestCpu c(moira::Model::M68030);
+    TestCpu c(moira::CPUModel::M68030);
     p32(c, 2 * 4, kHandler);
     p16(c, kHandler, kNop);
     stage(c, 0x0cfc, 0);                    // CAS2.W D0:D1,D2:D3,(A0):(A1)
@@ -3541,8 +3576,8 @@ void moveFromSrStoreIsLastWrite()
     // faults, the 68030 stacks the short frame $A with the next PC. The
     // fork called writeM itself, without the last-write mark: format $B
     // on the 68030, An not stepped on either model.
-    for (auto model : {moira::Model::M68030, moira::Model::M68040}) {
-        const bool is040 = model == moira::Model::M68040;
+    for (auto model : {moira::CPUModel::M68030, moira::CPUModel::M68040}) {
+        const bool is040 = model == moira::CPUModel::M68040;
         for (const uint16_t opcode : { uint16_t(0x40da), uint16_t(0x42da) }) {   // MOVE SR|CCR,(A2)+
             TestCpu c(model);
             p32(c, 2 * 4, kHandler);
@@ -3575,8 +3610,8 @@ void stackStoreFaults()
     // left A7 decremented under a faulting JSR, logged no displacement for
     // RTD and BSR, stacked NEG's pending byte sign-extended and ASL's
     // without the bit shifted out; a 68040 BSR stacked the next PC.
-    for (auto model : {moira::Model::M68030, moira::Model::M68040}) {
-        const bool is040 = model == moira::Model::M68040;
+    for (auto model : {moira::CPUModel::M68030, moira::CPUModel::M68040}) {
+        const bool is040 = model == moira::CPUModel::M68040;
         const char* name = is040 ? "68040" : "68030";
         auto user = [](TestCpu& c, uint16_t opcode, uint16_t ext, uint32_t usp) {
             p32(c, 2 * 4, kHandler);
@@ -3756,8 +3791,8 @@ void stackFaultRoundTrip()
         { 0x4e74, 0x0008, kHole,     0x12345678, true,  false, "RTD #8" },
         { 0x4e77, kNop,   kHole - 2, 0x12345678, true,  false, "RTR, the return address faulting" },
     };
-    for (auto model : {moira::Model::M68030, moira::Model::M68040}) {
-        const bool is040 = model == moira::Model::M68040;
+    for (auto model : {moira::CPUModel::M68030, moira::CPUModel::M68040}) {
+        const bool is040 = model == moira::CPUModel::M68040;
         for (const Case& k : cases) {
             uint32_t pc[2] {}, usp[2] {}, a6[2] {}, cell[2] {};
             unsigned trips = 0;
@@ -3812,7 +3847,7 @@ void refillPrefetchFaultIsDeferred()
         { 0x027c, 2, 0xffff, "ANDI #$FFFF,SR" }, { 0x007c, 2, 0x0000, "ORI #0,SR" },
         { 0x0a7c, 2, 0x0000, "EORI #0,SR" },
     };
-    for (auto model : {moira::Model::M68030, moira::Model::M68040}) {
+    for (auto model : {moira::CPUModel::M68030, moira::CPUModel::M68040}) {
         for (const Case& k : cases) {
             TestCpu c(model);
             p32(c, 2 * 4, kHandler);
@@ -3825,7 +3860,7 @@ void refillPrefetchFaultIsDeferred()
             const bool contained = executeContained(c);
             CHECK(contained && c.getPC0() == next && c.faults == 0,
                   "%s %s with the second refill word on a /BERR hole: PC0=%08X (want %08X), "
-                  "%d fault(s) taken (want 0)", model == moira::Model::M68040 ? "68040" : "68030",
+                  "%d fault(s) taken (want 0)", model == moira::CPUModel::M68040 ? "68040" : "68030",
                   k.what, c.getPC0(), next, c.faults);
         }
     }
@@ -3833,12 +3868,16 @@ void refillPrefetchFaultIsDeferred()
 
 int main(int argc, char** argv)
 {
+#if POM68K_CONTINUATION_040
     if (argc == 2 && std::string_view(argv[1]) == "--movem-restart") {
         movemRestart040();
         std::printf("[moira_rules_test] MOVEM: %d failure(s)\n", failures);
         return failures ? 1 : 0;
     }
     movemRestart040();
+#else
+    (void)argc; (void)argv;
+#endif
     divsOfIntMin();
     externalBusError000();
     hostHooks();
