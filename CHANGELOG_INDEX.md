@@ -317,7 +317,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-22 (fifth)** — [D27, D29 and the 68030 half of D28 settled by the manuals, D25/D26 narrowed; the continuation and CIR sentences of the surface contract](CHANGELOG.md#2026-11-22-d25-d29-by-manual)
 - **2026-11-22 (ninth)** — [Dirk's Moira becomes the base: the fork's 158 changes sorted against his rewrite, and the first findings sent to him](CHANGELOG.md#2026-11-22-moira-convergence-inventory)
 - **2026-11-22 (sixth)** — [The 68040 FBcc/FDBcc with an odd displacement faults as the manual says: after the predicate, taken or not](CHANGELOG.md#2026-11-22-fbcc-odd-040)
-- **2026-11-24** — [POM68K runs on Dirk Hoffmann's Moira: seventeen fixes in a patch queue, the Quadras' FPSP and the Mac slot probes restored](CHANGELOG.md#2026-11-24-dirk-moira-base)
+- **2026-11-24** — [POM68K runs on Dirk Hoffmann's Moira: twenty-one fixes in a patch queue, the Quadras' FPSP and the Mac slot probes restored](CHANGELOG.md#2026-11-24-dirk-moira-base)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E
 

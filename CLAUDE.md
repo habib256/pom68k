@@ -21,7 +21,7 @@ is the authority, not this summary.
 | Machine roster, ROM identity and stable save-state ids | `src/MachineCatalog.h` |
 | Startup-option schema and lifecycle | `src/StartupOptions.h`, `src/RuntimeConfig*` |
 | JIT design, conformance and performance evidence | `src/jit/POM68K_JIT.md` |
-| Moira provenance, patch inventory and host-side contract | `extern/moira/POM68K_VENDOR.md`, `POM68K_SURFACE.md` |
+| Moira base, patch queue and host-side contract | `extern/moira/patches/`, `extern/moira/POM68K_VENDOR.md`, `POM68K_SURFACE.md` |
 | Guest-side Retro68 utilities | `dev/README.md` |
 
 Do not duplicate generated gate totals in this file, README or TODO. Read
@@ -144,77 +144,7 @@ Focused research notes under `docs/`:
 - **Every durable milestone has a gate.** A test that soft-skips proves only
   asset detection unless its named asset was actually present.
 
-## CPU and JIT policy
-
-**Since 2026-11-23 the JIT is compiled out (`POM68K_JIT=OFF`, the default)**
-while it is rebuilt on Dirk Hoffmann's core; every machine runs on the
-interpreter and the JIT gates are recorded absent. The policy below is the
-one to restore with it.
-
-The engine and backend are separate decisions:
-
-- 68030/68040 default to the accelerated engine; 68000/68020 run on the
-  interpreter only, the 68000 with its fetch window (`POM68K_JIT.md` § 2.2).
-- `threaded` is always compiled and declared correct for every guest family.
-- AArch64 `auto` selects native `a64` for 68030 and 68040.
-- Non-Windows x86-64 `auto` selects native `x64` for 68030 and 68040.
-- Windows x64 automatic builds omit the System V emitter and use `threaded`.
-- Explicit `POM68K_CPU_ENGINE=interp|jit` and
-  `POM68K_JIT_BACKEND=auto|threaded|x64|a64` remain diagnostic/user overrides.
-
-Backend `guestFamilies` declares correctness; `autoFamilies` declares measured
-automatic policy. Never infer one from the other. The declarations in each
-backend's `caps()` implementation are the current source of truth.
-
-The optional architectural 68040 I/D-cache model is enabled with
-`POM68K_040_DCACHE=1`; it remains outside the product default while its
-cache-active native paths are being completed and measured.
-
-## Development workflow
-
-Start with the concise loop in `DEV.md`:
-
-```bash
-./setup_imgui.sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
-cmake --build build --parallel
-ctest --test-dir build -L asset-none --output-on-failure
-git diff --check
-```
-
-Select the smallest relevant tier while iterating, then widen in proportion
-to the change. `DEV.md` §6 owns tier definitions; `STATUS.md` owns current
-registry facts. `docs_test` holds cross-document/code contracts, and
-`file_size_budget_test` ratchets architecture-sensitive translation units.
-
-Before considering a change complete:
-
-1. Build every touched production/test target.
-2. Run the narrow regression plus the appropriate label tier.
-3. Confirm that required-asset gates executed instead of soft-skipping.
-4. Run `git diff --check` and review the complete diff.
-5. Update `TODO.md` only when open work changed.
-6. Add a newest-first `CHANGELOG.md` entry when the reason, evidence or
-   historical state is worth preserving; regenerate `CHANGELOG_INDEX.md`.
-7. Regenerate `STATUS.md` only when gate registration or recorded execution
-   data changed.
-
-## Conventions
-
-- Documentation and product UI are written in English; conversation may be in
-  French.
-- The whole tree is C++20.
-- POM68K is GPLv3; its own code in the Moira release is MIT (`LICENSE-MIT`).
-- Preserve existing user changes in a dirty worktree and avoid destructive
-  Git operations.
-- Comments explain non-obvious contracts and cite a primary source or a
-  regression gate; dated narrative belongs in the changelog.
-- Do not add live process-environment reads below the startup boundary.
-- Do not make a native backend the default from opcode coverage alone:
-  conformance, whole-tier stability and same-process performance evidence are
-  independent admissions.
-
-### Evidence grades — written into the code
+## Evidence grades — written into the code
 
 **The silicon is the reference.** Every claim about hardware carries **its
 grade and its source**, in one bracket at the head of the comment, so a reader
@@ -246,22 +176,97 @@ hidden**: state what would settle it.
 ```
 
 This hierarchy is shared by every emulator from the same author (POM1,
-POMIIGS, POM68K, POMPPC, NeoST, RasterSystemGG). The previous ranking here put
-MAME above *Guide to the Macintosh Family Hardware*; that was backwards.
+POMIIGS, POM68K, POMPPC, NeoST, RasterSystemGG). On a specification/oracle
+conflict, preserve the reproducer and record the ruling in `CHANGELOG.md`.
 
-On a specification/oracle conflict, preserve the reproducer and record the
-ruling in `CHANGELOG.md` or the relevant research note.
+## CPU core
 
-## Moira: Dirk's core is the base
+### Moira: Dirk's core is the base
 
 `extern/moira/Moira` is Dirk Hoffmann's Moira (`master`, the commit in
 `extern/moira/patches/BASE`) plus POM68K's patch queue, one commit each in
 `extern/moira/patches/`, written in his style for upstream pull requests
-(discussion #36). POM68K's Macintosh layer lives above it: `src/MoiraCompat.h`
-and the CPU wrappers. Before any patch, fetch his `master` and read his new
-commits; drop a patch he covers. `extern/moira/POM68K_VENDOR.md` holds the
+(discussion #36); the Macintosh layer lives above it, in `src/MoiraCompat.h`
+and the CPU wrappers. Before any patch, fetch his `master`, read his new
+commits and drop a patch he covers. `extern/moira/POM68K_VENDOR.md` holds the
 queue's inventory and the fork's history; `docs/MOIRA_CONVERGENCE.md` sorts
 the fork's 158 changes against his rewrite; `tools/dirk_moira/` replays the
-oracle vectors and the reproducers on his tree. The WinUAE/Hatari oracle
-(`oracle/`) stays the 030/040 differential reference; the CPU tests written
-for the fork run against classified known lists (`tests/known/`).
+oracle vectors and the reproducers on his unmodified tree. The WinUAE/Hatari
+oracle (`oracle/`) stays the 030/040 differential reference; the fork's CPU
+tests run against classified known lists (`tests/known/`).
+
+### Validating the interpreter
+
+- **Qualify in native mode** (`Compatibility::DEFAULT`), then replay the same
+  minimal case under the modes `MOIRA_COMPATIBILITY` offers (`UAE` per CPU
+  model, `MAME` for the 68000, `MUSASHI` where it applies). Record the CPU
+  model, engine revisions, build options and the first divergent state or cycle.
+- **A divergence opens an investigation, not a verdict.** A compatibility mode
+  measures agreement with its own reference; MAME and the SingleStepTests
+  vectors it generated count as one source.
+- **The model's Motorola manual decides** where it specifies the behaviour (B).
+  Exact cycle order, an update before a fault or bits the manual leaves
+  undefined need a capture on that CPU (A). Record the reference, the minimal
+  case and the expected result; keep an uncertain one explicitly open (F).
+- **Fix what is demonstrated**, with a targeted native-mode regression test.
+  Totals and vector gains measure agreement with a corpus, not correctness;
+  keep the criteria intact and name the tests that did not run.
+
+### JIT policy
+
+**Since 2026-11-23 the JIT is compiled out (`POM68K_JIT=OFF`, the default)**
+while it is rebuilt on Dirk's core; every machine runs on the interpreter and
+the JIT gates are recorded absent (`cmake/pom68k_jit_gates.tsv`). The policy
+to restore keeps engine and backend as separate decisions: 68030/68040 default
+to the accelerated engine, 68000/68020 run on the interpreter only (the 68000
+with its fetch window, `POM68K_JIT.md` § 2.2); `threaded` is always compiled
+and correct for every family; `auto` selects native `a64` on AArch64 and `x64`
+on non-Windows x86-64 for 68030/68040, `threaded` on Windows x64.
+`POM68K_CPU_ENGINE=interp|jit` and `POM68K_JIT_BACKEND=auto|threaded|x64|a64`
+remain diagnostic/user overrides. Backend `guestFamilies` declares correctness, `autoFamilies` measured
+automatic policy; never infer one from the other (each backend's `caps()` is
+the source of truth). Opcode coverage alone never makes a native backend the
+default: conformance, whole-tier stability and same-process performance are
+independent admissions. The architectural 68040 I/D-cache model
+(`POM68K_040_DCACHE=1`) stays outside the product default until its
+cache-active native paths are completed and measured.
+
+## Development workflow
+
+Start with the concise loop in `DEV.md`:
+
+```bash
+./setup_imgui.sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake --build build --parallel 4   # bounded: a bare --parallel exhausts memory
+ctest --test-dir build -L asset-none --output-on-failure
+git diff --check
+```
+
+Select the smallest relevant tier while iterating, then widen in proportion
+to the change. `DEV.md` §6 owns tier definitions; `STATUS.md` owns current
+registry facts. `docs_test` holds cross-document/code contracts, and
+`file_size_budget_test` ratchets architecture-sensitive files.
+
+Before considering a change complete:
+
+1. Build every touched production/test target.
+2. Run the narrow regression plus the appropriate label tier.
+3. Confirm that required-asset gates executed instead of soft-skipping.
+4. Run `git diff --check` and review the complete diff.
+5. Update `TODO.md` only when open work changed.
+6. Add a newest-first `CHANGELOG.md` entry when the reason, evidence or
+   historical state is worth preserving; regenerate `CHANGELOG_INDEX.md`.
+7. Regenerate `STATUS.md` only when gate registration or recorded execution
+   data changed.
+
+## Conventions
+
+- Documentation and product UI are in English (conversation may be in
+  French); the whole tree is C++20.
+- POM68K is GPLv3; its own code in the Moira release is MIT (`LICENSE-MIT`).
+- Preserve existing user changes in a dirty worktree and avoid destructive
+  Git operations.
+- Comments explain non-obvious contracts and cite a primary source or a
+  regression gate; dated narrative belongs in the changelog.
+- Do not add live process-environment reads below the startup boundary.

@@ -619,7 +619,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
-- [2026-11-24 — POM68K runs on Dirk Hoffmann's Moira: seventeen fixes in a patch queue, the Quadras' FPSP and the Mac slot probes restored](#2026-11-24-dirk-moira-base)
+- [2026-11-24 — POM68K runs on Dirk Hoffmann's Moira: twenty-one fixes in a patch queue, the Quadras' FPSP and the Mac slot probes restored](#2026-11-24-dirk-moira-base)
 - [2026-11-22 (sixth) — The 68040 FBcc/FDBcc with an odd displacement faults as the manual says: after the predicate, taken or not](#2026-11-22-fbcc-odd-040)
 - [2026-11-22 (fifth) — D27, D29 and the 68030 half of D28 settled by the manuals, D25/D26 narrowed; the continuation and CIR sentences of the surface contract](#2026-11-22-d25-d29-by-manual)
 - [2026-11-22 (fourth) — The core and NEOST_VENDOR.md are in English, for the release to Dirk Hoffmann](#2026-11-22-core-in-english)
@@ -1445,10 +1445,10 @@ Newest first.
 ---
 
 <a id="2026-11-24-dirk-moira-base"></a>
-## 2026-11-24 — POM68K runs on Dirk Hoffmann's Moira: seventeen fixes in a patch queue, the Quadras' FPSP and the Mac slot probes restored
+## 2026-11-24 — POM68K runs on Dirk Hoffmann's Moira: twenty-one fixes in a patch queue, the Quadras' FPSP and the Mac slot probes restored
 
 **The base.** `extern/moira/Moira` is Dirk's `master` (`450b15ae`, his `FPU`
-branch merged) plus a queue of seventeen commits exported to
+branch merged) plus a queue of twenty-one commits exported to
 `extern/moira/patches/` (`POM68K_VENDOR.md` § Inventory). Each one is in his
 style, reproduced on his unmodified tree by
 `tools/dirk_moira/findings_repro.cpp` and checked in the locked manuals; Dirk
@@ -1488,6 +1488,16 @@ word (16, 17). POM68K's side: the save-state visitor gained the FPU state,
 the 68020 restart record, the completed cycle and the cache lines (format
 v39); debugger flags no longer enter a save state; `debugSetPc` follows
 Dirk's PC convention; the host publishes the engine that runs.
+
+**What the 68000 and the LC040 needed** (18-21): the Quadra 605 without
+an FPU keeps its 68LC040 identity and opts into Dirk's software 68882, so
+its ROM and the System find the FPU they test for (18,
+`q605_nofpu_boot_etalon`, `q605_barefpu_boot_etalon`); in `DEFAULT` mode
+the 68000 keeps the address-error idle before the group-0 frame (19), clears
+C and X when ASR shifts beyond the operand width (20) and, on a divide
+overflow, leaves N and Z unchanged and takes the 16/18-clock signed exit
+(21), as SingleStepTests/680x0 68000/v1 measures (`sst68000`; ruling D10 for
+the later CPUs' ASR).
 
 **Rulings against the fork**, each recorded at its test: a 6888x reports no
 post-instruction exception (MC68881UM §6.1), so the fork's format-$2 frame
