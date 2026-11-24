@@ -1725,10 +1725,18 @@ int main() {
     for (const auto& [name, workflow] :
          std::array<std::pair<const char*, const std::string*>, 2>{{
              {"x86-64 CI", &linuxCi}, {"AArch64 CI", &macCi}}}) {
+#ifndef POM68K_NO_JIT
         check(workflow->find("POM68K_JIT_METRICS_FILE") != std::string::npos &&
               workflow->find("tools/check_jit_performance.py") != std::string::npos &&
               workflow->find("actions/upload-artifact@v4") != std::string::npos,
               std::string(name) + " validates and archives structured JIT metrics");
+#else
+        // POM68K_JIT=OFF (since 2026-11-23): no runner can produce the
+        // metrics file, so a workflow that still requires it is red.
+        check(workflow->find("POM68K_JIT_METRICS_FILE") == std::string::npos &&
+              workflow->find("-L jit-fast") == std::string::npos,
+              std::string(name) + " does not require JIT metrics while the JIT is compiled out");
+#endif
     }
 
     // The registry has MORE THAN ONE size: the AArch64 lockstep pair is

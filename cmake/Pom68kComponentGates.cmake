@@ -502,10 +502,9 @@ target_link_libraries(input_journal_test PRIVATE pom68k_core)
 add_test(NAME input_journal_test COMMAND input_journal_test)
 
 # The docs' citable invariants, checked against the code: compiled profile
-# catalogue == what CLAUDE.md says, every gate CLAUDE.md
-# names is registered, every registered gate carries a label, and the gate
-# totals it quotes. Reads pom68k_gates.tsv, which the tier block below
-# writes at configure time. Links nothing.
+# catalogue == what CLAUDE.md says, every gate CLAUDE.md names is registered,
+# every registered gate carries a label, and the gate totals it quotes. Reads
+# pom68k_gates.tsv, written at configure time by the tier block below.
 add_executable(docs_test tests/docs_test.cpp)
 target_include_directories(docs_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(docs_test PRIVATE pom68k_app)
@@ -513,7 +512,8 @@ target_compile_definitions(docs_test PRIVATE
     POM68K_GATE_ROSTER="${CMAKE_CURRENT_BINARY_DIR}/pom68k_gates.tsv"
     POM68K_GATE_ROSTER_ABSENT="${CMAKE_CURRENT_BINARY_DIR}/pom68k_gates_absent.tsv"
     POM68K_GATE_MANIFEST="${CMAKE_CURRENT_BINARY_DIR}/pom68k_gate_manifest.tsv"
-    POM68K_PERF_BUDGET_FILE="${CMAKE_CURRENT_SOURCE_DIR}/performance_budgets.tsv")
+    POM68K_PERF_BUDGET_FILE="${CMAKE_CURRENT_SOURCE_DIR}/performance_budgets.tsv"
+    $<$<NOT:$<BOOL:${POM68K_JIT}>>:POM68K_NO_JIT>)
 add_test(NAME docs_test COMMAND docs_test
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 # The abstraction catalogue (src/AbstractionCatalog.*) against the files it

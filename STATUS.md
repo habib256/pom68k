@@ -61,27 +61,24 @@ Scheduling cost if every gate ran at once: 736 slots of 256 MiB (`slots_src` say
 
 ## Registered on x86_64
 
-641 gates registered; 4 union gates cannot register here: `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_a64_coarse_test`, `jit_store_guard_a64_test`.
+534 gates registered; 110 union gates cannot register here: `cache040_test`, `callm_rtm_test`, `cpu_vectors030_jit_test`, `cpu_vectors040_jit_test`, `jit_asset_free_lockstep_test`, `jit_backend_parity_test`, `jit_backend_test`, `jit_centris650_boot_etalon`, `jit_copyback_bsr_040_test`, `jit_copyback_pair_040_control_test`, `jit_copyback_pair_040_test`, `jit_copyback_write_040_control_test`, `jit_copyback_write_040_test`, `jit_duo230_boot_etalon`, `jit_iifx_boot_etalon`, `jit_iisi_boot_etalon`, `jit_iivx_boot_etalon`, `jit_lc3_boot_etalon`, `jit_lcii_boot_etalon`, `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_030_blocks_test`, `jit_lockstep_030_no_data_window_test`, `jit_lockstep_030_test`, `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_68000_test`, `jit_lockstep_a64_coarse_test`, `jit_lockstep_blocks_test`, `jit_lockstep_board_centris650_test`, `jit_lockstep_board_duo230_test`, `jit_lockstep_board_iici_jitter_test`, `jit_lockstep_board_iici_test`, `jit_lockstep_board_iici_threaded_blocks_test`, `jit_lockstep_board_iifx_test`, `jit_lockstep_board_iivx_test`, `jit_lockstep_board_lc3_test`, `jit_lockstep_board_pb170_test`, `jit_lockstep_board_pb180_test`, `jit_lockstep_board_q630_jitter_test`, `jit_lockstep_board_q630_test`, `jit_lockstep_board_q630_threaded_test`, `jit_lockstep_board_q700_test`, `jit_lockstep_board_se30_test`, `jit_lockstep_noaccess_test`, `jit_lockstep_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`, `jit_mactv_boot_etalon`, `jit_pb140_boot_etalon`, `jit_pb180_boot_etalon`, `jit_pb180c_boot_etalon`, `jit_program_fuzz_000_test`, `jit_program_fuzz_000_trace_test`, `jit_program_fuzz_020_irq7_test`, `jit_program_fuzz_030_devport_test`, `jit_program_fuzz_030_ext2_test`, `jit_program_fuzz_030_ext_test`, `jit_program_fuzz_030_fpexc_test`, `jit_program_fuzz_030_mmupage_test`, `jit_program_fuzz_030_mmuprot_plain_test`, `jit_program_fuzz_030_mmuprot_test`, `jit_program_fuzz_030_mmutt_test`, `jit_program_fuzz_030_smc_test`, `jit_program_fuzz_030_sys_test`, `jit_program_fuzz_030_t0_test`, `jit_program_fuzz_030_test`, `jit_program_fuzz_030_trace_test`, `jit_program_fuzz_030_vmrte_test`, `jit_program_fuzz_040_dcache_cacr_test`, `jit_program_fuzz_040_dcache_replay_test`, `jit_program_fuzz_040_dcache_test`, `jit_program_fuzz_040_devport_test`, `jit_program_fuzz_040_ext2_test`, `jit_program_fuzz_040_ext_test`, `jit_program_fuzz_040_fpexc_test`, `jit_program_fuzz_040_mmu_dcache_test`, `jit_program_fuzz_040_mmupage_test`, `jit_program_fuzz_040_mmuprot_cas_test`, `jit_program_fuzz_040_mmuprot_test`, `jit_program_fuzz_040_mmutt_test`, `jit_program_fuzz_040_smc_test`, `jit_program_fuzz_040_sys_mmu_test`, `jit_program_fuzz_040_sys_test`, `jit_program_fuzz_040_t0_test`, `jit_program_fuzz_040_test`, `jit_program_fuzz_040_trace_test`, `jit_program_fuzz_040_vmrte_test`, `jit_program_fuzz_lc040_test`, `jit_q605_boot_etalon`, `jit_q630_boot_etalon`, `jit_q700_boot_etalon`, `jit_restart_write_030_test`, `jit_se30_boot_etalon`, `jit_sst68030`, `jit_sst68030_fpu2`, `jit_sst68030_fpuh`, `jit_sst68030_fpuraw`, `jit_sst68030_rmw`, `jit_sst68030_solo`, `jit_sst68040`, `jit_sst68040_8k`, `jit_sst68040_fline`, `jit_sst68040_fpu`, `jit_sst68040_fpu2`, `jit_sst68040_fpuh`, `jit_store_guard_a64_test`, `mmu040_atc_test`, `moira_interp_callm_rtm_test`.
 
 | dimension | value | gates |
 |---|---|---|
-| assets | none | 208 |
-| assets | optional | 39 |
-| assets | required | 394 |
-| host | any | 630 |
-| host | native | 6 |
-| host | x64 | 5 |
-| scope | component | 184 |
-| scope | engine | 85 |
-| scope | profile | 367 |
-| scope | repository | 5 |
-| tier | daily | 208 |
-| tier | full | 417 |
+| assets | none | 155 |
+| assets | optional | 27 |
+| assets | required | 352 |
+| host | any | 534 |
+| scope | component | 178 |
+| scope | profile | 352 |
+| scope | repository | 4 |
+| tier | daily | 155 |
+| tier | full | 363 |
 | tier | platform | 16 |
-| slots_src | assumed | 530 |
-| slots_src | measured | 111 |
+| slots_src | assumed | 439 |
+| slots_src | measured | 95 |
 
-Scheduling cost if every gate ran at once: 995 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 860 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## PRODUCT_LLE on aarch64
 
