@@ -188,7 +188,11 @@ conflict, preserve the reproducer and record the ruling in `CHANGELOG.md`.
 `extern/moira/patches/`, written in his style for upstream pull requests
 (discussion #36); the Macintosh layer lives above it, in `src/MoiraCompat.h`
 and the CPU wrappers. Before any patch, fetch his `master`, read his new
-commits and drop a patch he covers. `extern/moira/POM68K_VENDOR.md` holds the
+commits and drop a patch he covers. Branch `main_old` (`0139930a`) freezes
+the previous POM68K (the NeoST fork, JIT on): a reference to compare against
+and the source for rebuilding the JIT, never a branch to develop on. `main`
+proves the interpreter first, then rebuilds the JIT on it piece by piece
+(`TODO.md` § Objectif principal). `extern/moira/POM68K_VENDOR.md` holds the
 queue's inventory and the fork's history; `docs/MOIRA_CONVERGENCE.md` sorts
 the fork's 158 changes against his rewrite; `tools/dirk_moira/` replays the
 oracle vectors and the reproducers on his unmodified tree. The WinUAE/Hatari

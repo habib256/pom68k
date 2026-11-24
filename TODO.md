@@ -28,7 +28,19 @@ dans `extern/moira/patches/BASE`) plus une file de correctifs
 (`POM68K_JIT=OFF` par défaut) : **tout doit être vert avant de reconstruire
 le JIT** (décision du propriétaire, 2026-11-23).
 
-**Où on en est (2026-11-24, nuit).** 17 correctifs dans la file, chacun
+**Deux branches (décision du propriétaire, 2026-11-24).** `main_old`
+(`0139930a`, poussée) fige l'ancien POM68K : le fork NeoST de Moira et le
+JIT actif, tels qu'avant la bascule (`1689ebe7`). Elle ne reçoit plus de
+travail ; elle sert de référence pour comparer un comportement et de
+source pour reconstruire le JIT. `main` est la nouvelle référence, sur la
+dernière Moira de Dirk (`master`, branche FPU fusionnée). Deux phases, dans
+l'ordre : **(1) prouver la solidité du cœur interpréteur** (en cours :
+actions 1 à 7 ci-dessous, règles de `CLAUDE.md` § Validating the
+interpreter) ; **(2) reconstruire le JIT petit à petit** par-dessus
+(action 8), en reprenant le code de `main_old` famille par famille, chaque
+étape admise par ses propres gates.
+
+**Où on en est (2026-11-24).** 21 correctifs dans la file, chacun
 reproduit sur sa branche et cité dans le manuel verrouillé
 (`tools/dirk_moira/findings_repro.cpp`). Les machines démarrent au Finder,
 les Quadra compris (FSAVE UNIMP, correctif 5). Les tests CPU écrits pour le
@@ -68,8 +80,9 @@ plancher d'accord avec WinUAE (`tests/cpu_vectors/manifest.json`, `floor`).
    de ré-épingler d'autres écrans.
 7. **Remplacer `src/Mmu030Walk.h` par `MMU::peek`** (Dirk, `5fde078`),
    en gardant la lecture des pages superviseur pour le débogueur.
-8. **Reconstruire le JIT** sur ce cœur (couture `PomJitLayout`,
-   `pomJitSync`, fenêtres, ATC 040, backends a64/x64), puis ses admissions
+8. **Reconstruire le JIT** sur ce cœur, à partir du code de `main_old`
+   (couture `PomJitLayout`, `pomJitSync`, fenêtres, ATC 040, backends
+   a64/x64), puis ses admissions
    (`POM68K_JIT.md`) ; remettre `POM68K_JIT` à `ON` et régénérer
    `cmake/pom68k_jit_gates.tsv`.
 
