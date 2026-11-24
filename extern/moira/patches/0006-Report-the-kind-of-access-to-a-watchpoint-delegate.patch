@@ -1,7 +1,7 @@
-From 8b0290d76c8069393f7774fbf07208ee3f93e978 Mon Sep 17 00:00:00 2001
+From c52c53a89a00836c00df087be0635d291b5e1039 Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 00:47:16 +0400
-Subject: [PATCH 08/17] Report the kind of access to a watchpoint delegate
+Subject: [PATCH 06/16] Report the kind of access to a watchpoint delegate
 
 didReachWatchpoint(u32) carries the address only, so a debugger cannot tell
 a read from a write or an instruction fetch, nor see the size: a write
@@ -16,7 +16,7 @@ unaffected.
  2 files changed, 19 insertions(+), 5 deletions(-)
 
 diff --git a/Moira/MoiraDataflow_cpp.h b/Moira/MoiraDataflow_cpp.h
-index 1f9686f..943cfdb 100644
+index a2ff1e5..d112a28 100644
 --- a/Moira/MoiraDataflow_cpp.h
 +++ b/Moira/MoiraDataflow_cpp.h
 @@ -796,7 +796,7 @@ try
@@ -28,7 +28,7 @@ index 1f9686f..943cfdb 100644
      }
  
      if constexpr (S == Byte) {
-@@ -875,7 +875,7 @@ Moira::readInstr(u32 addr)
+@@ -878,7 +878,7 @@ Moira::readInstr(u32 addr)
  
          // The caches are addressed logically. The MMU is only involved on a miss.
          if ((flags & State::CHECK_WP) && debugger.watchpointMatches(addr, Word)) {
@@ -37,7 +37,7 @@ index 1f9686f..943cfdb 100644
          }
          if constexpr (F & POLL) POLL_IPL;
  
-@@ -924,7 +924,7 @@ Moira::readInstr(u32 addr)
+@@ -921,7 +921,7 @@ Moira::readInstr(u32 addr)
  
          // Check if a watchpoint has been reached
          if ((flags & State::CHECK_WP) && debugger.watchpointMatches(addr, Word)) {
@@ -46,7 +46,7 @@ index 1f9686f..943cfdb 100644
          }
  
          if constexpr (F & POLL) POLL_IPL;
-@@ -1010,7 +1010,7 @@ try
+@@ -1007,7 +1007,7 @@ try
  
      // Check if a watchpoint has been reached
      if ((flags & State::CHECK_WP) && debugger.watchpointMatches(addr, S)) {
@@ -55,7 +55,7 @@ index 1f9686f..943cfdb 100644
      }
  
      if constexpr (S == Byte) {
-@@ -1095,7 +1095,7 @@ Moira::readDataCache(u32 addr)
+@@ -1092,7 +1092,7 @@ Moira::readDataCache(u32 addr)
  
      // Check if a watchpoint has been reached
      if ((flags & State::CHECK_WP) && debugger.watchpointMatches(addr, S)) {

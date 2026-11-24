@@ -580,38 +580,38 @@ target_link_libraries(llap_two_system_etalon PRIVATE pom68k_core)
 add_test(NAME llap_two_system_etalon COMMAND llap_two_system_etalon
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
-# M4.5 gate: SingleStepTests/680x0 68000 vectors (fetch: tests/fetch_sst_68000.sh;
-# soft-skips when absent); tests/sst68000.known lists those ruled for the manual.
+# M4.5 gate: SingleStepTests/680x0 68000 vectors (tests/fetch_sst_68000.sh; soft-skips
+# when absent). SST gates: per-file agreement floors, tests/sst_floors/ (SstFloors.h).
 add_executable(sst68000 tests/sst68000.cpp)
 target_link_libraries(sst68000 PRIVATE moira)
 set(POM68K_SST_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/sst68000"
     CACHE PATH "Directory of SingleStepTests/680x0 68000 .json vectors")
 add_test(NAME sst68000 COMMAND sst68000 "${POM68K_SST_DIR}"
-         --known "${CMAKE_CURRENT_SOURCE_DIR}/tests/sst68000.known")
+         --known "${CMAKE_CURRENT_SOURCE_DIR}/tests/sst68000.known"
+         --floors "${CMAKE_CURRENT_SOURCE_DIR}/tests/sst_floors/sst68000.tsv")
 
-# Phase-2 gate (O4): oracle-agreed SST030 vectors against Moira M68030.
-# Corpus is generated locally: oracle/fuzz/fuzz030.py (see oracle/README.md).
-# Soft-skips when absent.
+# Phase-2 gate (O4): oracle-agreed SST030 vectors against Moira M68030, generated
+# locally by oracle/fuzz/fuzz030.py (oracle/README.md); soft-skips when absent.
 add_executable(sst68030 tests/sst68030.cpp)
 target_link_libraries(sst68030 PRIVATE moira)
 set(POM68K_SST030_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/sst68030"
     CACHE PATH "Directory of oracle-generated SST030 .json vectors")
-# The July corpus was generated in the oracle's permissive 6888x setting; the
-# four vectors of ruling D23b it holds are listed by name (tests/SstKnown.h).
-# --strict-ram: a byte the core wrote and the oracle left alone fails too
-# (the final list holds only changed bytes; tests/sst68030.cpp).
+# --known: the rulings this July corpus holds (tests/sst68030.known); --strict-ram:
+# a byte the core wrote and the oracle left alone fails too (the final list holds
+# only changed bytes; tests/sst68030.cpp).
 add_test(NAME sst68030 COMMAND sst68030 "${POM68K_SST030_DIR}"
-         --known "${CMAKE_CURRENT_SOURCE_DIR}/tests/sst68030.known" --strict-ram)
+         --known "${CMAKE_CURRENT_SOURCE_DIR}/tests/sst68030.known" --strict-ram
+         --floors "${CMAKE_CURRENT_SOURCE_DIR}/tests/sst_floors/sst68030.tsv")
 
-# Phase-3 gate (Q2): WinUAE-solo SST040 vectors against Moira M68LC040.
-# Corpus is generated locally: oracle/fuzz/fuzz040.py. Soft-skips when
-# absent.
+# Phase-3 gate (Q2): WinUAE-solo SST040 vectors against Moira M68LC040, generated
+# locally by oracle/fuzz/fuzz040.py; soft-skips when absent.
 add_executable(sst68040 tests/sst68040.cpp)
 target_link_libraries(sst68040 PRIVATE moira)
 set(POM68K_SST040_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/sst68040"
     CACHE PATH "Directory of oracle-generated SST040 .json vectors")
 add_test(NAME sst68040 COMMAND sst68040 "${POM68K_SST040_DIR}"
-         --known "${CMAKE_CURRENT_SOURCE_DIR}/tests/sst68040.known" --strict-ram)
+         --known "${CMAKE_CURRENT_SOURCE_DIR}/tests/sst68040.known" --strict-ram
+         --floors "${CMAKE_CURRENT_SOURCE_DIR}/tests/sst_floors/sst68040.tsv")
 
 # O6.2 gates: LC II pseudo-VIA semantics + V8 memory controller.
 # The six CPU wrappers that coverage measured at 0.00 % in the asset-free tier

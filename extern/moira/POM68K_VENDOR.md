@@ -2,11 +2,11 @@
 
 **Since 2026-11-23 `extern/moira/Moira/` is Dirk W. Hoffmann's Moira**
 (<https://github.com/dirkwhoffmann/Moira>, MIT), branch `master`, at the
-commit recorded in `patches/BASE`, plus the short queue of patches in
-`extern/moira/patches/`. POM68K's own needs live above the core, in
-`src/MoiraCompat.h` and the CPU wrappers; the fork that preceded this base is
-kept below as history (`docs/MOIRA_CONVERGENCE.md` sorts its 158 rows against
-Dirk's rewrite).
+commit recorded in `patches/BASE` (`863b8d02` since 2026-11-24), plus the
+short queue of patches in `extern/moira/patches/`. POM68K's own needs live
+above the core, in `src/MoiraCompat.h` and the CPU wrappers; the fork that
+preceded this base is kept below as history (`docs/MOIRA_CONVERGENCE.md` sorts
+its 158 rows against Dirk's rewrite).
 
 ## The base and the queue
 
@@ -16,12 +16,13 @@ Dirk's rewrite).
 | distinct `pom*` extension identifiers | **0** (0 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
 | `POM68K`-marked lines | **0** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **0 of 48** | `grep -rln POM68K Moira/ \| wc -l` |
-| patches in the queue below | **19** | `ls extern/moira/patches/*.patch` |
+| patches in the queue below | **17** | `ls extern/moira/patches/*.patch` |
 
 Each patch is one commit on top of the base, with its gate or reproducer
-listed below. Patches 1-3, 5-7, 10-12, 14, 15 and 17 cite the manual passages
-they implement; 16 infers its rule from three passages; 4, 8, 9 and 13
-cite none; 18 and 19 rest on SingleStepTests only. `patches/queue.tsv` records
+listed below. Patches 1, 3-5, 8, 9, 11, 12 and 14 cite the manual passages
+they implement; 13 infers its rule from three passages; 2, 6, 7 and 10
+and 17
+cite none; 15 and 16 rest on SingleStepTests only. `patches/queue.tsv` records
 each patch's evidence, upstream pull request and gates, and
 `tools/moira_queue.py check` (`moira_queue_test`) proves that `Moira/` is
 `patches/BASE` plus this queue. Dirk agreed to small PRs against `master`
@@ -29,6 +30,17 @@ each patch's evidence, upstream pull request and gates, and
 configuration, not CPU behaviour: it left the queue on 2026-11-24 and lives
 in `src/MoiraCompat.h` (`setLC040SoftFpu`), built from Dirk's API alone.
 A patch leaves the queue when his `master` covers it.
+
+**Merged upstream on 2026-11-24.** Dirk merged four of POM68K's pull
+requests into `master`: #42 `5f4e9832` (68020 special status word of a host
+bus error, old patch 1), #43 `95a0cb5e` (MOVE to SR/CCR refill through
+`readStatusRefill()`, part of old patch 3), #44 `794fb294` (FMOVE.P zero with
+a k-factor above +17, old patch 10) and #45 `863b8d02` (instruction cache hits
+charged once, old patch 2). The queue was rebased from `450b15ae` + 19 patches
+to `863b8d02` + 16: those three patches left it, old patch 3 kept only the
+expired DBcc and the trapping TRAPV (new patch 1), and the others were
+renumbered (4-9 became 2-7, 11-19 became 8-16). Patch 17 was added the same
+day: it keeps the 68040 machines on the fetch timing of the previous tree.
 
 **Updating the base.** Fetch his `master`, read every new commit touching
 `Moira/` (he fixes things in parallel: his `58e0405b` made one of ours
@@ -40,27 +52,25 @@ on the pristine and the patched tree, then the machine tiers.
 
 | # | Patch | Files | Why | Gate |
 |---|---|---|---|---|
-| 1 | 68020: complete the special status word of a host bus error | `MoiraDataflow_cpp.h`, `MoiraExceptions_cpp.h` | MC68020UM 6.2.1: DF, RW, SIZE, FC; the 68020 stacked `$60 \| FC` | `findings_repro` case 1, `lc_boot_etalon` |
-| 2 | 68020/68030: do not count instruction cache hits twice | `MoiraDataflow_cpp.h` | MC68020UM 8.2: the tables are the cache-only case; 8 x NOP + DBF cost 4.5 clocks instead of 22 | `findings_repro` case 3, `icache020_test`, `lc3plus_boot_etalon` |
-| 3 | 68020/68030: serve discarded program reads from the instruction cache | `MoiraDataflow.h`, `MoiraDataflow_cpp.h`, `MoiraExec_cpp.h` | MC68020UM 8.2.7: `MOVE EA,SR 8(0/0/0)`, no instruction access in the cache | `findings_repro` case 4, `icache020_test` |
-| 4 | Cache: let a host save and restore the cache contents | `Cache/Cache.h` | save states otherwise flush the caches and change the timing after a restore | `icache020_test` (save state), `lcii_savestate_etalon` |
-| 5 | 68040: FSAVE stores the unimplemented instruction state frame | `FPU/FPU.h`, `FPU/FPU.cpp`, `MoiraExecFPU_cpp.h` | MC68040UM 9.6.1, Table 9-16, Figure 9-10 d: the FPSP reads its operands there; the Quadra 605 crashed | `findings_repro` case 5, `q605_boot_etalon`, `centris650_boot_etalon` |
-| 6 | 68020/68030: do not rerun a data cycle a handler has completed | `MoiraTypes.h`, `Moira.h`, `Moira.cpp`, `MoiraExec_cpp.h`, `MoiraDataflow_cpp.h`, `MoiraExceptions_cpp.h` | MC68030UM 8.2.1-8.2.2: DF cleared by the handler; Mac OS slot-probe recovery entered 28.8 million times without it | `findings_repro` case 2, `berr030_test` |
-| 7 | Halt on a double bus fault during reset or a trace exception | `Moira.cpp` | MC68030UM 8.1.1-8.1.2: the processor halts; the BusError escaped to the host | `machinehost_test`, `q605_boot_etalon` |
-| 8 | Report the kind of access to a watchpoint delegate | `MoiraInterface.h`, `MoiraDataflow_cpp.h` | a debugger must tell reads, writes and opcode fetches apart; the old delegate stays the default | `debug_session_test` |
-| 9 | Re-arm catchpoints after a reset | `MoiraDebugger.cpp` | `Debugger::reset()` set CHECK_BP and CHECK_WP again, not CHECK_CP | `debug_session_test` |
-| 10 | FMOVE.P: a zero with a k-factor above +17 is an operand error | `FPU/FpuFormats.cpp` | MC68881UM Table 6-2 | `fpu_sanity` |
-| 11 | FRESTORE: refuse a state frame the FPU does not recognize; 68040 busy frame size $60 | `MoiraExecFPU_cpp.h`, `FPU/FPU.cpp` | MC68881UM 6.2.8; MC68040UM 9.8, Figure 9-10 a | `fpu_sanity` |
-| 12 | 68040: an FMOVE to an integer takes SNAN and OPERR unconditionally | `FPU/FPU.h`, `FPU/FPU.cpp`, `MoiraExecFPU_cpp.h` | MC68040UM 9.7.2.2, 9.7.3.2 | `fpu040_test` |
-| 13 | FPU: a restarted arithmetic instruction starts from its own operands | `MoiraExecFPU_cpp.h` | a fault on the final prefetch reran FADD on its own result | `fault_transparency_test` |
-| 14 | Completed cycles: the second word of a split long word | `MoiraDataflow_cpp.h` | MC68030UM 8.2.2: the handler completes that word through the buffers | `berr020_test` |
-| 15 | 68020: the long bus fault frame carries the data output buffer | `MoiraExceptions.h`, `MoiraExceptions_cpp.h` | MC68020UM 6.2.2 | `berr020_test` |
-| 16 | 68020/68030: report the size of the faulted cycle of a split long word | `MoiraDataflow.h`, `MoiraDataflow_cpp.h` | read from MC68020UM 6.2.1, MC68030UM 8.2.1-8.2.2 and MC68040UM 8.4.6.2 together (not one sentence) | `berr020_test` |
-| 17 | 68040: the fault address is the first byte of the faulted access | `MoiraDataflow_cpp.h` | MC68040UM 8.4.6.4 | `fault_transparency_test` |
-| 18 | Restore 68000 address error frame timing in DEFAULT mode | `MoiraExceptions_cpp.h` | SingleStepTests/680x0 68000/v1 measures the idle before the group-0 frame writes | `sst68000`, `system_boot_etalon`, `se_boot_etalon`, `classic_boot_etalon` |
-| 19 | Restore 68000 divide overflow flags and signed timing in DEFAULT mode | `MoiraALU_cpp.h` | SingleStepTests/680x0 68000/v1 checks the preserved N/Z flags and the 16/18-clock signed overflow path | `sst68000` |
+| 1 | Serve the expired DBcc and trapping TRAPV refill from the instruction cache | `MoiraDataflow.h`, `MoiraExec_cpp.h` | MC68020UM 8.2.15, 8.2.17; MC68030UM 11.6.15, 11.6.17: no instruction access in the cache case; extends upstream `readStatusRefill()` (PR #43) | `icache020_test` |
+| 2 | Cache: let a host save and restore the cache contents | `Cache/Cache.h` | save states otherwise flush the caches and change the timing after a restore | `icache020_test`, `lcii_savestate_etalon` |
+| 3 | 68040: FSAVE stores the unimplemented instruction state frame | `FPU/FPU.h`, `FPU/FPU.cpp`, `MoiraExecFPU_cpp.h` | MC68040UM 9.6.1, Table 9-16, Figure 9-10 d: the FPSP reads its operands there; the Quadra 605 crashed | `q605_boot_etalon`, `centris650_boot_etalon` |
+| 4 | 68020/68030: do not rerun a data cycle a handler has completed | `MoiraTypes.h`, `Moira.h`, `Moira.cpp`, `MoiraExec_cpp.h`, `MoiraDataflow_cpp.h`, `MoiraExceptions_cpp.h` | MC68030UM 8.2.1-8.2.2: DF cleared by the handler; Mac OS slot-probe recovery entered 28.8 million times without it | `berr030_test` |
+| 5 | Halt on a double bus fault during reset or a trace exception | `Moira.cpp` | MC68030UM 8.1.1-8.1.2: the processor halts; the BusError escaped to the host | `machinehost_test`, `q605_boot_etalon` |
+| 6 | Report the kind of access to a watchpoint delegate | `MoiraInterface.h`, `MoiraDataflow_cpp.h` | a debugger must tell reads, writes and opcode fetches apart; the old delegate stays the default | `debug_session_test` |
+| 7 | Re-arm catchpoints after a reset | `MoiraDebugger.cpp` | `Debugger::reset()` set CHECK_BP and CHECK_WP again, not CHECK_CP | `debug_session_test` |
+| 8 | FRESTORE: refuse a state frame the FPU does not recognize; 68040 busy frame size $60 | `MoiraExecFPU_cpp.h`, `FPU/FPU.cpp` | MC68881UM 6.2.8; MC68040UM 9.8, Figure 9-10 a | `fpu_sanity` |
+| 9 | 68040: an FMOVE to an integer takes SNAN and OPERR unconditionally | `FPU/FPU.h`, `FPU/FPU.cpp`, `MoiraExecFPU_cpp.h` | MC68040UM 9.7.2.2, 9.7.3.2 | `fpu040_test` |
+| 10 | FPU: a restarted arithmetic instruction starts from its own operands | `MoiraExecFPU_cpp.h` | a fault on the final prefetch reran FADD on its own result | `fault_transparency_test` |
+| 11 | Completed cycles: the second word of a split long word | `MoiraDataflow_cpp.h` | MC68030UM 8.2.2: the handler completes that word through the buffers | `berr020_test` |
+| 12 | 68020: the long bus fault frame carries the data output buffer | `MoiraExceptions.h`, `MoiraExceptions_cpp.h` | MC68020UM 6.2.2; on top of upstream's `frame.ssw` (PR #42) | `berr020_test` |
+| 13 | 68020/68030: report the size of the faulted cycle of a split long word | `MoiraDataflow.h`, `MoiraDataflow_cpp.h` | read from MC68020UM 6.2.1, MC68030UM 8.2.1-8.2.2 and MC68040UM 8.4.6.2 together (not one sentence); keeps upstream's `instructionFetch` argument (PR #42) | `berr020_test` |
+| 14 | 68040: the fault address is the first byte of the faulted access | `MoiraDataflow_cpp.h` | MC68040UM 8.4.6.4 | `fault_transparency_test` |
+| 15 | Restore 68000 address error frame timing in DEFAULT mode | `MoiraExceptions_cpp.h` | SingleStepTests/680x0 68000/v1 measures the idle before the group-0 frame writes | `sst68000`, `system_boot_etalon`, `se_boot_etalon`, `classic_boot_etalon` |
+| 16 | Restore 68000 divide overflow flags and signed timing in DEFAULT mode | `MoiraALU_cpp.h` | SingleStepTests/680x0 68000/v1 checks the preserved N/Z flags and the 16/18-clock signed overflow path | `sst68000` |
+| 17 | 68020 core: the discarded refill is an instruction fetch without a cache too | `MoiraDataflow_cpp.h` | none: `readInstr()` charges every other fetched word the narrow-port penalty; this keeps the 68040 machines, which answer the default 16-bit `dsack()`, on the timing they were validated with | `q605_clipboard_etalon`, `icache020_test` |
 
-Patch 19 is exercised alone by `sst68000 --only DIVS,DIVU` on the
+Patch 16 is exercised alone by `sst68000 --only DIVS,DIVU` on the
 SingleStepTests 68000/v1 corpus; `system_boot_etalon` is the Plus boot
 etalon. The 68000 ASR past the operand width follows the manual (C and X
 take the last bit shifted out, the sign) since 2026-11-24: the patch that

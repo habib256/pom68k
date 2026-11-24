@@ -19,7 +19,11 @@
 // Usage: sst68000 <dir> [--max N] [--only NAME,..] [--skip NAME,..]
 //                 [--no-cycles] [--verbose] [--examples K]
 //                 [--no-transactions] [--known FILE]
+//                 [--floors FILE | --write-floors FILE]
 // Exit 0 = all matched / no data (soft skip); 1 = mismatch; 2 = usage.
+// With --floors (tests/SstFloors.h) a whole-corpus run is judged against a
+// per-file agreement floor instead: 1 = a file below its floor, a floors row
+// out of step with the corpus, or a violated --known rule.
 //
 // Bus cycles are part of the verdict since 2026-11-06. The corpus records
 // every bus cycle of each vector — kind, function code, address, size, value,
@@ -36,6 +40,7 @@
 // counted as ruled; tests/sst68000.known says which ruling and why.
 
 #include "MoiraCompat.h"
+#include "SstFloors.h"
 #include "SstKnown.h"
 
 #include <algorithm>
@@ -88,6 +93,10 @@ class TestCpu : public MoiraCompat {
 public:
     TestCpu() : mem(1 << 24, 0) { setModel(moira::CPUModel::M68000); }
     std::vector<uint8_t> mem;
+    // Every byte the core wrote, zeroed after the vector: a stray write
+    // outside the corpus's final list must not reach the next vector (the
+    // floors count each file on its own; tests/SstFloors.h).
+    std::vector<uint32_t> dirty;
     // --transactions: every bus cycle of the vector in flight, stamped with
     // the clock at the callback.
     bool record = false;
@@ -112,13 +121,17 @@ private:
     }
     void write8(moira::u32 a, moira::u8 v) const override {
         note('w', 'b', a, v);
-        const_cast<TestCpu*>(this)->mem[a & 0xFFFFFF] = v;
+        auto& self = *const_cast<TestCpu*>(this);
+        self.mem[a & 0xFFFFFF] = v;
+        self.dirty.push_back(a & 0xFFFFFF);
     }
     void write16(moira::u32 a, moira::u16 v) const override {
         note('w', 'w', a, v);
-        auto& m = const_cast<TestCpu*>(this)->mem;
-        m[a & 0xFFFFFF] = moira::u8(v >> 8);
-        m[(a + 1) & 0xFFFFFF] = moira::u8(v);
+        auto& self = *const_cast<TestCpu*>(this);
+        self.mem[a & 0xFFFFFF] = moira::u8(v >> 8);
+        self.mem[(a + 1) & 0xFFFFFF] = moira::u8(v);
+        self.dirty.push_back(a & 0xFFFFFF);
+        self.dirty.push_back((a + 1) & 0xFFFFFF);
     }
 };
 
@@ -373,6 +386,8 @@ bool runVector(TestCpu& cpu, const Vector& v, bool checkCycles, std::string& why
     }
     for (const RamCell& c : v.initial.ram) cpu.mem[c.addr & 0xFFFFFF] = 0;
     for (const RamCell& c : v.fin.ram)     cpu.mem[c.addr & 0xFFFFFF] = 0;
+    for (uint32_t a : cpu.dirty) cpu.mem[a] = 0;
+    cpu.dirty.clear();
     return ok;
 }
 
@@ -389,11 +404,13 @@ std::set<std::string> parseNameList(const char* s) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    if (argc < 2) { std::fprintf(stderr,"usage: %s <dir> [--max N] [--only NAME,..] [--skip NAME,..] [--no-cycles] [--no-transactions] [--known FILE] [--verbose] [--examples K]\n",argv[0]); return 2; }
+    if (argc < 2) { std::fprintf(stderr,"usage: %s <dir> [--max N] [--only NAME,..] [--skip NAME,..] [--no-cycles] [--no-transactions] [--known FILE] [--floors FILE | --write-floors FILE] [--verbose] [--examples K]\n",argv[0]); return 2; }
     const std::string dir = argv[1];
     long maxPerFile=-1; int examples=3; bool verbose=false, checkCycles=true;
     std::set<std::string> only, skip;
     sstknown::List known;
+    sstfloors::Floors floors;               // --floors FILE (tests/SstFloors.h)
+    std::string writeFloors;                // --write-floors FILE
     for (int i=2;i<argc;++i){ std::string a=argv[i];
         if      (a=="--max"&&i+1<argc) maxPerFile=std::strtol(argv[++i],nullptr,10);
         else if (a=="--examples"&&i+1<argc) examples=int(std::strtol(argv[++i],nullptr,10));
@@ -406,7 +423,14 @@ int main(int argc, char** argv) {
         else if (a=="--known"&&i+1<argc) {
             if (!known.load(argv[++i]) || !known.onlySrRules()) { std::fprintf(stderr,"cannot load --known '%s' (@SR lines only)\n",argv[i]); return 2; }
         }
+        else if (a=="--floors"&&i+1<argc) { if (!floors.load(argv[++i])) return 2; }
+        else if (a=="--write-floors"&&i+1<argc) writeFloors=argv[++i];
         else { std::fprintf(stderr,"unknown arg '%s'\n",a.c_str()); return 2; }
+    }
+
+    const bool judged = floors.active() || !writeFloors.empty();
+    if (judged && (floors.active() == !writeFloors.empty() || !only.empty() || !skip.empty() || maxPerFile>=0)) {
+        std::fprintf(stderr,"--floors / --write-floors: one of them, on a whole-corpus run\n"); return 2;
     }
 
     namespace fs = std::filesystem;
@@ -420,16 +444,17 @@ int main(int argc, char** argv) {
     std::printf("[sst68000] dir=%s files=%zu cycles=%s bus=%s\n", dir.c_str(), files.size(), checkCycles?"on":"off", gTxOn?"on":"off");
 
     long grandTotal=0, grandPass=0, grandRuled=0, filesRun=0; bool anyFail=false;
-    long txSeqAll=0, txTimedAll=0;
+    long txSeqAll=0, txTimedAll=0, violations=0;
+    std::vector<sstfloors::FileTally> tallies;
     for (const fs::path& f : files) {
         const std::string stem=f.stem().string();
         if (!only.empty()&&!only.count(stem)) continue;
         if (skip.count(stem)) { std::printf("  %-12s : SKIP\n",stem.c_str()); continue; }
         std::ifstream in(f,std::ios::binary);
-        if (!in){ std::fprintf(stderr,"  %-12s: cannot open\n",stem.c_str()); anyFail=true; continue; }
+        if (!in){ std::fprintf(stderr,"  %-12s: cannot open\n",stem.c_str()); anyFail=true; ++violations; continue; }
         std::string buf((std::istreambuf_iterator<char>(in)),std::istreambuf_iterator<char>());
         const char* p=buf.c_str(); eat(p,'[');
-        long total=0,passed=0,ruled=0; std::vector<std::pair<std::string,std::string>> firstFew; Vector v;
+        long total=0,passed=0,ruled=0,broken=0; std::vector<std::pair<std::string,std::string>> firstFew; Vector v;
         long txSeq=0, txTimed=0;
         while (true) {
             skipWs(p); if (*p==']'||*p=='\0') break;
@@ -444,15 +469,20 @@ int main(int argc, char** argv) {
                 if (ruleOk) v.fin.sr = *manualSr;
             }
             bool ok=runVector(cpu,v,checkCycles,why);
-            if (!ruleOk) { ok=false; why="@SR must differ from the corpus in X/C only (stale or invalid rule)"; }
-            ++total; if (ok&&manualSr) ++ruled; else if (ok) ++passed; else if (int(firstFew.size())<examples) firstFew.push_back({v.name,why});
+            if (!ruleOk) { ok=false; ++broken; why="@SR must differ from the corpus in X/C only (stale or invalid rule)"; }
+            ++total; if (ok&&manualSr) ++ruled; else if (ok) ++passed; else if (int(firstFew.size())<examples || (judged && !ruleOk)) firstFew.push_back({v.name,why});
             if (gTxOn) { if (gLastTx.seq) ++txSeq; if (gLastTx.timed) ++txTimed; }
             if (maxPerFile>0&&total>=maxPerFile) break;
             skipWs(p); if (*p==','){++p;continue;} if (*p==']'){++p;break;}
         }
         ++filesRun; grandTotal+=total; grandPass+=passed; grandRuled+=ruled;
-        const bool fileOk=(passed+ruled==total); if (!fileOk) anyFail=true;
-        std::printf("  %-12s : %6ld/%-6ld %s%s\n",stem.c_str(),passed,total,fileOk?"OK":"FAIL",
+        const sstfloors::FileTally tally{stem,total,passed,ruled,broken};
+        tallies.push_back(tally);
+        const bool fileOk = floors.active() ? floors.fileOk(tally)
+                          : judged ? broken==0 : (passed+ruled==total);
+        if (!fileOk) anyFail=true;
+        std::printf("  %-12s : %6ld/%-6ld %s%s\n",stem.c_str(),passed,total,
+                    floors.active()?floors.mark(tally).c_str():fileOk?"OK":"FAIL",
                     ruled?(" (+"+std::to_string(ruled)+" ruled)").c_str():"");
         if (gTxOn) {
             txSeqAll+=txSeq; txTimedAll+=txTimed;
@@ -462,10 +492,13 @@ int main(int argc, char** argv) {
         if (!fileOk||verbose) for (auto& mm:firstFew) std::printf("        x \"%s\"  %s\n",mm.first.c_str(),mm.second.c_str());
     }
     // A listed vector the corpus no longer holds fails a whole-corpus run.
-    if (known.active() && only.empty() && skip.empty() && maxPerFile<0 && filesRun>0 &&
-        known.reportMissing(examples)) anyFail=true;
+    if (known.active() && only.empty() && skip.empty() && maxPerFile<0 && filesRun>0) {
+        const long missing = known.reportMissing(examples);
+        if (missing) { anyFail=true; violations+=missing; }
+    }
     const std::string ruledNote = !known.active() ? std::string()
         : " (+" + std::to_string(grandRuled) + " ruled by --known)";
+    if (!judged)
     std::printf("[sst68000] %s: %ld/%ld%s across %ld file(s)%s\n", anyFail?"FAIL":"OK", grandPass, grandTotal, ruledNote.c_str(), filesRun, anyFail?"  <<< MISMATCH":"");
     if (gTxOn)
         std::printf("[sst68000] bus cycles: order %ld/%ld, timing %ld/%ld; "
@@ -473,5 +506,7 @@ int main(int argc, char** argv) {
                     "the corpus says data (M68000PRM §2.2.11)\n",
                     txSeqAll, grandTotal, txTimedAll, grandTotal, gPcRelFcRuled);
     if (filesRun==0) { std::fprintf(stderr,"SKIP: [sst68000] no files matched\n"); return 0; }
+    if (!writeFloors.empty()) return sstfloors::Floors::write(writeFloors, tallies, violations) ? 0 : 1;
+    if (floors.active()) return floors.judge(tallies, violations) ? 0 : 1;
     return anyFail?1:0;
 }

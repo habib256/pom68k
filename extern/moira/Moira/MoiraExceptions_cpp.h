@@ -452,8 +452,6 @@ Moira::execBusError(StackFrame frame, int delay, const Registers *saved)
     completed.armed = false;
 
     u16 status = getSR();
-    // A completed fault carries its special status word (DF or FB/RB, RW, size, FC)
-    u16 ssw = frame.ssw ? frame.ssw : u16(0x60 | (getFC() & 7));
 
     // Inform the delegate
     willExecute(M68kException::BUS_ERROR, 2);
@@ -561,7 +559,7 @@ Moira::execBusError(StackFrame frame, int delay, const Registers *saved)
         if (ix && move && frame.write && indexed(srcMode, srcReg)) {
             if (dstMode == 5 || (dstMode == 7 && dstReg <= 1)) pc -= 2;
         }
-        writeStackFrame1011UAE<C>(status, 2, pc, ssw, frame.addr, end, frame.write, frame.data);
+        writeStackFrame1011UAE<C>(status, 2, pc, frame.ssw, frame.addr, end, frame.write, frame.data);
 
         // Remember how to restart the instruction
         restart.valid = saved != nullptr;

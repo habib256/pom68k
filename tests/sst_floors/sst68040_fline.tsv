@@ -1,0 +1,6 @@
+# sst68040_fline agreement floors (tests/SstFloors.h): file, vectors that
+# must agree, vectors in the file. Ruled --known vectors are not counted.
+# Raise a row when the run reports RAISE; never lower one to make a gate pass.
+fline_identity	0	1500
+fline_off	552	1500
+fline_tt	543	1500

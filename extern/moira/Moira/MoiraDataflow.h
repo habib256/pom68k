@@ -113,11 +113,9 @@ template <Core C, Size S, Flags F = 0> u32 readDataCache(u32 addr);
 // Reads an instruction word, either from memory or the instruction cache
 template <Core C, Flags F = 0> u16 readInstr(u32 addr);
 
-// Performs a program read whose word an instruction discards (MOVE to SR/CCR,
-// ANDI/ORI/EORI to SR/CCR, DBcc on expiry, TRAPV). On the 68020 core it is an
-// instruction access that the cache can serve.
-template <Core C> void dummyProgRead(u32 addr);
 
+// Reads the instruction word discarded by MOVE to SR or CCR, an expired DBcc or a trapping TRAPV.
+template <Core C> void readStatusRefill();
 
 // Writes an operand to memory (without or with address error checking)
 template <Core C, Mode M, Size S, Flags F = 0> void writeM(u32 addr, u32 val);
@@ -174,9 +172,9 @@ template <Flags F = 0> StackFrame makeFrame(u32 addr, u32 pc, u16 sr, u16 ird);
 template <Flags F = 0> StackFrame makeFrame(u32 addr, u32 pc);
 template <Flags F = 0> StackFrame makeFrame(u32 addr);
 
-// Adds the special status word to a bus error signaled by the host (68030 and 68040)
+// Adds the special status word to a bus error signaled by the host (68020 and later)
 // (addr is the address of the operand, which tells a split long word's cycles apart)
-template <Size S, bool W> void completeBusError(BusError &e, u32 addr);
+template <Size S, bool W> void completeBusError(BusError &e, u32 addr, bool instructionFetch = false);
 
 // Creates an address error that is raised before the bus cycle has started
 template <Core C> AddressError earlyAddressError(const StackFrame &frame);

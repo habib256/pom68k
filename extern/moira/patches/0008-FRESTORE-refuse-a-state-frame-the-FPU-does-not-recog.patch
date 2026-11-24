@@ -1,7 +1,7 @@
-From 1d0c229c9215a2cd38946c2c1ca1309a8dc76d66 Mon Sep 17 00:00:00 2001
+From e0c928a1980a665d2de575175d0957839b669f15 Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 00:54:28 +0400
-Subject: [PATCH 11/17] FRESTORE: refuse a state frame the FPU does not
+Subject: [PATCH 08/16] FRESTORE: refuse a state frame the FPU does not
  recognize
 
 MC68881UM 6.2.8: when the format word of FRESTORE is not valid, the

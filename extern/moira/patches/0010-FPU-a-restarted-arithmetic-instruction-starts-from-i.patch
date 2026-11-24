@@ -1,7 +1,7 @@
-From 547cc544bab5de4be19decb9fb3ca75b8cf53941 Mon Sep 17 00:00:00 2001
+From a3c8ebd0649e52df7bc43b9e9528e0c77d311664 Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 01:15:08 +0400
-Subject: [PATCH 13/17] FPU: a restarted arithmetic instruction starts from its
+Subject: [PATCH 10/16] FPU: a restarted arithmetic instruction starts from its
  own operands
 
 An arithmetic FPU instruction stores its result and then prefetches. A bus

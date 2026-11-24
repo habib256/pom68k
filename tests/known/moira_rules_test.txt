@@ -375,12 +375,8 @@
 1	handled ILLEGAL: PC0=00002000 SP=00007FFA
 1	model 0: the 68000/68010 level-sensitive level 7 changed (1 entries)
 1	model 1: the 68000/68010 level-sensitive level 7 changed (1 entries)
-1	model 2 (d16,PC) /BERR: SSW 5066 (want DF, RW, FC 6; no FC/FB/RC/RB)
-1	model 2 (d16,PC) RTE with DF clear: PC0=00002000 D0=00000000, 2 /BERR (want 00001004, CAFE from the frame, one)
 1	model 2 MOVE.L D0,(A0), second word: stacked SR 2718 (want 2715, the program's CCR)
 1	model 2 MOVE.L D0,(A0): stacked SR 2718 (want 2715, the program's CCR)
-1	model 3 (d16,PC) /BERR: SSW 5066 (want DF, RW, FC 6; no FC/FB/RC/RB)
-1	model 3 (d16,PC) RTE with DF clear: PC0=00002000 D0=00000000, 2 /BERR (want 00001004, CAFE from the frame, one)
 1	model 3 I-stack interrupt costs 0 cycles, want 26
 1	model 3 M-stack interrupt costs 0 cycles, want 41
 1	model 3 MOVE.L D0,(A0), second word: stacked SR 2718 (want 2715, the program's CCR)

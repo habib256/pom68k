@@ -1,8 +1,8 @@
-From b8d742e4abcfff9d1ea473d3e24a6a42d1bd48bc Mon Sep 17 00:00:00 2001
+From 07b4b358a70dabb9d1056898df398f9369e7c541 Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 08:05:14 +0400
-Subject: [PATCH] Restore 68000 divide overflow flags and signed timing in
- DEFAULT mode
+Subject: [PATCH] Restore 68000 divide overflow flags and signed timing
+ in DEFAULT mode
 
 ---
  Moira/MoiraALU_cpp.h | 23 ++++++++++++++++++++---

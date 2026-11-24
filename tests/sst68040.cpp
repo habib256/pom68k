@@ -29,8 +29,11 @@
 //                 [--cycles] [--skip-translation] [--fpu] [--verbose] [--dump]
 //                 [--examples K]
 // Exit 0 = all matched / no data (soft skip); 1 = mismatch; 2 = usage.
+// --floors FILE judges a whole-corpus run against per-file agreement floors
+// instead (tests/SstFloors.h); --write-floors FILE rewrites them from a run.
 
 #include "MoiraCompat.h"
+#include "SstFloors.h"
 #include "SstKnown.h"
 #if SST_JIT
 #include "SstJitLockstep.h"
@@ -463,11 +466,13 @@ std::set<std::string> parseNameList(const char* s) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    if (argc < 2) { std::fprintf(stderr,"usage: %s <dir> [--max N] [--only NAME,..] [--skip NAME,..] [--cycles] [--skip-translation] [--fpu] [--known FILE] [--strict-ram] [--unlisted] [--verbose] [--dump] [--examples K] (sst68040_jit: [--slack N] [--cold] [--ring])\n",argv[0]); return 2; }
+    if (argc < 2) { std::fprintf(stderr,"usage: %s <dir> [--max N] [--only NAME,..] [--skip NAME,..] [--cycles] [--skip-translation] [--fpu] [--known FILE] [--floors FILE | --write-floors FILE] [--strict-ram] [--unlisted] [--verbose] [--dump] [--examples K] (sst68040_jit: [--slack N] [--cold] [--ring])\n",argv[0]); return 2; }
     const std::string dir = argv[1];
     long maxPerFile=-1; int examples=3; bool verbose=false, checkCycles=false, skipTranslation=false;
     std::set<std::string> only, skip;
     sstknown::List known;                   // --known FILE (tests/SstKnown.h)
+    sstfloors::Floors floors;               // --floors FILE (tests/SstFloors.h)
+    std::string writeFloors;                // --write-floors FILE
 #if SST_JIT
     sstjit::Options jitOpt;
 #endif
@@ -492,6 +497,8 @@ int main(int argc, char** argv) {
         else if (a=="--known"&&i+1<argc) {
             if (!known.load(argv[++i])) { std::fprintf(stderr,"cannot load --known '%s'\n",argv[i]); return 2; }
         }
+        else if (a=="--floors"&&i+1<argc) { if (!floors.load(argv[++i])) return 2; }
+        else if (a=="--write-floors"&&i+1<argc) writeFloors=argv[++i];
         else { std::fprintf(stderr,"unknown arg '%s'\n",a.c_str()); return 2; }
     }
 
@@ -504,6 +511,12 @@ int main(int argc, char** argv) {
     if (known.hasExternalFrames()) {
         std::fprintf(stderr, "D23a frame rules require the 68030 oracle replay harness\n");
         return 2;
+    }
+    // A floor judges a whole corpus (tests/SstFloors.h).
+    const bool judged = floors.active() || !writeFloors.empty();
+    if (judged && (floors.active() == !writeFloors.empty() || !only.empty() || !skip.empty() ||
+                   maxPerFile>=0 || skipTranslation)) {
+        std::fprintf(stderr,"--floors / --write-floors: one of them, on a whole-corpus run\n"); return 2;
     }
     namespace fs = std::filesystem;
     if (!fs::exists(dir)||!fs::is_directory(dir)) { std::fprintf(stderr,"SKIP: [sst68040] no data at '%s' (run oracle/fuzz/fuzz040.py)\n",dir.c_str()); return 0; }
@@ -525,16 +538,17 @@ int main(int argc, char** argv) {
     std::printf("[sst68040] dir=%s files=%zu cycles=%s mmu=%s\n", dir.c_str(), files.size(),
                 checkCycles?"on":"off(advisory)", skipTranslation?"SKIP-TRANSLATION(debug)":"full");
 
-    long grandTotal=0, grandPass=0, grandMmuSkip=0, grandKnown=0, filesRun=0; bool anyFail=false;
+    long grandTotal=0, grandPass=0, grandMmuSkip=0, grandKnown=0, grandOpen=0, filesRun=0, violations=0; bool anyFail=false;
+    std::vector<sstfloors::FileTally> tallies;
     for (const fs::path& f : files) {
         const std::string stem=f.stem().string();
         if (!only.empty()&&!only.count(stem)) continue;
         if (skip.count(stem)) { std::printf("  %-16s : SKIP\n",stem.c_str()); continue; }
         std::ifstream in(f,std::ios::binary);
-        if (!in){ std::fprintf(stderr,"  %-16s: cannot open\n",stem.c_str()); anyFail=true; continue; }
+        if (!in){ std::fprintf(stderr,"  %-16s: cannot open\n",stem.c_str()); anyFail=true; ++violations; continue; }
         std::string buf((std::istreambuf_iterator<char>(in)),std::istreambuf_iterator<char>());
         const char* p=buf.c_str(); eat(p,'[');
-        long total=0,passed=0,mmuSkip=0,knownHere=0,stale=0; std::vector<std::pair<std::string,std::string>> firstFew; Vector v;
+        long total=0,passed=0,mmuSkip=0,knownHere=0,stale=0,broken=0,openHere=0; std::vector<std::pair<std::string,std::string>> firstFew; Vector v;
         while (true) {
             skipWs(p); if (*p==']'||*p=='\0') break;
             if (!parseVector(p,v)) break;
@@ -554,31 +568,46 @@ int main(int argc, char** argv) {
             catch (const std::exception& e) { ok=false; why=std::string("threw: ")+e.what(); }
             ++total;
             const bool isKnown = known.listed(v.name);
+            if (manualFrame && !validFrame) ++broken;   // stale or invalid frame rule
+            // Under --floors every ruled-list violation is named: each fails the gate.
             if (manualFrame) {
                 if (ok) ++knownHere;
-                else if (int(firstFew.size())<examples) firstFew.push_back({v.name,why});
+                else if (int(firstFew.size())<examples || (judged && !validFrame)) firstFew.push_back({v.name,why});
+            } else if (known.open(v.name)) {         // @OPEN: must keep agreeing
+                if (ok) ++openHere;
+                else { ++broken; firstFew.push_back({v.name,sstknown::List::kOpenMoved+why}); }
             } else if (ok && isKnown) {
                 ++stale;
-                if (int(firstFew.size())<examples) firstFew.push_back({v.name,sstknown::List::kStale});
+                if (int(firstFew.size())<examples || judged) firstFew.push_back({v.name,sstknown::List::kStale});
             } else if (ok) ++passed;
             else if (isKnown) ++knownHere;
             else if (int(firstFew.size())<examples) firstFew.push_back({v.name,why});
             if (maxPerFile>0&&total>=maxPerFile) break;
             skipWs(p); if (*p==','){++p;continue;} if (*p==']'){++p;break;}
         }
-        ++filesRun; grandTotal+=total; grandPass+=passed; grandMmuSkip+=mmuSkip; grandKnown+=knownHere;
-        const bool fileOk=(passed+knownHere==total)&&stale==0; if (!fileOk) anyFail=true;
-        std::printf("  %-16s : %6ld/%-6ld %s%s%s\n",stem.c_str(),passed,total,fileOk?"OK":"FAIL",
+        ++filesRun; grandTotal+=total; grandPass+=passed; grandMmuSkip+=mmuSkip; grandKnown+=knownHere; grandOpen+=openHere;
+        const sstfloors::FileTally tally{stem,total,passed,knownHere,stale+broken,openHere};
+        tallies.push_back(tally);
+        const bool fileOk = floors.active() ? floors.fileOk(tally)
+                          : judged ? stale+broken==0 : (passed+knownHere+openHere==total)&&stale==0;
+        if (!fileOk) anyFail=true;
+        std::printf("  %-16s : %6ld/%-6ld %s%s%s%s\n",stem.c_str(),passed,total,
+                    floors.active()?floors.mark(tally).c_str():fileOk?"OK":"FAIL",
                     knownHere?(" (+"+std::to_string(knownHere)+" known)").c_str():"",
+                    openHere?(" (+"+std::to_string(openHere)+" open)").c_str():"",
                     mmuSkip?(" (+"+std::to_string(mmuSkip)+" mmu-skipped)").c_str():"");
         if (!fileOk||verbose) for (auto& mm:firstFew) std::printf("        x \"%s\"  %s\n",mm.first.c_str(),mm.second.c_str());
     }
     // A listed name the corpus does not hold means the list has drifted
     // (only checked on a whole-corpus run).
-    if (known.active() && only.empty() && skip.empty() && maxPerFile<0 && filesRun>0 &&
-        known.reportMissing(examples)) anyFail=true;
+    if (known.active() && only.empty() && skip.empty() && maxPerFile<0 && filesRun>0) {
+        const long missing = known.reportMissing(examples);
+        if (missing) { anyFail=true; violations+=missing; }
+    }
     const std::string knownNote = !known.active() ? std::string()
-        : " " + std::to_string(grandKnown) + " known divergence(s),";
+        : " " + std::to_string(grandKnown) + " known divergence(s)," +
+          (grandOpen ? " " + std::to_string(grandOpen) + " open," : std::string());
+    if (!judged)
     std::printf("[sst68040] %s: %ld/%ld across %ld file(s),%s %ld mmu-skipped%s\n",
                 anyFail?"FAIL":"OK", grandPass, grandTotal, filesRun, knownNote.c_str(), grandMmuSkip,
                 anyFail?"  <<< MISMATCH":"");
@@ -586,5 +615,7 @@ int main(int argc, char** argv) {
     if (!sstjit::report(pair, "sst68040")) return 1;
 #endif
     if (filesRun==0) { std::fprintf(stderr,"SKIP: [sst68040] no files matched\n"); return 0; }
+    if (!writeFloors.empty()) return sstfloors::Floors::write(writeFloors, tallies, violations) ? 0 : 1;
+    if (floors.active()) return floors.judge(tallies, violations) ? 0 : 1;
     return anyFail?1:0;
 }

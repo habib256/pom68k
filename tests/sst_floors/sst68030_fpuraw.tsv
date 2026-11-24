@@ -1,0 +1,6 @@
+# sst68030_fpuraw agreement floors (tests/SstFloors.h): file, vectors that
+# must agree, vectors in the file. Ruled --known vectors are not counted.
+# Raise a row when the run reports RAISE; never lower one to make a gate pass.
+fpuraw_identity	296	2000
+fpuraw_off	1070	2000
+fpuraw_tt	280	2000

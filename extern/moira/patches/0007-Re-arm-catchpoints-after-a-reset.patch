@@ -1,7 +1,7 @@
-From af92e420b76435704e21f040c2eb558bdc3de29d Mon Sep 17 00:00:00 2001
+From 59f3092f71aad376a018bef70f55e34071b16f10 Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 00:48:37 +0400
-Subject: [PATCH 09/17] Re-arm catchpoints after a reset
+Subject: [PATCH 07/16] Re-arm catchpoints after a reset
 
 reset() clears the state flags and Debugger::reset() sets CHECK_BP and
 CHECK_WP again for the guards that exist, but not CHECK_CP: a catchpoint set

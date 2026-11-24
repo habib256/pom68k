@@ -124,13 +124,12 @@ défaut CPU, dans cet ordre :
 
 - [ ] **Proposer la file actuelle à Dirk, une PR par correctif.** Les
   correctifs de `extern/moira/patches/` (inventaire dans `POM68K_VENDOR.md`)
-  partent un par un selon la boucle ci-dessus ; le 18 (FPU logicielle
-  optionnelle d'un LC040) rétablit une configuration POM68K : décider avec
-  lui s'il entre chez lui ou s'il reste une option de la couche Macintosh.
-  Ouvertes le 2026-11-24 : #42 (correctif 1, implémentation différente),
-  #43 (correctif 3, MOVE vers SR/CCR seulement), #44 (correctif 10,
-  identique), #45 (correctif 2, même comportement, autre code) ; l'état de
-  chaque correctif et sa PR se suivent dans `extern/moira/patches/queue.tsv`.
+  partent un par un selon la boucle ci-dessus. Fusionnées le 2026-11-24 :
+  #42 (`5f4e9832`, SSW d'une erreur de bus hôte 68020), #43 (`95a0cb5e`,
+  MOVE vers SR/CCR), #44 (`794fb294`, FMOVE.P zéro, k > 17) et #45
+  (`863b8d02`, coups du cache comptés une fois) ; la file est rebasée sur
+  `863b8d02` et compte 17 correctifs. L'état de chaque correctif et sa PR se
+  suivent dans `extern/moira/patches/queue.tsv`.
 - [ ] **Trier ce qui reste dans la couche de POM68K.** `src/MoiraCompat.h`
   garde des membres inertes du fork (couture `pomJit*`, surcouche
   `pomIcache`, verrous `mmuPipeCnt`/`trace040Pending`/`irqDelay`) et les
@@ -165,17 +164,88 @@ défaut CPU, dans cet ordre :
   deux fois (38 lignes de `fault_transparency_test.txt`).
 - [ ] **Bit RM du SSW pour TAS/CAS/CAS2** (MC68020UM §6.2.1 ; rubrique
   « OPEN DEFECT » de `tests/known/berr020_test.txt`). À corriger dans la
-  file.
+  file. Le SSW de la PR #42 (fusionnée) ne pose jamais RM ; son commentaire
+  cite §6.2.1 pour la faute de donnée relative au PC, ce qui est une
+  inférence (meilleur appui : MC68030UM §6.1.2) — et le chemin 68030 de
+  Moira signale encore une telle faute FB|RB (revue du 2026-11-24 ;
+  reproducteurs hors dépôt, scratchpad de session `pr-review/`).
+- [ ] **Remplissage depuis le verrou d'un mot sans cache actif** (défaut
+  amont, PR #43 fusionnée). Cache d'instructions désactivé (CACR E=0) sur
+  68020/68030, un MOVE vers SR/CCR à une adresse 4n+2 est rechargé depuis le
+  verrou d'un long mot sans accès bus, contre MC68020UM §2.1 et §4.1 (le pipe
+  est vidé et rechargé) ; le correctif 1 (DBcc expiré, TRAPV) a la même
+  propriété. `iCache.flushLatch()` avant le rechargement rend l'accès bus
+  sans changer le cas cache chaud (reproducteurs hors dépôt, scratchpad de
+  session du 2026-11-24 : `rebase/evidence/latch-defect.txt`,
+  `flushlatch-variant.diff`). Une PR corrective chez Dirk attend l'accord du
+  propriétaire et la liste de vérification complète.
+- [ ] **Deux correctifs de la file contredisent des tests de Dirk.** Le 16
+  (débordement de division 68000, preuve SingleStepTests seule) fait
+  échouer `StackFrame / 68000 exception frames match real hardware` (cas
+  `addrerr30` : SR $2012 au lieu de $201A) ; le 12 (tampon de sortie de
+  données 68020, MC68020UM §6.2.2) fait différer `ExceptionUAE020` d'UAE sur
+  `frame.dob`. Trancher chacun avant toute PR.
+- [ ] **Largeur de port des wrappers 68040.** Ils héritent du `dsack()` 16
+  bits par défaut de Moira, alors que `Cpu020` répond 32 bits : un port 16
+  bits est-il juste pour les machines 68040 (le 68040 n'a pas de
+  dimensionnement dynamique du bus) ? `readInstr()` facture 4 cycles par mot
+  d'instruction lu sur un port étroit : toute la cadence des machines 68040
+  en dépend. Le correctif 17 (local) fait payer la même chose au mot jeté de
+  MOVE vers SR/CCR, DBcc expiré et TRAPV pris ; sans lui
+  `q605_clipboard_etalon` échoue (ScrapCount 9 → 7). À trancher avant de
+  toucher à la largeur : un port 32 bits déplace la cadence de tous les
+  gates 68040.
 - [ ] **Continuation après RTE quand DF est effacé au-delà du cycle
   terminé** (MC68030UM-1989 §8.2.2) : rubriques « Restart model » de
   `berr020_test`, `berr030_test` et `fault_transparency_test` ; sur la
   liste de Dirk après sa version (discussion #36).
+- [ ] **FBcc/FDBcc vers une adresse impaire : aucune erreur d'adresse
+  (D28).** MC68030UM-1989 §8.1.3 (p. 414) : erreur d'adresse dès que le
+  processeur tente de précharger à une adresse impaire ; MC68040UM-1993
+  §8.2.2 (p. 221) : « this includes … an odd branch offset that is not
+  taken ». Le cœur (`execFBcc`/`execFDbcc`) teste la cible avec
+  `misaligned<C>()`, faux pour le cœur 68020, et précharge à la cible
+  impaire — son Bcc/DBcc prend l'erreur (`misalignedPC`). 25 vecteurs
+  `@OPEN D28` de `sst68030_fpuraw.known`, 47 de `sst68040_fpu.known`
+  (14 pris, 33 non pris), en accord avec WinUAE. Candidat correctif pour
+  Dirk, sous la liste de vérification complète ; contenu du cadre [F].
+- [ ] **D29, question ouverte : l'octet EXC du FPSR avant le Line-F d'un
+  EA $3D-$3F en forme mémoire sur 68030.** Le cœur garde l'octet comme
+  WinUAE, le fork l'effaçait (MC68881UM-1989 §2.3.3, p. 42 : effacé « at
+  the start of most operations ») ; aucun passage ne dit si l'effacement
+  précède le transfert d'opérande que le 68030 avorte (MC68030UM-1989
+  §10.4.9, p. 531), ni ce que fait un mot de commande non défini (MC68881UM
+  §4.7.1.7, p. 191). 26 vecteurs `@OPEN D29` de `sst68030_fpuraw.known`.
+  *Tranche : une capture sur 68030 + 68881/68882.* La forme registre à
+  registre valide s'exécute, comme le voulait le fork (5 lignes simples).
 
 ### Listes de divergences connues
 
 Chaque ligne d'une liste se corrige (correctif de la file), se tranche
 (manuel cité dans la rubrique) ou attend une capture nommée.
 
+- [ ] **Classer les vecteurs SST en désaccord, fichier par fichier.** Les
+  13 gates `sst*` se jugent contre un plancher d'accord par fichier de
+  corpus (`tests/sst_floors/<gate>.tsv`, `tests/SstFloors.h`) : un fichier
+  sous son plancher, un fichier sans ligne ou une ligne sans fichier, une
+  règle `--known` violée font échouer ; une hausse s'imprime (`RAISE`) et se
+  reporte à la main. Mesuré le 2026-11-24 sur aarch64 (base `863b8d02`),
+  accord / total / tranchés : `sst68000` 856 621 / 1 000 058 / 3 736 ;
+  `sst68030` 2 265 / 3 082 / 16 ; `_solo` 3 583 / 5 592 / 16 ; `_fpu2`
+  3 453 / 6 000 / 30 ; `_fpuh` 3 740 / 6 000 / 27 ; `_fpuraw` 1 646 / 6 000 /
+  148 ; `_rmw` 2 452 / 6 000 / 0 ; `sst68040` 5 929 / 7 200 / 21 ; `_8k`
+  3 019 / 4 000 / 6 ; `_fline` 1 095 / 4 500 / 0 ; `_fpu` 2 956 / 7 500 /
+  154 ; `_fpu2` 2 656 / 6 000 / 22 ; `_fpuh` 2 671 / 6 000 / 24. Reste à
+  classer chaque désaccord, en commençant par les plus grandes familles
+  (68000 : `RTE`, `RTR`, `CHK`, `MOVEM.l`, `RTS`, `BSR` ; 68030 : `rmw_*`,
+  `fpuraw_*`, `fpu2_*` ; 68040 : `fline_identity` à 0 / 1 500,
+  `fpuraw_identity`, `fpu2`/`fpuh`) : défaut du cœur → correctif pour Dirk
+  avec la citation du manuel ; lecture du corpus → tranché (`.known`) ;
+  inconnu → capture nommée. Les 98 vecteurs D28/D29 où le cœur suit
+  WinUAE sont rejugés (2026-11-24) : lignes `@OPEN` (comptées « open »,
+  ni accord ni tranché), § Phase 1 › Défauts. Les autres lignes D28/D29
+  échouent désormais pour d'autres raisons (prédicat $20-$3F → Line-F, bit
+  U d'un descripteur) : à reclasser.
 - [ ] **`moira_rules_test`** (`tests/known/moira_rules_test.txt`, 395
   échecs) : cellules du fork, non revues une à une sur ce cœur — contenus
   de cadre du modèle de continuation, lectures WinUAE, détails PTEST/MMUSR,
@@ -189,9 +259,9 @@ Chaque ligne d'une liste se corrige (correctif de la file), se tranche
   cache rien d'autre.
 - [ ] **`icache020_test`** : totaux de cycles notés [F] (modèle du fork,
   aucune capture de bus) et remplissage du cache au premier fetch d'un
-  gestionnaire d'exception ; les boucles du manuel passent (correctifs 2
-  et 3). *Bloqué pour les totaux : un TimeDBRA d'un vrai Mac II ou LC, ou
-  une capture de bus* — y compris le +6 d'un port étroit et le DSACK par
+  gestionnaire d'exception ; les boucles du manuel passent (PR #43 et #45
+  chez Dirk, correctif 1). *Bloqué pour les totaux : un TimeDBRA d'un vrai
+  Mac II ou LC, ou une capture de bus* — y compris le +6 d'un port étroit et le DSACK par
   région de la GLUE (32 bits) et du V8 (16 bits).
 - [ ] **Cellules `#define` à zéro** : `fpu040_test` (type de donnée non
   supporté, vecteur 55, et cadres exceptionnel/BUSY — sur la liste de
@@ -236,7 +306,8 @@ Chaque ligne d'une liste se corrige (correctif de la file), se tranche
 
 À requalifier en entier sur le cœur de Dirk : la surcouche de temps du
 fork (`pomIcache`) est inerte, le cœur compte les cycles 020/030 avec son
-propre cache (correctifs 2 et 3), et les empreintes machine ont bougé.
+propre cache (PR #43 et #45, correctif 1), et les empreintes machine ont
+bougé.
 
 - [ ] **Requalifier le facteur `cacheBoost` (×4).** Il compensait le modèle
   sans cache du fork. Mesurer le temps CPU au Finder par carte avant de
@@ -320,7 +391,7 @@ avec le cœur ; les grands corpus sont épinglés dans
   tombe.** Exceptions connues (`oracle/README.md § Rulings taken against a
   manual`) : D30 (trappe de type de donnée immédiate), D44 (CAS2 `Dn:Dn`
   sur 68040), et la sortie anticipée de DIVS sur 68000, tenue par le
-  correctif 19 en mode `DEFAULT`. La renverser demande une preuve de
+  correctif 16 en mode `DEFAULT`. La renverser demande une preuve de
   grade A, ou une divergence déclarée sans perdre de vecteur. L'ASR 68000
   au-delà de la largeur suit le manuel depuis le 2026-11-24 (C et X = le
   signe ; les 3 736 vecteurs du corpus qui disent 0 sont listés dans
@@ -871,7 +942,7 @@ Le juge commun du 68000 est `sst68000` (ordre et date de chaque cycle bus).
   DIVS/DIVU/CMPM/CHK, la sortie anticipée de DIVS en débordement, le
   drapeau Z de la division par zéro, ADDQ/SUBQ.l sur An, FC « data » des
   lectures relatives au PC (tranché programme, `CHANGELOG` 2026-11-21
-  (ninth)). Les correctifs 18 et 19 portent l'attente de l'erreur
+  (ninth)). Les correctifs 15 et 16 portent l'attente de l'erreur
   d'adresse et la division chez Dirk ;
   la transcription du microcode est le témoin à consulter pour chacune. Le
   harnais `tests/sst68000.cpp` se porte tel quel.

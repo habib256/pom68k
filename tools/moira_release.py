@@ -104,6 +104,7 @@ EXPORT = [
     "tests/sst68040.cpp",
     "tests/SstJitLockstep.h",
     "tests/SstKnown.h",
+    "tests/SstFloors.h",
     "tests/sst68030.known",
     "tests/sst68030_solo.known",
     "tests/sst68030_fpuraw.known",

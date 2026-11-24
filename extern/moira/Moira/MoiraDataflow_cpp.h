@@ -864,13 +864,14 @@ catch (BusError &e)
 
 
 template <Core C> void
-Moira::dummyProgRead(u32 addr)
+Moira::readStatusRefill()
 {
+    u32 addr = C == Core::C68000 ? reg.pc : reg.pc + 2;
     if constexpr (C == Core::C68020) {
         (void)readInstr<C>(addr);
-    } else {
-        (void)read<C, AddrSpace::PROG, Word>(addr);
+        return;
     }
+    (void)read<C, AddrSpace::PROG, Word>(addr);
 }
 
 template <Core C, Flags F> u16
@@ -913,20 +914,14 @@ Moira::readInstr(u32 addr)
         } catch (BusError &e) {
 
             e.stackFrame.write = false;
-            completeBusError<Word, false>(e, addr);
+            completeBusError<Word, false>(e, addr, true);
             throw;
         }
-        // The 68020 timing tables are the manual's cache-only case: the
-        // instruction is in the cache, with no instruction access and no
-        // overlap (MC68020UM 8.2). A fetch served by the cache or the latch
-        // therefore adds nothing; one that makes a bus cycle adds 2 clocks
-        // from a 32-bit port and 6 from a narrower one. Subtracting 2 per hit
-        // counted the cache twice: a cached 8 x NOP + DBF loop cost 4.5 clocks
-        // instead of 22. Without an emulated cache (68040) the charge is unchanged.
-        if (iCache.emulated) {
-            budget.penalty += busAccess ? (portSize(dsack(phys)) == 4 ? 2 : 6) : 0;
-        } else {
-            budget.penalty += portSize(dsack(phys)) == 4 ? 0 : 4;
+        // The 020/030 instruction timings already include a cached fetch.
+        // Charge the cache fill on a miss, plus the existing narrow-port penalty.
+        if (busAccess) {
+            if (iCache.emulated) budget.penalty += 2;
+            if (portSize(dsack(phys)) != 4) budget.penalty += 4;
         }
 
         return result;
@@ -1234,10 +1229,10 @@ Moira::misaligned(u32 addr)
 }
 
 template <Size S, bool W> void
-Moira::completeBusError(BusError &e, u32 addr)
+Moira::completeBusError(BusError &e, u32 addr, bool instructionFetch)
 {
     /* A host that throws BusError(addr) only provides the fault address. The
-     * 68030 and 68040 also report the cause of the fault in the special status
+     * 68020 and later processors report the cause of the fault in the special status
      * word, which is built here like for a fault detected by the MMU. Faults
      * detected by the MMU and frames supplied by the host are left untouched.
      */
@@ -1260,8 +1255,8 @@ Moira::completeBusError(BusError &e, u32 addr)
 
     } else {
 
-        // On the 68020 and 68030, a fault in program space belongs to the
-        // instruction pipe. Both use this layout (MC68020UM 6.2.1, MC68030UM 8.2.1).
+        // A 68020 PC-relative operand uses program space but is a data cycle
+        // (MC68020UM 6.2.1). Only an instruction fetch marks the pipe.
         //
         // The size is that of the faulted cycle: a word when the second word of
         // a long word access fails. The handler completes that word through the
@@ -1271,7 +1266,7 @@ Moira::completeBusError(BusError &e, u32 addr)
         // (MC68040UM 8.4.6.2).
         bool rest = S == Long && e.stackFrame.addr == ((addr + 2) & addrMask<Core::C68020>());
         u16 size = S == Byte ? SSW030::SIZ_B : (S == Word || rest) ? SSW030::SIZ_W : SSW030::SIZ_L;
-        bool prog = (fc & 3) == 2;
+        bool prog = cpuModel < CPUModel::M68EC030 ? instructionFetch : (fc & 3) == 2;
 
         e.stackFrame.ssw = (prog ? SSW030::FB | SSW030::RB : SSW030::DF) | size | (fc & 7);
         if (!W) e.stackFrame.ssw |= SSW030::RW;

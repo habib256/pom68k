@@ -1,7 +1,7 @@
-From db8d02e7f56738f43d2c37ab12fe08b1403f5906 Mon Sep 17 00:00:00 2001
+From 3104717d635de2a7adcf0a277ffd280a786dbb93 Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Mon, 23 Nov 2026 20:47:41 +0400
-Subject: [PATCH 05/17] 68040: FSAVE stores the unimplemented instruction state
+Subject: [PATCH 03/16] 68040: FSAVE stores the unimplemented instruction state
  frame
 
 After an unimplemented floating-point instruction the 68040 takes vector 11

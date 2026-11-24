@@ -24,6 +24,13 @@
 // only; the harness puts the manual's value in its place and compares the
 // entire final state. A vector listed so is counted as ruled when it then
 // passes and fails otherwise; the core is held to the manual, not excused.
+//
+// `@OPEN <ruling> | <name>`: a ruling taken for a manual against the corpus
+// (or a question the manual leaves open) on which this core currently agrees
+// with the corpus. The vector is counted apart as open — never as agreement,
+// never as ruled — and it must keep agreeing: one that stops agreeing (moved
+// a third way, or now follows the manual: then list it plainly) fails, as a
+// name the corpus does not hold does. TODO.md names each open item.
 #pragma once
 
 #include <cstdio>
@@ -63,6 +70,14 @@ public:
                 std::getline(row >> std::ws, name);
                 if (name.empty() || !names_.insert(name).second) return false;
                 sr_.emplace(name, uint16_t(sr));
+            } else if (line.rfind("@OPEN ", 0) == 0) {
+                std::istringstream row(line.substr(6));
+                std::string ruling, separator, name;
+                if (!(row >> ruling >> separator) || separator != "|" ||
+                    ruling.size() < 2 || ruling[0] != 'D') return false;
+                std::getline(row >> std::ws, name);
+                if (name.empty() || !names_.insert(name).second) return false;
+                open_.emplace(name, ruling);
             } else if (line[0] == '@') {
                 std::istringstream row(line);
                 std::string tag, separator, name;
@@ -79,7 +94,7 @@ public:
                 frames_.emplace(name, FrameRule{tag == "@D23a" ? FrameKind::ExternalFpu :
                     FrameKind::Group2, uint32_t(frame), uint32_t(instruction)});
             } else {
-                if (frames_.count(line)) return false;
+                if (frames_.count(line) || open_.count(line)) return false;
                 names_.insert(line);
             }
         }
@@ -107,11 +122,18 @@ public:
     }
 
     // Whether `name` is listed; a listed name is remembered as met. An @SR
-    // name answers false: it excuses nothing, its SR is substituted instead.
+    // name answers false: it excuses nothing, its SR is substituted instead;
+    // so does an @OPEN name, which `open` answers.
     bool listed(const std::string& name) {
         if (!loaded_ || !names_.count(name)) return false;
         seen_.insert(name);
-        return !sr_.count(name);
+        return !sr_.count(name) && !open_.count(name);
+    }
+    // The ruling of an @OPEN name (met by `listed`), or nothing.
+    std::optional<std::string> open(const std::string& name) const {
+        const auto it = open_.find(name);
+        if (it == open_.end()) return std::nullopt;
+        return it->second;
     }
 
     // Listed names the run never met; prints up to `examples` of them.
@@ -127,11 +149,14 @@ public:
     }
 
     static constexpr const char* kStale = "listed in --known but passes: remove it";
+    static constexpr const char* kOpenMoved =
+        "listed @OPEN (agrees with the corpus) but differs now; list it plainly if it follows the manual: ";
 
 private:
     std::set<std::string> names_, seen_;
     std::map<std::string, FrameRule> frames_;
     std::map<std::string, uint16_t> sr_;
+    std::map<std::string, std::string> open_;   // @OPEN name -> ruling
     bool loaded_ = false;
 };
 

@@ -929,7 +929,7 @@ Moira::execAndiccr(u16 opcode)
         u8  dst = getCCR();
         setCCR(u8(logic<C, I, S>(src, dst)));
         SYNC(8);
-        dummyProgRead<C>(reg.pc);
+        (void)read<C, AddrSpace::PROG, Word>(reg.pc);
 
     } else {
 
@@ -967,7 +967,7 @@ Moira::execAndisr(u16 opcode)
     setSR((u16)result);
 
     if constexpr (C == Core::C68000) {
-        dummyProgRead<C>(reg.pc);
+        (void)read<C, AddrSpace::PROG, Word>(reg.pc);
     } else {
         (void)read<C, AddrSpace::DATA, Word>(reg.pc + 2);
     }
@@ -2314,7 +2314,7 @@ Moira::execDbcc(u16 opcode)
             } else {
 
                 writeD<Word>(dn, U32_SUB(readD<Word>(dn), 1));
-                dummyProgRead<C>(reg.pc + 2);
+                (void)read<C, AddrSpace::PROG, Word>(reg.pc + 2);
                 CYCLES_68000(14);
                 fullPrefetchAt<C, POLL>(reg.pc + 2);
             }
@@ -2414,7 +2414,7 @@ Moira::execDbcc(u16 opcode)
 
                 } else {
 
-                    dummyProgRead<C>(reg.pc + 2);
+                    (void)read<C, AddrSpace::PROG, Word>(reg.pc + 2);
                     SYNC((compat == Compatibility::MUSASHI) ? 4 : 2);
                     CYCLES_68010(8);
 
@@ -2464,7 +2464,7 @@ Moira::execDbcc(u16 opcode)
             } else {
 
                 writeD<Word>(dn, U32_SUB(readD<Word>(dn), 1));
-                dummyProgRead<C>(reg.pc + 2);
+                readStatusRefill<C>();
                 CYCLES_68020(10);
                 fullPrefetchAt<C, POLL>(reg.pc + 2);
             }
@@ -4026,7 +4026,7 @@ Moira::execMoveToCcr(u16 opcode)
     SYNC(4);
     setCCR((u8)data);
 
-    dummyProgRead<C>(C == Core::C68000 ? reg.pc : reg.pc + 2);
+    readStatusRefill<C>();
     prefetch<C, POLL>();
 
     //           00  10  20        00  10  20        00  10  20
@@ -4126,7 +4126,7 @@ Moira::execMoveToSr(u16 opcode)
     SYNC(4);
     setSR((u16)data);
 
-    dummyProgRead<C>(C == Core::C68000 ? reg.pc : reg.pc + 2);
+    readStatusRefill<C>();
     prefetch<C, POLL>();
 
     //           00  10  20        00  10  20        00  10  20
@@ -5537,7 +5537,7 @@ Moira::execTrapv(u16 opcode)
 
         } else {
 
-            dummyProgRead<C>(reg.pc + 2);
+            readStatusRefill<C>();
             SYNC(2);
         }
 

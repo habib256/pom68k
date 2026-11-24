@@ -1,7 +1,7 @@
-From 7ea0739387931be29e1ee2c8721fb3d8a47b718e Mon Sep 17 00:00:00 2001
+From 2a1578287376076c105947c520b04ae882c5da99 Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Mon, 23 Nov 2026 21:31:03 +0400
-Subject: [PATCH 06/17] 68020/68030: do not rerun a data cycle a handler has
+Subject: [PATCH 04/16] 68020/68030: do not rerun a data cycle a handler has
  completed
 
 MC68030UM 8.2.2 lets a bus error handler complete a faulted data cycle in
@@ -58,7 +58,7 @@ index 15dd078..462045c 100644
      //
      // Lookup tables
 diff --git a/Moira/MoiraDataflow_cpp.h b/Moira/MoiraDataflow_cpp.h
-index 8197ffe..1f9686f 100644
+index 09af5fc..a2ff1e5 100644
 --- a/Moira/MoiraDataflow_cpp.h
 +++ b/Moira/MoiraDataflow_cpp.h
 @@ -781,6 +781,14 @@ try
@@ -76,7 +76,7 @@ index 8197ffe..1f9686f 100644
      u32 result;
  
      // Derive the physical address
-@@ -989,6 +997,14 @@ try
+@@ -986,6 +994,14 @@ try
  {
      if constexpr (MOIRA_REPORT_BUS_ACCESS) willAccessBus(addr, S, true);
  
@@ -92,7 +92,7 @@ index 8197ffe..1f9686f 100644
      addr = translate<C, true, S>(addr, getFC(), ci);
  
 diff --git a/Moira/MoiraExceptions_cpp.h b/Moira/MoiraExceptions_cpp.h
-index a507f5b..6c3cb87 100644
+index acab602..97be4d9 100644
 --- a/Moira/MoiraExceptions_cpp.h
 +++ b/Moira/MoiraExceptions_cpp.h
 @@ -442,6 +442,9 @@ Moira::execAddressError(StackFrame frame, int delay)
@@ -103,10 +103,10 @@ index a507f5b..6c3cb87 100644
 +    completed.armed = false;
 +
      u16 status = getSR();
-     // A completed fault carries its special status word (DF or FB/RB, RW, size, FC)
-     u16 ssw = frame.ssw ? frame.ssw : u16(0x60 | (getFC() & 7));
+ 
+     // Inform the delegate
 diff --git a/Moira/MoiraExec_cpp.h b/Moira/MoiraExec_cpp.h
-index 36f7359..67436cc 100644
+index 778e390..18c1be4 100644
 --- a/Moira/MoiraExec_cpp.h
 +++ b/Moira/MoiraExec_cpp.h
 @@ -5091,6 +5091,29 @@ Moira::readRteFrame68020(u16 &newsr, u32 &newpc)

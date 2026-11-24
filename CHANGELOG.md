@@ -621,6 +621,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-24 (fourth) — Dirk merges four of POM68K's pull requests: the queue rebased on 863b8d02, seventeen patches](#2026-11-24-moira-863b8d02)
+- [2026-11-24 (third) — The SST gates judge agreement per corpus file against a floor, not unanimity: all thirteen green once D28/D29 are re-judged](#2026-11-24-sst-floors)
 - [2026-11-24 (second) — The LC040 soft FPU leaves Dirk's core for the Mac layer, and the 68000 ASR goes back to the manual: nineteen patches](#2026-11-24-softfpu-asr-manual)
 - [2026-11-24 — POM68K runs on Dirk Hoffmann's Moira: twenty-one fixes in a patch queue, the Quadras' FPSP and the Mac slot probes restored](#2026-11-24-dirk-moira-base)
 - [2026-11-22 (sixth) — The 68040 FBcc/FDBcc with an odd displacement faults as the manual says: after the predicate, taken or not](#2026-11-22-fbcc-odd-040)
@@ -1446,6 +1448,173 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-24-moira-863b8d02"></a>
+## 2026-11-24 (fourth) — Dirk merges four of POM68K's pull requests: the queue rebased on 863b8d02, seventeen patches
+
+Dirk Hoffmann merged PRs #42 (`5f4e9832`, the 68020 special status word of
+a host bus error), #43 (`95a0cb5e`, the MOVE to SR/CCR refill served from the
+instruction cache through `readStatusRefill()`), #44 (`794fb294`, FMOVE.P of
+a zero with a k-factor above +17) and #45 (`863b8d02`, instruction cache hits
+charged once) into his `master`. The queue moved from `450b15ae` + 19 patches
+to `863b8d02` + 16 (`extern/moira/POM68K_VENDOR.md` § The base and the queue,
+§ Inventory): old patches 1, 2 and 10 left it as upstream; old patch 3 kept
+only the expired DBcc and the trapping TRAPV, now routed through his
+`readStatusRefill()` (new patch 1, conditional on an emulated cache like the
+merged MOVE to SR/CCR); old 15 and 16 were adapted to PR #42's
+`frame.ssw` and `completeBusError(e, instructionFetch)`; the rest carried
+unchanged and renumbered. `extern/moira/Moira/` is exactly `863b8d02:Moira`
+plus the 16 patches (`moira_queue_test`; `diff -r` against a scratch clone
+with the patches applied is empty). No upstream source file was added or
+removed, so `MOIRA_SOURCES` is unchanged.
+
+**Two measured behavioural changes against the previous tree** (scratch
+probe, old vendored tree against the new one, every model, port width,
+CACR and alignment case):
+
+- 68040/68LC040 machines: MOVE to SR/CCR, an expired DBcc and a trapping
+  TRAPV cost 4 clocks less, with identical bus accesses. Those refills no
+  longer go through the narrow-port instruction path (the 68040 wrappers
+  answer Moira's default 16-bit `dsack()`; whether that is right is open,
+  `TODO.md` § Défauts ouverts du cœur).
+- 68020/68EC020: the SSW of a host bus error on a program-space data cycle
+  (a PC-relative operand) is DF instead of FB|RB: PR #42 as merged reads
+  such a fault as a data fault with the program function code.
+
+No 68020/68030 clock or access count changed in the probe's other cases.
+
+**Open findings recorded in `TODO.md` § Phase 1**, from the review of the
+merged PRs and of the rebase: with the instruction cache disabled, a
+MOVE to SR/CCR at a 4n+2 address is refilled from the one-longword latch
+with no bus access (PR #43; new patch 1 shares it; `iCache.flushLatch()`
+before the refill restores the access); PR #42's SSW never sets RM for
+TAS/CAS, and its comment's §6.2.1 citation is an inference; new patch 16
+fails Dirk's `StackFrame` unit test (case `addrerr30`, SR $2012 against
+$201A) and new patch 12 makes `ExceptionUAE020` differ from UAE in
+`frame.dob` — each needs a ruling before a PR.
+
+**Gates (AArch64, interpreter).** `moira_queue_test` proves `Moira/` ==
+BASE + 16 patches (17 after the patch below). The 21 CPU/document gates (`docs_test`,
+`file_size_budget_test`, `icache020_test`, `berr020_test`, `berr030_test`,
+`fault_transparency_test`, `moira_rules_test`, the FPU and save-state tests,
+`cpu_smoke`, `cpu_wrapper_smoke` and their interpreter twins) pass;
+`calibration_040_etalon`, `macii_boot_etalon`, `maciifdhd_boot_etalon`,
+`macii_post_etalon`, `macii_sys7_boot_etalon`, `lc_boot_etalon` and
+`lc3plus_boot_etalon` pass with their registered pixel pins. `moira_rules_test`
+reported four rows that no longer fail, all from the 68020/68EC020 SSW
+change: `(d16,PC) /BERR` now stacks DF, and the RTE with DF cleared resumes
+once from the frame (models 2 and 3; the 68030, model 5, keeps both rows).
+They left `tests/known/moira_rules_test.txt`; the eight 68000 DIVS rows the
+same gate reports as no longer failing predate this rebase and stay.
+
+**One machine gate moved, `q605_clipboard_etalon`; patch 17 answers it.**
+On base + 16 the whole `m040` tier ran: 97 of 98 passed, no soft-skip, and
+`q605_clipboard_etalon` failed deterministically (rerun): after typing the
+30 characters into SimpleText, Cmd-A Cmd-C left ScrapCount 9 → 7 with no
+TEXT on the clipboard, where the previous tree gave 9 → 25 and 30 MacRoman
+bytes. A scratch build with only the refill routed through `readInstr()`
+again passed it: the failure is the 4-clock 68040 change, through the
+gate's frame-timed key sequence. The gate was not re-pinned or weakened.
+Patch 17 (local, no manual citation) makes `readStatusRefill()` an
+instruction fetch on every 68020-core model, cache emulated or not, so the
+discarded word pays the narrow-port charge `readInstr()` gives every other
+fetched word; the 68040 machines are back on the timing of the previous
+tree, and only the 68020/68EC020 SSW change above remains. [F] Whether a
+16-bit `dsack()` is right for a 68040 at all is open (`TODO.md` § Défauts
+ouverts du cœur): a 32-bit port would move every 68040 gate's timing.
+
+**After patch 17** (`moira_queue_test`: BASE + 17): the 32 CPU, document
+and SST gates pass, `q605_clipboard_etalon` and `calibration_040_etalon`
+included. A second `m040` run on that final tree was
+stopped by the clock after 19 gates, all passed (the clipboard gate was not
+among them; it passed in the run before); the other 79 have not run on
+base + 17, and no full tier has. 24 of the tier's gates have no baseline
+run on the previous tree. Next: the full tiers on x86-64.
+
+<a id="2026-11-24-sst-floors"></a>
+## 2026-11-24 (third) — The SST gates judge agreement per corpus file against a floor, not unanimity: all thirteen green once D28/D29 are re-judged
+
+Since the core became Dirk Hoffmann's Moira the thirteen SST corpus gates
+were red, and a gate everybody expects red protects nothing: a regression
+among the 856 621 SingleStepTests vectors that still agree was invisible.
+The corpora are grade D (MAME's core for the 68000, the WinUAE oracle for
+the 68030/68040): agreement with them is measured, not demanded.
+
+**Mechanism.** `tests/SstFloors.h`, used by `sst68000`, `sst68030` and
+`sst68040` under `--floors tests/sst_floors/<gate>.tsv` (one row per corpus
+file: stem, vectors that must agree, vectors in the file). A gate fails when
+a file agrees on fewer vectors than its floor, when a file's vector count
+differs from its row, when a corpus file has no row or a row no file, and
+when the `--known` mechanism is violated exactly as before (a listed vector
+that passes, a stale frame or `@SR` rule, a listed name absent from the
+corpus); every violation is named. A file above its floor prints `RAISE`
+and the row to write; it does not fail. Ruled vectors are counted apart,
+never as agreement. `--write-floors FILE` rewrites a floors file from a
+whole run that violates nothing; no gate passes it. Without either flag the
+runners behave as before (`cpu_vectors.py`, `sst_known_contract_test`, the
+JIT lockstep and the Moira release still use that mode).
+
+**Measured on aarch64, base `863b8d02`** (agree / total / ruled):
+`sst68000` 856 621 / 1 000 058 / 3 736; `sst68030` 2 265 / 3 082 / 16;
+`sst68030_solo` 3 583 / 5 592 / 16; `_fpu2` 3 453 / 6 000 / 30; `_fpuh`
+3 740 / 6 000 / 27; `_fpuraw` 1 646 / 6 000 / 148; `_rmw` 2 452 / 6 000 / 0;
+`sst68040` 5 929 / 7 200 / 21; `_8k` 3 019 / 4 000 / 6; `_fline`
+1 095 / 4 500 / 0; `_fpu` 2 956 / 7 500 / 154; `_fpu2` 2 656 / 6 000 / 22;
+`_fpuh` 2 671 / 6 000 / 24. Same numbers as the 12:55 baseline on the
+previous base.
+
+**Two gates were red at first, on purpose.** 51 vectors of `tests/sst68030_fpuraw.known`
+(25 of D28, 26 of D29) and 47 of `tests/sst68040_fpu.known` (D28) are fork
+rulings against the oracle on which Dirk's core now agrees with WinUAE. The
+list contract calls that stale; deleting them would count as agreement what
+a manual-based ruling says is wrong, so the lists are kept and the gate names
+each vector until D28/D29 are re-judged on this core (TODO.md § Phase 1 ›
+Listes). Their floors were written from the run's per-file counts, which
+exclude those vectors.
+
+**Re-judged the same day; both gates green.** D28 stands: [B] MC68030UM-1989
+§8.1.3 (PDF p. 414) "An address error exception occurs when the processor
+attempts to prefetch an instruction from an odd address"; MC68040UM-1993
+§8.2.2 (PDF p. 221) adds "This includes the case of a conditional branch
+instruction with an odd branch offset that is not taken". Dirk's
+`execFBcc`/`execFDbcc` test the target with `misaligned<C>()`, false for
+the 68020 core, and prefetch at the odd target (his Bcc/DBcc use
+`misalignedPC` and fault): a defect of the core, the 25 + 47 vectors
+(040: 14 taken, 33 not) are open. D29's memory form is reopened [F]:
+MC68881UM-1989 §2.3.3 (PDF p. 42) clears EXC "at the start of most
+operations" but says nothing of an operand transfer the MC68030 aborts
+(§10.4.9, PDF p. 531) or of an undefined command word (§4.7.1.7, PDF
+p. 191); the core keeps the byte as WinUAE (26 vectors); the register form
+runs, as the fork ruled. None is an overturned ruling, so no floor moves.
+`tests/SstKnown.h` gains `@OPEN <ruling> | <name>`: such a vector is
+counted apart (`… 148 ruled, 51 open`, `… 154 ruled, 47 open`), never as
+agreement, and fails the gate if it stops agreeing with the corpus or
+leaves it; `sst_known_contract_test` pins it on both runners. Proof on the
+full corpora: an `@OPEN` line made plain fails as stale, one vector's
+expected D3 flipped in a cloned corpus fails as "listed @OPEN … differs
+now", a renamed line fails as absent. The plain D28/D29 lines left fail on
+this core for other reasons (a Line-F on predicates $20-$3F or reserved
+FDBcc extension bits, a descriptor U bit): to reclassify
+(`TODO.md` § Phase 1 › Listes). `POM68K_VENDOR.md` row 158 describes the
+fork's FBcc, not this core.
+
+**Proof.** A floor raised by one fails naming the file and floor
+(`sst68030` `core_identity`, `sst68000` `ADD.l`); lowered by one passes and
+prints `RAISE` with the row; a removed row fails as "no row", an extra row as
+"absent from the corpus"; restored, green. No gate soft-skipped (all
+thirteen corpora present). `docs_test`, `config_test`, `file_size_budget_test`,
+`sst_known_contract_test`, `sst_corpora_lock_test` pass.
+
+**Host independence.** The runners sort the directory listing; floors are
+keyed by file stem in a `std::map`; no draw, clock or environment read; the
+`unordered_*` containers only answer lookups; the FPU arithmetic is Dirk's
+software (`FpuEnvMath.cpp`; only `sqrt` of a double, correctly rounded by
+IEEE 754, seeds a Newton step). One order-dependence fixed: `sst68000` now
+zeroes every byte the core wrote after each vector (the 68030/68040 runners
+already did), so a stray write no longer reaches the next vector. Remaining
+cross-vector state (the reused `Vector` keeps keys a vector omits; caches and
+ATC are not flushed by `reset()`) is deterministic in the sorted order. Not
+yet proven by an x86-64 run.
 
 <a id="2026-11-24-softfpu-asr-manual"></a>
 ## 2026-11-24 (second) — The LC040 soft FPU leaves Dirk's core for the Mac layer, and the 68000 ASR goes back to the manual: nineteen patches

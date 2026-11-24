@@ -1,7 +1,7 @@
-From 1b40dcf6bf9b399c6d38553e9b528f84f768c012 Mon Sep 17 00:00:00 2001
+From 574849baac3ae8af296bf270bee120232af2f1ea Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Mon, 23 Nov 2026 20:44:57 +0400
-Subject: [PATCH 04/17] Cache: let a host save and restore the cache contents
+Subject: [PATCH 02/16] Cache: let a host save and restore the cache contents
 
 An emulator with save states otherwise has to flush the caches on load,
 which changes the timing of a restored machine. visitEntries() hands each

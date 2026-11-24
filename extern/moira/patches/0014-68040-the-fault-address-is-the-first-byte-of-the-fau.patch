@@ -1,7 +1,7 @@
-From df5709cd78727856f757274d0c9125cfaddfcf08 Mon Sep 17 00:00:00 2001
+From a563b63d97dff5835bda043e31af02cfd4b217e3 Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 01:26:03 +0400
-Subject: [PATCH 17/17] 68040: the fault address is the first byte of the
+Subject: [PATCH 14/16] 68040: the fault address is the first byte of the
  faulted access
 
 MC68040UM 8.4.6.4: "For a misaligned access that faults, the FA field
@@ -16,10 +16,10 @@ bytes too far.
  1 file changed, 5 insertions(+)
 
 diff --git a/Moira/MoiraDataflow_cpp.h b/Moira/MoiraDataflow_cpp.h
-index f51be21..db93ec8 100644
+index 693e591..f9ebea9 100644
 --- a/Moira/MoiraDataflow_cpp.h
 +++ b/Moira/MoiraDataflow_cpp.h
-@@ -1253,6 +1253,11 @@ Moira::completeBusError(BusError &e, u32 addr)
+@@ -1250,6 +1250,11 @@ Moira::completeBusError(BusError &e, u32 addr, bool instructionFetch)
          e.stackFrame.ssw = size | (fc & 7);
          if (!W) e.stackFrame.ssw |= SSW040::RW;
  
@@ -30,7 +30,7 @@ index f51be21..db93ec8 100644
 +
      } else {
  
-         // On the 68020 and 68030, a fault in program space belongs to the
+         // A 68020 PC-relative operand uses program space but is a data cycle
 -- 
 2.54.0 (Apple Git-157)
 

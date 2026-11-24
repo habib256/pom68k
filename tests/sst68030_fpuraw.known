@@ -1,7 +1,8 @@
 # Vectors of tests/data/sst68030_fpuraw on which the fork deliberately does not
 # follow the oracle: one name per line, grouped by ruling
 # (oracle/fuzz/disputes/NOTES.md). See tests/SstKnown.h for the rules: a
-# listed vector that passes, or is missing, fails the gate.
+# listed vector that passes, or is missing, fails the gate; an `@OPEN` one
+# (the core agrees with the corpus against a ruling) fails if it stops agreeing.
 
 # D26 - FMOVE.P FPn,(An)+{Dn} and -(An){Dn}. The fork steps An by the twelve
 # bytes of a packed operand; the oracle's size table holds 0 for the dynamic
@@ -31,6 +32,11 @@ fpuraw/tt seed=723 #1982
 # D28 - FBcc / FDBcc taken to an odd address. The fork takes the address error
 # inside the branch, as it does for Bcc; the oracle only sets the PC and never
 # raises one.
+# On Dirk Hoffmann's core (2026-11-24) none of these raises one either: the
+# plain lines below still fail for other reasons — 56 take a Line-F (predicate
+# $20-$3F, or reserved FDBcc extension bits), 30 differ on a descriptor U bit
+# only, 3 evaluate a predicate on an N+Z+NAN condition byte differently. The
+# vectors that now agree with the corpus are the @OPEN block below.
 fpuraw/identity seed=722 #92
 fpuraw/identity seed=722 #109
 fpuraw/identity seed=722 #200
@@ -42,7 +48,6 @@ fpuraw/identity seed=722 #589
 fpuraw/identity seed=722 #656
 fpuraw/identity seed=722 #737
 fpuraw/identity seed=722 #746
-fpuraw/identity seed=722 #768
 fpuraw/identity seed=722 #790
 fpuraw/identity seed=722 #922
 fpuraw/identity seed=722 #977
@@ -56,7 +61,6 @@ fpuraw/identity seed=722 #1305
 fpuraw/identity seed=722 #1349
 fpuraw/identity seed=722 #1389
 fpuraw/identity seed=722 #1464
-fpuraw/identity seed=722 #1479
 fpuraw/identity seed=722 #1491
 fpuraw/identity seed=722 #1505
 fpuraw/identity seed=722 #1541
@@ -70,44 +74,22 @@ fpuraw/identity seed=722 #1772
 fpuraw/identity seed=722 #1940
 fpuraw/identity seed=722 #1972
 fpuraw/identity seed=722 #1992
-fpuraw/off seed=721 #29
 fpuraw/off seed=721 #91
 fpuraw/off seed=721 #129
-fpuraw/off seed=721 #168
-fpuraw/off seed=721 #320
 fpuraw/off seed=721 #382
-fpuraw/off seed=721 #421
 fpuraw/off seed=721 #437
 fpuraw/off seed=721 #560
-fpuraw/off seed=721 #565
-fpuraw/off seed=721 #590
 fpuraw/off seed=721 #625
 fpuraw/off seed=721 #680
 fpuraw/off seed=721 #775
-fpuraw/off seed=721 #804
 fpuraw/off seed=721 #808
 fpuraw/off seed=721 #811
 fpuraw/off seed=721 #929
 fpuraw/off seed=721 #1024
-fpuraw/off seed=721 #1136
-fpuraw/off seed=721 #1147
-fpuraw/off seed=721 #1148
-fpuraw/off seed=721 #1208
-fpuraw/off seed=721 #1221
 fpuraw/off seed=721 #1225
-fpuraw/off seed=721 #1241
-fpuraw/off seed=721 #1261
-fpuraw/off seed=721 #1287
-fpuraw/off seed=721 #1347
 fpuraw/off seed=721 #1374
-fpuraw/off seed=721 #1380
 fpuraw/off seed=721 #1493
 fpuraw/off seed=721 #1521
-fpuraw/off seed=721 #1537
-fpuraw/off seed=721 #1679
-fpuraw/off seed=721 #1706
-fpuraw/off seed=721 #1725
-fpuraw/off seed=721 #1759
 fpuraw/off seed=721 #1773
 fpuraw/off seed=721 #1827
 fpuraw/tt seed=723 #125
@@ -143,12 +125,47 @@ fpuraw/tt seed=723 #1785
 fpuraw/tt seed=723 #1786
 fpuraw/tt seed=723 #1905
 fpuraw/tt seed=723 #1943
-fpuraw/tt seed=723 #1952
 fpuraw/tt seed=723 #1995
+# D28, open defect of the core (TODO.md § Phase 1 › Défauts ouverts du cœur).
+# [B] MC68030UM-1989 §8.1.3 (PDF p. 414): "An address error exception occurs
+# when the processor attempts to prefetch an instruction from an odd
+# address." Dirk Hoffmann's FBcc/FDBcc (base 863b8d02) test the target with
+# misaligned<C>(), false for the 68020 core, and refill the pipe at the odd
+# target with no exception (his Bcc/DBcc use misalignedPC and take it); the
+# corpus does the same, so these vectors agree with it and are counted open.
+@OPEN D28 | fpuraw/identity seed=722 #768
+@OPEN D28 | fpuraw/identity seed=722 #1479
+@OPEN D28 | fpuraw/off seed=721 #29
+@OPEN D28 | fpuraw/off seed=721 #168
+@OPEN D28 | fpuraw/off seed=721 #320
+@OPEN D28 | fpuraw/off seed=721 #421
+@OPEN D28 | fpuraw/off seed=721 #565
+@OPEN D28 | fpuraw/off seed=721 #590
+@OPEN D28 | fpuraw/off seed=721 #804
+@OPEN D28 | fpuraw/off seed=721 #1136
+@OPEN D28 | fpuraw/off seed=721 #1147
+@OPEN D28 | fpuraw/off seed=721 #1148
+@OPEN D28 | fpuraw/off seed=721 #1208
+@OPEN D28 | fpuraw/off seed=721 #1221
+@OPEN D28 | fpuraw/off seed=721 #1241
+@OPEN D28 | fpuraw/off seed=721 #1261
+@OPEN D28 | fpuraw/off seed=721 #1287
+@OPEN D28 | fpuraw/off seed=721 #1347
+@OPEN D28 | fpuraw/off seed=721 #1380
+@OPEN D28 | fpuraw/off seed=721 #1537
+@OPEN D28 | fpuraw/off seed=721 #1679
+@OPEN D28 | fpuraw/off seed=721 #1706
+@OPEN D28 | fpuraw/off seed=721 #1725
+@OPEN D28 | fpuraw/off seed=721 #1759
+@OPEN D28 | fpuraw/tt seed=723 #1952
 
 # D29 - EA fields $3D-$3F on the 68030. The fork lets the coprocessor decide
 # (a register-to-register operation runs, a memory one clears the status byte
 # and takes a Line-F); the oracle's opcode table refuses them outright.
+# On Dirk Hoffmann's core (2026-11-24) a valid register-to-register operation
+# runs, as the fork's (5 plain lines fail on it); the other 32 plain lines
+# take the corpus's Line-F and differ on a descriptor U bit only. The status
+# byte question is the @OPEN block below.
 fpuraw/identity seed=722 #9
 fpuraw/identity seed=722 #27
 fpuraw/identity seed=722 #313
@@ -171,32 +188,6 @@ fpuraw/identity seed=722 #1300
 fpuraw/identity seed=722 #1390
 fpuraw/identity seed=722 #1825
 fpuraw/identity seed=722 #1969
-fpuraw/off seed=721 #117
-fpuraw/off seed=721 #271
-fpuraw/off seed=721 #376
-fpuraw/off seed=721 #408
-fpuraw/off seed=721 #486
-fpuraw/off seed=721 #620
-fpuraw/off seed=721 #638
-fpuraw/off seed=721 #863
-fpuraw/off seed=721 #888
-fpuraw/off seed=721 #956
-fpuraw/off seed=721 #993
-fpuraw/off seed=721 #1107
-fpuraw/off seed=721 #1143
-fpuraw/off seed=721 #1216
-fpuraw/off seed=721 #1226
-fpuraw/off seed=721 #1233
-fpuraw/off seed=721 #1372
-fpuraw/off seed=721 #1438
-fpuraw/off seed=721 #1479
-fpuraw/off seed=721 #1515
-fpuraw/off seed=721 #1548
-fpuraw/off seed=721 #1579
-fpuraw/off seed=721 #1639
-fpuraw/off seed=721 #1779
-fpuraw/off seed=721 #1957
-fpuraw/off seed=721 #1996
 fpuraw/tt seed=723 #250
 fpuraw/tt seed=723 #309
 fpuraw/tt seed=723 #331
@@ -212,6 +203,40 @@ fpuraw/tt seed=723 #1456
 fpuraw/tt seed=723 #1614
 fpuraw/tt seed=723 #1921
 fpuraw/tt seed=723 #1922
+# D29, open question (TODO.md § Phase 1 › Défauts ouverts du cœur). A memory
+# form (24 here) or an undefined command word (2): the core, like the corpus,
+# takes the Line-F with the FPSR exception byte intact; the fork cleared it.
+# [B] MC68881UM-1989 §2.3.3 (PDF p. 42) clears EXC "at the start of most
+# operations", but no passage says whether that precedes the operand transfer
+# the MC68030 aborts (MC68030UM-1989 §10.4.9, PDF p. 531), and §4.7.1.7
+# (PDF p. 191) says only that an undefined command word takes an F-line
+# exception. [F] Settled by a capture on a 68030 with a 68881/68882.
+@OPEN D29 | fpuraw/off seed=721 #117
+@OPEN D29 | fpuraw/off seed=721 #271
+@OPEN D29 | fpuraw/off seed=721 #376
+@OPEN D29 | fpuraw/off seed=721 #408
+@OPEN D29 | fpuraw/off seed=721 #486
+@OPEN D29 | fpuraw/off seed=721 #620
+@OPEN D29 | fpuraw/off seed=721 #638
+@OPEN D29 | fpuraw/off seed=721 #863
+@OPEN D29 | fpuraw/off seed=721 #888
+@OPEN D29 | fpuraw/off seed=721 #956
+@OPEN D29 | fpuraw/off seed=721 #993
+@OPEN D29 | fpuraw/off seed=721 #1107
+@OPEN D29 | fpuraw/off seed=721 #1143
+@OPEN D29 | fpuraw/off seed=721 #1216
+@OPEN D29 | fpuraw/off seed=721 #1226
+@OPEN D29 | fpuraw/off seed=721 #1233
+@OPEN D29 | fpuraw/off seed=721 #1372
+@OPEN D29 | fpuraw/off seed=721 #1438
+@OPEN D29 | fpuraw/off seed=721 #1479
+@OPEN D29 | fpuraw/off seed=721 #1515
+@OPEN D29 | fpuraw/off seed=721 #1548
+@OPEN D29 | fpuraw/off seed=721 #1579
+@OPEN D29 | fpuraw/off seed=721 #1639
+@OPEN D29 | fpuraw/off seed=721 #1779
+@OPEN D29 | fpuraw/off seed=721 #1957
+@OPEN D29 | fpuraw/off seed=721 #1996
 
 # D23a (2026-11-16): MC68030UM-1989 Figure 10-45 uses format 2 and
 # the F-line instruction address. The oracle instead emits format 3/EA.

@@ -1,7 +1,7 @@
-From a22f3dd371d1942644660f775a914562614d792d Mon Sep 17 00:00:00 2001
+From 3ffbb4cdae91720e38f480e969546cc5c0a25996 Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 01:19:00 +0400
-Subject: [PATCH 14/17] Completed cycles: the second word of a split long word
+Subject: [PATCH 11/16] Completed cycles: the second word of a split long word
 
 A long word access on a narrow port is two word cycles. When the second one
 faults and the handler completes it (DF cleared), the data input buffer holds
@@ -15,7 +15,7 @@ rerun write writes the first word only.
  1 file changed, 33 insertions(+), 6 deletions(-)
 
 diff --git a/Moira/MoiraDataflow_cpp.h b/Moira/MoiraDataflow_cpp.h
-index 943cfdb..9716b8b 100644
+index d112a28..ac6b9e6 100644
 --- a/Moira/MoiraDataflow_cpp.h
 +++ b/Moira/MoiraDataflow_cpp.h
 @@ -783,9 +783,23 @@ try
@@ -45,7 +45,7 @@ index 943cfdb..9716b8b 100644
          }
      }
  
-@@ -999,9 +1013,22 @@ try
+@@ -996,9 +1010,22 @@ try
  
      // A write that a bus error handler has completed is not repeated
      if constexpr (C == Core::C68020) {

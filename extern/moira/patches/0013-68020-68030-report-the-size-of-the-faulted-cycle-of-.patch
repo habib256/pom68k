@@ -1,7 +1,7 @@
-From 1979cc714a3881ca432efc7edeb1d11db0b6823f Mon Sep 17 00:00:00 2001
+From 29d9f4861a244e3031737f4c3cf909865b4f0067 Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 01:21:44 +0400
-Subject: [PATCH 16/17] 68020/68030: report the size of the faulted cycle of a
+Subject: [PATCH 13/16] 68020/68030: report the size of the faulted cycle of a
  split long word
 
 When the second word of a long word access faults, the special status word
@@ -22,21 +22,21 @@ word. Settled for good by a 68030 on a 16-bit port.
  2 files changed, 16 insertions(+), 7 deletions(-)
 
 diff --git a/Moira/MoiraDataflow.h b/Moira/MoiraDataflow.h
-index 7862e60..e3c5c76 100644
+index b694bda..4806848 100644
 --- a/Moira/MoiraDataflow.h
 +++ b/Moira/MoiraDataflow.h
-@@ -175,7 +175,8 @@ template <Flags F = 0> StackFrame makeFrame(u32 addr, u32 pc);
+@@ -173,7 +173,8 @@ template <Flags F = 0> StackFrame makeFrame(u32 addr, u32 pc);
  template <Flags F = 0> StackFrame makeFrame(u32 addr);
  
- // Adds the special status word to a bus error signaled by the host (68030 and 68040)
--template <Size S, bool W> void completeBusError(BusError &e);
+ // Adds the special status word to a bus error signaled by the host (68020 and later)
+-template <Size S, bool W> void completeBusError(BusError &e, bool instructionFetch = false);
 +// (addr is the address of the operand, which tells a split long word's cycles apart)
-+template <Size S, bool W> void completeBusError(BusError &e, u32 addr);
++template <Size S, bool W> void completeBusError(BusError &e, u32 addr, bool instructionFetch = false);
  
  // Creates an address error that is raised before the bus cycle has started
  template <Core C> AddressError earlyAddressError(const StackFrame &frame);
 diff --git a/Moira/MoiraDataflow_cpp.h b/Moira/MoiraDataflow_cpp.h
-index 9716b8b..f51be21 100644
+index ac6b9e6..693e591 100644
 --- a/Moira/MoiraDataflow_cpp.h
 +++ b/Moira/MoiraDataflow_cpp.h
 @@ -858,7 +858,7 @@ try
@@ -48,16 +48,16 @@ index 9716b8b..f51be21 100644
      throw;
  }
  
-@@ -913,7 +913,7 @@ Moira::readInstr(u32 addr)
+@@ -916,7 +916,7 @@ Moira::readInstr(u32 addr)
          } catch (BusError &e) {
  
              e.stackFrame.write = false;
--            completeBusError<Word, false>(e);
-+            completeBusError<Word, false>(e, addr);
+-            completeBusError<Word, false>(e, true);
++            completeBusError<Word, false>(e, addr, true);
              throw;
          }
-         // The 68020 timing tables are the manual's cache-only case: the
-@@ -1088,7 +1088,7 @@ try
+         // The 020/030 instruction timings already include a cached fetch.
+@@ -1085,7 +1085,7 @@ try
  catch (BusError &e)
  {
      // Tell the fault handler whether the access was a read or a write and what data it carried
@@ -66,7 +66,7 @@ index 9716b8b..f51be21 100644
      throw;
  }
  
-@@ -1113,7 +1113,7 @@ Moira::readDataCache(u32 addr)
+@@ -1110,7 +1110,7 @@ Moira::readDataCache(u32 addr)
      } catch (BusError &e) {
          // The line fill has failed
          e.stackFrame.write = false;
@@ -75,19 +75,19 @@ index 9716b8b..f51be21 100644
          throw;
      }
  
-@@ -1234,7 +1234,7 @@ Moira::misaligned(u32 addr)
+@@ -1231,7 +1231,7 @@ Moira::misaligned(u32 addr)
  }
  
  template <Size S, bool W> void
--Moira::completeBusError(BusError &e)
-+Moira::completeBusError(BusError &e, u32 addr)
+-Moira::completeBusError(BusError &e, bool instructionFetch)
++Moira::completeBusError(BusError &e, u32 addr, bool instructionFetch)
  {
      /* A host that throws BusError(addr) only provides the fault address. The
-      * 68030 and 68040 also report the cause of the fault in the special status
-@@ -1257,7 +1257,15 @@ Moira::completeBusError(BusError &e)
+      * 68020 and later processors report the cause of the fault in the special status
+@@ -1254,7 +1254,15 @@ Moira::completeBusError(BusError &e, bool instructionFetch)
  
-         // On the 68020 and 68030, a fault in program space belongs to the
-         // instruction pipe. Both use this layout (MC68020UM 6.2.1, MC68030UM 8.2.1).
+         // A 68020 PC-relative operand uses program space but is a data cycle
+         // (MC68020UM 6.2.1). Only an instruction fetch marks the pipe.
 -        u16 size = S == Byte ? SSW030::SIZ_B : S == Word ? SSW030::SIZ_W : SSW030::SIZ_L;
 +        //
 +        // The size is that of the faulted cycle: a word when the second word of
@@ -98,7 +98,7 @@ index 9716b8b..f51be21 100644
 +        // (MC68040UM 8.4.6.2).
 +        bool rest = S == Long && e.stackFrame.addr == ((addr + 2) & addrMask<Core::C68020>());
 +        u16 size = S == Byte ? SSW030::SIZ_B : (S == Word || rest) ? SSW030::SIZ_W : SSW030::SIZ_L;
-         bool prog = (fc & 3) == 2;
+         bool prog = cpuModel < CPUModel::M68EC030 ? instructionFetch : (fc & 3) == 2;
  
          e.stackFrame.ssw = (prog ? SSW030::FB | SSW030::RB : SSW030::DF) | size | (fc & 7);
 -- 

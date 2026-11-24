@@ -1,7 +1,8 @@
-From 52d3a39bf81ee2e36bd0353e6d77b0f2759c17c8 Mon Sep 17 00:00:00 2001
+From 1eafc6e06253f14387f1b663dde4131034c082ac Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 07:53:08 +0400
-Subject: [PATCH] Restore 68000 address error frame timing in DEFAULT mode
+Subject: [PATCH] Restore 68000 address error frame timing in DEFAULT
+ mode
 
 SingleStepTests/680x0 68000/v1 times the idle before the group-0 frame. Keep the previously qualified 2/4-clock split by I/N in the default configuration.
 ---
@@ -9,7 +10,7 @@ SingleStepTests/680x0 68000/v1 times the idle before the group-0 frame. Keep the
  1 file changed, 8 insertions(+), 3 deletions(-)
 
 diff --git a/Moira/MoiraExceptions_cpp.h b/Moira/MoiraExceptions_cpp.h
-index db70dc9..ab52313 100644
+index 3595ded..2265efe 100644
 --- a/Moira/MoiraExceptions_cpp.h
 +++ b/Moira/MoiraExceptions_cpp.h
 @@ -388,7 +388,13 @@ Moira::execAddressError(StackFrame frame, int delay)

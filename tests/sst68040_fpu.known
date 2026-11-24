@@ -2,7 +2,8 @@
 # follow the oracle: one name per line, grouped by ruling
 # (oracle/fuzz/disputes/NOTES.md). `sst68040 --known` counts a listed vector
 # that fails apart, and FAILS on one that passes or is missing: when a ruling
-# is settled, its block leaves this file in the same change.
+# is settled, its block leaves this file in the same change. An `@OPEN` line
+# (the core agrees with the corpus against a ruling) fails if it stops agreeing.
 
 # D25 - FMOVE.P FPn,Dn (static or dynamic k-factor). The fork takes a plain
 # Line-F (tests/fpu040_test.cpp); the oracle the unsupported-datatype trap.
@@ -64,7 +65,10 @@
 # predicate (MC68040UM-1993 §8.2.2, §9.7.1, Table 8-4), stacking the
 # branch's address; the oracle sets the PC (or falls through) and never
 # raises one.
-040 fpuraw/identity seed=962 #41
+# On Dirk Hoffmann's core (2026-11-24) none of these raises one either: the
+# plain lines below still fail for other reasons — 86 take a Line-F (predicate
+# $20-$3F, or reserved FDBcc extension bits), 8 differ on descriptor U bits
+# only. The vectors that now agree with the corpus are the @OPEN block below.
 040 fpuraw/identity seed=962 #93
 040 fpuraw/identity seed=962 #121
 040 fpuraw/identity seed=962 #164
@@ -72,7 +76,6 @@
 040 fpuraw/identity seed=962 #214
 040 fpuraw/identity seed=962 #228
 040 fpuraw/identity seed=962 #241
-040 fpuraw/identity seed=962 #257
 040 fpuraw/identity seed=962 #274
 040 fpuraw/identity seed=962 #285
 040 fpuraw/identity seed=962 #295
@@ -83,7 +86,6 @@
 040 fpuraw/identity seed=962 #398
 040 fpuraw/identity seed=962 #409
 040 fpuraw/identity seed=962 #437
-040 fpuraw/identity seed=962 #449
 040 fpuraw/identity seed=962 #512
 040 fpuraw/identity seed=962 #524
 040 fpuraw/identity seed=962 #552
@@ -93,14 +95,10 @@
 040 fpuraw/identity seed=962 #673
 040 fpuraw/identity seed=962 #677
 040 fpuraw/identity seed=962 #740
-040 fpuraw/identity seed=962 #773
 040 fpuraw/identity seed=962 #801
 040 fpuraw/identity seed=962 #824
-040 fpuraw/identity seed=962 #938
 040 fpuraw/identity seed=962 #1024
-040 fpuraw/identity seed=962 #1031
 040 fpuraw/identity seed=962 #1155
-040 fpuraw/identity seed=962 #1177
 040 fpuraw/identity seed=962 #1234
 040 fpuraw/identity seed=962 #1358
 040 fpuraw/identity seed=962 #1378
@@ -109,102 +107,116 @@
 040 fpuraw/identity seed=962 #1448
 040 fpuraw/off seed=961 #161
 040 fpuraw/off seed=961 #164
-040 fpuraw/off seed=961 #173
 040 fpuraw/off seed=961 #229
 040 fpuraw/off seed=961 #288
 040 fpuraw/off seed=961 #294
-040 fpuraw/off seed=961 #326
-040 fpuraw/off seed=961 #347
-040 fpuraw/off seed=961 #387
-040 fpuraw/off seed=961 #410
 040 fpuraw/off seed=961 #422
-040 fpuraw/off seed=961 #457
 040 fpuraw/off seed=961 #458
-040 fpuraw/off seed=961 #463
 040 fpuraw/off seed=961 #498
 040 fpuraw/off seed=961 #499
 040 fpuraw/off seed=961 #510
 040 fpuraw/off seed=961 #536
-040 fpuraw/off seed=961 #556
 040 fpuraw/off seed=961 #587
 040 fpuraw/off seed=961 #611
 040 fpuraw/off seed=961 #616
-040 fpuraw/off seed=961 #635
-040 fpuraw/off seed=961 #691
 040 fpuraw/off seed=961 #699
 040 fpuraw/off seed=961 #729
-040 fpuraw/off seed=961 #735
 040 fpuraw/off seed=961 #750
 040 fpuraw/off seed=961 #816
 040 fpuraw/off seed=961 #866
 040 fpuraw/off seed=961 #884
-040 fpuraw/off seed=961 #890
 040 fpuraw/off seed=961 #938
-040 fpuraw/off seed=961 #1001
 040 fpuraw/off seed=961 #1012
 040 fpuraw/off seed=961 #1043
 040 fpuraw/off seed=961 #1045
 040 fpuraw/off seed=961 #1105
-040 fpuraw/off seed=961 #1202
-040 fpuraw/off seed=961 #1254
-040 fpuraw/off seed=961 #1259
 040 fpuraw/off seed=961 #1296
 040 fpuraw/off seed=961 #1316
 040 fpuraw/off seed=961 #1344
 040 fpuraw/off seed=961 #1391
 040 fpuraw/off seed=961 #1439
-040 fpuraw/off seed=961 #1470
-040 fpuraw/off seed=961 #1499
-040 fpuraw/tt seed=963 #122
-040 fpuraw/tt seed=963 #141
-040 fpuraw/tt seed=963 #145
 040 fpuraw/tt seed=963 #153
 040 fpuraw/tt seed=963 #163
-040 fpuraw/tt seed=963 #200
-040 fpuraw/tt seed=963 #254
-040 fpuraw/tt seed=963 #355
 040 fpuraw/tt seed=963 #366
 040 fpuraw/tt seed=963 #384
 040 fpuraw/tt seed=963 #414
 040 fpuraw/tt seed=963 #428
-040 fpuraw/tt seed=963 #436
 040 fpuraw/tt seed=963 #455
 040 fpuraw/tt seed=963 #461
 040 fpuraw/tt seed=963 #571
-040 fpuraw/tt seed=963 #589
-040 fpuraw/tt seed=963 #616
 040 fpuraw/tt seed=963 #637
-040 fpuraw/tt seed=963 #654
 040 fpuraw/tt seed=963 #656
 040 fpuraw/tt seed=963 #671
 040 fpuraw/tt seed=963 #710
 040 fpuraw/tt seed=963 #738
 040 fpuraw/tt seed=963 #742
 040 fpuraw/tt seed=963 #787
-040 fpuraw/tt seed=963 #846
 040 fpuraw/tt seed=963 #892
 040 fpuraw/tt seed=963 #909
 040 fpuraw/tt seed=963 #916
-040 fpuraw/tt seed=963 #957
-040 fpuraw/tt seed=963 #991
-040 fpuraw/tt seed=963 #1026
-040 fpuraw/tt seed=963 #1030
-040 fpuraw/tt seed=963 #1065
-040 fpuraw/tt seed=963 #1073
-040 fpuraw/tt seed=963 #1084
 040 fpuraw/tt seed=963 #1103
-040 fpuraw/tt seed=963 #1147
-040 fpuraw/tt seed=963 #1164
-040 fpuraw/tt seed=963 #1165
 040 fpuraw/tt seed=963 #1202
 040 fpuraw/tt seed=963 #1218
 040 fpuraw/tt seed=963 #1287
 040 fpuraw/tt seed=963 #1291
-040 fpuraw/tt seed=963 #1325
 040 fpuraw/tt seed=963 #1367
 040 fpuraw/tt seed=963 #1412
 040 fpuraw/tt seed=963 #1465
 040 fpuraw/tt seed=963 #1497
+# D28, open defect of the core (TODO.md § Phase 1 › Défauts ouverts du cœur).
+# [B] MC68040UM-1993 §8.2.2 (PDF p. 221): "An address error exception occurs
+# when the processor attempts to prefetch an instruction from an odd address.
+# This includes the case of a conditional branch instruction with an odd
+# branch offset that is not taken." Dirk Hoffmann's FBcc/FDBcc (base
+# 863b8d02) raise none, taken (14 here) or not (33), as the corpus: these
+# vectors agree with it and are counted open.
+@OPEN D28 | 040 fpuraw/identity seed=962 #41
+@OPEN D28 | 040 fpuraw/identity seed=962 #257
+@OPEN D28 | 040 fpuraw/identity seed=962 #449
+@OPEN D28 | 040 fpuraw/identity seed=962 #773
+@OPEN D28 | 040 fpuraw/identity seed=962 #938
+@OPEN D28 | 040 fpuraw/identity seed=962 #1031
+@OPEN D28 | 040 fpuraw/identity seed=962 #1177
+@OPEN D28 | 040 fpuraw/off seed=961 #173
+@OPEN D28 | 040 fpuraw/off seed=961 #326
+@OPEN D28 | 040 fpuraw/off seed=961 #347
+@OPEN D28 | 040 fpuraw/off seed=961 #387
+@OPEN D28 | 040 fpuraw/off seed=961 #410
+@OPEN D28 | 040 fpuraw/off seed=961 #457
+@OPEN D28 | 040 fpuraw/off seed=961 #463
+@OPEN D28 | 040 fpuraw/off seed=961 #556
+@OPEN D28 | 040 fpuraw/off seed=961 #635
+@OPEN D28 | 040 fpuraw/off seed=961 #691
+@OPEN D28 | 040 fpuraw/off seed=961 #735
+@OPEN D28 | 040 fpuraw/off seed=961 #890
+@OPEN D28 | 040 fpuraw/off seed=961 #1001
+@OPEN D28 | 040 fpuraw/off seed=961 #1202
+@OPEN D28 | 040 fpuraw/off seed=961 #1254
+@OPEN D28 | 040 fpuraw/off seed=961 #1259
+@OPEN D28 | 040 fpuraw/off seed=961 #1470
+@OPEN D28 | 040 fpuraw/off seed=961 #1499
+@OPEN D28 | 040 fpuraw/tt seed=963 #122
+@OPEN D28 | 040 fpuraw/tt seed=963 #141
+@OPEN D28 | 040 fpuraw/tt seed=963 #145
+@OPEN D28 | 040 fpuraw/tt seed=963 #200
+@OPEN D28 | 040 fpuraw/tt seed=963 #254
+@OPEN D28 | 040 fpuraw/tt seed=963 #355
+@OPEN D28 | 040 fpuraw/tt seed=963 #436
+@OPEN D28 | 040 fpuraw/tt seed=963 #589
+@OPEN D28 | 040 fpuraw/tt seed=963 #616
+@OPEN D28 | 040 fpuraw/tt seed=963 #654
+@OPEN D28 | 040 fpuraw/tt seed=963 #846
+@OPEN D28 | 040 fpuraw/tt seed=963 #957
+@OPEN D28 | 040 fpuraw/tt seed=963 #991
+@OPEN D28 | 040 fpuraw/tt seed=963 #1026
+@OPEN D28 | 040 fpuraw/tt seed=963 #1030
+@OPEN D28 | 040 fpuraw/tt seed=963 #1065
+@OPEN D28 | 040 fpuraw/tt seed=963 #1073
+@OPEN D28 | 040 fpuraw/tt seed=963 #1084
+@OPEN D28 | 040 fpuraw/tt seed=963 #1147
+@OPEN D28 | 040 fpuraw/tt seed=963 #1164
+@OPEN D28 | 040 fpuraw/tt seed=963 #1165
+@OPEN D28 | 040 fpuraw/tt seed=963 #1325
 
 # D38 - --strict-ram only. An instruction ending on the last word of a page:
 # the fork reads the word after it (irc lookahead) and sets the next page's

@@ -146,6 +146,61 @@ class Group2On040(Group2Contract):
     runner = None
 
 
+class OpenContract(unittest.TestCase):
+    """`@OPEN <ruling> | <name>`: the core agrees with the corpus against a
+    ruling. Counted open, never agreement; it must keep agreeing."""
+    runner = None
+
+    @classmethod
+    def setUpClass(cls):
+        # The D12 fixture with its manual instruction address written in: a
+        # vector this core replays in full agreement.
+        fixture = Path(__file__).with_name('cpu_vectors') / Group2Contract.fixture
+        row = json.loads(fixture.read_text())[0]
+        frame = row['final']['a7'] & 0xFFFFFF
+        ram = dict(row['final']['ram'])
+        for i in range(4):
+            ram[frame + 8 + i] = (Group2Contract.instruction >> (24 - 8 * i)) & 0xFF
+        row['final']['ram'] = sorted(ram.items())
+        cls.original, cls.name = row, row['name']
+        cls.rule = f'@OPEN D99 | {cls.name}\n'
+
+    replay = FrameContract.replay
+
+    def test_open_vector_counts_apart(self):
+        code, out = self.replay()
+        self.assertEqual(code, 0, out)
+        self.assertIn('0 known divergence(s), 1 open', out)
+        self.assertIn('0/1', out)
+
+    def test_open_vector_that_stops_agreeing_fails(self):
+        row = copy.deepcopy(self.original)
+        row['final']['d7'] ^= 1
+        code, out = self.replay(row)
+        self.assertEqual(code, 1, out)
+        self.assertIn('listed @OPEN', out)
+        self.assertIn('D? got', out)
+
+    def test_missing_open_vector_fails(self):
+        code, out = self.replay(rule='@OPEN D99 | missing-vector\n')
+        self.assertEqual(code, 1, out)
+        self.assertIn('absent from the corpus', out)
+
+    def test_invalid_open_rules_fail_closed(self):
+        for rule in (f'@OPEN | {self.name}\n', f'@OPEN X99 | {self.name}\n',
+                     f'@OPEN D99 {self.name}\n', '@OPEN D99 |\n',
+                     self.rule + self.rule, self.rule + self.name + '\n',
+                     self.name + '\n' + self.rule):
+            with self.subTest(rule=rule):
+                code, out = self.replay(rule=rule)
+                self.assertEqual(code, 2, out)
+                self.assertIn('cannot load --known', out)
+
+
+class OpenOn040(OpenContract):
+    runner = None
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--runner', required=True)
@@ -153,6 +208,9 @@ if __name__ == '__main__':
     parser.add_argument('--runner040', required=True)
     args, remaining = parser.parse_known_args()
     FrameContract.runner = args.runner
-    Group2On040.runner = args.runner040
     FrameContract.emulator = [part for part in args.emulator.split(';') if part]
+    Group2On040.runner = args.runner040
+    OpenContract.runner = args.runner
+    OpenOn040.runner = args.runner040
+    OpenContract.emulator = FrameContract.emulator
     unittest.main(argv=[sys.argv[0]] + remaining)
