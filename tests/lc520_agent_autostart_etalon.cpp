@@ -21,7 +21,6 @@
 #include "FinderSignature.h"
 #include "HfsBlankVolume.h"
 #include "HfsInject.h"
-#include "Mmu030Peek.h"
 #include "PortableEnv.h"
 #include "SonoraCpu.h"
 #include "SonoraMemory.h"
@@ -146,8 +145,7 @@ int main(int argc, char** argv) {
     };
     auto peekLogical = [&](uint32_t a) {
         uint32_t phys = 0;
-        if (!mmu030peek::translate(cpu.getTC(), cpu.getCRP(), cpu.getSRP(), a, 5,
-                                   [&](uint32_t x) { return mem.peek8(x); }, &phys))
+        if (!cpu.debugTranslate(a, true, phys))
             return -1;
         return int(mem.peek8(phys));
     };

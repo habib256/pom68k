@@ -3,11 +3,10 @@
 // written on Dirk W. Hoffmann's Moira (MIT).
 //
 // ── 68030 table search over caller-supplied descriptor I/O ──
-// Dirk's MMU030 (extern/moira) walks through the live CPU bus (moira.read32,
-// U/M history writes). Inspection (debugger, low-memory globals on the
-// IIsi/IIci) needs the same search over side-effect-free physical peeks, so
-// POM68K keeps this algorithm on top of the core instead of in it.
+// An independent reading of the 68030 table search, kept as a reference:
 // moira_rules_test holds it against Dirk's PTEST on the same tables.
+// Inspection no longer uses it: it asks Dirk's MMU030::peek()
+// (MoiraDebugSeam::debugTranslate).
 #pragma once
 #include <cstdint>
 

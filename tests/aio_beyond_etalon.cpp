@@ -11,14 +11,13 @@
 // gates' blue-channel ratio (the System 7.5 desktop weave reads near-solid
 // black in blue). Rig and thresholds are lc520_boot_etalon's; scenario
 // engine is the shared tests/BeyondBoot.h (POM68K_BEYOND=soak|persist).
-// The Time read goes through the Mmu030Peek walk, universally right on any
-// 030. Soft-skips without the 1 MB EDE66CBD ROM + a bootable hdv/ image.
+// The Time read goes through the PMMU translation (debugTranslate),
+// universally right on any 030. Soft-skips without the 1 MB EDE66CBD ROM + a bootable hdv/ image.
 
 #include "AssetFingerprint.h"
 #include "InfiniteHdCompanion.h"
 #include "BeyondBoot.h"
 #include "FinderSignature.h"
-#include "Mmu030Peek.h"
 #include "SonoraCpu.h"
 #include "SonoraMemory.h"
 #include "SonoraVideo.h"
@@ -197,10 +196,7 @@ int main() {
         uint32_t v = 0;
         for (int i = 0; i < 4; i++) {
             uint32_t phys = 0;
-            if (!mmu030peek::translate(cpu.getTC(), cpu.getCRP(), cpu.getSRP(),
-                                       0x20C + uint32_t(i), 5,
-                                       [&](uint32_t a) { return mem.peek8(a); },
-                                       &phys))
+            if (!cpu.debugTranslate(0x20C + uint32_t(i), true, phys))
                 return false;
             v = v << 8 | mem.peek8(phys);
         }
@@ -224,10 +220,7 @@ int main() {
     // universally right one on a 030 (identity while the PMMU is off).
     auto peekLogical = [&](uint32_t a) {
         uint32_t phys = 0;
-        if (!mmu030peek::translate(cpu.getTC(), cpu.getCRP(), cpu.getSRP(),
-                                   a, 5,
-                                   [&](uint32_t x) { return mem.peek8(x); },
-                                   &phys))
+        if (!cpu.debugTranslate(a, true, phys))
             return -1;
         return int(mem.peek8(phys));
     };

@@ -26,7 +26,7 @@
 // PER MACHINE is exactly what really differs: the rig
 // and its assets, the boot loop, the Finder signature (each boot etalon's
 // own thresholds), the Time read (physical peek where low memory is
-// physical, the Mmu030Peek walk on RAM-based-video machines), and the
+// physical, the PMMU translation `debugTranslate` on RAM-based-video machines), and the
 // reboot procedure. Ordinary keys use the 150-frame hold everywhere — it
 // outlasts a Slow Keys acceptance delay and a normal keyboard accepts it
 // just the same (the ten-month-red-gate lesson, `pom68k-81-image-slow-keys`).

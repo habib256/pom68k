@@ -368,8 +368,8 @@ endforeach()
 # Beyond-boot on the FOURTH machine, and the first RAM-based-video one:
 # the IIsi. Blocked until 2026-08-13 on the logical-address read of the
 # Time global (peek8 is physical and low physical RAM is the framebuffer
-# there) — src/Mmu030Peek.h is that read, a side-effect-free walk of
-# the live page tables.
+# there) — MoiraDebugSeam::debugTranslate (Dirk's MMU030::peek()) is
+# that read, a side-effect-free translation through the live page tables.
 add_executable(rbv_beyond_etalon tests/rbv_beyond_etalon.cpp)
 target_link_libraries(rbv_beyond_etalon PRIVATE pom68k_core)
 foreach(scenario soak persist)

@@ -1,6 +1,5 @@
 // POM68K — prove the MSC II's running guest, input and state restoration.
 #pragma once
-#include "Mmu030Peek.h"
 #include "MscCpu.h"
 #include "PixelPin.h"
 #include "SaveStateMachines.h"
@@ -20,17 +19,7 @@ inline bool check(MscMemory& mem, MscCpu& cpu, pom68k::SnapMachine profile,
         value = 0;
         for (unsigned i = 0; i < bytes; i++) {
             uint32_t physical = 0;
-            const auto peek = [&](uint32_t a) { return mem.peek8(a); };
-            bool mapped = false;
-            if (mem.is040()) {
-                const auto p = cpu.debugTranslate(address + i, true);
-                mapped = p.has_value();
-                if (mapped) physical = *p;
-            } else {
-                mapped = mmu030peek::translate(cpu.getTC(), cpu.getCRP(), cpu.getSRP(),
-                                               address + i, 5, peek, &physical);
-            }
-            if (!mapped) return false;
+            if (!cpu.debugTranslate(address + i, true, physical)) return false;
             value = value << 8 | mem.peek8(physical);
         }
         return true;

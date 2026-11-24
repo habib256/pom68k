@@ -4,8 +4,8 @@
 // Gate for the debugger's inspection contract (src/DebugCpuTarget.h):
 //
 //   - a LOGICAL address is translated without disturbing the MMU — through
-//     a 68030 PMMU table tree (Mmu030Peek.h) and a 68040 one (Dirk's
-//     MMU040::peek, through MoiraDebugSeam::debugTranslate),
+//     a 68030 PMMU table tree and a 68040 one (Dirk's MMU030/MMU040
+//     peek(), through MoiraDebugSeam::debugTranslate),
 //     with the descriptors' U/M bits left exactly as they were;
 //   - an untranslated address is reported, not guessed;
 //   - device registers are never read: inspecting the compact Mac's VIA,
@@ -144,24 +144,42 @@ void checkMappedPage(const char* fam, Target& t, const uint8_t* tables,
     check(std::memcmp(before.data(), tables, tableBytes) == 0, what);
 }
 
+// A bare 68030 over a 64 KB array: the debugger's translation is Dirk's
+// MMU030::peek(), reached through MoiraDebugSeam::debugTranslate().
+class PeekCpu030 : public MoiraDebugSeam {
+public:
+    explicit PeekCpu030(std::array<uint8_t, 0x10000>& mem) : mem_(mem) {
+        setModel(moira::CPUModel::M68030);
+    }
+    mutable bool outside = false, wrote = false;
+private:
+    moira::u8 read8(moira::u32 a) const override {
+        if (a >= mem_.size()) { outside = true; return 0; }
+        return mem_[a];
+    }
+    moira::u16 read16(moira::u32 a) const override {
+        return moira::u16(read8(a) << 8 | read8(a + 1));
+    }
+    void write8(moira::u32, moira::u8) const override { wrote = true; }
+    void write16(moira::u32, moira::u16) const override { wrote = true; }
+    std::array<uint8_t, 0x10000>& mem_;
+};
+
 void peekGeometry030() {
     // [B] MC68030UM-1989 §§9.5.3,9.5.5.1,9.7.1: mapping rules
-    // also hold for inspection, even when protection is deliberately ignored.
+    // also hold for inspection.
     std::array<uint8_t, 0x10000> mem{};
-    bool outside = false;
-    auto peek = [&](uint32_t a) -> uint8_t {
-        if (a >= mem.size()) { outside = true; return 0; }
-        return mem[a];
-    };
     auto put = [&](uint32_t a, uint32_t v) { put32(mem.data() + a, v); };
     auto probe = [&](uint32_t tc, uint64_t root, uint32_t logical,
                      bool valid, uint32_t expected, const char* what) {
         const auto before = mem;
-        outside = false;
+        PeekCpu030 cpu(mem);
+        cpu.setCRP(root); cpu.setSRP(root); cpu.setTC(tc);
         uint32_t physical = 0xDEADBEEF;
-        const bool ok = mmu030peek::translate(tc, root, root, logical, 5, peek, &physical);
-        check(ok == valid && (!ok || physical == expected) && !outside, what);
-        check(mem == before, "68030 inspection: descriptors remain byte-identical");
+        const bool ok = cpu.debugTranslate(logical, true, physical);
+        check(ok == valid && (!ok || physical == expected) && !cpu.outside, what);
+        check(mem == before && !cpu.wrote,
+              "68030 inspection: descriptors remain byte-identical");
     };
     for (bool fcl : {false, true}) for (bool lower : {false, true})
     for (int delta : {-1, 0, 1}) {
@@ -206,8 +224,9 @@ void peekGeometry030() {
         const uint32_t pointer = targetStride == 8 ? 3 : 2;
         put(0x5000 + 2 * stride, stride == 8 ? pointer : target | pointer);
         if (stride == 8) put(0x5004 + 2 * stride, target);
-        // WP/S must not hide a mapping from the debugger. Non-page indirect
-        // targets are invalid, rather than another recursively followed table.
+        // WP/S do not hide a mapping from a supervisor read. Non-page
+        // indirect targets are invalid, rather than another recursively
+        // followed table.
         put(target, (targetStride == 8 ? 0x104 : 0x30004) | uint32_t(kind));
         if (targetStride == 8) put(target + 4, 0x30000);
         probe(0x80C86600, (uint64_t(flags) << 32) | 0x4000,

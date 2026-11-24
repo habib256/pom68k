@@ -1641,8 +1641,9 @@ knows instead of guessing (`docs/SCSI_HOTPLUG.md`):
   non-null links, HFS/MFS signature) and a queue that fails them yields
   `valid = false` — shown as « guest: unknown », never as « no drive ».
   `MachineHost::sampleGuestScsiView` runs it on the machine thread every
-  15th publish; addresses are logical, walked through `Mmu030Peek.h`
-  (moved from `tests/`) when a 68030's TC.E is set, physical otherwise —
+  15th publish; addresses are logical, translated by Dirk's
+  `MMU030::peek()` (`MoiraDebugSeam::debugTranslate`) when a 68030's TC.E
+  is set, physical otherwise —
   the 68040 boards identity-map their low memory and heap, as the etalons
   already relied on. Gate: `guest_scsi_view_test` (synthetic image).
 - **`Cmd::AttachDisk`** (`MachineHost::requestAttachDisk`) opens the image
@@ -3108,8 +3109,8 @@ Rules the adapter (`CpuTarget<Cpu, Mem>`) keeps:
   would drop the overlay, and unmapped space are `NotMemory`, never read.
 - **Logical vs physical is explicit.** Logical is translated without
   touching MMU state: 24 address lines on 68000/EC020, identity on the
-  68020, TT0/TT1 then the tables on the 68030 (`Mmu030Peek.h`), Dirk's
-  `MMU040::peek()` on the 68040 (DTT0/DTT1, the ATC, then the tables;
+  68020, Dirk's `MMU030::peek()` and `MMU040::peek()` on the 68030 and
+  68040 (the TT registers, the ATC, then the tables;
   `MoiraDebugSeam::debugTranslate`). An invalid descriptor is
   `Untranslated`. The board's own remaps belong to physical.
 - **Breakpoints are logical PCs in Moira's own list.** With any stop armed
@@ -3197,11 +3198,12 @@ Rules the adapter (`CpuTarget<Cpu, Mem>`) keeps:
   PMOVE/MOVEC with flush: `MoiraDebugSeam::debugMapChanged` empties both
   ATCs, moves the JIT's map generation and drops the 68030's carried pipe,
   and the engine drops its blocks. A model without the register refuses
-  it; so does an armed architectural 68040 data cache. The 68030's 64-bit
+  it. The 68030's 64-bit
   root pointers travel in `Command::value`.
-- **The 030 peek walk honours descriptor limits.** `Mmu030Peek.h` used to
-  ignore the L/U/LIMIT field of long descriptors (the root pointer, 8-byte
-  table entries) and so answered translations the CPU faults on;
+- **The 030 translation honours descriptor limits.** The debugger asks
+  Dirk's `MMU030::peek()`, which applies the L/U/LIMIT field of long
+  descriptors (the root pointer, 8-byte table entries); an earlier POM68K
+  walk ignored it and answered translations the CPU faults on.
   `debug_inspection_test` pins the refusal.
 
 - **Devices are read from their members, by kind.** Every device class

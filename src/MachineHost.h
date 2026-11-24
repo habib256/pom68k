@@ -49,7 +49,6 @@
 #include "GuestScrap.h"
 #include "GuestScsiView.h"
 #include "InputJournal.h"
-#include "Mmu030Peek.h"
 #include "SaveStateSlot.h"
 #include "TextTyping.h"
 #include "ScsiAgentMailbox.h"
@@ -896,22 +895,20 @@ protected:
     }
 
     // One logical byte of guest memory, side-effect-free. Machines whose
-    // System runs behind the 68030 PMMU (RBV, Duo, IIsi) are walked through
-    // Mmu030Peek.h; on the 68040 boards the System's low memory and heap
-    // are identity-mapped and the etalons read them physically, so the
-    // 040 tables are not walked. Anything else is physical.
+    // System runs behind the 68030 PMMU (RBV, Duo, IIsi) are translated by
+    // Dirk's MMU030::peek() (MoiraDebugSeam::debugTranslate); on the 68040
+    // boards the System's low memory and heap are identity-mapped and the
+    // etalons read them physically, so the 040 tables are not walked.
+    // Anything else is physical.
     bool guestPeek8(uint32_t va, uint8_t& out) {
         if constexpr (!requires { mem.peek8(uint32_t(0)); }) {
             (void)va; (void)out;
             return false;
         } else {
             uint32_t phys = va;
-            if constexpr (requires { cpu.getTC(); cpu.getCRP(); cpu.getSRP(); }) {
+            if constexpr (requires { cpu.getTC(); cpu.debugTranslate(va, true, phys); }) {
                 const uint32_t tc = uint32_t(cpu.getTC());
-                if ((tc & 0x80000000u) &&
-                    !mmu030peek::translate(
-                        tc, cpu.getCRP(), cpu.getSRP(), va, 5,
-                        [&](uint32_t a) { return mem.peek8(a); }, &phys))
+                if ((tc & 0x80000000u) && !cpu.debugTranslate(va, true, phys))
                     return false;
             }
             out = mem.peek8(phys);

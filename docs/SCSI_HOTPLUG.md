@@ -107,7 +107,7 @@ with a truthful bus view.
 | Piece | Where | Gate |
 |---|---|---|
 | Queue walk: DrvQHdr → refNum −(33+ID) → bay; VCBQHdr → mounted name | `src/GuestScsiView.h` | `guest_scsi_view_test` (synthetic image, asset-none) |
-| Sampling on the machine thread, ~4 Hz, logical addresses through `Mmu030Peek.h` on the 030 boards | `MachineHost::sampleGuestScsiView` | — |
+| Sampling on the machine thread, ~4 Hz, logical addresses through Dirk's `MMU030::peek()` (`debugTranslate`) on the 030 boards | `MachineHost::sampleGuestScsiView` | — |
 | `Cmd::AttachDisk` — a fixed disk joins the bus between two quanta; outcome as text | `MachineHost::requestAttachDisk`, `bayMessage` | `scsi_hotplug_etalon` |
 | Window: « guest: mounted 'X' / drive installed, no volume mounted / no drive / unknown » under SCSI 0 and every fixed bay; an empty bay's pick and « Create » attach live | `src/DiskBays.cpp`, `bindScsiBays` (`GuiFloppyBays.h`) | — (the GUI has no gate) |
 
@@ -117,8 +117,9 @@ SCSI 2 answers the bus but gets no driver and no volume for 15 s of guest
 time; a power cycle mounts it as « Branche ». That is exactly the sentence
 the window prints, and the reason step 3 exists.
 
-`Mmu030Peek.h` moved from `tests/` to `src/` for the sampler; the walk is
-unchanged. On the 68040 boards the sampler reads physically, the way the
+The sampler translates through Dirk's `MMU030::peek()`
+(`MoiraDebugSeam::debugTranslate`, 2026-11-25; it replaced POM68K's
+`Mmu030Peek.h` walk). On the 68040 boards the sampler reads physically, the way the
 etalons do.
 
 ## 6. Step 3 as built (2026-09-14): `dev/scsiagent`, « POM68K Disques »

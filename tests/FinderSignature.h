@@ -67,7 +67,7 @@ namespace findersig {
 // `read8` returns the byte at a guest address, or a NEGATIVE value when it
 // cannot be read. That is not defensive padding: the machines that run
 // their System behind the PMMU need a page-table walk for a logical address
-// (`Mmu030Peek.h`) and a walk can fail. A failed read is "no name", never
+// (Dirk's `MMU030::peek()`, `debugTranslate`) and it can fail. A failed read is "no name", never
 // a garbage one.
 template <class Read8>
 inline std::string curApNameAt(Read8 read8) {

@@ -103,7 +103,7 @@ const std::vector<Entry>& catalogue() {
      .whyNot = "Architectural model; the JIT refuses the big soft TLB a "
                "classic 68k JIT uses.",
      .files = "extern/moira/Moira/MoiraExecMMU_cpp.h "
-              "extern/moira/Moira/MMU/MMU030.cpp src/Mmu030Walk.h",
+              "extern/moira/Moira/MMU/MMU030.cpp",
      .platforms = kNoCompact68000, .docSection = "1.11"},
     {.id = "cpu-fpu", .group = "CPU", .subsystem = "68881 / 68882 / 68040 FPU",
      .level = Level::PureLle,

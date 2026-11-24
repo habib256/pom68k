@@ -86,6 +86,11 @@ public:
         dasmFetch_ = fetch;
         return phys;
     }
+    bool debugTranslate(moira::u32 laddr, bool super, moira::u32& phys) const {
+        const auto p = debugTranslate(laddr, super);
+        if (p) phys = *p;
+        return p.has_value();
+    }
 
     // ── Debugger edits, at an instruction boundary (DebugCpuTarget.h) ──
     // A new PC with the two words a boundary holds in the prefetch queue:

@@ -1,7 +1,6 @@
 // Jaws qualification: running System, real PMU input and public session replay.
 #pragma once
 #include "Pb030Cpu.h"
-#include "Mmu030Peek.h"
 #include "PixelPin.h"
 #include "SaveStateMachines.h"
 #include "AgentBootProbe.h"
@@ -14,8 +13,7 @@ inline bool check(Pb030Memory& mem,Pb030Cpu& cpu,pom68k::SnapMachine profile) {
         value=0;
         for(unsigned i=0;i<n;++i) {
             uint32_t physical=0;
-            if(!mmu030peek::translate(cpu.getTC(),cpu.getCRP(),cpu.getSRP(),a+i,5,
-                [&](uint32_t p){return mem.peek8(p);},&physical)) return false;
+            if(!cpu.debugTranslate(a+i, true, physical)) return false;
             value=(value<<8)|mem.peek8(physical);
         }
         return true;

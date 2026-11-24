@@ -9,8 +9,7 @@ inline bool check(Pb030Memory& mem,Pb030Cpu& cpu,const pom68k::MachineProfile& p
     auto run=[&](int n){for(int f=0;f<n;++f) cpu.runCycles(mem.cpuHz()/60);};
     auto logical=[&](uint32_t a,unsigned n){uint32_t value=0;
         for(unsigned i=0;i<n;++i) {uint32_t physical=0;
-            if(!mmu030peek::translate(cpu.getTC(),cpu.getCRP(),cpu.getSRP(),a+i,5,
-                [&](uint32_t p){return mem.peek8(p);},&physical)) return uint32_t(0xffffffff);
+            if(!cpu.debugTranslate(a+i, true, physical)) return uint32_t(0xffffffff);
             value=(value<<8)|mem.peek8(physical);
         }return value;
     };

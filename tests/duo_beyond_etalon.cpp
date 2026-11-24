@@ -3,7 +3,7 @@
 //
 // Beyond-boot on the PowerBook Duo 230 (MSC + PG&E, 68030 @ 33 MHz, LCD
 // 640×400) — shared-engine gate (BeyondBoot.h). Rig, boot loop and Finder
-// signature from duo230_boot_etalon; Time through the Mmu030Peek walk.
+// signature from duo230_boot_etalon; Time through the PMMU translation.
 // Input is the PG&E's own hardware, both halves (DUO_BRINGUP milestone 4):
 // the matrix scanner for the keyboard, and since 2026-08-14 the trackball
 // quadrature counters for the pointer — which the persist leg steers into
@@ -18,7 +18,6 @@
 #include "AssetFingerprint.h"
 #include "BeyondBoot.h"
 #include "FinderSignature.h"
-#include "Mmu030Peek.h"
 #include "MscCpu.h"
 #include "MscMemory.h"
 
@@ -262,17 +261,14 @@ int main() {
     };
     // A LOGICAL read of a low-memory global: the Duo runs its System behind
     // the PMMU like the RBV machines, so `peek8` (physical, and exactly
-    // right for descriptor addresses) has to be walked to it — Mmu030Peek.h.
+    // right for descriptor addresses) has to be translated — debugTranslate().
     // Safe at any point of the boot: with TC.E clear the walk is the
     // identity, so this reads the right byte before the tables exist too.
     auto peekLog = [&](uint32_t va, int n, uint32_t* out) {
         uint32_t v = 0;
         for (int i = 0; i < n; i++) {
             uint32_t phys = 0;
-            if (!mmu030peek::translate(cpu.getTC(), cpu.getCRP(), cpu.getSRP(),
-                                       va + uint32_t(i), 5,
-                                       [&](uint32_t a) { return mem.peek8(a); },
-                                       &phys))
+            if (!cpu.debugTranslate(va + uint32_t(i), true, phys))
                 return false;
             v = v << 8 | mem.peek8(phys);
         }

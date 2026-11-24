@@ -8,9 +8,9 @@
 // physical low RAM is the framebuffer here while the ROM's PMMU relocates
 // the System's logical low memory: `peek8(0x20C)` reads desktop pixels, not
 // the Time global. The missing piece was a LOGICAL-address read, and it now
-// exists — `tests/Mmu030Peek.h`, a side-effect-free walk of the live page
-// tables through `peek8` (which is exactly right for descriptor addresses:
-// those are physical). `TODO.md` § 2 named this prerequisite; this gate
+// exists — `debugTranslate()`, Dirk's side-effect-free MMU030::peek(),
+// which reads descriptors through `peek8` (exactly right for descriptor
+// addresses: those are physical). `TODO.md` § 2 named this prerequisite; this gate
 // discharges it.
 //
 //   soak    — after the Finder, idle ~3 emulated minutes: the Time global
@@ -32,7 +32,6 @@
 #include "BeyondBoot.h"
 #include "FinderSignature.h"
 #include "FolderProbe.h"
-#include "Mmu030Peek.h"
 #include "RbvCpu.h"
 #include "RbvMemory.h"
 #include "RbvVideo.h"
@@ -79,9 +78,7 @@ void runFrames(long n) {
 // -1 when the walk fails — the caller decides what that means.
 int peekLogical(uint32_t laddr) {
     uint32_t phys = 0;
-    const bool ok = mmu030peek::translate(
-        gCpu->getTC(), gCpu->getCRP(), gCpu->getSRP(), laddr, /*fc=*/5,
-        [](uint32_t a) { return gMem->peek8(a); }, &phys);
+    const bool ok = gCpu->debugTranslate(laddr, true, phys);
     return ok ? int(gMem->peek8(phys)) : -1;
 }
 

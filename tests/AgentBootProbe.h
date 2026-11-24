@@ -22,7 +22,6 @@
 #include "HfsBlankVolume.h"
 #include "HfsInject.h"
 #include "AtaDiskIo.h"
-#include "Mmu030Peek.h"
 #include "PortableEnv.h"
 #include "ScsiAgentMailbox.h"
 
@@ -102,8 +101,7 @@ std::string frontApplication(M& mem, C& cpu) {
     if constexpr (requires { cpu.getTC(); cpu.getCRP(); cpu.getSRP(); }) {
         auto peek = [&](uint32_t a) {
             uint32_t phys = 0;
-            if (!mmu030peek::translate(cpu.getTC(), cpu.getCRP(), cpu.getSRP(), a, 5,
-                                       [&](uint32_t x) { return mem.peek8(x); }, &phys))
+            if (!cpu.debugTranslate(a, true, phys))
                 return -1;
             return int(mem.peek8(phys));
         };

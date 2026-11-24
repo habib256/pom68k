@@ -6,14 +6,13 @@
 // gate (BeyondBoot.h). Rig, early-exit boot and signature from
 // iifx_boot_etalon (the recorded reference reaches the Finder around
 // f=539); keys travel through the IOP firmware ↔ AdbLine; Time through the
-// Mmu030Peek walk. POM68K_BEYOND=soak|persist. Soft-skips without the IIfx
+// PMMU translation (debugTranslate). POM68K_BEYOND=soak|persist. Soft-skips without the IIfx
 // ROM, the real Toby declaration ROM 342-0008-a and a bootable image.
 
 #include "AssetFingerprint.h"
 #include "BeyondBoot.h"
 #include "IIfxCpu.h"
 #include "IIfxMemory.h"
-#include "Mmu030Peek.h"
 #include "TobyVideo.h"
 
 #include <cstdint>
@@ -133,10 +132,7 @@ int main() {
         uint32_t v = 0;
         for (int i = 0; i < 4; i++) {
             uint32_t phys = 0;
-            if (!mmu030peek::translate(cpu.getTC(), cpu.getCRP(), cpu.getSRP(),
-                                       0x20C + uint32_t(i), 5,
-                                       [&](uint32_t a) { return mem.peek8(a); },
-                                       &phys))
+            if (!cpu.debugTranslate(0x20C + uint32_t(i), true, phys))
                 return false;
             v = v << 8 | mem.peek8(phys);
         }

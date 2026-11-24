@@ -31,7 +31,7 @@
 //
 // Addresses are LOGICAL. The caller's `peek8` must translate: on a machine
 // whose System runs behind the PMMU (RBV, Duo, IIsi) physical low memory is
-// the framebuffer — the trap Mmu030Peek.h exists for. MachineHost supplies
+// the framebuffer — the trap Dirk's MMU030::peek() (debugTranslate) avoids. MachineHost supplies
 // that translation per CPU family; the tests hand a flat image.
 
 #pragma once

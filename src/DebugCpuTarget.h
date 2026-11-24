@@ -13,11 +13,9 @@
 // Logical addresses are translated without touching MMU state:
 //   - 68000/68010/EC020: 24 address lines, identity otherwise;
 //   - 68020 (no 68851 on these boards): identity;
-//   - 68030: TT0/TT1, then the PMMU tables (Mmu030Peek.h); descriptors
-//     are fetched by the same span rule;
-//   - 68040/LC040: Dirk's MMU040::peek() (MoiraDebugSeam::debugTranslate):
-//     DTT0/DTT1, the ATC, then the tables, descriptors read with the
-//     wrapper's side-effect-free peek8().
+//   - 68030, 68040/LC040: Dirk's MMU030/MMU040 peek()
+//     (MoiraDebugSeam::debugTranslate): the TT registers, the ATC, then the
+//     tables, descriptors read with the wrapper's side-effect-free peek8().
 //
 // Edits follow the same rule in the other direction: a byte is written only
 // through `dataSpan(phys, len, true)` — RAM or framebuffer — and only if
@@ -31,7 +29,6 @@
 
 #pragma once
 #include "DebugSession.h"
-#include "Mmu030Peek.h"
 #include "MoiraDebugSeam.h"
 
 #include <algorithm>
@@ -480,30 +477,10 @@ private:
         out = *p;
         return true;
     }
-    std::uint8_t peekDescriptor(std::uint32_t phys) {
-        std::uint8_t b = 0;
-        return readPhys(phys, b) ? b : 0;   // I/O reads as an invalid table
-    }
 
     bool translate(std::uint32_t laddr, std::uint32_t& phys) {
-        const bool super = (cpu_.getSR() & 0x2000) != 0;
-        auto peek = [this](std::uint32_t a) { return peekDescriptor(a); };
-        if (isMmu030()) {
-            const int fc = super ? 5 : 1;               // data space
-            if (mmu030peek::transparentRead(cpu_.getTT0(), laddr, fc) ||
-                mmu030peek::transparentRead(cpu_.getTT1(), laddr, fc)) {
-                phys = laddr;
-                return true;
-            }
-            return mmu030peek::translate(cpu_.getTC(), cpu_.getCRP(),
-                                         cpu_.getSRP(), laddr, fc, peek,
-                                         &phys);
-        }
-        if (isMmu040()) {
-            const auto p = cpu_.debugTranslate(laddr, super);
-            if (p) phys = *p;
-            return p.has_value();
-        }
+        if (isMmu030() || isMmu040())
+            return cpu_.debugTranslate(laddr, (cpu_.getSR() & 0x2000) != 0, phys);
         phys = laddr;
         return true;
     }

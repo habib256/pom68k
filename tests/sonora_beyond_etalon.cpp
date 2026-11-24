@@ -4,8 +4,8 @@
 // Beyond-boot on the LC III (Sonora + Egret 341S0851 + 68030 @ 25 MHz) —
 // the fifth machine, and the first on the shared engine (BeyondBoot.h).
 // Rig, boot loop and Finder signature are lc3_boot_etalon's; the Time read
-// goes through the Mmu030Peek walk, which reduces to a physical read while
-// the PMMU is off and walks the live tables when it is on — the universally
+// goes through the PMMU translation (debugTranslate), which reduces to a
+// physical read while the PMMU is off and translates when it is on — the universally
 // right read on any 030. POM68K_BEYOND=soak|persist, one CTest entry each.
 // Soft-skips without the LC III ROM + a bootable hdv/ image.
 
@@ -13,7 +13,6 @@
 #include "InfiniteHdCompanion.h"
 #include "BeyondBoot.h"
 #include "FinderSignature.h"
-#include "Mmu030Peek.h"
 #include "SonoraCpu.h"
 #include "SonoraMemory.h"
 #include "SonoraVideo.h"
@@ -189,10 +188,7 @@ int main() {
         uint32_t v = 0;
         for (int i = 0; i < 4; i++) {
             uint32_t phys = 0;
-            if (!mmu030peek::translate(cpu.getTC(), cpu.getCRP(), cpu.getSRP(),
-                                       0x20C + uint32_t(i), 5,
-                                       [&](uint32_t a) { return mem.peek8(a); },
-                                       &phys))
+            if (!cpu.debugTranslate(0x20C + uint32_t(i), true, phys))
                 return false;
             v = v << 8 | mem.peek8(phys);
         }
@@ -209,10 +205,7 @@ int main() {
     // frontmost. The walk, not peek8: this System lives behind the PMMU.
     auto walk8 = [&](uint32_t a) -> int {
         uint32_t phys = 0;
-        if (!mmu030peek::translate(cpu.getTC(), cpu.getCRP(), cpu.getSRP(),
-                                   a, 5,
-                                   [&](uint32_t x) { return mem.peek8(x); },
-                                   &phys))
+        if (!cpu.debugTranslate(a, true, phys))
             return -1;
         return int(mem.peek8(phys));
     };
