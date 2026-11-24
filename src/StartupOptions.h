@@ -130,8 +130,6 @@ concept IntegerStartupOption =
       StartupDomain::Core | StartupDomain::Machine, startup_policy::HexInteger)\
     X(CacheBoost, "POM68K_CACHE_BOOST", StartupDomain::Core,               \
       startup_policy::autoBounded(1, 64))                                    \
-    X(ICacheMiss, "POM68K_ICACHE_MISS", StartupDomain::Core,               \
-      startup_policy::autoBounded(0, 64))                                    \
     X(FloppyBoostGate, "POM68K_FLOPPY_BOOST_GATE", StartupDomain::Core,    \
       startup_policy::NumericBoolean)                                        \
     X(Jit030CacrFlush, "POM68K_JIT_030_CACR_FLUSH", StartupDomain::Core,   \

@@ -21,7 +21,6 @@ enum class Q605FpuMode { Integrated, Soft68882, None };
 
 struct CoreCpuConfig {
     std::optional<int> cacheBoost;
-    std::optional<int> icacheMiss;
     std::optional<bool> floppyBoostGate;
     std::optional<bool> cacr030Flush;
     bool macIiEventDriven = false;

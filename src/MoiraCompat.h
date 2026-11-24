@@ -18,10 +18,9 @@
 //   - Host bus errors: the fork's extBusError*() entry points, all
 //     [[noreturn]], throw moira::BusError with the address of the last bus
 //     access; his core completes the frame.
-//   - The JIT seam (pomJit*), the fork's 020/030 i-cache timing overlay
-//     (pomIcache) and its 68040 cache-model switches: INERT here. This build
-//     has no JIT (POM68K_JIT=OFF) and his core runs its own caches. The
-//     overlay's timing is therefore absent: machine fingerprints move.
+//   - The JIT seam (pomJit*) and the fork's 68040 cache-model switches:
+//     INERT here. This build has no JIT (POM68K_JIT=OFF) and his core runs
+//     its own 020/030 caches.
 //   - pomVisitState: the save-state payload, rewritten for his state.
 
 #pragma once
@@ -196,16 +195,6 @@ public:
     mutable moira::u32 pomBusAddr = 0;
 
     // ── Inert fork hooks (see the header comment) ───────────────────────
-    struct PomIcache {
-        bool armed = false;
-        int missPenalty = 0;
-        moira::u32 tag[16] = {};
-        moira::u8 valid[16] = {};
-        moira::i64 fetches = 0, hits = 0, misses = 0;
-        void reset() {}
-    };
-    PomIcache pomIcache;
-    void pomInvalidateIcache030(moira::u32) {}
     void setPomCache040(bool) {}
     bool pomCache040Armed() const { return false; }
     void setPomCmStats040(bool) {}

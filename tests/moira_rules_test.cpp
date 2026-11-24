@@ -186,12 +186,6 @@ public:
         v = moira::u32(mem[*phys & 0xfffff]) << 8 | mem[(*phys + 1) & 0xfffff];
         return true;
     }
-    void armIcacheOverlay() {
-        pomIcache.armed = true;
-        pomIcache.missPenalty = 17;
-        setCACR(1);
-    }
-    moira::i64 overlayFetches() const { return pomIcache.fetches; }
 private:
     void setBusLock(bool locked) { events += locked ? 'L' : 'U'; }
     void willProcessFault(const moira::StackFrame& frame) {
@@ -1708,7 +1702,7 @@ void ec030UsesPlain020Path()
         c.setCRP(0x7fff000200004000ULL);
         p32(c, 0x4000, 0x00000001);                // page 0: identity
         p32(c, 0x4004, 0);                         // page 1: invalid
-        c.armIcacheOverlay();
+        c.setCACR(1);
         CHECK((c.getCACR() & 1) != 0,
               "model %d: cache-enable precondition was masked off", int(model));
         const bool mmu = model == moira::CPUModel::M68030;
@@ -1721,9 +1715,6 @@ void ec030UsesPlain020Path()
               "model %d: D0=%08X PC0=%08X (want %08X/%08X)", int(model),
               c.getD(0), c.getPC0(), mmu ? 0xaabbccdd : 0x12345678,
               mmu ? kHandler : kCode + 2);
-        CHECK((c.overlayFetches() > 0) == mmu,
-              "model %d: overlay counted %lld fetches", int(model),
-              static_cast<long long>(c.overlayFetches()));
         if (mmu)
             CHECK(g32(c, c.getSP() + 0x10) == 0x9000,
                   "68030 control: fault address %08X (want $9000)",

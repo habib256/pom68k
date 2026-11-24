@@ -48,7 +48,6 @@ pom68k::CoreConfig parseCoreStartup(
     pom68k::CoreConfig options;
 
     options.cpu.cacheBoost = values.integer(startup_option::CacheBoost);
-    options.cpu.icacheMiss = values.integer(startup_option::ICacheMiss);
     if (values.present(startup_option::FloppyBoostGate))
         options.cpu.floppyBoostGate =
             values.boolean(startup_option::FloppyBoostGate, false);

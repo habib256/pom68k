@@ -59,7 +59,6 @@ private:
     int boost_ = 4;
     bool floppyGate_ = true;
     moira::i64 machineBase_ = 0, clockBase_ = 0;
-    int icacheMiss_ = 4;
     moira::i64 periphAccum_ = 0;
     moira::i64 periphDeadline_ = 0;
     static constexpr moira::i64 kPeriphBatch = 128;

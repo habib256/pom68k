@@ -11,35 +11,29 @@ MscCpu::MscCpu(MscMemory& mem, const jit::ResolvedConfig& jitConfig,
     setModel(mem.is040() ? moira::CPUModel::M68LC040 : moira::CPUModel::M68030);
     setFPUModel(withFpu && !mem.is040() ? MoiraFpu::M68882 : MoiraFpu::NONE);
     if (mem.is040()) {
-        icacheMiss_ = 0;
         if (cpuConfig.mmu040Walk) setMmu040AtcArmed(false);
     }
     if (cpuConfig.cacheBoost) cacheBoost_ = *cpuConfig.cacheBoost;
     boost_ = cacheBoost_;
     floppyGate_ = cpuConfig.floppyBoostGate.value_or(true);
-    if (cpuConfig.icacheMiss) icacheMiss_ = *cpuConfig.icacheMiss;
     eventDriven_ = cpuConfig.duoEventDriven;
     if (cpuConfig.cacr030Flush)
         cacrFlushPolicy_ = *cpuConfig.cacr030Flush ? 1 : 0;
-    armIcacheOverlay(icacheMiss_);
 }
 
 void MscCpu::hardReset() {
     mem_.reset();
     pollFloppyGate();
     lastPeriphClock_ = getClock();
-    pomIcache.reset();
     jit_.flushAll();
     reset();                       // SSP/PC from $0 (ROM via overlay)
 }
 
 void MscCpu::didChangeCACR(moira::u32 value) {
     if (mem_.is040()) {
-        if (value & 0x0800) pomIcache.reset();
         jit_.flushAll();
         return;
     }
-    pomInvalidateIcache030(value);
     // The CACR SMC hint, retired behind this board's own audited store
     // inventory (MscMemory::kJitStoreInventoryComplete, pinned by
     // store_inventory_test): every RAM store already crosses

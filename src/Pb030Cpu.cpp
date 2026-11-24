@@ -10,16 +10,14 @@ Pb030Cpu::Pb030Cpu(Pb030Memory& mem,const jit::ResolvedConfig& jit,
     nominalBoost_=config.cacheBoost.value_or(4);boost_=nominalBoost_;
     floppyGate_=config.floppyBoostGate.value_or(true);
     if(config.cacr030Flush) cacrFlushPolicy_=*config.cacr030Flush?1:0;
-    armIcacheOverlay(config.icacheMiss.value_or(4));
 }
 
 void Pb030Cpu::hardReset() {
     flushTicks();mem_.reset();machineBase_=machineClock();clockBase_=clock;
     boost_=nominalBoost_;lastPeriphClock_=clock;remainder_=0;
-    pomIcache.reset();jit_.flushAll();reset();
+    jit_.flushAll();reset();
 }
 void Pb030Cpu::didChangeCACR(moira::u32 v) {
-    pomInvalidateIcache030(v);
     // The CACR SMC hint, retired behind this board's own audited store
     // inventory (Pb030Memory::kJitStoreInventoryComplete, pinned by
     // store_inventory_test): every RAM store already crosses

@@ -72,11 +72,6 @@ public:
         int syncCycles = 0;
         moira::i64 oldDeadline = 0;
         uint64_t deviceHash = 0;
-        // The i-cache overlay's counters AT the delivery: an intra-step
-        // charge skew wanders between engines and re-heals by the step
-        // boundary, so only a per-delivery capture can name the window
-        // that first mis-charged (2026-08-19 retained-cache bisect).
-        moira::i64 icFetches = 0, icHits = 0, icMisses = 0;
     };
     using PeriphTraceFn = void (*)(void*, const PeriphTracePoint&);
     void setPeriphTrace(void* opaque, PeriphTraceFn fn) {
@@ -133,19 +128,6 @@ public:
     // POM68K_FPU_LOG.
     void enableFpuLog(const std::string& path, size_t ringSize = 4096);
 
-    // 68030 i-cache diagnostics (hit/miss counters of the timing overlay,
-    // which lives inline in Moira — Moira.h § PomIcache).
-    struct ICacheStats { moira::i64 hits = 0, misses = 0, fetches = 0; };
-    ICacheStats icacheStats() const {
-        return { pomIcache.hits, pomIcache.misses, pomIcache.fetches };
-    }
-    void resetICacheStats() {
-        pomIcache.fetches = pomIcache.hits = pomIcache.misses = 0;
-    }
-    // The overlay's CONTENT (tags + valid bits), for the 030 lockstep gate:
-    // counters can agree while the cached lines have parted, and the state
-    // skew then reads as a timing drift thousands of steps later.
-    const MoiraCompat::PomIcache& icacheState() const { return pomIcache; }
     bool icacheEnabled() const { return (getCACR() & 0x1) != 0; }
 
     // ── Save states (chunk "CPU ") ──────────────────────────────────────
@@ -154,7 +136,7 @@ public:
     // has already accounted for. Getting that wrong would not corrupt the
     // guest, it would silently shift the VIA/ASC/SWIM cadence after every
     // restore, which is the failure the LC II soak gate exists to catch.
-    // cacheBoost_ / icacheMiss_ are tuning knobs owned by the environment,
+    // cacheBoost_ is a tuning knob owned by the environment,
     // not guest state, so they stay out.
     template <class Ar> void visit(Ar& ar) {
         visitCpuCommon(ar);
@@ -207,19 +189,14 @@ private:
     // the VBL task re-enter itself → the "coprocesseur absent" livelock).
     //
     // Model: run the core at cacheBoost_× (the resident-code CEILING ≈ the
-    // real 030's cached throughput), and charge icacheMiss_ boosted cycles per
-    // instruction-cache MISS in willFetchInstr() — the fetch bus access the
-    // real chip pays only on a miss. flushTicks() scales elapsed cycles back
-    // down by cacheBoost_ so the VBL / VIA / ASC cadence stays real. Net:
-    // cache-resident code runs near the ceiling (redraw finishes its frame,
-    // no livelock), miss-heavy cold code is throttled toward real speed — the
-    // per-code-path behaviour of the real cache, not a flat fudge. One fixed
-    // ceiling → uniform tempo. History: retired a flat constant boost (couldn't
-    // fit both), itself retired from an ADAPTIVE 2→24 spike (wobbled the sound
-    // tempo). Both knobs tunable live: POM68K_CACHE_BOOST (ceiling),
-    // POM68K_ICACHE_MISS (penalty). Long-term: a fuller Moira cache model.
+    // real 030's cached throughput); flushTicks() scales elapsed cycles back
+    // down by cacheBoost_ so the VBL / VIA / ASC cadence stays real. The fork
+    // also charged a penalty per i-cache miss through its own overlay; on
+    // Dirk's core his 020/030 cache charges its fills itself, and the ×4
+    // ceiling is to be requalified (TODO.md § Temps). History: retired a flat
+    // constant boost, itself retired from an ADAPTIVE 2→24 spike (wobbled the
+    // sound tempo). Tunable live: POM68K_CACHE_BOOST.
     int cacheBoost_ = 4;           // resident-code ceiling ratio
-    int icacheMiss_ = 4;           // boosted cycles charged per i-cache miss
     moira::i64 periphAccum_ = 0;   // sub-ratio remainder for exact scaling
     moira::i64 periphDeadline_ = 0;
     void* periphTraceOpaque_ = nullptr;
@@ -250,12 +227,9 @@ private:
     moira::i64 machineBase_ = 0, clockBase_ = 0;
     void pollBoostGate();
 
-    // The 68030 on-chip i-cache model itself (MC68030UM §6: 256 bytes = 16
-    // lines × 4 longwords, logical, direct-mapped, non-burst fill) lives
-    // INLINE in Moira's mmuFetchWord (Moira.h § PomIcache): a virtual
-    // per-fetch hook cost ~11% of the emulator in call overhead. The
-    // constructor arms it and hands it icacheMiss_; this class keeps the
-    // knobs, the CACR clear strobes and the stats accessors.
+    // The 68030 on-chip i-cache (MC68030UM §6: 256 bytes = 16 lines × 4
+    // longwords) is Dirk's (extern/moira/Moira/Cache); this class keeps the
+    // boost knob and tells the JIT about CACR clear strobes.
 
     // Line-F logging state
     bool fpuLog_ = false;

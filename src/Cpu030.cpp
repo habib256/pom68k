@@ -25,15 +25,11 @@ Cpu030::Cpu030(V8Memory& mem, const jit::ResolvedConfig& jitConfig,
     setModel(as020 ? moira::CPUModel::M68020 : moira::CPUModel::M68030);
     setFPUModel(withFpu ? MoiraFpu::M68882 : MoiraFpu::NONE);
     if (cpuConfig.cacheBoost) cacheBoost_ = *cpuConfig.cacheBoost;
-    if (cpuConfig.icacheMiss) icacheMiss_ = *cpuConfig.icacheMiss;
     boost_ = cacheBoost_;
     if (cpuConfig.floppyBoostGate)
         floppyGate_ = *cpuConfig.floppyBoostGate;
     if (cpuConfig.cacr030Flush)
         cacrFlushPolicy_ = *cpuConfig.cacr030Flush ? 1 : 0;
-    // Arm the i-cache timing overlay folded into Moira's fetch path
-    // (Moira.h § PomIcache; model rationale in Cpu030.h).
-    armIcacheOverlay(icacheMiss_);
 }
 
 void Cpu030::hardReset() {
@@ -41,7 +37,6 @@ void Cpu030::hardReset() {
     lastPeriphClock_ = getClock();
     periphAccum_ = 0;
     schedulePeriphDeadline();
-    pomIcache.reset();
     jit_.flushAll();
     reset();                       // SSP/PC from $0 (ROM via overlay)
 }
@@ -49,11 +44,9 @@ void Cpu030::hardReset() {
 // The System (and self-modifying code like SimCity's dynamic blit generator)
 // clears the i-cache via CACR: bit 3 = Clear Instruction cache, bit 2 = Clear
 // Entry (CAAR). These are write-only strobes (raw value, not the stored CACR).
-// CI flushes the model; CEI invalidates only the CAAR-selected longword.
-// (The i-cache timing model itself runs inline in Moira's fetch path —
-// Moira.h § PomIcache.)
+// Dirk's core applies CI and CEI to its own cache; this hook only tells
+// the JIT.
 void Cpu030::didChangeCACR(moira::u32 value) {
-    pomInvalidateIcache030(value);
     // A cache clear is the guest announcing freshly written code — but only
     // an INSTRUCTION-cache clear says that. CI (bit 3) and CEI (bit 2) are
     // the two strobes that do; everything else in CACR is the data cache
@@ -346,9 +339,6 @@ void Cpu030::emitPeriphTrace(int phase, int delivered, moira::i64 target) {
     p.oldDeadline = phase == 2 ? traceOldDeadline_ : 0;
     p.nextEvent = mem_.cyclesToNextEvent();
     p.deviceHash = mem_.debugDeviceHash();
-    p.icFetches = pomIcache.fetches;
-    p.icHits = pomIcache.hits;
-    p.icMisses = pomIcache.misses;
     periphTraceFn_(periphTraceOpaque_, p);
 }
 

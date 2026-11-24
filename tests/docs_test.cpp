@@ -534,7 +534,7 @@ int main() {
                   pom68k::startup_option::JitBlockMax,
                   std::string_view("257")) &&
               pom68k::startup_value::integer(
-                  pom68k::startup_option::ICacheMiss,
+                  pom68k::startup_option::FluxJitter,
                   std::string_view{}) == std::optional<int>(0) &&
               !pom68k::startup_value::integer(
                   pom68k::startup_option::JitWindowKill,

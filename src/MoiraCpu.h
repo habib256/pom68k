@@ -121,14 +121,6 @@ protected:
     }
     void onSyncCharge(int) {}
 
-    // Arm the i-cache timing overlay folded into Moira's fetch path
-    // (Moira.h § PomIcache; model rationale in Cpu030.h).
-    void armIcacheOverlay(int missPenalty) {
-        pomIcache.armed = true;
-        pomIcache.missPenalty = missPenalty;
-        pomIcache.reset();
-    }
-
     Derived&       self()       { return static_cast<Derived&>(*this); }
     const Derived& self() const { return static_cast<const Derived&>(*this); }
 

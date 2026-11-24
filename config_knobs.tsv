@@ -99,7 +99,6 @@ POM68K_FREEZE_PROBE	diagnostic	owner:src/StartupOptions.h
 POM68K_GUI_LABELS	test	owner:tests/gui_windows_test.cpp
 POM68K_GUI_TRACE	test	owner:tests/ImGuiHeadless.h
 POM68K_HALT	test	owner:tests/centris650_boot_etalon.cpp
-POM68K_ICACHE_MISS	product	gate:lcii_boot_etalon
 POM68K_IICX	test	owner:tests/iix_boot_etalon.cpp
 POM68K_IIFX_ADB_TRACE	diagnostic	owner:src/StartupOptions.h
 POM68K_IIFX_IO_TRACE	diagnostic	owner:src/StartupOptions.h

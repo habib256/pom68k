@@ -33,7 +33,6 @@ public:
     void hardReset() {
         this->mem_.reset();
         this->lastPeriphClock_ = this->getClock();
-        this->pomIcache.reset();
         this->jit_.flushAll();
         this->reset();                       // SSP/PC from $0 (ROM via overlay)
     }
@@ -104,7 +103,7 @@ public:
     }
 
     // ── Save states (chunk "CPU ") — the Cpu030 wrapper pattern ─────────
-    // cacheBoost_/icacheMiss_ are environment tuning, not guest state; the
+    // cacheBoost_ is environment tuning, not guest state; the
     // machineClock() bases ARE run state (see Cpu030.h).
     template <class Ar> void visit(Ar& ar) {
         this->visitCpuCommon(ar);
@@ -125,17 +124,14 @@ protected:
         this->setFPUModel(withFpu ? MoiraFpu::M68882
                                   : MoiraFpu::NONE);
         if (cpuConfig.cacheBoost) cacheBoost_ = *cpuConfig.cacheBoost;
-        if (cpuConfig.icacheMiss) icacheMiss_ = *cpuConfig.icacheMiss;
         boost_ = cacheBoost_;
         if (FloppyGate && cpuConfig.floppyBoostGate)
             floppyGate_ = *cpuConfig.floppyBoostGate;
         if (cpuConfig.cacr030Flush)
             cacrFlushPolicy_ = *cpuConfig.cacr030Flush ? 1 : 0;
-        this->armIcacheOverlay(icacheMiss_);
     }
 
     void didChangeCACR(moira::u32 value) override {
-        this->pomInvalidateIcache030(value);   // CI whole / CEI selected longword
         // The CACR SMC hint, retired behind the board's own audited store
         // inventory (Memory::kJitStoreInventoryComplete, pinned by
         // store_inventory_test): every RAM store already crosses
@@ -183,9 +179,8 @@ protected:
     // forced by the knob — Cpu030's exact contract.
     int cacrFlushPolicy_ = -1;
 
-    // Cpu030's i-cache throughput model (knobs + rationale there).
+    // Cpu030's throughput ceiling (knob + rationale there).
     int cacheBoost_ = 4;
-    int icacheMiss_ = 4;
     moira::i64 periphAccum_ = 0;
     moira::i64 periphDeadline_ = 0;
     static constexpr moira::i64 kPeriphBatch = 128;

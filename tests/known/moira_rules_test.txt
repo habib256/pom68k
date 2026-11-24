@@ -388,7 +388,6 @@
 1	model 5 M-stack interrupt costs 0 cycles, want 41
 1	model 5 read watchpoint: saw "", want "r40000:4 "
 1	model 5 write watchpoint: saw "", want "w40000:4 "
-1	model 5: overlay counted 0 fetches
 2	model 5: the interrupt was not taken
 1	model 8 I-stack interrupt costs 0 cycles, want 26
 1	model 8 M-stack interrupt costs 0 cycles, want 41
