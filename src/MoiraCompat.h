@@ -18,9 +18,9 @@
 //   - Host bus errors: the fork's extBusError*() entry points, all
 //     [[noreturn]], throw moira::BusError with the address of the last bus
 //     access; his core completes the frame.
-//   - The JIT seam (pomJit*) and the fork's 68040 cache-model switches:
-//     INERT here. This build has no JIT (POM68K_JIT=OFF) and his core runs
-//     its own 020/030 caches.
+//   - The JIT seam (pomJit*): INERT here. This build has no JIT
+//     (POM68K_JIT=OFF); his core runs its own 020/030 caches and does not
+//     emulate the 68040 caches.
 //   - pomVisitState: the save-state payload, rewritten for his state.
 
 #pragma once
@@ -195,9 +195,6 @@ public:
     mutable moira::u32 pomBusAddr = 0;
 
     // ── Inert fork hooks (see the header comment) ───────────────────────
-    void setPomCache040(bool) {}
-    bool pomCache040Armed() const { return false; }
-    void setPomCmStats040(bool) {}
     void setPomExceptionDiag(bool) {}
     void setMmu040AtcArmed(bool) {}
     void pomJitDisarm() {}

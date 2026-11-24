@@ -116,7 +116,6 @@ bool run(moira::CPUModel model, int mapping, bool cache) {
     } else if (cache) {
         c.setDTT0(0x0000c020); // copyback while translation is disabled
     }
-    c.setPomCache040(cache);
     c.setCACR(cache ? 0x80008000 : 0);
     Digest states;
     unsigned steps = 0;

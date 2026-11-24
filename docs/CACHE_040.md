@@ -1,5 +1,10 @@
 # 68040 cache content, copyback, snooping and timing — M0-M3 complete
 
+> **Status (2026-11-25):** this model belongs to the previous fork
+> (`main_old`). `main` runs Dirk Hoffmann's Moira, which does not emulate
+> the 68040 caches; `POM68K_040_DCACHE` and `POM68K_040_CM_STATS` are gone.
+> Whether to build a model above his core is open (`TODO.md`).
+
 *Opened 2026-08-04; M1 landed and was hardened on 2026-08-05. The
 initial decision to stop at tags was superseded by the explicit request
 to complete the 68040 model; M2/M3 and timing landed on 2026-08-16.

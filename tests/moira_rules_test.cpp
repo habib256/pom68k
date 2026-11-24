@@ -693,7 +693,6 @@ void movepFaultRestarts040()
             stage(c, opcode, 0x1F);
             p16(c, kCode + 2, displacement); c.setIRC(displacement);
             c.setD(3, source); c.setA(1, an);
-            c.setPomCache040(path == 2);
             c.setCACR(path == 2 ? 0x80008000 : 0);
             if (mmu) {
                 p32(c, 0x4020, 0x4202); p32(c, 0x4200, 0x6002);
@@ -845,7 +844,7 @@ void movemRestart040()
         p32(c, 0x50000, ea); p32(c, 0x50010, altEa);
         c.setA(0, a0); c.setD(0, 0x20); c.setD(1, 0x13579BDF);
         c.setPC(pc); c.setPC0(pc); c.setIRD(opcode); c.setIRC(mask);
-        c.setPomCache040(cache); c.setCACR(cache ? 0x80008000 : 0);
+        c.setCACR(cache ? 0x80008000 : 0);
         c.setITT0(0x1000C040); c.setITT1(0x0000C040); c.setDTT0(0x0000C040);
         if (mmu) {
             p32(c, 0x4020, 0x4202); p32(c, 0x4200, 0x6002);
@@ -955,7 +954,7 @@ void ordinaryStoreStillAdvances040()
         p16(c, kCode + 2, 0x54F5); c.setIRC(0x54F5);
         c.setD(3, 0x89ABCDEF);
         c.setA(1, (mmu ? 0x10000000u : kHole) - 0x54F5);
-        c.setPomCache040(cache); c.setCACR(cache ? 0x80008000 : 0);
+        c.setCACR(cache ? 0x80008000 : 0);
         if (mmu) {
             p32(c, 0x4020, 0x4202); p32(c, 0x4200, 0x6002); // invalid page
             c.setURP040(0x4000); c.setSRP040(0x4000);

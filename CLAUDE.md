@@ -233,9 +233,10 @@ remain diagnostic/user overrides. Backend `guestFamilies` declares correctness, 
 automatic policy; never infer one from the other (each backend's `caps()` is
 the source of truth). Opcode coverage alone never makes a native backend the
 default: conformance, whole-tier stability and same-process performance are
-independent admissions. The architectural 68040 I/D-cache model
-(`POM68K_040_DCACHE=1`) stays outside the product default until its
-cache-active native paths are completed and measured.
+independent admissions. The fork's architectural 68040 I/D-cache model
+(`main_old`, `docs/CACHE_040.md`) is not on `main`: Dirk's core does not
+emulate the 68040 caches, and a model above it is an open decision
+(`TODO.md`).
 
 ## Development workflow
 

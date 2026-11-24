@@ -22,12 +22,8 @@
 // every byte of the edit qualifies. The written bytes are a physical poke
 // after a read translation: page write protection does not refuse them,
 // as it would not refuse a debugger's DMA. Any write drops every
-// translated block (JitEngine::flushAll); the i-cache timing overlay holds
-// tags only, so no stale instruction can survive it.
-//
-// Known limit: with the optional architectural 68040 data cache
-// (POM68K_040_DCACHE=1) a dirty line is newer than RAM; the view shows RAM,
-// and writes are refused because the line would later overwrite them.
+// translated block (JitEngine::flushAll). Dirk's core does not emulate
+// the 68040 caches, so no dirty line can be newer than RAM.
 //
 // Gate: tests/debug_inspection_test.cpp.
 
@@ -250,10 +246,6 @@ public:
             why = std::string("Register not present on the ") + modelName();
             return false;
         }
-        if (cpu_.pomCache040Armed()) {
-            why = "Rejected: 68040 data cache is active";
-            return false;
-        }
         switch (reg) {
         case Reg::CACR:   cpu_.setCACR(v); break;
         case Reg::TC:     cpu_.setTC(v); break;
@@ -277,10 +269,6 @@ public:
 
     bool writeMemory(Space space, std::uint32_t addr, const std::uint8_t* data,
                      std::size_t n, std::string& why) override {
-        if (cpu_.pomCache040Armed()) {
-            why = "Write rejected: 68040 data cache is active";
-            return false;
-        }
         std::vector<std::uint8_t*> dst(n);
         for (std::size_t i = 0; i < n; ++i) {
             const std::uint32_t a = addr + std::uint32_t(i);

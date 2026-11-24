@@ -114,11 +114,10 @@ const std::vector<Entry>& catalogue() {
      .platforms = kNoCompact68000, .docSection = "4.2"},
     {.id = "cpu-cache040", .group = "CPU", .subsystem = "68040 caches",
      .level = Level::LleSimplified,
-     .modelled = "Default: the i-cache is a throughput scaler on Moira "
-                 "cycles. Opt-in architectural I/D cache (POM68K_040_DCACHE=1): "
-                 "lines, copyback, snooping, CPUSH/CINV.",
-     .whyNot = "The architectural cache stays opt-in until its native paths "
-               "are measured (docs/CACHE_040.md).",
+     .modelled = "A throughput scaler on Moira cycles; Dirk Hoffmann's core "
+                 "does not emulate the 68040 caches.",
+     .whyNot = "A 68040 cache model above his core is an open decision "
+               "(TODO.md; the fork's model is described in docs/CACHE_040.md).",
      .files = "src/Cpu040.h docs/CACHE_040.md",
      .platforms = k040Boards, .docSection = "1.2"},
     {.id = "cpu-engine", .group = "CPU",

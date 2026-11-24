@@ -275,9 +275,9 @@ Chaque ligne d'une liste se corrige (correctif de la file), se tranche
 `cmake/pom68k_pending_gates.tsv`.
 
 - [ ] **Décider du modèle de cache 68040 au-dessus du cœur**
-  (`cache040_test`), avant le JIT : le mode cache actif
-  (`POM68K_040_DCACHE=1`) et ses lignes de `› Justesse 68040` en
-  dépendent.
+  (`cache040_test`), avant le JIT : le cœur de Dirk n'émule pas les caches
+  68040 ; le modèle du fork (`main_old`, `docs/CACHE_040.md`) et ses lignes
+  de `› Justesse 68040` en dépendent.
 - [ ] **Réécrire `mmu040_atc_test` sur son MMU040.**
 - [ ] **CALLM/RTM** (`callm_rtm_test`, `moira_interp_callm_rtm_test`) :
   talons chez lui, inutilisés par Mac OS — un gate réécrit ou un retrait

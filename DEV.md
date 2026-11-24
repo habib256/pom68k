@@ -2280,7 +2280,6 @@ defaulted policy parameter. Only the Q605 pair was documented before 2026-07-31:
 | `POM68K_CACHE_BOOST` | the **five** 030 CPUs — `Cpu030`, `SonoraCpu`, `VaspCpu`, `RbvCpu`, `MscCpu`. Boost 1-64 default 4; the per-class defaults live in the headers (`Cpu030.h` `cacheBoost_` and siblings) |
 | `POM68K_FLOPPY_BOOST_GATE` | `=0` disables the floppy boost gate on the `Swim1` 030s (`Cpu030`, `RbvCpu`, `VaspCpu` — **not** `SonoraCpu` or `MscCpu`, which never read it) — the boost then compresses the Sony denibble path below the IWM's 14-tick hold and GCR mounts fail with badDCksum (the pre-2026-08-05 defect, kept reproducible for `lcii_sony_trace`) |
 | `POM68K_MMU040_WALK` | disable the 040 ATC (walk per access) |
-| `POM68K_040_DCACHE` | `1` enables the architectural 040 I/D-cache model; line data, WT/CB/NC, copyback, CPUSH/CINV, snooping and timing are complete, but the product default stays cacheless until the cache-aware JIT recovers the real-ROM speed budget (`docs/CACHE_040.md`) |
 | `POM68K_JIT_040_LINE_READ` | `=0` disables only native reads from published physical 040 D-cache lines; attribution control, default on when the architectural cache is active |
 | `POM68K_JIT_040_LINE_WRITE` | `=0` disables native sole-access copyback write hits (including BSR return-address pushes) while retaining native line reads; exact-path attribution control, default on when the architectural cache is active |
 | `POM68K_JIT_040_LINE_PAIR` | `=0` disables the atomic two-proof native path for hot longword MOVE pairs (`$2F38`/`$21DF`) while leaving independent line reads/writes enabled; attribution control, default on |
@@ -2437,8 +2436,6 @@ corrupted stack frame), and the test-side `POM68K_Q900_IOPDUMP`
 sequence number, LBA and count — the instrument that told the Duo's
 "never wrote the catalog" apart from "never touched the disk again"),
 `POM68K_SE_VIA_TRACE`, `POM68K_ATALK_DEBUG`,
-`POM68K_040_CM_STATS` (68040 ATC fills by descriptor cache-mode —
-the `docs/CACHE_040.md` M0 probe),
 `POM68K_MACIP_DEBUG`, and the IIfx trio `POM68K_IIFX_IO_TRACE` (unknown
 I/O touches), `POM68K_IIFX_SCSI_TRACE` (5380/SCSIDMA registers with PC),
 `POM68K_IIFX_ADB_TRACE` (ADB line-state transitions + decoded commands).
@@ -3137,7 +3134,7 @@ Rules the adapter (`CpuTarget<Cpu, Mem>`) keeps:
   MMU and cache control registers are not editable. Memory edits are all
   or nothing through `dataSpan(phys, len, true)` — RAM and framebuffer
   only, ROM and devices refused — and drop every translated block
-  (`JitEngine::flushAll`). With `POM68K_040_DCACHE=1` writes are refused.
+  (`JitEngine::flushAll`).
 
 - **Access and exception stops are decided mid-instruction, delivered at a
   boundary.** Moira calls the adapter from its watchpoint sites (before the
@@ -3220,9 +3217,8 @@ Rules the adapter (`CpuTarget<Cpu, Mem>`) keeps:
   the hardware does (no ADB on the 128K/512K/Plus, no internal floppy on
   the Duo, video on the Mac II/IIfx only with a NuBus card).
 
-Known limits of this service: with `POM68K_040_DCACHE=1` the memory
-view shows RAM, not a newer dirty cache line; breakpoints belong to the
-CPU object, so a relaunch starts with none.
+Known limit of this service: breakpoints belong to the CPU object, so a
+relaunch starts with none.
 
 Gated by `debug_session_test` (asset-free; a real machine thread per
 family — 68000, 68020, 68030 and 68040 rigs, the 030/040 also with the
