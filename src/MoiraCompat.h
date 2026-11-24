@@ -239,7 +239,8 @@ public:
         regs(reg);
 
         // A fault in flight at the boundary: the 68020's restart record and
-        // the data cycle a handler completed before RTE (patch 6). A snapshot
+        // the data cycle a handler completed before RTE (queue patch "68020/
+        // 68030: do not rerun a data cycle a handler has completed"). A snapshot
         // between that RTE and the restarted instruction needs both.
         ar(restart.valid);
         regs(restart.pre);
@@ -276,7 +277,8 @@ public:
         ar(fpcr, fpsr, fpiar);
         // FPU state between instructions: the reset (NULL frame) state, an
         // arithmetic exception taken at the next FPU instruction, the operands
-        // of an instruction left to the 68040 FPSP (patch 5) and the
+        // of an instruction left to the 68040 FPSP (queue patch "68040: FSAVE
+        // stores the unimplemented instruction state frame") and the
         // arithmetic environment.
         ar(fpu.resetState, fpu.pendingTrap);
         ar(fpu.unimp.valid, fpu.unimp.cmdreg1b, fpu.unimp.stag, fpu.unimp.dtag);
