@@ -158,8 +158,10 @@ Final run(moira::CPUModel model, const Inst& in, uint32_t seed, const Cycle* hol
     if (model == moira::CPUModel::M68030) c.setFPUModel(MoiraFpu::M68882);
     c.reset();
     for (int i = 0; i < 8; i++) {
-        const uint32_t w[3] = { 0x3ffd0000u + ((rnd(s) & 7) << 16) + (rnd(s) & 0x80000000u),
-                                0x80000000u | rnd(s), rnd(s) };
+        // One draw per declarator, in this order: unsequenced draws in one
+        // expression would make the state differ between compilers.
+        const uint32_t exp = rnd(s) & 7, sign = rnd(s) & 0x80000000u, hi = rnd(s), lo = rnd(s);
+        const uint32_t w[3] = { 0x3ffd0000u + (exp << 16) + sign, 0x80000000u | hi, lo };
         c.setFP(i, w);
     }
     c.setSR(0x2700);
@@ -271,6 +273,10 @@ std::string differ(const Final& got, const Final& want)
 
 std::vector<Inst> list;
 uint32_t gen = 0x2026b115;
+// FNV-1a of every instruction name (its words included). tests/known/ keys
+// failures by instruction number and words, so a host that draws another
+// corpus is refused as such instead of reporting every row as new.
+constexpr uint32_t kCorpusFingerprint = 0x126C5D94;
 
 void add(const char* name, std::vector<uint16_t> words, bool a0IsCode = false, bool only030 = false)
 {
@@ -294,8 +300,13 @@ Ea ea(int mode, int reg)
         default: return { uint16_t(mode << 3 | reg), {} };
     }
 }
-void addEa(const char* name, uint16_t opcode, std::vector<uint16_t> own, const Ea& e)
+// The EA is drawn here, after the caller's arguments: C++ leaves the order of
+// function arguments unspecified (clang goes left to right, g++ often right
+// to left), so a draw in an argument beside ea() would make the corpus differ
+// between compilers. Two draws in one expression must be named locals too.
+void addEa(const char* name, uint16_t opcode, std::vector<uint16_t> own, int mode, int reg)
 {
+    const Ea e = ea(mode, reg);
     std::vector<uint16_t> w { uint16_t(opcode | e.bits) };
     w.insert(w.end(), own.begin(), own.end());
     w.insert(w.end(), e.ext.begin(), e.ext.end());
@@ -323,27 +334,27 @@ void build()
             add("MOVE", w);
         }
         for (int m : modes) {
-            addEa("ADD Dn,ea", uint16_t(0xd300 | sz), {}, ea(m, 1));
-            addEa("SUB Dn,ea", uint16_t(0x9300 | sz), {}, ea(m, 1));
-            addEa("AND Dn,ea", uint16_t(0xc300 | sz), {}, ea(m, 1));
-            addEa("OR Dn,ea", uint16_t(0x8300 | sz), {}, ea(m, 1));
-            addEa("EOR Dn,ea", uint16_t(0xb300 | sz), {}, ea(m, 1));
-            addEa("ADD ea,Dn", uint16_t(0xd200 | sz), {}, ea(m, 1));
-            addEa("CMP ea,Dn", uint16_t(0xb200 | sz), {}, ea(m, 1));
-            addEa("ADDQ", uint16_t(0x5600 | sz), {}, ea(m, 1));
-            addEa("SUBQ", uint16_t(0x5700 | sz), {}, ea(m, 1));
-            addEa("ADDI", uint16_t(0x0600 | sz), imm(size), ea(m, 1));
-            addEa("EORI", uint16_t(0x0a00 | sz), imm(size), ea(m, 1));
-            addEa("CMPI", uint16_t(0x0c00 | sz), imm(size), ea(m, 1));
-            addEa("NEG", uint16_t(0x4400 | sz), {}, ea(m, 1));
-            addEa("NEGX", uint16_t(0x4000 | sz), {}, ea(m, 1));
-            addEa("NOT", uint16_t(0x4600 | sz), {}, ea(m, 1));
-            addEa("CLR", uint16_t(0x4200 | sz), {}, ea(m, 1));
-            addEa("TST", uint16_t(0x4a00 | sz), {}, ea(m, 1));
+            addEa("ADD Dn,ea", uint16_t(0xd300 | sz), {}, m, 1);
+            addEa("SUB Dn,ea", uint16_t(0x9300 | sz), {}, m, 1);
+            addEa("AND Dn,ea", uint16_t(0xc300 | sz), {}, m, 1);
+            addEa("OR Dn,ea", uint16_t(0x8300 | sz), {}, m, 1);
+            addEa("EOR Dn,ea", uint16_t(0xb300 | sz), {}, m, 1);
+            addEa("ADD ea,Dn", uint16_t(0xd200 | sz), {}, m, 1);
+            addEa("CMP ea,Dn", uint16_t(0xb200 | sz), {}, m, 1);
+            addEa("ADDQ", uint16_t(0x5600 | sz), {}, m, 1);
+            addEa("SUBQ", uint16_t(0x5700 | sz), {}, m, 1);
+            addEa("ADDI", uint16_t(0x0600 | sz), imm(size), m, 1);
+            addEa("EORI", uint16_t(0x0a00 | sz), imm(size), m, 1);
+            addEa("CMPI", uint16_t(0x0c00 | sz), imm(size), m, 1);
+            addEa("NEG", uint16_t(0x4400 | sz), {}, m, 1);
+            addEa("NEGX", uint16_t(0x4000 | sz), {}, m, 1);
+            addEa("NOT", uint16_t(0x4600 | sz), {}, m, 1);
+            addEa("CLR", uint16_t(0x4200 | sz), {}, m, 1);
+            addEa("TST", uint16_t(0x4a00 | sz), {}, m, 1);
             if (m != 3 && m != 4)
-                addEa("CAS", uint16_t(0x08c0 | (size + 1) << 9), { 0x0081 }, ea(m, 1));
+                addEa("CAS", uint16_t(0x08c0 | (size + 1) << 9), { 0x0081 }, m, 1);
             else
-                addEa("CAS", uint16_t(0x08c0 | (size + 1) << 9), { 0x0081 }, ea(m, 1));
+                addEa("CAS", uint16_t(0x08c0 | (size + 1) << 9), { 0x0081 }, m, 1);
         }
         add("ADDX -(A1),-(A2)", { uint16_t(0xd509 | sz) });
         add("SUBX -(A1),-(A2)", { uint16_t(0x9509 | sz) });
@@ -351,71 +362,72 @@ void build()
     }
     for (int m : modes) {
         for (int t = 0; t < 4; t++) {
-            addEa("shift right", uint16_t(0xe0c0 | t << 9), {}, ea(m, 1));
-            addEa("shift left", uint16_t(0xe1c0 | t << 9), {}, ea(m, 1));
-            addEa("bit Dn", uint16_t(0x0300 | t << 6), {}, ea(m, 1));
-            addEa("bit #", uint16_t(0x0800 | t << 6), { uint16_t(rnd(gen) & 7) }, ea(m, 1));
+            addEa("shift right", uint16_t(0xe0c0 | t << 9), {}, m, 1);
+            addEa("shift left", uint16_t(0xe1c0 | t << 9), {}, m, 1);
+            addEa("bit Dn", uint16_t(0x0300 | t << 6), {}, m, 1);
+            addEa("bit #", uint16_t(0x0800 | t << 6), { uint16_t(rnd(gen) & 7) }, m, 1);
         }
-        addEa("Scc", uint16_t(0x50c0 | (rnd(gen) & 0xf) << 8), {}, ea(m, 1));
-        addEa("TAS", 0x4ac0, {}, ea(m, 1));
-        addEa("NBCD", 0x4800, {}, ea(m, 1));
-        addEa("MOVE ea,CCR", 0x44c0, {}, ea(m, 1));
-        addEa("MOVE CCR,ea", 0x42c0, {}, ea(m, 1));
-        addEa("MULU", 0xc2c0, {}, ea(m, 1));
-        addEa("MULS", 0xc3c0, {}, ea(m, 1));
-        addEa("DIVU", 0x82c0, {}, ea(m, 1));
-        addEa("DIVS", 0x83c0, {}, ea(m, 1));
-        addEa("MULU.L", 0x4c00, { 0x1000 }, ea(m, 2));
-        addEa("MULS.L 64", 0x4c00, { 0x1c02 }, ea(m, 4));
-        addEa("DIVU.L", 0x4c40, { 0x1001 }, ea(m, 2));
-        addEa("CMP2.W", 0x02c0, { 0x1000 }, ea(m == 3 || m == 4 ? 2 : m, 1));
-        addEa("ADDA.W", 0xd0c0 | 5 << 9, {}, ea(m, 1));
-        addEa("CMPA.L", 0xb1c0 | 5 << 9, {}, ea(m, 1));
-        addEa("MOVEA.L", 0x2040 | 5 << 9, {}, ea(m, 1));
+        addEa("Scc", uint16_t(0x50c0 | (rnd(gen) & 0xf) << 8), {}, m, 1);
+        addEa("TAS", 0x4ac0, {}, m, 1);
+        addEa("NBCD", 0x4800, {}, m, 1);
+        addEa("MOVE ea,CCR", 0x44c0, {}, m, 1);
+        addEa("MOVE CCR,ea", 0x42c0, {}, m, 1);
+        addEa("MULU", 0xc2c0, {}, m, 1);
+        addEa("MULS", 0xc3c0, {}, m, 1);
+        addEa("DIVU", 0x82c0, {}, m, 1);
+        addEa("DIVS", 0x83c0, {}, m, 1);
+        addEa("MULU.L", 0x4c00, { 0x1000 }, m, 2);
+        addEa("MULS.L 64", 0x4c00, { 0x1c02 }, m, 4);
+        addEa("DIVU.L", 0x4c40, { 0x1001 }, m, 2);
+        addEa("CMP2.W", 0x02c0, { 0x1000 }, m == 3 || m == 4 ? 2 : m, 1);
+        addEa("ADDA.W", 0xd0c0 | 5 << 9, {}, m, 1);
+        addEa("CMPA.L", 0xb1c0 | 5 << 9, {}, m, 1);
+        addEa("MOVEA.L", 0x2040 | 5 << 9, {}, m, 1);
         if (m != 3 && m != 4) {
-            for (int t = 0; t < 8; t++)
-                addEa("bit field", uint16_t(0xe8c0 | t << 8),
-                      { uint16_t(0x1000 | (rnd(gen) & 0x1f) << 6 | (rnd(gen) & 0x1f)) }, ea(m, 1));
-            addEa("PEA", 0x4840, {}, ea(m, 1));
-            addEa("LEA", 0x45c0, {}, ea(m, 1));
+            for (int t = 0; t < 8; t++) {
+                const uint32_t offset = rnd(gen) & 0x1f, width = rnd(gen) & 0x1f;
+                addEa("bit field", uint16_t(0xe8c0 | t << 8), { uint16_t(0x1000 | offset << 6 | width) }, m, 1);
+            }
+            addEa("PEA", 0x4840, {}, m, 1);
+            addEa("LEA", 0x45c0, {}, m, 1);
         }
         // A load list leaves out the registers the EA is made of (A1, A3,
         // D7) and A7: a MOVEM that overwrites its own base before a later
         // read faults is a question for a real processor, not for this gate.
         if (m != 3) {
-            addEa("MOVEM.L regs,ea", 0x48c0, { uint16_t(m == 4 ? 0x3f3c : 0x3cfc) }, ea(m, 1));
-            addEa("MOVEM.W regs,ea", 0x4880, { uint16_t(rnd(gen) | 1) }, ea(m, 1));
+            addEa("MOVEM.L regs,ea", 0x48c0, { uint16_t(m == 4 ? 0x3f3c : 0x3cfc) }, m, 1);
+            addEa("MOVEM.W regs,ea", 0x4880, { uint16_t(rnd(gen) | 1) }, m, 1);
         }
         if (m != 4) {
-            addEa("MOVEM.L ea,regs", 0x4cc0, { 0x757c }, ea(m, 1));
-            addEa("MOVEM.W ea,regs", 0x4c80, { uint16_t((rnd(gen) & 0x757f) | 1) }, ea(m, 1));
+            addEa("MOVEM.L ea,regs", 0x4cc0, { 0x757c }, m, 1);
+            addEa("MOVEM.W ea,regs", 0x4c80, { uint16_t((rnd(gen) & 0x757f) | 1) }, m, 1);
         }
     }
     // The coprocessor: operands of every format, register lists, control registers.
     for (int m : modes) {
         for (int f = 0; f < 7; f++) {
             if (f == 3) continue;                   // packed: its own gates
-            addEa("FMOVE ea,FP1", 0xf200, { uint16_t(0x4080 | f << 10) }, ea(m, 1));
-            addEa("FADD ea,FP1", 0xf200, { uint16_t(0x40a2 | f << 10) }, ea(m, 1));
-            addEa("FMOVE FP1,ea", 0xf200, { uint16_t(0x6080 | f << 10) }, ea(m, 1));
+            addEa("FMOVE ea,FP1", 0xf200, { uint16_t(0x4080 | f << 10) }, m, 1);
+            addEa("FADD ea,FP1", 0xf200, { uint16_t(0x40a2 | f << 10) }, m, 1);
+            addEa("FMOVE FP1,ea", 0xf200, { uint16_t(0x6080 | f << 10) }, m, 1);
         }
-        addEa("FTST.X ea", 0xf200, { 0x483a }, ea(m, 1));
-        if (m != 3) addEa("FMOVEM FP,ea", 0xf200, { uint16_t(m == 4 ? 0xe03c : 0xf03c) }, ea(m, 1));
-        if (m != 4) addEa("FMOVEM ea,FP", 0xf200, { 0xd03c }, ea(m, 1));
-        addEa("FMOVE.L ea,FPCR", 0xf200, { 0x9000 }, ea(m, 1));
-        addEa("FMOVE.L FPSR,ea", 0xf200, { 0xa800 }, ea(m, 1));
-        addEa("FMOVEM.L ea,FPCR/FPSR/FPIAR", 0xf200, { 0x9c00 }, ea(m, 1));
-        addEa("FMOVEM.L FPCR/FPSR/FPIAR,ea", 0xf200, { 0xbc00 }, ea(m, 1));
+        addEa("FTST.X ea", 0xf200, { 0x483a }, m, 1);
+        if (m != 3) addEa("FMOVEM FP,ea", 0xf200, { uint16_t(m == 4 ? 0xe03c : 0xf03c) }, m, 1);
+        if (m != 4) addEa("FMOVEM ea,FP", 0xf200, { 0xd03c }, m, 1);
+        addEa("FMOVE.L ea,FPCR", 0xf200, { 0x9000 }, m, 1);
+        addEa("FMOVE.L FPSR,ea", 0xf200, { 0xa800 }, m, 1);
+        addEa("FMOVEM.L ea,FPCR/FPSR/FPIAR", 0xf200, { 0x9c00 }, m, 1);
+        addEa("FMOVEM.L FPCR/FPSR/FPIAR,ea", 0xf200, { 0xbc00 }, m, 1);
     }
     // Privileged instructions, in supervisor mode.
     const size_t firstSuper = list.size();
     for (int m : modes) {
         for (int size = 0; size < 3; size++) {
-            addEa("MOVES Rn,ea", uint16_t(0x0e00 | size << 6), { 0x1800 }, ea(m, 1));
-            addEa("MOVES ea,Rn", uint16_t(0x0e00 | size << 6), { 0x1000 }, ea(m, 1));
+            addEa("MOVES Rn,ea", uint16_t(0x0e00 | size << 6), { 0x1800 }, m, 1);
+            addEa("MOVES ea,Rn", uint16_t(0x0e00 | size << 6), { 0x1000 }, m, 1);
         }
-        addEa("MOVE SR,ea", 0x40c0, {}, ea(m, 1));
-        if (m != 3 && m != 4) addEa("FSAVE ea", 0xf300, {}, ea(m, 1));
+        addEa("MOVE SR,ea", 0x40c0, {}, m, 1);
+        if (m != 3 && m != 4) addEa("FSAVE ea", 0xf300, {}, m, 1);
     }
     add("FSAVE -(A1)", { 0xf321 });
     for (const uint16_t tail : { uint16_t(0x4200), uint16_t(0x4e00), uint16_t(0x4a00),
@@ -477,6 +489,13 @@ int main(int argc, char** argv)
         else only = std::strtol(argv[i], nullptr, 0);
     }
     build();
+    uint32_t corpus = 2166136261u;
+    for (const Inst& in : list) for (const char ch : in.name + '\n') corpus = (corpus ^ uint8_t(ch)) * 16777619u;
+    if (corpus != kCorpusFingerprint) {
+        std::printf("[fault_transparency_test] the corpus differs on this host: fingerprint %08X, "
+                    "want %08X (an unsequenced draw in build()?)\n", corpus, kCorpusFingerprint);
+        return 2;
+    }
 
     struct Row { moira::CPUModel model; const char* name; bool is040; };
     static const Row rows[] = {

@@ -30,7 +30,8 @@ import sys
 
 SUMMARY = re.compile(r"^\s*(?:\[[^\]]*\]\s*)?(?:FAIL(?:ED)?:?\s*\d*\s*(?:check\(s\))?\s*$|"
                      r"FAILED\s*$|[\w ]+: \d+ executed sequences, \d+ failure\(s\)\s*$)")
-LOCATION = re.compile(r"(?:/[^\s:]+)?[\w./-]+\.(?:cpp|h):\d+:\s*")
+# A __FILE__ prefix in any spelling: relative, POSIX or Windows (D:\a\...\x.cpp).
+LOCATION = re.compile(r"(?:[A-Za-z]:)?[^\s:]*\.(?:cpp|h):\d+:\s*")
 
 
 def normalize(line):
@@ -92,7 +93,10 @@ def main():
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     command = [c for c in args.command if c != "--"]
-    result = subprocess.run(command, capture_output=True, text=True)
+    # UTF-8 whatever the host locale: the lists are UTF-8, and a Windows
+    # code page would misread (or refuse) the tests' non-ASCII output.
+    result = subprocess.run(command, capture_output=True, text=True,
+                            encoding="utf-8", errors="replace")
     output = result.stdout + result.stderr
     found = failures(output)
     if args.write:
