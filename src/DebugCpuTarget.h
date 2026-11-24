@@ -13,9 +13,11 @@
 // Logical addresses are translated without touching MMU state:
 //   - 68000/68010/EC020: 24 address lines, identity otherwise;
 //   - 68020 (no 68851 on these boards): identity;
-//   - 68030: TT0/TT1, then the PMMU tables (Mmu030Peek.h);
-//   - 68040/LC040: DTT0/DTT1, then the tables (Mmu040Peek.h).
-// Descriptors themselves are fetched by the same span rule.
+//   - 68030: TT0/TT1, then the PMMU tables (Mmu030Peek.h); descriptors
+//     are fetched by the same span rule;
+//   - 68040/LC040: Dirk's MMU040::peek() (MoiraDebugSeam::debugTranslate):
+//     DTT0/DTT1, the ATC, then the tables, descriptors read with the
+//     wrapper's side-effect-free peek8().
 //
 // Edits follow the same rule in the other direction: a byte is written only
 // through `dataSpan(phys, len, true)` — RAM or framebuffer — and only if
@@ -30,7 +32,6 @@
 #pragma once
 #include "DebugSession.h"
 #include "Mmu030Peek.h"
-#include "Mmu040Peek.h"
 #include "MoiraDebugSeam.h"
 
 #include <algorithm>
@@ -499,11 +500,9 @@ private:
                                          &phys);
         }
         if (isMmu040()) {
-            mmu040peek::Registers r;
-            r.tc = cpu_.getTC040(); r.urp = cpu_.getURP040();
-            r.srp = cpu_.getSRP040();
-            r.dtt0 = cpu_.getDTT0(); r.dtt1 = cpu_.getDTT1();
-            return mmu040peek::translate(r, laddr, super, peek, &phys);
+            const auto p = cpu_.debugTranslate(laddr, super);
+            if (p) phys = *p;
+            return p.has_value();
         }
         phys = laddr;
         return true;

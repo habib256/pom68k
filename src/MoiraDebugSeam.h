@@ -30,6 +30,7 @@
 
 #pragma once
 #include "MoiraCompat.h"
+#include <optional>
 
 namespace pom68k::dbg {
 
@@ -70,6 +71,20 @@ public:
         dasmFetch_ = nullptr;
         dasmCtx_ = nullptr;
         return n;
+    }
+
+    // A side-effect-free logical→physical translation of a data address, as
+    // Dirk's MMU would make it: MMU::peek() looks in the ATC first, then
+    // walks the tables without writing a history bit or raising a fault.
+    // It reads descriptors with read16Dasm(), so a disassembly fetch in
+    // progress is set aside: descriptor addresses are physical, and the
+    // debugger's logical fetch would translate them again.
+    std::optional<moira::u32> debugTranslate(moira::u32 laddr, bool super) const {
+        const DasmFetch fetch = dasmFetch_;
+        dasmFetch_ = nullptr;
+        const auto phys = mmu.peek(laddr, moira::u8(super ? 5 : 1));
+        dasmFetch_ = fetch;
+        return phys;
     }
 
     // ── Debugger edits, at an instruction boundary (DebugCpuTarget.h) ──

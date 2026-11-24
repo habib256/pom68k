@@ -1,6 +1,5 @@
 // POM68K — prove the MSC II's running guest, input and state restoration.
 #pragma once
-#include "Mmu040Peek.h"
 #include "Mmu030Peek.h"
 #include "MscCpu.h"
 #include "PixelPin.h"
@@ -18,16 +17,19 @@ inline bool check(MscMemory& mem, MscCpu& cpu, pom68k::SnapMachine profile,
         else cpu.runCycles(frameCycles);
     };
     auto logical = [&](uint32_t address, unsigned bytes, uint32_t& value) {
-        const mmu040peek::Registers r{cpu.getTC040(), cpu.getURP040(),
-            cpu.getSRP040(), cpu.getDTT0(), cpu.getDTT1()};
         value = 0;
         for (unsigned i = 0; i < bytes; i++) {
             uint32_t physical = 0;
             const auto peek = [&](uint32_t a) { return mem.peek8(a); };
-            const bool mapped = mem.is040()
-                ? mmu040peek::translate(r, address + i, true, peek, &physical)
-                : mmu030peek::translate(cpu.getTC(), cpu.getCRP(), cpu.getSRP(),
-                                        address + i, 5, peek, &physical);
+            bool mapped = false;
+            if (mem.is040()) {
+                const auto p = cpu.debugTranslate(address + i, true);
+                mapped = p.has_value();
+                if (mapped) physical = *p;
+            } else {
+                mapped = mmu030peek::translate(cpu.getTC(), cpu.getCRP(), cpu.getSRP(),
+                                               address + i, 5, peek, &physical);
+            }
             if (!mapped) return false;
             value = value << 8 | mem.peek8(physical);
         }

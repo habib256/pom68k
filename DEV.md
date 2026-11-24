@@ -3108,8 +3108,9 @@ Rules the adapter (`CpuTarget<Cpu, Mem>`) keeps:
   would drop the overlay, and unmapped space are `NotMemory`, never read.
 - **Logical vs physical is explicit.** Logical is translated without
   touching MMU state: 24 address lines on 68000/EC020, identity on the
-  68020, TT0/TT1 then the tables on the 68030 (`Mmu030Peek.h`), DTT0/DTT1
-  then the tables on the 68040 (`Mmu040Peek.h`). An invalid descriptor is
+  68020, TT0/TT1 then the tables on the 68030 (`Mmu030Peek.h`), Dirk's
+  `MMU040::peek()` on the 68040 (DTT0/DTT1, the ATC, then the tables;
+  `MoiraDebugSeam::debugTranslate`). An invalid descriptor is
   `Untranslated`. The board's own remaps belong to physical.
 - **Breakpoints are logical PCs in Moira's own list.** With any stop armed
   `flags != 0`, so `JitEngine` delegates every instruction to the

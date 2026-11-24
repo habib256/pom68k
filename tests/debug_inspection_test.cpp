@@ -4,7 +4,8 @@
 // Gate for the debugger's inspection contract (src/DebugCpuTarget.h):
 //
 //   - a LOGICAL address is translated without disturbing the MMU — through
-//     a 68030 PMMU table tree (Mmu030Peek.h) and a 68040 one (Mmu040Peek.h),
+//     a 68030 PMMU table tree (Mmu030Peek.h) and a 68040 one (Dirk's
+//     MMU040::peek, through MoiraDebugSeam::debugTranslate),
 //     with the descriptors' U/M bits left exactly as they were;
 //   - an untranslated address is reported, not guessed;
 //   - device registers are never read: inspecting the compact Mac's VIA,
