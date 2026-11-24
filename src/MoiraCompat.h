@@ -22,9 +22,6 @@
 //     (pomIcache) and its 68040 cache-model switches: INERT here. This build
 //     has no JIT (POM68K_JIT=OFF) and his core runs its own caches. The
 //     overlay's timing is therefore absent: machine fingerprints move.
-//   - Fork pipeline latches the debugger touched (mmuPipeCnt,
-//     trace040Pending, irqDelay): his core has no such state; they are
-//     inert members so the debugger seam compiles unchanged.
 //   - pomVisitState: the save-state payload, rewritten for his state.
 
 #pragma once
@@ -219,11 +216,6 @@ public:
     void pomJitDtlbFlush() {}
     template <class... A> void pomJitSetBusStall(A&&...) {}
     bool pomJitCache040Consumer = false;
-
-    // ── State the fork carried and his core does not ────────────────────
-    int mmuPipeCnt = 0;
-    bool trace040Pending = false;
-    int irqDelay = 0;
 
     // The address map moved under the CPU: empty the ATCs.
     void pomFlushAtcs() {

@@ -76,10 +76,8 @@ public:
     // A new PC with the two words a boundary holds in the prefetch queue:
     // IRD = the opcode at `pc`, IRC = the word after it. The caller reads
     // them side-effect-free; Debugger::jump() would refill through the
-    // live bus instead (timed, IPL-polling, device reads). The 68030's
-    // carried pipe belongs to the old instruction stream and is dropped,
-    // as a jump drops it; the fetch window is disarmed so the next fetch
-    // revalidates.
+    // live bus instead (timed, IPL-polling, device reads). The fetch
+    // window is disarmed so the next fetch revalidates.
     void debugSetPc(moira::u32 pc, moira::u16 ird, moira::u16 irc) {
         // Dirk's boundary convention (Moira::jump): PC0 is the instruction,
         // PC the word in IRC.
@@ -87,27 +85,19 @@ public:
         reg.pc = pc + 2;
         queue.ird = ird;
         queue.irc = irc;
-        mmuPipeCnt = 0;
         pomJitDisarm();
     }
     // The address map moved under the CPU (a debugger MMU edit): empty
-    // both ATCs, move the JIT's map generation (its DTLB with it), drop
-    // the 68030's pipe captured through the old map and the fetch window.
+    // both ATCs, move the JIT's map generation (its DTLB with it) and drop
+    // the fetch window.
     void debugMapChanged() {
-        mmuPipeCnt = 0;
         pomFlushAtcs();
         pomJitMapMoved();
         pomJitDisarm();
     }
-    // An SR edit is not an SR-writing instruction: keep the 68040 one-shot
-    // trace and the post-RTE IRQ delay that setSR() arms for those.
-    void debugSetSr(moira::u16 sr) {
-        const bool trace = trace040Pending;
-        const int delay = irqDelay;
-        setSR(sr);
-        trace040Pending = trace;
-        irqDelay = delay;
-    }
+    // An SR edit is not an SR-writing instruction. Dirk's setSR() arms no
+    // deferred trace or IRQ delay, so the edit is a plain setSR().
+    void debugSetSr(moira::u16 sr) { setSR(sr); }
 
 protected:
     void didReachSoftstop(moira::u32 addr) override {
