@@ -45,13 +45,6 @@ void IIfxCpu::runCycles(moira::i64 n) {
     flushTicks();
 }
 
-void IIfxCpu::updateIpl() {
-    setIPL(moira::u8(mem_.iplLevel()));
-    // Force a poll so a between-instructions OSS level change is visible
-    // on the next CHECK_IRQ (the Cpu020 VBL-starvation lesson).
-    pollIpl();
-}
-
 void IIfxCpu::stall(int cycles) {
     if (cycles <= 0) return;
     clock += cycles;

@@ -73,10 +73,12 @@ public:
         self().flushTicks();
     }
 
-    // IPL recomputed from the platform's priority resolver. Wrappers with
-    // more to do shadow this: Cpu020/IIfxCpu force a pollIpl() so a
-    // between-instructions level change is seen (the Mac II POST VBL-wait
-    // starvation), Cpu030/Cpu040 tap their trace/lockstep hooks.
+    // IPL recomputed from the platform's priority resolver. Dirk's core
+    // samples the pins into reg.ipl at each instruction's POLL_IPL and
+    // checks them at the boundary after it; the fork's forced poll between
+    // instructions (pollIpl, for the Mac II POST VBL wait) has no
+    // counterpart. Cpu030/Cpu040 shadow this to tap their trace/lockstep
+    // hooks.
     void updateIpl() { setIPL(moira::u8(mem_.iplLevel())); }
 
 protected:

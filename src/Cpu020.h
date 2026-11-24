@@ -33,7 +33,6 @@ public:
     void setEngine(int e) { jit_.setEnabled(e != 0); pomJitDisarm(); }
 
     void runCycles(moira::i64 n);
-    void updateIpl();
     void stall(int cycles);
     void flushTicks();
     // No i-cache throughput overlay on this core, so the core clock IS

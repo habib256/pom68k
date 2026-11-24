@@ -33,7 +33,6 @@ public:
     }
 
     void runCycles(moira::i64 n);
-    void updateIpl();
     void stall(int cycles);
     void flushTicks();
     moira::i64 machineClock() const { return clock; }

@@ -219,9 +219,6 @@ public:
     void pomJitDtlbFlush() {}
     template <class... A> void pomJitSetBusStall(A&&...) {}
     bool pomJitCache040Consumer = false;
-    // Dirk's setIPL() raises CHECK_IRQ itself: a level change is seen at
-    // the next instruction boundary without a forced poll.
-    void pollIpl() {}
 
     // ── State the fork carried and his core does not ────────────────────
     int mmuPipeCnt = 0;
