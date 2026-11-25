@@ -1,7 +1,7 @@
-From c52c53a89a00836c00df087be0635d291b5e1039 Mon Sep 17 00:00:00 2001
+From 4e142a7cd536c6ef461cdbdf64a8a7068ef6d685 Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 00:47:16 +0400
-Subject: [PATCH 06/16] Report the kind of access to a watchpoint delegate
+Subject: [PATCH 05/15] Report the kind of access to a watchpoint delegate
 
 didReachWatchpoint(u32) carries the address only, so a debugger cannot tell
 a read from a write or an instruction fetch, nor see the size: a write
@@ -90,5 +90,5 @@ index f16b6fa..cd8fd71 100644
   *
   * The delegate is called when the CPU takes an exception for which a
 -- 
-2.54.0 (Apple Git-157)
+2.53.0
 

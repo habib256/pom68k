@@ -1,7 +1,7 @@
-From 29d9f4861a244e3031737f4c3cf909865b4f0067 Mon Sep 17 00:00:00 2001
+From 723dd1807015b1200a204571611752d04f0689c3 Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 01:21:44 +0400
-Subject: [PATCH 13/16] 68020/68030: report the size of the faulted cycle of a
+Subject: [PATCH 11/15] 68020/68030: report the size of the faulted cycle of a
  split long word
 
 When the second word of a long word access faults, the special status word
@@ -102,5 +102,5 @@ index ac6b9e6..693e591 100644
  
          e.stackFrame.ssw = (prog ? SSW030::FB | SSW030::RB : SSW030::DF) | size | (fc & 7);
 -- 
-2.54.0 (Apple Git-157)
+2.53.0
 

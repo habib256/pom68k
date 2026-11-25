@@ -1,7 +1,7 @@
-From 574849baac3ae8af296bf270bee120232af2f1ea Mon Sep 17 00:00:00 2001
+From 62e17b0a83b4855a06ab4d10318bbb9d46da267b Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Mon, 23 Nov 2026 20:44:57 +0400
-Subject: [PATCH 02/16] Cache: let a host save and restore the cache contents
+Subject: [PATCH 02/15] Cache: let a host save and restore the cache contents
 
 An emulator with save states otherwise has to flush the caches on load,
 which changes the timing of a restored machine. visitEntries() hands each
@@ -41,5 +41,5 @@ index 561fbd3..50b015a 100644
      u16 fetch(u32 addr, bool &busAccess, u32 &phys);
  
 -- 
-2.54.0 (Apple Git-157)
+2.53.0
 

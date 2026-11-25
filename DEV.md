@@ -2656,6 +2656,12 @@ current:
   removed; the modem cell now matches MAME's TDRE/TC-only surface.
 - `POM68K_Q900_ADB` — the Egret route delivers no Eclipse input;
   `q900_input_etalon` proved the SWIM IOP wire and it is now unconditional.
+- `POM68K_040_DCACHE`, `POM68K_040_CM_STATS`, `POM68K_ICACHE_MISS`,
+  `POM68K_MMU040_WALK`, `NEOST_EXC_DIAG` — switches of the NeoST fork's
+  core (68040 cache model, 020/030 i-cache timing overlay, 68040 walk
+  selector, exception trace). Dirk Hoffmann's Moira, the base since
+  2026-11-24, has none of these mechanisms, so the knobs were inert and
+  were removed on 2026-11-25; `main_old` keeps them.
 
 ### How this list stays true
 

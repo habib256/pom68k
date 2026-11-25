@@ -40,6 +40,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"the Quadras' FPSP … restored" by the FSAVE frame patch (2026-11-24) — the frame set E1 for every operand, and the FPSP unpacked every source as packed decimal: the Quadras booted but computed wrong transcendental results** → [Dirk merges #46-#49](#2026-11-25-moira-bf98107f)
+
 - **"in `DEFAULT` mode the 68000 … clears C and X when ASR shifts beyond the operand width (20)" (2026-11-24) — reversed the same day: the manual's last bit shifted out is the sign; 3 736 SingleStepTests vectors are listed against it and no 68000 machine gate moved** → [The 68000 ASR goes back to the manual](#2026-11-24-softfpu-asr-manual)
 
 - **"`MOIRA_EMULATE_ICACHE` is false here… the Macintosh II and LC boot gates pin today's timing" (2026-11-20 (sixth)) — the cache is on since the next day: once a hit stops being discounted, a warm loop costs what the tables always charged, and no boot gate moved** → [Upstream's 68020 instruction cache is on](#2026-11-21-icache-020-on)
@@ -621,6 +623,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-25 — Dirk merges #46-#49: the queue rebased on bf98107f, fifteen patches; the FSAVE frame's E1 was wrong, and the MoiraCompat layer loses the fork's inert members](#2026-11-25-moira-bf98107f)
 - [2026-11-24 (fourth) — Dirk merges four of POM68K's pull requests: the queue rebased on 863b8d02, seventeen patches](#2026-11-24-moira-863b8d02)
 - [2026-11-24 (third) — The SST gates judge agreement per corpus file against a floor, not unanimity: all thirteen green once D28/D29 are re-judged](#2026-11-24-sst-floors)
 - [2026-11-24 (second) — The LC040 soft FPU leaves Dirk's core for the Mac layer, and the 68000 ASR goes back to the manual: nineteen patches](#2026-11-24-softfpu-asr-manual)
@@ -1448,6 +1451,72 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-25-moira-bf98107f"></a>
+## 2026-11-25 — Dirk merges #46-#49: the queue rebased on bf98107f, fifteen patches; the FSAVE frame's E1 was wrong, and the MoiraCompat layer loses the fork's inert members
+
+**The 68040 FSAVE frame made the FPSP compute wrong results.** The queue's
+FSAVE patch (2026-11-24) set E1 in every unimplemented instruction frame, as
+MC68040UM Table 9-16 lists it. The definition of E1 in § 9.8 says that in this
+frame it flags a packed source, and the FPSP reads it that way (mac-rom
+`OS/FPUEmulation/GetOp.a`, `gnot_fmovecr`: E1 set → `pack_source`). Run from
+the Quadra 605 ROM's `fpsp_unimp` under Moira, every operand was unpacked as
+packed decimal: FSIN(0.5) = 0.7174, FMOD(7.5, 2) = 0.3, FETOX(1) = 2.2255.
+The boot etalons the patch named only reach the Finder, so they could not
+tell. The rewrite sets E1 for a packed source only, stores the raw packed
+operand (Table 9-16), keeps the frame as the twelve longwords FSAVE writes so
+that FRESTORE loads it back (M68000PRM FRESTORE), and discards it on FSAVE,
+reset and the nonconditional FPU instructions (§ 9.8, M68000PRM FSAVE); the
+FPSP then returns the right value in 14 of 14 cases (FSIN, FETOX, FMOD,
+FSCALE, FMOVECR; register, single, packed, denormal and unnormal operands).
+The harness needs the private ROM and stays out of the tree. Save states store
+the frame as its twelve longwords: format v40.
+
+**Upstream.** Dirk merged #46 `c51a74e8` (MOVE to SR refills from the new
+program space, not the 68020 latch), #47 `4fe858fa` (FBcc/FDBcc to an odd
+target take an address error on the 68020 core), #48 `53596c38` (FRESTORE
+refuses a frame the FPU does not recognize; 68040 sizes $30/$60; the format
+error stacks the FRESTORE's PC) and #49 `bf98107f` (the FSAVE rewrite, on
+#48). The queue moved from `863b8d02` + 17 to `bf98107f` + 15: the FRESTORE
+and FSAVE patches left it, the others replayed without conflict and were
+renumbered (`POM68K_VENDOR.md` § The base and the queue). Each PR's test
+failed on the old master and passed with the fix; his full ctest was 26/26 on
+each branch.
+
+**A manual contradiction, not a defect: the DT = $1 root limit with FCL.**
+Moving the debugger onto Dirk's `MMU030::peek()` failed two cells of
+`debug_inspection_test`: with FCL set, his walk skips a page descriptor
+root's limit. MC68030UM § 9.7.1 says "the processor performs a limit check
+regardless of the state of the FCL bit"; Figure 9-28 (limit check
+procedure) skips it for y = RP with FCL set, and WinUAE does the same (the
+fork's oracle checks it only through its own local patch). An adversarial
+review found the figure in both the 1989 and the NXP editions. No 68030 is
+at hand to measure it, so a patch made that day was withdrawn, no PR was
+opened, and the core keeps Dirk's reading: the cells are listed [F] in
+`tests/known/moira_rules_test.txt`, `debug_inspection_test` follows his walk,
+and `TODO.md` holds the measurement that would settle it. The local branch
+`mmu030-root-limit-fcl` (fix, unit test, RandomUAE generator) waits for it.
+
+**The Mac layer sheds the fork's inert members.** `pollIpl()` and the
+`updateIpl()` shadows, `mmuPipeCnt`/`trace040Pending`/`irqDelay`, the 020/030
+i-cache timing overlay (`PomIcache`, `POM68K_ICACHE_MISS`), the 68040 cache
+model switches (`POM68K_040_DCACHE`, `POM68K_040_CM_STATS`) and the
+`NEOST_EXC_DIAG`/`POM68K_MMU040_WALK` knobs had no mechanism left behind them
+on Dirk's core; they are removed and the five knobs are listed as retired in
+`DEV.md` § 5. The debugger and the test probes translate 68030 and 68040
+addresses through Dirk's `MMU::peek()` (`MoiraDebugSeam::debugTranslate()`),
+which honours the TT registers, the ATC and the S bit; `Mmu030Peek.h` and
+`Mmu040Peek.h` are gone and `Mmu030Walk.h` moved to `tests/` as the
+independent reference `moira_rules_test` compares PTEST against.
+
+**Gates on this core (x86-64, interpreter).** The machine tier (`m040|m030|
+etalon`, 320 tests, `-j8`) passed 311; the nine others were timeouts of long
+68040 scenarios (Dayna, AFP, F108 IDE, CD install) and all nine passed run
+three at a time, the slowest at 2 097 s of 3 600 and the Dayna driver at
+1 889 s of 2 400: the interpreter leaves those budgets little margin. After
+the layer changes: `asset-none` 156/156, and 99/99 for the SST corpora, the
+CPU vectors, the save-state etalons and the boot, agent and beyond etalons
+the probes touch.
 
 <a id="2026-11-24-moira-863b8d02"></a>
 ## 2026-11-24 (fourth) — Dirk merges four of POM68K's pull requests: the queue rebased on 863b8d02, seventeen patches

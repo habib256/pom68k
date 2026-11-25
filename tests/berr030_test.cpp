@@ -46,7 +46,8 @@ public:
     bool inHole(moira::u32 a) const { return a >= HOLE_LO && a < HOLE_HI; }
     // Dirk Hoffmann's 68030 i-cache: 16 lines of four longwords, line n in
     // slots 4n to 4n + 3 (Cache.h). Seeded and read through its save-state
-    // visitor (patch 4 of extern/moira/patches).
+    // visitor (queue patch "Cache: let a host save and restore the cache
+    // contents").
     void seedIcacheLine(int line) {
         int i = 0;
         iCache.visitEntries([&](moira::u32&, moira::u32& tag, bool& valid) {

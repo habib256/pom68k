@@ -1,7 +1,7 @@
-From 02ca88102cee203cd812a3aa2793c8ca292864a4 Mon Sep 17 00:00:00 2001
+From a3398b5cc9cf5e5bf203a9dbf254cf5eba13100e Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 01:20:00 +0400
-Subject: [PATCH 12/16] 68020: the long bus fault frame carries the data output
+Subject: [PATCH 10/15] 68020: the long bus fault frame carries the data output
  buffer
 
 MC68020UM 6.2.2: "For data write faults, the handler must transfer the
@@ -27,7 +27,7 @@ index 9262ff7..f59f142 100644
  
  // Emulates an exception other than address errors, bus errors, and interrupts
 diff --git a/Moira/MoiraExceptions_cpp.h b/Moira/MoiraExceptions_cpp.h
-index 97be4d9..3595ded 100644
+index 77a91a6..ffac228 100644
 --- a/Moira/MoiraExceptions_cpp.h
 +++ b/Moira/MoiraExceptions_cpp.h
 @@ -356,14 +356,15 @@ static bool hasIndexedOperand(u16 ird)
@@ -58,5 +58,5 @@ index 97be4d9..3595ded 100644
          // Remember how to restart the instruction
          restart.valid = saved != nullptr;
 -- 
-2.54.0 (Apple Git-157)
+2.53.0
 

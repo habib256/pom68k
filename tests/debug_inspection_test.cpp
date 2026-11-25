@@ -181,6 +181,10 @@ void peekGeometry030() {
         check(mem == before && !cpu.wrote,
               "68030 inspection: descriptors remain byte-identical");
     };
+    // [F] With FCL set, the inspection follows Dirk's walk, which skips a
+    // DT=1 root's limit as MC68030UM Figure 9-28 and WinUAE do; §9.7.1 says
+    // the limit applies "regardless of the state of the FCL bit". Settled by
+    // a real 68030 (tests/known/moira_rules_test.txt, 2026-11-25).
     for (bool fcl : {false, true}) for (bool lower : {false, true})
     for (int delta : {-1, 0, 1}) {
         const uint32_t index = uint32_t(2 + delta);
@@ -188,7 +192,7 @@ void peekGeometry030() {
         const uint32_t tc = 0x80C86600 | (fcl ? 0x01000000 : 0);
         const uint32_t logical = (index << 18) | 0x2134;
         probe(tc, (uint64_t(bound | 1) << 32) | 0x30000,
-              logical, lower ? delta >= 0 : delta <= 0,
+              logical, fcl || (lower ? delta >= 0 : delta <= 0),
               0x30000 + logical, "68030 inspection: direct-root bounds, including FCL");
     }
     // FCL consults FC[5] without applying the table root's limit to FC.

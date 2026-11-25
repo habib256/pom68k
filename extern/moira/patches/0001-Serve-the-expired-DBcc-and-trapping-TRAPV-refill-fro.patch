@@ -1,7 +1,7 @@
-From 4ede1c09b6b1f0bd87e329989d1e411f5bfd2bf8 Mon Sep 17 00:00:00 2001
+From db0c292eae869d603e385c69851fc21bc8f03b22 Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 13:52:56 +0400
-Subject: [PATCH 01/16] Serve the expired DBcc and trapping TRAPV refill from
+Subject: [PATCH 01/15] Serve the expired DBcc and trapping TRAPV refill from
  the instruction cache
 
 An expired DBcc and a trapping TRAPV read a program word they discard,
@@ -32,7 +32,7 @@ index 9bb4dc1..b694bda 100644
  
  // Writes an operand to memory (without or with address error checking)
 diff --git a/Moira/MoiraExec_cpp.h b/Moira/MoiraExec_cpp.h
-index a09ebc5..778e390 100644
+index 2bfbf94..3cd07b7 100644
 --- a/Moira/MoiraExec_cpp.h
 +++ b/Moira/MoiraExec_cpp.h
 @@ -2464,7 +2464,7 @@ Moira::execDbcc(u16 opcode)
@@ -44,7 +44,7 @@ index a09ebc5..778e390 100644
                  CYCLES_68020(10);
                  fullPrefetchAt<C, POLL>(reg.pc + 2);
              }
-@@ -5511,7 +5511,7 @@ Moira::execTrapv(u16 opcode)
+@@ -5514,7 +5514,7 @@ Moira::execTrapv(u16 opcode)
  
          } else {
  
@@ -54,5 +54,5 @@ index a09ebc5..778e390 100644
          }
  
 -- 
-2.54.0 (Apple Git-157)
+2.53.0
 

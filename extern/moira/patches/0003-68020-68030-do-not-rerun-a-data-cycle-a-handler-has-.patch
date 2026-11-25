@@ -1,7 +1,7 @@
-From 2a1578287376076c105947c520b04ae882c5da99 Mon Sep 17 00:00:00 2001
+From ec1005cc0d9488c07b2723ea673d6feb40390d29 Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Mon, 23 Nov 2026 21:31:03 +0400
-Subject: [PATCH 04/16] 68020/68030: do not rerun a data cycle a handler has
+Subject: [PATCH 03/15] 68020/68030: do not rerun a data cycle a handler has
  completed
 
 MC68030UM 8.2.2 lets a bus error handler complete a faulted data cycle in
@@ -92,7 +92,7 @@ index 09af5fc..a2ff1e5 100644
      addr = translate<C, true, S>(addr, getFC(), ci);
  
 diff --git a/Moira/MoiraExceptions_cpp.h b/Moira/MoiraExceptions_cpp.h
-index acab602..97be4d9 100644
+index 7d950e8..77a91a6 100644
 --- a/Moira/MoiraExceptions_cpp.h
 +++ b/Moira/MoiraExceptions_cpp.h
 @@ -442,6 +442,9 @@ Moira::execAddressError(StackFrame frame, int delay)
@@ -106,10 +106,10 @@ index acab602..97be4d9 100644
  
      // Inform the delegate
 diff --git a/Moira/MoiraExec_cpp.h b/Moira/MoiraExec_cpp.h
-index 778e390..18c1be4 100644
+index 3cd07b7..55e3ed6 100644
 --- a/Moira/MoiraExec_cpp.h
 +++ b/Moira/MoiraExec_cpp.h
-@@ -5091,6 +5091,29 @@ Moira::readRteFrame68020(u16 &newsr, u32 &newpc)
+@@ -5094,6 +5094,29 @@ Moira::readRteFrame68020(u16 &newsr, u32 &newpc)
              case 0b1011: size = 92; break;  // Long bus fault frame
          }
  
@@ -139,7 +139,7 @@ index 778e390..18c1be4 100644
          // Like UAE, skip the rest of the frame without reading it
          reg.sp = frameBase + size;
  
-@@ -5111,6 +5134,9 @@ Moira::readRteFrame68020(u16 &newsr, u32 &newpc)
+@@ -5114,6 +5137,9 @@ Moira::readRteFrame68020(u16 &newsr, u32 &newpc)
          setSR(newsr);
      }
  
@@ -171,5 +171,5 @@ index 1ee1c87..e1750ba 100644
  struct CycleBudget {
  
 -- 
-2.54.0 (Apple Git-157)
+2.53.0
 

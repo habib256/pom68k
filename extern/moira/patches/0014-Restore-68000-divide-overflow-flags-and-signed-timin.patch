@@ -1,7 +1,7 @@
-From 07b4b358a70dabb9d1056898df398f9369e7c541 Mon Sep 17 00:00:00 2001
+From 9245cdbc352d8448089d55d0348b03ead83cc5a4 Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 08:05:14 +0400
-Subject: [PATCH] Restore 68000 divide overflow flags and signed timing
+Subject: [PATCH 14/15] Restore 68000 divide overflow flags and signed timing
  in DEFAULT mode
 
 ---
@@ -64,5 +64,5 @@ index 5c87dcc..59989a8 100644
      if (cpuModel >= CPUModel::M68EC040) { reg.sr.c = 0; return; }
  
 -- 
-2.54.0 (Apple Git-157)
+2.53.0
 

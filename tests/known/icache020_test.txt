@@ -4,7 +4,7 @@
 # a count when a failure disappears. Every heading says why its rows fail.
 
 # Cycle totals graded [F] in the test (the fork's model, no bus capture) and
-# the refill of an exception handler; the manual loops pass (patches 2, 3).
+# the refill of an exception handler; the manual loops pass (upstream PR #45, queue patch 1).
 1	68020 loop-off: 122 cycles, expected 120
 1	68020 loop-on: 102 cycles, expected 100
 1	68020 loop-port16: 126 cycles, expected 120

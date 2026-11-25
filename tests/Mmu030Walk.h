@@ -182,8 +182,10 @@ pageDescriptor:
 
     if (earlyTermination) {
 
-        // [B] MC68030UM-1989 §9.7.1: a DT=1 root still checks its
-        // limit with FCL enabled; no function-code table is consulted.
+        // [F] MC68030UM-1989 §9.7.1: a DT=1 root still checks its limit
+        // with FCL enabled ("regardless of the state of the FCL bit"); no
+        // function-code table is consulted. Figure 9-28 of the same manual,
+        // WinUAE and Dirk's core skip it; a real 68030 would settle it.
         if (descrSize == 8) {
             u32 tableIndex = (addr & tmask[t]) >> tshift[t];
             u32 limit = (descr0 & 0x7FFF0000) >> 16;

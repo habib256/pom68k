@@ -1,7 +1,7 @@
-From c4ec7dc440f3e4b89c79994bef4966308db00f1b Mon Sep 17 00:00:00 2001
+From 0f9a6d25683d1fbce42889aee490dec01d8f81f6 Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 00:30:37 +0400
-Subject: [PATCH 05/16] Halt on a double bus fault during reset or a trace
+Subject: [PATCH 04/15] Halt on a double bus fault during reset or a trace
  exception
 
 MC68030UM 8.1.1: "if bus error or address error occur during the exception
@@ -61,5 +61,5 @@ index b9ca9bc..f1371b5 100644
              }
  
 -- 
-2.54.0 (Apple Git-157)
+2.53.0
 

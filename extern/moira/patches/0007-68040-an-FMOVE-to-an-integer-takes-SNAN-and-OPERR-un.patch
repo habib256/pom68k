@@ -1,7 +1,7 @@
-From b7adfdf2a45810976ceb222f368d2020cf2d3678 Mon Sep 17 00:00:00 2001
+From 799931dd6c91dfab03c7623b5bd129f7b2e3acba Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 00:56:58 +0400
-Subject: [PATCH 09/16] 68040: an FMOVE to an integer takes SNAN and OPERR
+Subject: [PATCH 07/15] 68040: an FMOVE to an integer takes SNAN and OPERR
  unconditionally
 
 MC68040UM 9.7.2.2 and 9.7.3.2: when an FMOVE to byte, word or long word
@@ -17,10 +17,10 @@ nonmaskable conditions, which the 68040 passes for integer destinations.
  3 files changed, 13 insertions(+), 5 deletions(-)
 
 diff --git a/Moira/FPU/FPU.cpp b/Moira/FPU/FPU.cpp
-index b119c73..453f2d8 100644
+index 70a67e6..5af4968 100644
 --- a/Moira/FPU/FPU.cpp
 +++ b/Moira/FPU/FPU.cpp
-@@ -38,14 +38,14 @@ FPU::tag040(const MFloat80 &v)
+@@ -28,14 +28,14 @@ FPU::reset()
  }
  
  u16
@@ -38,10 +38,10 @@ index b119c73..453f2d8 100644
      return 0;
  }
 diff --git a/Moira/FPU/FPU.h b/Moira/FPU/FPU.h
-index 6fd8360..4b67251 100644
+index 4f7d59a..d9e7a84 100644
 --- a/Moira/FPU/FPU.h
 +++ b/Moira/FPU/FPU.h
-@@ -252,8 +252,9 @@ public:
+@@ -246,8 +246,9 @@ public:
      bool isEnabled(u32 exceptionBit) const { return fpcr & exceptionBit; }
  
      /// Returns the vector of the exception with the highest priority that is
@@ -54,10 +54,10 @@ index 6fd8360..4b67251 100644
      /// Checks if an exception that is set and enabled prevents the result from
      /// being stored (SNAN, OPERR and DZ, MC68881/MC68882UM, 6.1)
 diff --git a/Moira/MoiraExecFPU_cpp.h b/Moira/MoiraExecFPU_cpp.h
-index f418e67..294cc7b 100644
+index b165f13..06a2e0e 100644
 --- a/Moira/MoiraExecFPU_cpp.h
 +++ b/Moira/MoiraExecFPU_cpp.h
-@@ -931,7 +931,14 @@ Moira::execFMove(u16 opcode)
+@@ -925,7 +925,14 @@ Moira::execFMove(u16 opcode)
          // The 68040 takes an enabled exception right after a move to memory or to
          // a data register (post-instruction exception). The 68881 and 68882 report
          // it when the next FPU instruction starts, like all other exceptions.
@@ -74,5 +74,5 @@ index f418e67..294cc7b 100644
              execFpuTrap<C>(vector, true, ea);
              FINALIZE
 -- 
-2.54.0 (Apple Git-157)
+2.53.0
 

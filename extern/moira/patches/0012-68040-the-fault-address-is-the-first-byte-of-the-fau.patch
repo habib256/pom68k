@@ -1,7 +1,7 @@
-From a563b63d97dff5835bda043e31af02cfd4b217e3 Mon Sep 17 00:00:00 2001
+From 4177b35837d0169b8c37c25a95c84d02be91966c Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 01:26:03 +0400
-Subject: [PATCH 14/16] 68040: the fault address is the first byte of the
+Subject: [PATCH 12/15] 68040: the fault address is the first byte of the
  faulted access
 
 MC68040UM 8.4.6.4: "For a misaligned access that faults, the FA field
@@ -32,5 +32,5 @@ index 693e591..f9ebea9 100644
  
          // A 68020 PC-relative operand uses program space but is a data cycle
 -- 
-2.54.0 (Apple Git-157)
+2.53.0
 

@@ -351,26 +351,6 @@
 1	direct root ATC M size=4 MOVES=1 FC=1 pass=2: MMUSR=0000
 1	direct root ATC M size=4 MOVES=1 FC=5 pass=1: MMUSR=0000
 1	direct root ATC M size=4 MOVES=1 FC=5 pass=2: MMUSR=0000
-1	direct root PTEST FCL=1 lower=0 delta=1 depth=1 FC=1 R=0: MMUSR=0000/4400 A1=00000000
-1	direct root PTEST FCL=1 lower=0 delta=1 depth=1 FC=1 R=1: MMUSR=0000/4400 A1=00000000
-1	direct root PTEST FCL=1 lower=0 delta=1 depth=1 FC=5 R=0: MMUSR=0000/4400 A1=00000000
-1	direct root PTEST FCL=1 lower=0 delta=1 depth=1 FC=5 R=1: MMUSR=0000/4400 A1=00000000
-1	direct root PTEST FCL=1 lower=0 delta=1 depth=7 FC=1 R=0: MMUSR=0000/4400 A1=00000000
-1	direct root PTEST FCL=1 lower=0 delta=1 depth=7 FC=1 R=1: MMUSR=0000/4400 A1=00000000
-1	direct root PTEST FCL=1 lower=0 delta=1 depth=7 FC=5 R=0: MMUSR=0000/4400 A1=00000000
-1	direct root PTEST FCL=1 lower=0 delta=1 depth=7 FC=5 R=1: MMUSR=0000/4400 A1=00000000
-1	direct root PTEST FCL=1 lower=1 delta=-1 depth=1 FC=1 R=0: MMUSR=0000/4400 A1=00000000
-1	direct root PTEST FCL=1 lower=1 delta=-1 depth=1 FC=1 R=1: MMUSR=0000/4400 A1=00000000
-1	direct root PTEST FCL=1 lower=1 delta=-1 depth=1 FC=5 R=0: MMUSR=0000/4400 A1=00000000
-1	direct root PTEST FCL=1 lower=1 delta=-1 depth=1 FC=5 R=1: MMUSR=0000/4400 A1=00000000
-1	direct root PTEST FCL=1 lower=1 delta=-1 depth=7 FC=1 R=0: MMUSR=0000/4400 A1=00000000
-1	direct root PTEST FCL=1 lower=1 delta=-1 depth=7 FC=1 R=1: MMUSR=0000/4400 A1=00000000
-1	direct root PTEST FCL=1 lower=1 delta=-1 depth=7 FC=5 R=0: MMUSR=0000/4400 A1=00000000
-1	direct root PTEST FCL=1 lower=1 delta=-1 depth=7 FC=5 R=1: MMUSR=0000/4400 A1=00000000
-1	direct root bus FCL=1 lower=0 delta=1 R=0: PC=80001004 RAM=DEADBEEF
-1	direct root bus FCL=1 lower=0 delta=1 R=1: PC=80001004 RAM=12345678
-1	direct root bus FCL=1 lower=1 delta=-1 R=0: PC=80001004 RAM=DEADBEEF
-1	direct root bus FCL=1 lower=1 delta=-1 R=1: PC=80001004 RAM=12345678
 1	handled ILLEGAL: 34 cycles, want 4
 1	handled ILLEGAL: PC0=00002000 SP=00007FFA
 1	model 0: the 68000/68010 level-sensitive level 7 changed (1 entries)
@@ -394,3 +374,30 @@
 1	model 8 read watchpoint: saw "", want "r40000:4 "
 1	model 8 write watchpoint: saw "", want "w40000:4 "
 2	model 8: the interrupt was not taken
+
+# Ruled [F] on 2026-11-25: a page descriptor root (DT = $1) with FCL set.
+# MC68030UM 9.7.1 says the limit is checked "regardless of the state of the
+# FCL bit"; Figure 9-28 (limit check procedure) skips it for y = RP with FCL
+# set, and WinUAE and Dirk Hoffmann's core follow the figure. The cell keeps
+# the 9.7.1 reading; the core keeps Dirk's. Settled by: PTEST on a real
+# 68030 with a DT = $1 root, FCL set and an out-of-limit index.
+1	direct root PTEST FCL=1 lower=0 delta=1 depth=1 FC=1 R=0: MMUSR=0000/4400 A1=00000000
+1	direct root PTEST FCL=1 lower=0 delta=1 depth=1 FC=1 R=1: MMUSR=0000/4400 A1=00000000
+1	direct root PTEST FCL=1 lower=0 delta=1 depth=1 FC=5 R=0: MMUSR=0000/4400 A1=00000000
+1	direct root PTEST FCL=1 lower=0 delta=1 depth=1 FC=5 R=1: MMUSR=0000/4400 A1=00000000
+1	direct root PTEST FCL=1 lower=0 delta=1 depth=7 FC=1 R=0: MMUSR=0000/4400 A1=00000000
+1	direct root PTEST FCL=1 lower=0 delta=1 depth=7 FC=1 R=1: MMUSR=0000/4400 A1=00000000
+1	direct root PTEST FCL=1 lower=0 delta=1 depth=7 FC=5 R=0: MMUSR=0000/4400 A1=00000000
+1	direct root PTEST FCL=1 lower=0 delta=1 depth=7 FC=5 R=1: MMUSR=0000/4400 A1=00000000
+1	direct root PTEST FCL=1 lower=1 delta=-1 depth=1 FC=1 R=0: MMUSR=0000/4400 A1=00000000
+1	direct root PTEST FCL=1 lower=1 delta=-1 depth=1 FC=1 R=1: MMUSR=0000/4400 A1=00000000
+1	direct root PTEST FCL=1 lower=1 delta=-1 depth=1 FC=5 R=0: MMUSR=0000/4400 A1=00000000
+1	direct root PTEST FCL=1 lower=1 delta=-1 depth=1 FC=5 R=1: MMUSR=0000/4400 A1=00000000
+1	direct root PTEST FCL=1 lower=1 delta=-1 depth=7 FC=1 R=0: MMUSR=0000/4400 A1=00000000
+1	direct root PTEST FCL=1 lower=1 delta=-1 depth=7 FC=1 R=1: MMUSR=0000/4400 A1=00000000
+1	direct root PTEST FCL=1 lower=1 delta=-1 depth=7 FC=5 R=0: MMUSR=0000/4400 A1=00000000
+1	direct root PTEST FCL=1 lower=1 delta=-1 depth=7 FC=5 R=1: MMUSR=0000/4400 A1=00000000
+1	direct root bus FCL=1 lower=0 delta=1 R=0: PC=80001004 RAM=DEADBEEF
+1	direct root bus FCL=1 lower=0 delta=1 R=1: PC=80001004 RAM=12345678
+1	direct root bus FCL=1 lower=1 delta=-1 R=0: PC=80001004 RAM=DEADBEEF
+1	direct root bus FCL=1 lower=1 delta=-1 R=1: PC=80001004 RAM=12345678

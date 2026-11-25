@@ -1,8 +1,8 @@
-From 3de9381313cb07301c9e74aa019e9eff88d2b8f4 Mon Sep 17 00:00:00 2001
+From 4656b4342b89b952e78d03edac1c2e09617ca504 Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 16:10:16 +0400
-Subject: [PATCH] 68020 core: the discarded refill is an instruction fetch
- without a cache too
+Subject: [PATCH 15/15] 68020 core: the discarded refill is an instruction
+ fetch without a cache too
 
 readStatusRefill() sent the discarded program word through readInstr() only
 when the instruction cache is emulated. Without one, it used a plain program
@@ -33,5 +33,5 @@ index f9ebea9..27cb6c3 100644
      (void)read<C, AddrSpace::PROG, Word>(addr);
  }
 -- 
-2.54.0 (Apple Git-157)
+2.53.0
 

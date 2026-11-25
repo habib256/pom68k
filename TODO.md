@@ -127,14 +127,18 @@ défaut CPU, dans cet ordre :
   partent un par un selon la boucle ci-dessus. Fusionnées le 2026-11-24 :
   #42 (`5f4e9832`, SSW d'une erreur de bus hôte 68020), #43 (`95a0cb5e`,
   MOVE vers SR/CCR), #44 (`794fb294`, FMOVE.P zéro, k > 17) et #45
-  (`863b8d02`, coups du cache comptés une fois) ; la file est rebasée sur
-  `863b8d02` et compte 17 correctifs. L'état de chaque correctif et sa PR se
-  suivent dans `extern/moira/patches/queue.tsv`.
-- [ ] **Trier ce qui reste dans la couche de POM68K.** `src/MoiraCompat.h`
-  garde des membres inertes du fork (couture `pomJit*`, surcouche
-  `pomIcache`, verrous `mmuPipeCnt`/`trace040Pending`/`irqDelay`) et les
-  entrées `extBusError*()` : pour chacun, comportement CPU (→ correctif de
-  la file), besoin Macintosh (→ reste), ou mort (→ retrait).
+  (`863b8d02`, coups du cache comptés une fois). Fusionnées le 2026-11-25 :
+  #46 (latch du 68020 après MOVE vers SR), #47 (FBcc/FDBcc vers une cible
+  impaire), #48 (FRESTORE) et #49 (frame FSAVE UNIMP) ; la file est rebasée
+  sur `bf98107f` et compte 15 correctifs. L'état de chaque correctif et sa
+  PR se suivent dans `extern/moira/patches/queue.tsv`.
+- [ ] **Mesurer sur un vrai 68030 la limite d'une racine DT=1 avec FCL.**
+  MC68030UM §9.7.1 la contrôle « regardless of the state of the FCL bit »,
+  la figure 9-28, WinUAE et le cœur de Dirk non ; le cœur garde la lecture
+  de Dirk et les cellules sont listées [F] (`tests/known/moira_rules_test.txt`).
+  Un PTEST sur une adresse hors limite tranche (bits L et I du MMUSR) ; une
+  PR chez Dirk seulement avec cette mesure. Branche locale prête :
+  `mmu030-root-limit-fcl` (correctif, test unitaire, générateur RandomUAE).
 
 ### Couverture — ROM et systèmes
 
@@ -570,6 +574,14 @@ le même processus sont trois admissions indépendantes ; `guestFamilies`
 (justesse) ne se déduit jamais d'`autoFamilies` (politique mesurée) ; la
 couverture d'opcodes seule ne fait jamais d'un backend natif le défaut. Une
 règle 68k commune vit dans l'IR ou le coût partagé, jamais dans un émetteur.
+
+Un plan par étapes (S0-S8), à approuver avant tout code, est dans
+`scratchpad/2026-11-25/JIT_PLAN.md` : inventaire de la couture du fork
+classée (disponible chez Dirk / couche Mac / point d'accroche du cœur), le
+contrat de frontière d'instruction de Dirk qui invalide l'IR et les
+émetteurs (PC, file `ird`/`irc`, redémarrage, `syncCyclePenalty`), le
+68040 en premier, et les décisions à prendre (Q1 : le 68030 face aux caches
+de Dirk).
 
 ### Fonctionnel d'abord — étapes
 

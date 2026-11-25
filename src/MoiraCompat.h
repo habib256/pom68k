@@ -261,9 +261,8 @@ public:
         ar(fpcr, fpsr, fpiar);
         // FPU state between instructions: the reset (NULL frame) state, an
         // arithmetic exception taken at the next FPU instruction, the operands
-        // of an instruction left to the 68040 FPSP (queue patch "68040: FSAVE
-        // stores the unimplemented instruction state frame") and the
-        // arithmetic environment.
+        // of an instruction left to the 68040 FPSP (the frame FSAVE writes,
+        // upstream since Dirk's PR #49) and the arithmetic environment.
         ar(fpu.resetState, fpu.pendingTrap);
         ar(fpu.unimp.valid);
         for (auto& w : fpu.unimp.frame) ar(w);

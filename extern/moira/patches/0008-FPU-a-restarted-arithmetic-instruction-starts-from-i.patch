@@ -1,7 +1,7 @@
-From 26ad9db0ec4d7c57a100c01f47f14a36dda557f4 Mon Sep 17 00:00:00 2001
+From 428c86ae71c93879823f44ea87c0c678e85b8fe2 Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 01:15:08 +0400
-Subject: [PATCH 10/17] FPU: a restarted arithmetic instruction starts from its
+Subject: [PATCH 08/15] FPU: a restarted arithmetic instruction starts from its
  own operands
 
 An arithmetic FPU instruction stores its result and then prefetches. A bus
@@ -15,10 +15,10 @@ instruction and restored when the prefetch faults.
  1 file changed, 17 insertions(+), 1 deletion(-)
 
 diff --git a/Moira/MoiraExecFPU_cpp.h b/Moira/MoiraExecFPU_cpp.h
-index 4187d14..a394ee8 100644
+index 06a2e0e..6957f9f 100644
 --- a/Moira/MoiraExecFPU_cpp.h
 +++ b/Moira/MoiraExecFPU_cpp.h
-@@ -1260,6 +1260,15 @@ Moira::execFGeneric(u16 opcode)
+@@ -1256,6 +1256,15 @@ Moira::execFGeneric(u16 opcode)
      fpu.resetState = false;
      fpu.unimp.valid = false;
      readI<C, Word>();
@@ -34,7 +34,7 @@ index 4187d14..a394ee8 100644
      fpu.clearExcStatusByte();
  
      // The 68040 FPU updates FPIAR on every data operation, older FPUs only if an
-@@ -1377,7 +1386,14 @@ Moira::execFGeneric(u16 opcode)
+@@ -1373,7 +1382,14 @@ Moira::execFGeneric(u16 opcode)
  
      finishFpuOp(dst, old);
  

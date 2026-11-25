@@ -329,11 +329,12 @@ inline constexpr char     kMagic[8]  = {'P','O','M','6','8','K','S','S'};
 // v39 (2026-11-24): the CPU payload is Dirk Hoffmann's Moira (MoiraCompat.h
 // pomVisitState): his registers, MMU, FPU and 020/030 cache contents, the
 // 68020 restart record and the data cycle a bus error handler completed
-// (patch 6 of extern/moira/patches). Nothing of the fork's layout remains,
+// (queue patch "68020/68030: do not rerun a data cycle a handler has
+// completed"). Nothing of the fork's layout remains,
 // so a v38 snapshot cannot be read.
 // v40 (2026-11-25): the 68040 unimplemented instruction frame is stored as
-// the twelve longwords FSAVE writes (queue patch "68040: FSAVE stores the
-// unimplemented instruction state frame", rewritten), not as its fields.
+// the twelve longwords FSAVE writes (Dirk's Moira since PR #49), not as
+// its fields.
 inline constexpr u32      kVersion   = 40;
 
 struct Header {

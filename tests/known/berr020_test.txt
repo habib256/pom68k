@@ -10,7 +10,8 @@
 32	output buffer contains the pending transfer at the faulted size
 
 # Restart model (Dirk's design): the rerun issues the operand's earlier bus
-# cycles again; only the completed one is served from the frame (patch 6).
+# cycles again; only the completed one is served from the frame (queue patch
+# "68020/68030: do not rerun a data cycle a handler has completed").
 16	no data bus callback for the completed operand
 2	redirected PC: identical next opcode must issue a new data access
 

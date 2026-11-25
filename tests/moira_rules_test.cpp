@@ -1320,8 +1320,11 @@ void ptestDescriptorFaults030()
 
 void directRootFclLimits030()
 {
-    // [B] MC68030UM-1989 §9.7.1 explicitly keeps a DT=1 root's limit
-    // active with FCL: direct roots have no function-code lookup table.
+    // [F] MC68030UM-1989 §9.7.1 keeps a DT=1 root's limit active with FCL
+    // ("regardless of the state of the FCL bit"); its Figure 9-28 skips the
+    // check for y = RP with FCL set, as WinUAE and Dirk's core do. The FCL
+    // rows are listed in tests/known/moira_rules_test.txt until a real 68030
+    // settles it.
     for (bool fcl : {false, true}) for (bool lower : {false, true})
     for (int delta : {-1, 0, 1}) for (int depth : {1, 7})
     for (int fc : {1, 5}) for (bool read : {false, true}) {

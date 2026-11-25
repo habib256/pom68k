@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 887 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 888 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 29 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 44 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 10 |
-| [Cross-cutting](#cross-cutting) | 183 |
+| [Cross-cutting](#cross-cutting) | 184 |
 
 ---
 
@@ -949,4 +949,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-21 (tenth)** — [The disk journal pushed on 2026-11-11 is out of history: 173 commits rewritten, nothing older touched](CHANGELOG.md#2026-11-21-pomundo-purge)
 - **2026-11-22** — [Ungraded core rules become a ratchet; the first batch sourced, and a 68010 claim that was wrong](CHANGELOG.md#2026-11-22-grades-ratchet)
 - **2026-11-24 (fourth)** — [Dirk merges four of POM68K's pull requests: the queue rebased on 863b8d02, seventeen patches](CHANGELOG.md#2026-11-24-moira-863b8d02)
+- **2026-11-25** — [Dirk merges #46-#49: the queue rebased on bf98107f, fifteen patches; the FSAVE frame's E1 was wrong, and the MoiraCompat layer loses the fork's inert members](CHANGELOG.md#2026-11-25-moira-bf98107f)
 
