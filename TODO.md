@@ -76,8 +76,7 @@ Dans l'ordre :
    approuver par le propriétaire `scratchpad/2026-11-25/JIT_PLAN.md`
    (questions Q1-Q8) avant tout code JIT (§ Phase 2).
 4. En parallèle, sans bloquer : les points ouverts listés à la fin de
-   `HANDOVER.md` (limite FCL [F], FA physique 68040, frame $9 du FMOVE
-   6888x).
+   `HANDOVER.md` (limite FCL [F], frame $9 du FMOVE 6888x).
 
 ---
 
@@ -520,6 +519,11 @@ de liste connue ou capture attendue.
   Réglé pour le 6888x (MC68881UM-1989 §4.7.3, Table 4-20, note 3) ; le
   MC68040UM-1993 ne dit rien du bit 5. *Tranche : FBcc `$F2A1` sur un
   vrai 68040.*
+- [ ] **Adresse de faute 68030 d'une /BERR après traduction.**
+  `completeBusError()` reçoit encore l'adresse physique sur 68020/68030 (le
+  correctif 12 ne change que le 68040, `CHANGELOG` 2026-11-25 (third)) ;
+  lire MC68030UM §8.2 sur le domaine de l'adresse de faute avant tout
+  correctif.
 - [ ] **Trancher l'ordre de lecture de FMOVEM en EA indirect mémoire à
   extension complète avant un Line-F de direction** (« still open » dans
   `POM68K_VENDOR.md § MC68882 FPU execution`).
@@ -554,6 +558,14 @@ Les lignes de cache attendent la décision sur `cache040_test`.
   WB2 d'une MOVE16 en attente et combinaisons WB2/WB3 (MC68040UM-1993,
   Table 8-6) ; invalidation sur faute de poussée déclenchée par un accès NC
   (§ 7.6.1).
+- [ ] **/BERR après traduction : les questions voisines de la FA logique**
+  (correctif 12, `CHANGELOG` 2026-11-25 (third)), chacune à trancher seule :
+  (1) une écriture normale fautive va en WB3 chez Moira, en WB1 avec WB1A
+  = FA dans l'exemple 3 de MC68040UM-1993 §8.4.6.7 ; (2) le bit ATC du SSW
+  quand la /BERR frappe la recherche de table ; (3) un accès mal aligné
+  qui franchit une page — `readBus()`/`writeBus()` traduisent une fois et
+  prennent `phys + 2` pour le second mot (68030 aussi). Terrain réel : les
+  etalons 68040 en mode 24 bits, où logique et physique diffèrent.
 - [ ] **Fermer la preuve du mode cache actif.** Aucun `sst68040` enregistré
   avec le cache, aucun boot interprète cache actif ; le débogueur lit la RAM
   sous le cache et tout écrivain hôte de RAM invitée est un maître non

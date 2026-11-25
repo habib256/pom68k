@@ -937,6 +937,55 @@ void movemRestart040()
 }
 #endif
 
+// [B] MC68040UM-1993 §8.4.6.4 — "The FA is a physical address only for
+// cache pushes and a logical address for all other cases"; §8.4.6.7: all
+// read access errors and a normal write physical bus error stack "the
+// logical address of the fault". The board answers the translated access
+// with /BERR: the frame must carry the logical address the program used.
+// [D] WinUAE (oracle/uae @ Hatari e77819f7) stacks the physical address on
+// this path; the manual overrules it.
+void hostBusErrorFaultAddressIsLogical040()
+{
+    constexpr uint32_t kLogical = 0x10000100, kPhysicalPage = 0x00F00000;
+    for (auto model : {moira::CPUModel::M68LC040, moira::CPUModel::M68040})
+    for (bool write : {false, true}) {
+        TestCpu c(model);
+        const uint16_t opcode = write ? 0x2080 : 0x2010;    // MOVE.L D0,(A0) / (A0),D0
+        p32(c, 2 * 4, kHandler);
+        p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
+        stage(c, opcode, 0);
+        c.setA(0, kLogical); c.setD(0, 0x89ABCDEF);
+        // 4K pages; logical $10000000 -> physical $00F00000, cache inhibited.
+        // Code, vectors, stack and tables pass through the transparent $00xxxxxx.
+        p32(c, 0x4020, 0x4202); p32(c, 0x4200, 0x6002);
+        p32(c, 0x6000, kPhysicalPage | 0x59);
+        c.setURP040(0x4000); c.setSRP040(0x4000);
+        c.setITT0(0x0000C040); c.setDTT0(0x0000C040);
+        c.setTC040(0x8000);
+        c.holeAt = kPhysicalPage + (kLogical & 0xFFF);
+        c.holeArmed = true;
+        const bool contained = executeContained(c);
+        const uint32_t sp = c.getSP();
+        const uint16_t format = g16(c, sp + 6), ssw = g16(c, sp + 0x0C);
+        const uint32_t fa = g32(c, sp + 0x14), wb3a = g32(c, sp + 0x18);
+        const uint16_t wantSsw = write ? 0x0005 : 0x0105;  // TM=5, long, no ATC
+        // [B] MC68040UM-1993 §8.4.6.5: WB3 is the integer unit's holding
+        // register, which takes the logical address before the data memory
+        // unit translates it (Section 2, Figure 2-2), so for the write WB3A
+        // is the logical address too. This pins the address domain only, not where
+        // the faulted write is placed: Moira puts it in WB3, §8.4.6.7 puts a
+        // normal write bus error in WB1 with WB1A equal to FA.
+        CHECK(contained && c.holeTrips == 1 && c.getPC0() == kHandler &&
+              format == 0x7008 && ssw == wantSsw && fa == kLogical &&
+              (!write || wb3a == kLogical),
+              "68040 model=%u %s, /BERR at physical %08X: format %04X SSW %04X "
+              "(want %04X), fault address %08X (want the logical %08X), WB3A %08X "
+              "(want the logical address on the write), %u trip(s)",
+              unsigned(model), write ? "MOVE.L D0,(A0)" : "MOVE.L (A0),D0",
+              c.holeAt, format, ssw, wantSsw, fa, kLogical, wb3a, c.holeTrips);
+    }
+}
+
 void ordinaryStoreStillAdvances040()
 {
     // [D] WinUAE cpuemu_31.c @ Hatari e77819f7: ordinary MOVE stores
@@ -3885,6 +3934,7 @@ int main(int argc, char** argv)
     fbccPredicateIsFiveBits();
     fpuStoreFaultRestarts040();
     movepFaultRestarts040();
+    hostBusErrorFaultAddressIsLogical040();
     ordinaryStoreStillAdvances040();
     ttrTableFollowsRegisters();
     clrReadsOnlyOn68000();
@@ -3954,7 +4004,8 @@ int main(int argc, char** argv)
     std::printf("[moira_rules_test] OK: DIVS.W of $80000000 on six models, "
                 "68000 external /BERR, host hooks, DIVx.L operand fault, "
                 "68040 CHK2/CMP2 flags, 68040 FPU trap priority, 68LC040 F-line "
-                "shapes, five-bit FBcc predicate, 68040 FPU store fault, 68040 TTR "
+                "shapes, five-bit FBcc predicate, 68040 FPU store fault, 68040 logical fault "
+                "address of a /BERR, 68040 TTR "
                 "table, CLR without its read from the 68020 up, bit field memory accesses, PTEST at its level "
                 "limit, Line-F on a 68000/68010 with a 6888x attached, 68030 /BERR "
                 "during a table search, 68030 MOVES fixup slot, 68030 MOVEM extension log, 68030 JMP odd-target PC, 68030 FScc write buffer, 68030 ADD/SUB write buffer, 68030 MOVE to (xxx).L last write, 68EC030 plain-020 path with a 68030 "

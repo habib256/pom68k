@@ -130,7 +130,7 @@ U = UNSURE. "Split" marks a row whose items fall in different classes.
 | 16 | M | O(1) ATC lookup (host speed) |
 | 17 | C | split: no format $4 frame on the FPU-less 040 |
 | 18 | C | 040 MMU, 64-entry I/D ATCs |
-| 19 | C | SSW040 of a host /BERR completed (Dirk's 58e0405); the first-byte fault address of a split access is queue patch 12 (local) |
+| 19 | C | SSW040 of a host /BERR completed (Dirk's 58e0405); the logical first-byte fault address of a split or translated access is queue patch 12 (local) |
 | 20 | G | watchpoints match the physical address on uncached accesses, the logical one on cache hits and 020-core fetches |
 | 21 | C | plain 020 /BERR frame (UAE model) |
 | 22 | M | JIT seam |

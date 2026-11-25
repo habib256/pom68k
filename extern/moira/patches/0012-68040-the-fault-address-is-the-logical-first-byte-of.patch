@@ -1,0 +1,174 @@
+From 94bf920d08a84392b28d41fa546d8e0a36673b6f Mon Sep 17 00:00:00 2001
+From: VERHILLE Arnaud <gist974@gmail.com>
+Date: Tue, 24 Nov 2026 01:26:03 +0400
+Subject: [PATCH 12/15] 68040: the fault address is the logical first byte of
+ the faulted access
+
+MC68040UM 8.4.6.4: "The FA is a physical address only for cache pushes and
+a logical address for all other cases. For a misaligned access that faults,
+the FA field contains the address of the first byte of the transfer,
+regardless of which of the two or three bus transfers for the misaligned
+access was faulted", and WB3A tells a handler where to complete the
+write-back (8.4.6.5). The bus fault examples of 8.4.6.7 (p. 8-29) repeat it
+for all read access errors and for a normal write physical bus error: "The
+FA field contains the logical address of the fault".
+
+A bus error raised by the host on the second word of a long word stacked
+the address of that word, so a handler completing WB3 wrote the long word
+two bytes too far. And once the MMU had translated the access, readBus()
+and writeBus() handed completeBusError() the physical address, which the
+frame stacked in FA, WB3A and EA: with logical page $10000000 mapped to
+physical $00F00000, a bus error on MOVE.L (A0),D0 with A0 = $10000100
+stacked FA = $00F00100 instead of $10000100. Both functions now keep the
+logical address for a 68040; the physical one still drives the access.
+Faults detected by the MMU and instruction fetches already stacked the
+logical address. The 68020 and 68030 receive the physical address, as
+before.
+
+Example 5 of 8.4.6.7, "Page Fault ... The FA field contains the physical
+address of the faulted instruction", contradicts 8.4.6.4 and note c of
+Table 8-6; it concerns a page fault, not a bus error after a successful
+translation, the path changed here.
+
+A faulting normal write stays in WB3, as Moira already models it; example
+3 of 8.4.6.7 places it in WB1, with WB1A equal to FA. That placement is a
+separate question: the address is logical in both.
+---
+ Moira/MoiraDataflow_cpp.h | 57 +++++++++++++++++++++++++--------------
+ 1 file changed, 37 insertions(+), 20 deletions(-)
+
+diff --git a/Moira/MoiraDataflow_cpp.h b/Moira/MoiraDataflow_cpp.h
+index 693e591..dd92749 100644
+--- a/Moira/MoiraDataflow_cpp.h
++++ b/Moira/MoiraDataflow_cpp.h
+@@ -805,24 +805,26 @@ try
+ 
+     u32 result;
+ 
+-    // Derive the physical address
+-    addr = translate<C, false, S>(addr, getFC());
++    // Derive the physical address. On a 68040, addr keeps the logical address
++    // for the handler below: it is the fault address (see completeBusError).
++    u32 phys = translate<C, false, S>(addr, getFC());
++    if (cpuModel < CPUModel::M68EC040) addr = phys;
+ 
+     // Check if a watchpoint has been reached
+-    if ((flags & State::CHECK_WP) && debugger.watchpointMatches(addr, S)) {
+-        didReachWatchpoint(addr, S, false, false);
++    if ((flags & State::CHECK_WP) && debugger.watchpointMatches(phys, S)) {
++        didReachWatchpoint(phys, S, false, false);
+     }
+ 
+     if constexpr (S == Byte) {
+ 
+         if constexpr (F & POLL) POLL_IPL;
+-        result = read8(addr & addrMask<C>());
++        result = read8(phys & addrMask<C>());
+         SYNC(2);
+     }
+ 
+     if constexpr (S == Word) {
+ 
+-        auto a = addr & addrMask<C>();
++        auto a = phys & addrMask<C>();
+ 
+         // An 8 bit port needs a second bus cycle to deliver a word
+         if constexpr (C >= Core::C68020) {
+@@ -841,15 +843,15 @@ try
+ 
+         if constexpr (C >= Core::C68020) {
+ 
+-            if ((addr & 3) == 0) {
+-                result = readLongSplit<C,F>(addr & addrMask<C>());
++            if ((phys & 3) == 0) {
++                result = readLongSplit<C,F>(phys & addrMask<C>());
+             } else {
+-                result = read2x16<C,F>(addr & addrMask<C>(), (addr + 2) & addrMask<C>());
++                result = read2x16<C,F>(phys & addrMask<C>(), (phys + 2) & addrMask<C>());
+             }
+ 
+         } else {
+ 
+-            result = read2x16<C,F>(addr & addrMask<C>(), (addr + 2) & addrMask<C>());
++            result = read2x16<C,F>(phys & addrMask<C>(), (phys + 2) & addrMask<C>());
+         }
+     }
+ 
+@@ -1029,25 +1031,27 @@ try
+         }
+     }
+ 
+-    // Derive the physical address
+-    addr = translate<C, true, S>(addr, getFC(), ci);
++    // Derive the physical address. On a 68040, addr keeps the logical address
++    // for the handler below: it is the fault address (see completeBusError).
++    u32 phys = translate<C, true, S>(addr, getFC(), ci);
++    if (cpuModel < CPUModel::M68EC040) addr = phys;
+ 
+     // Check if a watchpoint has been reached
+-    if ((flags & State::CHECK_WP) && debugger.watchpointMatches(addr, S)) {
+-        didReachWatchpoint(addr, S, true, false);
++    if ((flags & State::CHECK_WP) && debugger.watchpointMatches(phys, S)) {
++        didReachWatchpoint(phys, S, true, false);
+     }
+ 
+     if constexpr (S == Byte) {
+ 
+         if constexpr (F & POLL) POLL_IPL;
+         if constexpr (F & COMMIT_IRD) commitIrd<C>();
+-        write8(addr & addrMask<C>(), (u8)val);
++        write8(phys & addrMask<C>(), (u8)val);
+         SYNC(2);
+     }
+ 
+     if constexpr (S == Word) {
+ 
+-        auto a = addr & addrMask<C>();
++        auto a = phys & addrMask<C>();
+ 
+         // An 8 bit port needs a second bus cycle to accept a word
+         if constexpr (C >= Core::C68020) {
+@@ -1068,16 +1072,16 @@ try
+ 
+         if constexpr (C >= Core::C68020) {
+ 
+-            if ((addr & 3) == 0) {
+-                writeLongSplit<C,F>(addr & addrMask<C>(), val);
++            if ((phys & 3) == 0) {
++                writeLongSplit<C,F>(phys & addrMask<C>(), val);
+             } else {
+-                write2x16<C,F>(addr & addrMask<C>(), (addr + 2) & addrMask<C>(),
++                write2x16<C,F>(phys & addrMask<C>(), (phys + 2) & addrMask<C>(),
+                                   READ<Word, 1>(val), READ<Word>(val));
+             }
+ 
+         } else {
+ 
+-            write2x16<C,F>(addr & addrMask<C>(), (addr + 2) & addrMask<C>(),
++            write2x16<C,F>(phys & addrMask<C>(), (phys + 2) & addrMask<C>(),
+                               READ<Word, 1>(val), READ<Word>(val));
+         }
+     }
+@@ -1250,6 +1254,19 @@ Moira::completeBusError(BusError &e, u32 addr, bool instructionFetch)
+         e.stackFrame.ssw = size | (fc & 7);
+         if (!W) e.stackFrame.ssw |= SSW040::RW;
+ 
++        // The fault address is the logical address of the first byte of the
++        // access, whichever of its bus transfers failed; WB3A takes it too, so
++        // that a handler completing the write-back writes the whole operand
++        // there. readBus() and writeBus() pass the logical address.
++        // [B] MC68040UM § 8.4.6.4 — "The FA is a physical address only for
++        //     cache pushes and a logical address for all other cases"; § 8.4.6.7
++        //     p. 8-29: a read access error and a normal write physical bus
++        //     error stack "the logical address of the fault".
++        // [D] WinUAE cpummu.c mmu_hardware_bus_error() @ Hatari e77819f7 —
++        //     differs: it stacks the address its memory bank reports, the
++        //     physical one. The manual overrules it.
++        e.stackFrame.addr = addr & addrMask<Core::C68020>();
++
+     } else {
+ 
+         // A 68020 PC-relative operand uses program space but is a data cycle
+-- 
+2.54.0 (Apple Git-157)
+

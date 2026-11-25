@@ -623,6 +623,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-25 (third) — A 68040 bus error after a successful translation stacks the logical fault address: queue patch 12 amended](#2026-11-25-fa040-logical)
 - [2026-11-25 (second) — The PTEST limit cells tested an F-line: their FC field was reserved, and with %10101 all 48 pass](#2026-11-25-ptest-fc-fixture)
 - [2026-11-25 — Dirk merges #46-#49: the queue rebased on bf98107f, fifteen patches; the FSAVE frame's E1 was wrong, and the MoiraCompat layer loses the fork's inert members](#2026-11-25-moira-bf98107f)
 - [2026-11-24 (fourth) — Dirk merges four of POM68K's pull requests: the queue rebased on 863b8d02, seventeen patches](#2026-11-24-moira-863b8d02)
@@ -1452,6 +1453,52 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-25-fa040-logical"></a>
+## 2026-11-25 (third) — A 68040 bus error after a successful translation stacks the logical fault address: queue patch 12 amended
+
+**The finding.** The 2026-11-25 review of `docs/MOIRA_CONVERGENCE.md` noted
+that `readBus()` and `writeBus()` replace `addr` by the translated address
+before the bus cycle, so when the board answers a translated access with
+/BERR, `completeBusError()` receives the physical address. On a 68040 the
+frame stacked it in FA, WB3A and EA. Reproducer: 4 KB pages, logical
+$10000000 mapped to physical $00F00000 (cache inhibited), A0 = $10000100,
+a /BERR hole at physical $00F00100; `MOVE.L (A0),D0` and `MOVE.L D0,(A0)`
+on the 68LC040 and the 68040 stacked FA = $00F00100 (and WB3A = $00F00100
+for the write). They now stack $10000100 in both.
+
+**The manual.** MC68040UM-1993 § 8.4.6.4: "The FA is a physical address
+only for cache pushes and a logical address for all other cases"; note c
+of Table 8-6 says the same of the cache push. The bus fault examples of
+§ 8.4.6.7 give "the logical address of the fault" for all read access
+errors (example 1) and for a normal write physical bus error (example 3).
+Example 5 ("Page Fault … The FA field contains the physical address of the
+faulted instruction") contradicts the two; it concerns a page fault, which
+the MMU detects and for which Moira already stacked the logical address,
+not this path. WinUAE (`cpummu.c` `mmu_hardware_bus_error()` @ Hatari
+e77819f7) stacks the physical address its memory bank reports: the manual
+overrules it, and the comment says so. § 8.4.6.5 places WB3 in the integer
+unit, before translation, so WB3A is logical as well.
+
+**The change.** Queue patch 12 is amended and renamed
+(`0012-68040-the-fault-address-is-the-logical-first-byte-of.patch`): the
+two functions keep the logical address in `addr` on a 68040, while the
+physical one drives the access and the watchpoint check, as before. The
+68020 and 68030 still receive the physical address. Its commit message
+records the example-5 contradiction and that a faulted normal write stays in
+WB3 (Moira's model) where example 3 uses WB1 with WB1A equal to FA, the
+address being logical in both. Patch 15 is only re-indexed. New cell
+`hostBusErrorFaultAddressIsLogical040` in `moira_rules_test` (FA for the
+read and the write, WB3A for the write: it pins the address domain, not the
+WB1/WB3 placement); `fault_transparency_test` keeps the first-byte rule.
+
+**Still open**, separate candidates (`TODO.md` § Phase 1 › Justesse 68040,
+› Justesse 68030): WB1 against WB3 for a faulted normal write; the ATC bit
+of the SSW when /BERR hits a table walk; the translation of a misaligned
+access that crosses a page (the second word takes `phys + 2`); the 68030
+fault address after a translation, still physical. In practice the 68040
+etalons that run Mac OS in 24-bit mode are where logical and physical
+addresses differ, and the place a guest would show any of these.
 
 <a id="2026-11-25-ptest-fc-fixture"></a>
 ## 2026-11-25 (second) — The PTEST limit cells tested an F-line: their FC field was reserved, and with %10101 all 48 pass

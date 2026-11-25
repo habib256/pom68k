@@ -16,10 +16,10 @@ word costs what any other fetched word costs on that bus.
  1 file changed, 2 insertions(+), 4 deletions(-)
 
 diff --git a/Moira/MoiraDataflow_cpp.h b/Moira/MoiraDataflow_cpp.h
-index f9ebea9..27cb6c3 100644
+index dd92749..2cf66f1 100644
 --- a/Moira/MoiraDataflow_cpp.h
 +++ b/Moira/MoiraDataflow_cpp.h
-@@ -868,10 +868,8 @@ Moira::readStatusRefill()
+@@ -870,10 +870,8 @@ Moira::readStatusRefill()
  {
      u32 addr = C == Core::C68000 ? reg.pc : reg.pc + 2;
      if constexpr (C == Core::C68020) {
