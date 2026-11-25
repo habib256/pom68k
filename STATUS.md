@@ -248,3 +248,4 @@ overwrites it, including a one-gate `ctest -R`.
 | Nov 21 06:28 +04 | x86_64 | default | 11 | 11 | 0 | 0 | merge 20d95d0f: the eleven gates above rerun on a quiet machine, -j4: 11/11 |
 | Nov 21 04:39 +04 | x86_64 | default | 330 | 321 | 9 | 0 | merge 20d95d0f: ctest -L etalon -j12, 330/330 in 6503 s; nine floppy-media gates soft-skipped (no images on this host) |
 | Nov 22 10:59 +04 | x86_64 | default | 154 | 153 | 1 | 0 | 68030 PC-relative operands in program space (D46), native in the JIT through the program-space thunk; core grade review complete: ctest -L m030 -j8, 154/154 in 3172 s; census 153 executed / 1 soft-skipped (lcii_floppy144_etalon, no 1.44 MB image) / 0 failed |
+| Nov 25 22:24 +04 | aarch64 | default | 320 | 319 | 1 | 0 | AArch64 machine tier m040\|m030\|etalon on 3cfd4718 (Dirk bf98107f + 16 patches, interpreter) |

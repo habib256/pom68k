@@ -1464,8 +1464,10 @@ First full machine tier on Dirk's `bf98107f` + queue, on the M4 at
 `4c943906` (`ctest -L 'm040|m030|etalon' -j3`, 5 h 05): 320 tests, 318
 executed, 0 timeouts, `cd_pressed_toc_etalon` soft-skipped (no pressed disc
 on this host), `q605_clipboard_etalon` failed three times alone with
-`ScrapCount 9 -> 7, no text (TEXT)`. The tier has not been replayed on the
-tree after the three core/test commits of the day.
+`ScrapCount 9 -> 7, no text (TEXT)`. Replayed on `3cfd4718`, after the three
+core/test commits of the day and the gate fix below: 320/320 in 4 h 52,
+319 executed, the same soft-skip (recorded in `STATUS.md`). The x86-64 leg
+on this tree is still to run.
 
 Bisect: green up to `2c2c7d4b`, red from `77f6f66c` (the rewritten FSAVE
 patch), before the rebase — Dirk's #46 and queue patch 1 are cleared. The
