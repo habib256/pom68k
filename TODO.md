@@ -57,6 +57,28 @@ ses gates enregistrés absents dans `cmake/pom68k_jit_gates.tsv`. Bascule et
 Tout le reste (jalons produit, vitesse hors CPU, NeoST, dépôt) est après les
 deux phases, hors du chemin principal.
 
+**Reprendre ici (état au 2026-11-25, `231e519b`, CI et macOS verts).**
+`main` = Moira de Dirk `bf98107f` + 15 correctifs ; rien d'ouvert chez lui.
+Passés sur x86-64 sur cet arbre : build, `asset-none` 156/156, le jeu de
+vérification de 99 tests (SST, vecteurs CPU, save-state, etalons
+boot/agent/beyond). Note de passation : `scratchpad/2026-11-25/HANDOVER.md`.
+Dans l'ordre :
+
+1. **Sur le M4 :** `git pull`, configurer, compiler (`-j4`, borné),
+   `ctest -L asset-none`, puis **le palier machines complet**
+   (`ctest -L 'm040|m030|etalon'`, un seul ctest par dossier de build, log
+   dans un fichier ; un timeout se rejoue seul avant de compter). Il n'a
+   tourné sur aucun hôte avec ce cœur rebasé — dernier passage complet
+   x86-64 : 320/320 sur `6e7f5179`, avant le rebase.
+2. **Le même palier sur x86-64** si le M4 est vert, puis
+   `tools/status_md.py --record-run` : critère 6 de § Phase 1.
+3. **Verdict de stabilité** du cœur de Dirk ; s'il est stable, faire
+   approuver par le propriétaire `scratchpad/2026-11-25/JIT_PLAN.md`
+   (questions Q1-Q8) avant tout code JIT (§ Phase 2).
+4. En parallèle, sans bloquer : les points ouverts listés à la fin de
+   `HANDOVER.md` (limite FCL [F], FA physique 68040, cellules PTEST FC
+   %00101, frame $9 du FMOVE 6888x).
+
 ---
 
 ## Phase 1 — Valider l'interpréteur
