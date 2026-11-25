@@ -1,0 +1,136 @@
+From 385c332d81ee95e350ccce434e0d7238a1130863 Mon Sep 17 00:00:00 2001
+From: VERHILLE Arnaud <gist974@gmail.com>
+Date: Wed, 25 Nov 2026 09:54:10 +0400
+Subject: [PATCH] MMU030: a page descriptor root checks its limit with function
+ code lookup too
+
+MC68030UM 9.7.1, root pointer DT = $1 (page descriptor): "A translation
+table for this root pointer does not exist. ... For this case, the
+processor performs a limit check regardless of the state of the FCL bit
+in the TC register." The early termination at the root skipped the
+limit check when FCL was set, so an index outside the limit translated
+instead of causing a bus error, and PTEST did not set L and I in MMUSR.
+
+The general rule that the root limit is unused with FCL (9.5.1.2, 9.5.2,
+and the FCL bit in 9.7.2) concerns a root that points to the function
+code table; a page descriptor root has no such table, and the walk
+indexes the limit with the TIA field. Figure 9-28 (limit check
+procedure) skips the check for y = 'RP' with FCL set, which agrees with
+the old code; the DT = $1 text is the specific statement for this case.
+
+The test checks a DT = $1 root with FCL off and on, upper and lower
+limits, an index just inside and just outside, through translate(),
+PTEST and MOVES.
+
+UAE skips this check, so the random MMU runner now opens the limit of a
+page descriptor root when it sets FCL (without drawing other random
+numbers, so every other setup stays the same).
+---
+ Moira/MMU/MMU030.cpp        | 13 ++++------
+ Tests/Random/ExecMMU.cpp    |  5 ++++
+ Tests/Unit/MmuExecTests.cpp | 48 +++++++++++++++++++++++++++++++++++++
+ 3 files changed, 58 insertions(+), 8 deletions(-)
+
+diff --git a/Moira/MMU/MMU030.cpp b/Moira/MMU/MMU030.cpp
+index dc9b2a8..c710008 100644
+--- a/Moira/MMU/MMU030.cpp
++++ b/Moira/MMU/MMU030.cpp
+@@ -512,15 +512,12 @@ MMU030::walk(u32 addr, u8 fc, bool write, MmuContext &c, bool ptest, u32 level)
+             {
+                 // Early termination. No translation table exists. The physical
+                 // address is the sum of the TableA address and the logical address
+-                // (without the ignored bits). The limit applies to the first index
+-                // unless function code lookup is enabled.
++                // (without the ignored bits). The limit applies to the first index,
++                // "regardless of the state of the FCL bit" (MC68030UM 9.7.1).
+ 
+-                if (!fcl) {
+-
+-                    u32 index = c.peekAddrBits();
+-                    if (index < c.lowerLimit || index > c.upperLimit) {
+-                        c.stop(MMUSR_LIMIT_VIOLATION | MMUSR_INVALID);
+-                    }
++                u32 index = c.peekAddrBits();
++                if (index < c.lowerLimit || index > c.upperLimit) {
++                    c.stop(MMUSR_LIMIT_VIOLATION | MMUSR_INVALID);
+                 }
+                 return (u32(rp) & 0xFFFFFF00 & ~c.pageMask) + c.remainingAddrBits();
+             }
+diff --git a/Tests/Random/ExecMMU.cpp b/Tests/Random/ExecMMU.cpp
+index a2e8e1c..4a26ff8 100644
+--- a/Tests/Random/ExecMMU.cpp
++++ b/Tests/Random/ExecMMU.cpp
+@@ -100,6 +100,11 @@ TranslationSetup randomTranslationSetup()
+         u64 limit = portableRand() % 3 == 0 ? 0x7FFF : portableRand() % 70;
+         u64 lu = portableRand() % 6 == 0;
+         u64 dt = 1 + portableRand() % 3;
++
++        // UAE skips the limit check of a page descriptor root if FCL is set,
++        // whereas MC68030UM 9.7.1 asks for it. Keep such a limit open.
++        if (dt == 1 && tcF) { limit = 0x7FFF; lu = 0; }
++
+         return lu << 63 | limit << 48 | dt << 32 | u64(portableRand() & 0xFFF0);
+     };
+     auto transparentTranslation = [&]() {
+diff --git a/Tests/Unit/MmuExecTests.cpp b/Tests/Unit/MmuExecTests.cpp
+index adc7f32..8e0d532 100644
+--- a/Tests/Unit/MmuExecTests.cpp
++++ b/Tests/Unit/MmuExecTests.cpp
+@@ -268,6 +268,54 @@ TEST_CASE("Early Termination")
+     CHECK(cpu.reg.d[0] == 0xCAFEBABE);
+ }
+ 
++TEST_CASE("Early Termination Limit")
++{
++    // A page descriptor in the root pointer checks its limit against the TIA
++    // index, with or without function code lookup (MC68030UM 9.7.1, DT = $1).
++    // The supervisor runs on an unlimited SRP, user data goes through the CRP.
++    auto check = [](bool fcl, u16 limit, bool lu, u32 addr, bool inside) {
++
++        TestCPU cpu;
++        cpu.mmu.mmu030.srp = rootPointer(0, 1);
++        cpu.mmu.mmu030.crp = rootPointer(0x20000, 1, limit, lu);
++        cpu.mmu.mmu030.setTC(TC_E | TC_SRE | (fcl ? 1 << 24 : 0) | TC_4K_2L);
++        cpu.write32(2 * 4, 0x1800);                 // Bus error vector
++        cpu.write32((0x20000 + addr) & 0xFFFFF, 0xCAFEBABE);
++
++        // Translation
++        auto phys = cpu.mmu.mmu030.translate(addr, FC::USER_DATA, false);
++        CHECK(phys.has_value() == inside);
++        if (inside) CHECK(*phys == 0x20000 + addr);
++        cpu.mmu.mmu030.atcFlush();
++
++        // PTESTR #1,(A0),#7: L and I on a violation, no descriptor fetched
++        cpu.reg.a[0] = addr;
++        cpu.run({ 0xF010, 0x9E11 });
++        CHECK((cpu.mmu.mmu030.mmusr & 0xEE07) == (inside ? 0 : 0x4400));
++        cpu.mmu.mmu030.atcFlush();
++
++        // MOVES.L (A0),D0 with SFC = user data
++        cpu.reg.sfc = FC::USER_DATA;
++        cpu.reg.d[0] = 0;
++        cpu.run({ 0x0E90, 0x0000 });
++        CHECK((cpu.reg.pc0 == 0x1800) == !inside);
++        CHECK(cpu.reg.d[0] == (inside ? 0xCAFEBABE : 0));
++    };
++
++    for (bool fcl : { false, true }) {
++
++        CAPTURE(fcl);
++
++        // Upper limit 1 (TIA = 10 bits, the index is addr >> 22)
++        check(fcl, 1, false, 0x00400100, true);
++        check(fcl, 1, false, 0x00800200, false);
++
++        // Lower limit 2
++        check(fcl, 2, true, 0x00800200, true);
++        check(fcl, 2, true, 0x00400100, false);
++    }
++}
++
+ TEST_CASE("Long Tables")
+ {
+     TestCPU cpu;
+-- 
+2.53.0
+
