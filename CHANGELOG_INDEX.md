@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 891 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 892 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -16,7 +16,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Sound](#sound) | 14 |
 | [Serial, LocalTalk and AppleTalk](#serial-localtalk-and-appletalk) | 27 |
 | [Save states](#save-states) | 11 |
-| [Machine bring-ups](#machine-bring-ups) | 102 |
+| [Machine bring-ups](#machine-bring-ups) | 103 |
 | [Build, packaging and release](#build-packaging-and-release) | 29 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 45 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 10 |
@@ -672,6 +672,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-12 (tenth)** — [A refused fetch window cost 32 interpreted instructions even when the next one would have armed: one immediate retry, LC III and IIvx 17-18 % faster](CHANGELOG.md#2026-11-12-jit-transient-refusal)
 - **2026-11-13 (sixth)** — [The two-instruction interrupt delay after an SR write has a CPU gate: it was held by one boot](CHANGELOG.md#2026-11-13-irq-delay-gate)
 - **2026-11-21 (third)** — [The LC 580 names its own ROM; four things the ROM catalogue's first day left open](CHANGELOG.md#2026-11-21-lc580-own-rom)
+- **2026-11-25 (fifth)** — [The AArch64 machine tier on the rebased core: one red gate, and it was the gate — `q605_clipboard_etalon` read another process's scrap](CHANGELOG.md#2026-11-25-clipboard-gate-process)
 
 ## Build, packaging and release
 

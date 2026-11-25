@@ -62,6 +62,19 @@ int main() {
     gCpu = &cpu;
     pom68k::dbg::Session session;
     pom68k::dbg::CpuTarget<Cpu040, Q605Memory> target(cpu, mem, session);
+    // The Scrap Manager globals at $960 belong to the process RUNNING when
+    // they are read: the Process Manager swaps them with CurApName on every
+    // context switch, and MyEyes (a background-only process on this image)
+    // takes every other frame with its own stale scrap (ScrapCount 7, no
+    // TEXT). Sampled at an arbitrary frame boundary, the read is a coin
+    // toss on that alternation, which any legitimate cycle-count change
+    // flips (2026-11-25). Read SimpleText's own scrap: step a frame at a
+    // time until SimpleText is the running process.
+    auto inSimpleText = [&] {
+        for (int f = 0; f < 600 && findersig::curApName(mem) != "SimpleText"; f++)
+            runFrames(1);
+        return findersig::curApName(mem) == "SimpleText";
+    };
     auto scrap = [&] {
         return pom68k::readGuestScrapText([&](uint32_t a, uint8_t* out, std::size_t n) {
             std::vector<pom68k::dbg::ByteState> st(n);
@@ -102,11 +115,15 @@ int main() {
                     plan.characters, plan.skipped, frames);
         dump("q605_clipboard_typed.ppm");
 
+        const bool before = inSimpleText();
         countBefore = scrap().count;
         command(adbFor('a'), 120);              // Select All (Cmd + the 'a' key)
         command(adbFor('c'), 300);              // Copy
+        const bool after = inSimpleText();
         read = scrap();
-        copied = read.count != countBefore;
+        copied = before && after && read.count != countBefore;
+        if (!before || !after)
+            std::printf("copy: SimpleText never ran when the scrap was read\n");
         same = read.ok() && read.utf8 == kTyped && !read.truncated;
         std::printf("copy: ScrapCount %u -> %u, status %d %s, %u MacRoman bytes\n",
                     countBefore, read.count, int(read.status), read.reason.c_str(),

@@ -1457,6 +1457,48 @@ Newest first.
 
 ---
 
+<a id="2026-11-25-clipboard-gate-process"></a>
+## 2026-11-25 (fifth) — The AArch64 machine tier on the rebased core: one red gate, and it was the gate — `q605_clipboard_etalon` read another process's scrap
+
+First full machine tier on Dirk's `bf98107f` + queue, on the M4 at
+`4c943906` (`ctest -L 'm040|m030|etalon' -j3`, 5 h 05): 320 tests, 318
+executed, 0 timeouts, `cd_pressed_toc_etalon` soft-skipped (no pressed disc
+on this host), `q605_clipboard_etalon` failed three times alone with
+`ScrapCount 9 -> 7, no text (TEXT)`. The tier has not been replayed on the
+tree after the three core/test commits of the day.
+
+Bisect: green up to `2c2c7d4b`, red from `77f6f66c` (the rewritten FSAVE
+patch), before the rebase — Dirk's #46 and queue patch 1 are cleared. The
+responsible line is the E1 bit of the 68040 unimplemented-instruction state
+frame (`MoiraExecFPU_cpp.h`, `f[5] = packed ? 1 << 26 : 0`; it was always 1
+before). Forcing E1 back to 1 on current main turns the gate green. The
+change itself stands: [C] mac-rom `OS/FPUEmulation/GetOp.a` (`gnot_fmovecr`:
+`btst #E1,E_BYTE` then `pack_source`) reads E1 as "packed source", so with
+E1 always set the FPSP decoded every operand as packed decimal.
+
+Mechanism, from a per-frame log of ScrapCount and CurApName: Select All and
+Copy work in both variants (SimpleText's ScrapCount goes 9 -> 17 -> 25). The
+Scrap Manager globals at $960 belong to the running process, and MyEyes, a
+background-only process on this image, takes every other frame with its own
+stale scrap (ScrapCount 7, no TEXT). MyEyes calls the ROM's sin/cos once a
+frame (`FREM`, unimplemented on the 68040, about 3 500 FPSP traps a run), so
+a correct E1 changes the FPSP path and its cycle count, and flips which
+process runs at the frame where the gate sampled. The gate was a coin toss
+on that parity.
+
+The gate now steps one frame at a time (600 at most) until CurApName is
+"SimpleText" before each scrap read, and fails if SimpleText never runs; no
+delay changed, the ScrapCount and byte-identical criteria are unchanged.
+Green on the current core and with the old E1=1 parity; a mutation replacing
+Cmd-C by idle frames still fails (9 -> 9).
+
+Consequences left open (`TODO.md`): the 2026-11-24 episode with the same
+signature, attributed to the narrow-port charge on the discarded refill word
+and closed by queue patch 15, was very likely the same parity flip
+(inferred, not re-tested) — patch 15 loses its only gate evidence; and the
+GUI's guest-clipboard read shares `readGuestScrapText`, so it can return a
+background process's scrap (inferred, not reproduced).
+
 <a id="2026-11-25-fmove-format9"></a>
 ## 2026-11-25 (fourth) — A 6888x FMOVE FPn,<ea> exception is a mid-instruction one, format $9 after the store: the 2026-11-24 deferral is reversed, queue patch 16
 

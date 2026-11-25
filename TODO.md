@@ -217,10 +217,18 @@ défaut CPU, dans cet ordre :
   dimensionnement dynamique du bus) ? `readInstr()` facture 4 cycles par mot
   d'instruction lu sur un port étroit : toute la cadence des machines 68040
   en dépend. Le correctif 15 (local) fait payer la même chose au mot jeté de
-  MOVE vers SR/CCR, DBcc expiré et TRAPV pris ; sans lui
-  `q605_clipboard_etalon` échoue (ScrapCount 9 → 7). À trancher avant de
-  toucher à la largeur : un port 32 bits déplace la cadence de tous les
-  gates 68040.
+  MOVE vers SR/CCR, DBcc expiré et TRAPV pris. Sa seule preuve par gate
+  était `q605_clipboard_etalon` (ScrapCount 9 → 7), qui lisait le scrap du
+  processus en cours à une trame arbitraire (`CHANGELOG` 2026-11-25
+  (fifth)) : le correctif 15 n'a donc plus de preuve et doit être rejugé
+  sur ses mérites (manuel, ou retiré). À trancher avant de toucher à la
+  largeur : un port 32 bits déplace la cadence de tous les gates 68040.
+- [ ] **« Lire le presse-papiers de l'invité » peut lire le scrap d'un
+  autre processus.** `readGuestScrapText` lit les globales $960 du
+  processus en cours ; sur une image avec un processus d'arrière-plan
+  (MyEyes), une trame sur deux rend son scrap périmé. Inféré du chemin
+  partagé avec le gate, non reproduit dans la GUI : reproduire, puis
+  attendre que l'application de premier plan tourne avant de lire.
 - [ ] **Continuation après RTE quand DF est effacé au-delà du cycle
   terminé** (MC68030UM-1989 §8.2.2) : rubriques « Restart model » de
   `berr020_test`, `berr030_test` et `fault_transparency_test` ; sur la
