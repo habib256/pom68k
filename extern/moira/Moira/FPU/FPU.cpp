@@ -27,16 +27,6 @@ FPU::reset()
     unimp.valid = false;
 }
 
-u8
-FPU::tag040(const MFloat80 &v)
-{
-    if (v.isZero()) return 1;
-    if (v.isNaN()) return 3;
-    if (v.isInfinite()) return 2;
-    if (!v.integerBit()) return 4;
-    return 0;
-}
-
 u16
 FPU::trapVector(u32 nonmaskable) const
 {
@@ -914,13 +904,13 @@ FPU::stateFrameSize(FpuFrameType type) const
 
         case FpuFrameType::UNIMP:
 
-            // 26 words including the format word (MC68040UM 9.6.1, Figure 9-10)
+            // $30 bytes after the format longword, 26 words in all (MC68040UM Figure 9-10 d)
             return model == FPUModel::M68040 ? 48 : 0;
 
         case FpuFrameType::BUSY:
 
             switch (model) {
-                // 50 words including the format word (MC68040UM 9.8, Figure 9-10 a)
+                // $60 bytes after the format longword, 50 words in all (MC68040UM Figure 9-10 a)
                 case FPUModel::M68040:     return 96;
                 case FPUModel::M68881:     return 180;
                 case FPUModel::M68882:     return 212;
@@ -967,7 +957,7 @@ FPU::computeFormatWord(FpuFrameType type) const
         case FpuFrameType::UNIMP:
         case FpuFrameType::BUSY:
 
-            // The 68040 frames carry version $41 like the idle frame (Figure 9-10)
+            // The 68040 frames carry the version number of the idle frame (MC68040UM Figure 9-10)
             if (model == FPUModel::M68040) return 0x41000000 | u32(stateFrameSize(type)) << 16;
             return 0x1F000000 | u32(stateFrameSize(type)) << 16;
 
@@ -975,6 +965,19 @@ FPU::computeFormatWord(FpuFrameType type) const
 
             return 0;
     }
+}
+
+u32
+FPU::frameTag(const MFloat80 &value)
+{
+    /* 0 = normalized, 1 = zero, 2 = infinity, 3 = NaN,
+     * 4 = extended-precision denormalized or unnormalized (MC68040UM 9.8, STAG, DTAG)
+     */
+    if (value.isZero()) return 1;
+    if (value.isNaN()) return 3;
+    if (value.isInfinite()) return 2;
+    if (!value.integerBit()) return 4;
+    return 0;
 }
 
 }

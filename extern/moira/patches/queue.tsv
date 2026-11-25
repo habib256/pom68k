@@ -4,12 +4,12 @@
 num	file	state	pr	pr_head	relation	repro	evidence	gates	note
 1	0001-Serve-the-expired-DBcc-and-trapping-TRAPV-refill-fro.patch	local					MC68020UM 8.2.15, 8.2.17; MC68030UM 11.6.15, 11.6.17	icache020_test	extends upstream readStatusRefill() (PR #43, merged in 863b8d02) to the expired DBcc and the trapping TRAPV; only with an emulated instruction cache, like the merged MOVE to SR/CCR
 2	0002-Cache-let-a-host-save-and-restore-the-cache-contents.patch	local					none	icache020_test,lcii_savestate_etalon	host interface for save states, not CPU behaviour
-3	0003-68040-FSAVE-stores-the-unimplemented-instruction-sta.patch	local				5	MC68040UM 9.6.1, Table 9-16, Figure 9-10 d	q605_boot_etalon,centris650_boot_etalon	the Quadra 605's FPSP crashed without it
+3	0003-FRESTORE-refuse-a-state-frame-the-FPU-does-not-recog.patch	proposed	48	f3b6e5017f20ab3e1ed8d956293bcde164b4840c	identical		MC68881UM 4-88; MC68040UM 8.2.7, Figure 9-10 a, d	fpu_sanity	also gives the 68040 frames their sizes ($30 unimplemented, $60 busy) and stacks the FRESTORE's own PC in the format error frame; moved ahead of the FSAVE patch, which needs the $30 size
 4	0004-68020-68030-do-not-rerun-a-data-cycle-a-handler-has-.patch	local				2	MC68030UM 8.2.1-8.2.2; MC68020UM 6.2.1	berr030_test	the LC II slot-probe recovery ran 28.8 million times without it
 5	0005-Halt-on-a-double-bus-fault-during-reset-or-a-trace-e.patch	local					MC68030UM 8.1.1-8.1.2	machinehost_test,q605_boot_etalon	a host BusError escaped to the caller instead of halting
 6	0006-Report-the-kind-of-access-to-a-watchpoint-delegate.patch	local					none	debug_session_test	debugger interface, not CPU behaviour
 7	0007-Re-arm-catchpoints-after-a-reset.patch	local					none	debug_session_test	debugger defect, not CPU behaviour
-8	0008-FRESTORE-refuse-a-state-frame-the-FPU-does-not-recog.patch	local					MC68881UM 6.2.8; MC68040UM 9.8, Figure 9-10 a	fpu_sanity	also gives the 68040 busy frame its size $60
+8	0008-68040-FSAVE-stores-the-unimplemented-instruction-sta.patch	local				5	MC68040UM 9.6.1, 9.8, Table 9-16, Figure 9-10 d; M68000PRM FSAVE, FRESTORE	q605_boot_etalon,centris650_boot_etalon	rewritten 2026-11-25: E1 flags a packed source only (9.8, as the FPSP reads it; Table 9-16 says always 1), raw packed operand, frame kept as 12 longwords so FRESTORE reloads it; the earlier version made the FPSP compute wrong results
 9	0009-68040-an-FMOVE-to-an-integer-takes-SNAN-and-OPERR-un.patch	local					MC68040UM 9.7.2.2, 9.7.3.2	fpu040_test	trapVector() takes a nonmaskable mask for integer destinations
 10	0010-FPU-a-restarted-arithmetic-instruction-starts-from-i.patch	local					none	fault_transparency_test	message cites no manual passage; the restart contract is Moira's own
 11	0011-Completed-cycles-the-second-word-of-a-split-long-wor.patch	local					MC68030UM 8.2.2	berr020_test	extends patch 4's completed-cycle record

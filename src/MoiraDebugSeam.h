@@ -126,8 +126,9 @@ protected:
     void didReachBreakpoint(moira::u32 addr) override {
         if (debugHook_) debugHook_->cpuStopped(false, addr);
     }
-    // The access the CPU is about to make (patch 8 of extern/moira/patches:
-    // the size, the direction and whether it is an opcode fetch).
+    // The access the CPU is about to make (queue patch "Report the kind of
+    // access to a watchpoint delegate": the size, the direction and whether
+    // it is an opcode fetch).
     void didReachWatchpoint(moira::u32 addr, moira::Size size, bool write,
                             bool program) override {
         if (debugHook_) debugHook_->cpuAccess(addr, int(size), write, program);

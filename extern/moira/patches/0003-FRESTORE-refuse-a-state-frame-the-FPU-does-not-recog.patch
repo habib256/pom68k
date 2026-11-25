@@ -1,0 +1,100 @@
+From 4bdeb481ce5309c2aec83f28bfe86c786760540d Mon Sep 17 00:00:00 2001
+From: VERHILLE Arnaud <gist974@gmail.com>
+Date: Tue, 24 Nov 2026 00:54:28 +0400
+Subject: [PATCH 03/17] FRESTORE: refuse a state frame the FPU does not
+ recognize
+
+MC68881UM 4-88 (FRESTORE): "If the format word is invalid for the FPCP
+(either because the size of the frame is not recognized, or the revision
+number does not match the revision of the processor), the MPU is
+instructed to take a format exception." MC68040UM 8.2.7 says the same of
+the 68040. FRESTORE accepted any non-null format word. It now accepts the
+null frame and the frames of its own revision ($41 on the 68040, $1F on
+the 6888x) with an idle, busy or (68040 only) unimplemented instruction
+size, and takes a format error otherwise.
+
+The format error frame stacks the address of the instruction that
+detected the error (MC68040UM 8.2.7), reg.pc0. reg.pc - 2 was right for
+RTE but not for an FRESTORE with extension words.
+
+The 68040 frame sizes follow MC68040UM Figure 9-10: the unimplemented
+instruction frame has $30 bytes after the format longword (was 44) and
+the busy frame $60 (was 92). The FPSP builds these frames itself and
+restores them with FRESTORE, so the check needs the right sizes.
+---
+ Moira/FPU/FPU.cpp           |  6 ++++--
+ Moira/MoiraExceptions_cpp.h |  4 ++--
+ Moira/MoiraExecFPU_cpp.h    | 21 +++++++++++++++++++++
+ 3 files changed, 27 insertions(+), 4 deletions(-)
+
+diff --git a/Moira/FPU/FPU.cpp b/Moira/FPU/FPU.cpp
+index 6f04086..26f9a8c 100644
+--- a/Moira/FPU/FPU.cpp
++++ b/Moira/FPU/FPU.cpp
+@@ -903,12 +903,14 @@ FPU::stateFrameSize(FpuFrameType type) const
+ 
+         case FpuFrameType::UNIMP:
+ 
+-            return model == FPUModel::M68040 ? 44 : 0;
++            // $30 bytes after the format longword, 26 words in all (MC68040UM Figure 9-10 d)
++            return model == FPUModel::M68040 ? 48 : 0;
+ 
+         case FpuFrameType::BUSY:
+ 
+             switch (model) {
+-                case FPUModel::M68040:     return 92;
++                // $60 bytes after the format longword, 50 words in all (MC68040UM Figure 9-10 a)
++                case FPUModel::M68040:     return 96;
+                 case FPUModel::M68881:     return 180;
+                 case FPUModel::M68882:     return 212;
+             }
+diff --git a/Moira/MoiraExceptions_cpp.h b/Moira/MoiraExceptions_cpp.h
+index acab602..7d950e8 100644
+--- a/Moira/MoiraExceptions_cpp.h
++++ b/Moira/MoiraExceptions_cpp.h
+@@ -945,8 +945,8 @@ Moira::execException(M68kException exc, int nr)
+             // Clear any pending trace event
+             flags &= ~State::TRACE_EXC;
+ 
+-            // Write stack frame
+-            writeStackFrame0000<C>(status, reg.pc - 2, vector);
++            // Write stack frame (the PC of the instruction that detected the error, MC68040UM 8.2.7)
++            writeStackFrame0000<C>(status, reg.pc0, vector);
+ 
+             // Branch to exception handler
+             jumpToVector<C, AE_SET_CB3>(vector);
+diff --git a/Moira/MoiraExecFPU_cpp.h b/Moira/MoiraExecFPU_cpp.h
+index c0bd093..fbff48a 100644
+--- a/Moira/MoiraExecFPU_cpp.h
++++ b/Moira/MoiraExecFPU_cpp.h
+@@ -645,6 +645,27 @@ Moira::execFRestore(u16 opcode)
+     u32 fmt = readM<C, M, Long>(ea);
+     u32 version = fmt >> 24;
+ 
++    /* A format word the FPU does not recognize is refused: the processor
++     * takes a format error (MC68881UM 4-88, FRESTORE; MC68040UM 8.2.7).
++     * Besides the null frame, the FPU accepts the frames of its own revision:
++     * version $41 on the 68040, $1F on the 6888x, with the size of an idle,
++     * busy or (68040 only) unimplemented instruction frame.
++     */
++    if (version != 0) {
++
++        u32 own = hasInternalFPU() ? 0x41 : 0x1F;
++        u32 size = (fmt >> 16) & 0xFF;
++        bool known = size == u32(fpu.stateFrameSize(FpuFrameType::IDLE)) ||
++                     size == u32(fpu.stateFrameSize(FpuFrameType::BUSY)) ||
++                     (hasInternalFPU() && size == u32(fpu.stateFrameSize(FpuFrameType::UNIMP)));
++
++        if (version != own || !known) {
++
++            execException(M68kException::FORMAT_ERROR);
++            return;
++        }
++    }
++
+     if (version == 0) {
+ 
+         // A NULL frame resets the FPU
+-- 
+2.53.0
+

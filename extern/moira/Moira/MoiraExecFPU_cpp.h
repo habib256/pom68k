@@ -646,14 +646,20 @@ Moira::execFRestore(u16 opcode)
     u32 version = fmt >> 24;
 
     /* A format word the FPU does not recognize is refused: the processor
-     * takes a format error (MC68881UM 6.2.8). Besides the null frame, the
-     * FPU accepts its own frames: version $41 on the 68040, $1F on the 6888x,
-     * with the size of an idle, unimplemented instruction or busy frame.
+     * takes a format error (MC68881UM 4-88, FRESTORE; MC68040UM 8.2.7).
+     * Besides the null frame, the FPU accepts the frames of its own revision:
+     * version $41 on the 68040, $1F on the 6888x, with the size of an idle,
+     * busy or (68040 only) unimplemented instruction frame.
      */
     if (version != 0) {
 
         u32 own = hasInternalFPU() ? 0x41 : 0x1F;
-        if (version != own || fpu.typeOfFrame(fmt) == FpuFrameType::INVALID) {
+        u32 size = (fmt >> 16) & 0xFF;
+        bool known = size == u32(fpu.stateFrameSize(FpuFrameType::IDLE)) ||
+                     size == u32(fpu.stateFrameSize(FpuFrameType::BUSY)) ||
+                     (hasInternalFPU() && size == u32(fpu.stateFrameSize(FpuFrameType::UNIMP)));
+
+        if (version != own || !known) {
 
             execException(M68kException::FORMAT_ERROR);
             return;
@@ -672,6 +678,12 @@ Moira::execFRestore(u16 opcode)
         u32 size = 4 + ((fmt >> 16) & 0xFF);
         fpu.resetState = false;
         fpu.pendingTrap = 0;
+
+        // An unimplemented instruction frame is loaded back, a following FSAVE stores it again
+        bool unimp = hasInternalFPU() && size == 4 + u32(fpu.stateFrameSize(FpuFrameType::UNIMP));
+        for (int i = 0; unimp && i < 12; i++) fpu.unimp.frame[i] = readM<C, M, Long>(U32_ADD(ea, 4 + 4 * i));
+        fpu.unimp.valid = unimp;
+
         if constexpr (M == Mode::PI) writeA(n, U32_ADD(ea, size));
     }
 
@@ -697,7 +709,7 @@ Moira::execFSave(u16 opcode)
     // Frame to be written: A NULL frame if the FPU is in reset state, an UNIMP frame
     // after an instruction the 68040 left to the FPSP, an IDLE frame otherwise
     bool null  = fpu.inResetState();
-    bool unimp = !null && hasInternalFPU() && fpu.unimp.valid;
+    bool unimp = !null && fpu.unimp.valid;
     auto type  = unimp ? FpuFrameType::UNIMP : FpuFrameType::IDLE;
     u32 fmt    = null ? 0 : fpu.computeFormatWord(type);
     u32 size   = null ? 4 : 4 + fpu.stateFrameSize(type);
@@ -705,28 +717,13 @@ Moira::execFSave(u16 opcode)
     u32 ea;
     if constexpr (M == Mode::PD) ea = U32_SUB(readA(n), size); else ea = computeEA<C, M, Long>(n);
 
-    // The longwords of the frame (MC68040UM Figure 9-10 d, Table 9-16)
-    u32 frame[13] = { };
-    if (unimp) {
-
-        auto &u = fpu.unimp;
-        frame[3]  = u32(u.stag) << 29;                          // STAG
-        frame[4]  = u32(u.cmdreg1b) << 16;                      // CMDREG1B
-        frame[5]  = u32(u.dtag) << 29;                          // DTAG
-        frame[6]  = 1 << 26;                                    // E1 = 1, T = 0
-        frame[7]  = u32(u.fptemp.signExp()) << 16;              // FPTEMP
-        frame[8]  = u32(u.fptemp.mantissa() >> 32);
-        frame[9]  = u32(u.fptemp.mantissa());
-        frame[10] = u32(u.etemp.signExp()) << 16;               // ETEMP
-        frame[11] = u32(u.etemp.mantissa() >> 32);
-        frame[12] = u32(u.etemp.mantissa());
-        u.valid = false;
-    }
-
     writeM<C, M, Long>(ea, fmt);
-    for (u32 i = 4; i < size; i += 4) writeM<C, M, Long>(U32_ADD(ea, i), i / 4 < 13 ? frame[i / 4] : 0);
+    for (u32 i = 4; i < size; i += 4) writeM<C, M, Long>(U32_ADD(ea, i), unimp ? fpu.unimp.frame[i / 4 - 1] : 0);
 
     if constexpr (M == Mode::PD) writeA(n, ea);
+
+    // After the save, the FPU is idle (M68000PRM, FSAVE)
+    fpu.unimp.valid = false;
 
     prefetch<C, POLL>();
 
@@ -841,6 +838,7 @@ Moira::execFMove(u16 opcode)
     if (illegal) { execLineF<C, I, M, S>(opcode); return; }
 
     fpu.resetState = false;
+    fpu.unimp.valid = false;
     readI<C, Word>();
     fpu.clearExcStatusByte();
 
@@ -977,6 +975,7 @@ Moira::execFMovecr(u16 opcode)
     }
 
     fpu.resetState = false;
+    fpu.unimp.valid = false;
     readI<C, Word>();
     fpu.clearExcStatusByte();
 
@@ -1015,6 +1014,7 @@ Moira::execFMovem(u16 opcode)
     if (!isValidExtFPU(I, M, opcode, ext, cpuModel)) { execLineF<C, I, M, S>(opcode); return; }
 
     fpu.resetState = false;
+    fpu.unimp.valid = false;
     readI<C, Word>();
 
     switch (cod) {
@@ -1150,7 +1150,9 @@ Moira::execFUnimplemented(int n, FpuFormat fmt, bool rm)
      */
     u32 ea = 0;
     u16 ext = queue.irc;
+    bool packed = rm && fmt == FpuFormat::PACKED;
     MFloat80 src = fpu.fpr[(ext >> 10) & 7];
+    u32 w[3] = { };
 
     readI<C, Word>();
     fpu.setFPIAR(getPC0());
@@ -1160,7 +1162,25 @@ Moira::execFUnimplemented(int n, FpuFormat fmt, bool rm)
         if constexpr (isMemMode(M)) {
 
             ea = computeFpuEA<C, M>(n, fmt);
-            src = readFpuOpEa<C, M>(n, ea, fmt);
+
+            if (packed) {
+
+                // The FPSP converts a packed decimal operand itself
+                w[0] = readM<C, M, Long>(ea);
+                w[1] = readM<C, M, Long>(U32_ADD(ea, 4));
+                w[2] = readM<C, M, Long>(U32_ADD(ea, 8));
+                updateAn<M, Extended>(n);
+
+            } else {
+
+                src = readFpuOpEa<C, M>(n, ea, fmt);
+            }
+
+        } else if (isImmMode(M) && packed) {
+
+            w[0] = readI<C, Long>();
+            w[1] = readI<C, Long>();
+            w[2] = readI<C, Long>();
 
         } else {
 
@@ -1168,17 +1188,32 @@ Moira::execFUnimplemented(int n, FpuFormat fmt, bool rm)
         }
     }
 
-    /* The FPSP reads the operands from the state frame of a following FSAVE
-     * (MC68040UM 9.6.1 and Table 9-16): the command word, the source operand
-     * converted to extended precision, the destination operand and their tags.
+    /* The FPSP takes the instruction and its operands from the frame of a
+     * following FSAVE (MC68040UM 9.6.1, Table 9-16, Figure 9-10 d): the command
+     * word (CMDREG1B), the source operand converted to extended precision
+     * (ETEMP), the destination register (FPTEMP) and their tags. A packed
+     * decimal source stays unconverted: bits 63-0 are stored in ETEMP and bits
+     * 95-64 in the low longword of FPTEMP. E1 marks this case. Table 9-16 lists
+     * E1 as always set, but the definition of E1 (MC68040UM 9.8) and the FPSP
+     * (it unpacks the source if E1 is set) read it as the packed flag.
      */
-    const MFloat80 &dst = fpu.fpr[(ext >> 7) & 7];
+    auto &dst = fpu.fpr[(ext >> 7) & 7];
+    auto &f = fpu.unimp.frame;
+
+    f[0]  = 0;                                                  // $04: CMDREG3B
+    f[1]  = 0;
+    f[2]  = packed ? 0 : FPU::frameTag(src) << 29;              // $0C: STAG
+    f[3]  = u32(ext) << 16;                                     // $10: CMDREG1B
+    f[4]  = FPU::frameTag(dst) << 29;                           // $14: DTAG
+    f[5]  = packed ? 1 << 26 : 0;                               // $18: E1, T = 0
+    f[6]  = packed ? 0 : u32(dst.signExp()) << 16;              // $1C: FPTEMP
+    f[7]  = packed ? 0 : u32(dst.mantissa() >> 32);
+    f[8]  = packed ? w[0] : u32(dst.mantissa());
+    f[9]  = packed ? 0 : u32(src.signExp()) << 16;              // $28: ETEMP
+    f[10] = packed ? w[1] : u32(src.mantissa() >> 32);
+    f[11] = packed ? w[2] : u32(src.mantissa());
+
     fpu.unimp.valid = true;
-    fpu.unimp.cmdreg1b = ext;
-    fpu.unimp.etemp = src;
-    fpu.unimp.stag = FPU::tag040(src);
-    fpu.unimp.fptemp = dst;
-    fpu.unimp.dtag = FPU::tag040(dst);
     fpu.resetState = false;
 
     execException<C>(M68kException::FPU_UNIMPLEMENTED, int(ea));
@@ -1223,6 +1258,7 @@ Moira::execFGeneric(u16 opcode)
     }
 
     fpu.resetState = false;
+    fpu.unimp.valid = false;
     readI<C, Word>();
 
     // A bus error on the prefetch below restarts the instruction after the

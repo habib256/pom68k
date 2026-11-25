@@ -265,9 +265,8 @@ public:
         // stores the unimplemented instruction state frame") and the
         // arithmetic environment.
         ar(fpu.resetState, fpu.pendingTrap);
-        ar(fpu.unimp.valid, fpu.unimp.cmdreg1b, fpu.unimp.stag, fpu.unimp.dtag);
-        ext80(fpu.unimp.etemp);
-        ext80(fpu.unimp.fptemp);
+        ar(fpu.unimp.valid);
+        for (auto& w : fpu.unimp.frame) ar(w);
         int envMode = int(fpu.env.roundingMode()), envPrec = int(fpu.env.precision());
         bool envLimit = fpu.env.limitsExponent();
         moira::u8 envFlags = fpu.env.flags();
