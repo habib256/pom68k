@@ -126,38 +126,40 @@ fpuraw/tt seed=723 #1786
 fpuraw/tt seed=723 #1905
 fpuraw/tt seed=723 #1943
 fpuraw/tt seed=723 #1995
+# Dirk Hoffmann merged our PR #47 (bf98107f, 2026-11-25): these now take
+# the address error the manual requires and leave the @OPEN block.
+fpuraw/identity seed=722 #768
+fpuraw/identity seed=722 #1479
+fpuraw/off seed=721 #29
+fpuraw/off seed=721 #168
+fpuraw/off seed=721 #320
+fpuraw/off seed=721 #421
+fpuraw/off seed=721 #565
+fpuraw/off seed=721 #590
+fpuraw/off seed=721 #804
+fpuraw/off seed=721 #1136
+fpuraw/off seed=721 #1147
+fpuraw/off seed=721 #1148
+fpuraw/off seed=721 #1208
+fpuraw/off seed=721 #1221
+fpuraw/off seed=721 #1241
+fpuraw/off seed=721 #1261
+fpuraw/off seed=721 #1287
+fpuraw/off seed=721 #1347
+fpuraw/off seed=721 #1380
+fpuraw/off seed=721 #1537
+fpuraw/off seed=721 #1679
+fpuraw/off seed=721 #1706
+fpuraw/off seed=721 #1725
+fpuraw/off seed=721 #1759
+fpuraw/tt seed=723 #1952
 # D28, open defect of the core (TODO.md § Phase 1 › Défauts ouverts du cœur).
 # [B] MC68030UM-1989 §8.1.3 (PDF p. 414): "An address error exception occurs
 # when the processor attempts to prefetch an instruction from an odd
 # address." Dirk Hoffmann's FBcc/FDBcc (base 863b8d02) test the target with
 # misaligned<C>(), false for the 68020 core, and refill the pipe at the odd
 # target with no exception (his Bcc/DBcc use misalignedPC and take it); the
-# corpus does the same, so these vectors agree with it and are counted open.
-@OPEN D28 | fpuraw/identity seed=722 #768
-@OPEN D28 | fpuraw/identity seed=722 #1479
-@OPEN D28 | fpuraw/off seed=721 #29
-@OPEN D28 | fpuraw/off seed=721 #168
-@OPEN D28 | fpuraw/off seed=721 #320
-@OPEN D28 | fpuraw/off seed=721 #421
-@OPEN D28 | fpuraw/off seed=721 #565
-@OPEN D28 | fpuraw/off seed=721 #590
-@OPEN D28 | fpuraw/off seed=721 #804
-@OPEN D28 | fpuraw/off seed=721 #1136
-@OPEN D28 | fpuraw/off seed=721 #1147
-@OPEN D28 | fpuraw/off seed=721 #1148
-@OPEN D28 | fpuraw/off seed=721 #1208
-@OPEN D28 | fpuraw/off seed=721 #1221
-@OPEN D28 | fpuraw/off seed=721 #1241
-@OPEN D28 | fpuraw/off seed=721 #1261
-@OPEN D28 | fpuraw/off seed=721 #1287
-@OPEN D28 | fpuraw/off seed=721 #1347
-@OPEN D28 | fpuraw/off seed=721 #1380
-@OPEN D28 | fpuraw/off seed=721 #1537
-@OPEN D28 | fpuraw/off seed=721 #1679
-@OPEN D28 | fpuraw/off seed=721 #1706
-@OPEN D28 | fpuraw/off seed=721 #1725
-@OPEN D28 | fpuraw/off seed=721 #1759
-@OPEN D28 | fpuraw/tt seed=723 #1952
+# corpus does the same. PR #47 (bf98107f) fixed it: the block is empty.
 
 # D29 - EA fields $3D-$3F on the 68030. The fork lets the coprocessor decide
 # (a register-to-register operation runs, a memory one clears the status byte

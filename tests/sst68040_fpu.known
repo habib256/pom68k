@@ -163,13 +163,30 @@
 040 fpuraw/tt seed=963 #1412
 040 fpuraw/tt seed=963 #1465
 040 fpuraw/tt seed=963 #1497
+# Dirk Hoffmann merged our PR #47 (bf98107f, 2026-11-25): these now take
+# the address error the manual requires and leave the @OPEN block.
+040 fpuraw/off seed=961 #173
+040 fpuraw/off seed=961 #347
+040 fpuraw/off seed=961 #410
+040 fpuraw/off seed=961 #457
+040 fpuraw/off seed=961 #635
+040 fpuraw/off seed=961 #1254
+040 fpuraw/tt seed=963 #145
+040 fpuraw/tt seed=963 #355
+040 fpuraw/tt seed=963 #436
+040 fpuraw/tt seed=963 #589
+040 fpuraw/tt seed=963 #654
+040 fpuraw/tt seed=963 #1030
+040 fpuraw/tt seed=963 #1147
+040 fpuraw/tt seed=963 #1165
 # D28, open defect of the core (TODO.md § Phase 1 › Défauts ouverts du cœur).
 # [B] MC68040UM-1993 §8.2.2 (PDF p. 221): "An address error exception occurs
 # when the processor attempts to prefetch an instruction from an odd address.
 # This includes the case of a conditional branch instruction with an odd
 # branch offset that is not taken." Dirk Hoffmann's FBcc/FDBcc (base
-# 863b8d02) raise none, taken (14 here) or not (33), as the corpus: these
-# vectors agree with it and are counted open.
+# 863b8d02) raised none, taken or not, as the corpus. PR #47 (bf98107f)
+# fixed the taken case; the 33 not taken below agree with the corpus and
+# are counted open.
 @OPEN D28 | 040 fpuraw/identity seed=962 #41
 @OPEN D28 | 040 fpuraw/identity seed=962 #257
 @OPEN D28 | 040 fpuraw/identity seed=962 #449
@@ -177,45 +194,31 @@
 @OPEN D28 | 040 fpuraw/identity seed=962 #938
 @OPEN D28 | 040 fpuraw/identity seed=962 #1031
 @OPEN D28 | 040 fpuraw/identity seed=962 #1177
-@OPEN D28 | 040 fpuraw/off seed=961 #173
 @OPEN D28 | 040 fpuraw/off seed=961 #326
-@OPEN D28 | 040 fpuraw/off seed=961 #347
 @OPEN D28 | 040 fpuraw/off seed=961 #387
-@OPEN D28 | 040 fpuraw/off seed=961 #410
-@OPEN D28 | 040 fpuraw/off seed=961 #457
 @OPEN D28 | 040 fpuraw/off seed=961 #463
 @OPEN D28 | 040 fpuraw/off seed=961 #556
-@OPEN D28 | 040 fpuraw/off seed=961 #635
 @OPEN D28 | 040 fpuraw/off seed=961 #691
 @OPEN D28 | 040 fpuraw/off seed=961 #735
 @OPEN D28 | 040 fpuraw/off seed=961 #890
 @OPEN D28 | 040 fpuraw/off seed=961 #1001
 @OPEN D28 | 040 fpuraw/off seed=961 #1202
-@OPEN D28 | 040 fpuraw/off seed=961 #1254
 @OPEN D28 | 040 fpuraw/off seed=961 #1259
 @OPEN D28 | 040 fpuraw/off seed=961 #1470
 @OPEN D28 | 040 fpuraw/off seed=961 #1499
 @OPEN D28 | 040 fpuraw/tt seed=963 #122
 @OPEN D28 | 040 fpuraw/tt seed=963 #141
-@OPEN D28 | 040 fpuraw/tt seed=963 #145
 @OPEN D28 | 040 fpuraw/tt seed=963 #200
 @OPEN D28 | 040 fpuraw/tt seed=963 #254
-@OPEN D28 | 040 fpuraw/tt seed=963 #355
-@OPEN D28 | 040 fpuraw/tt seed=963 #436
-@OPEN D28 | 040 fpuraw/tt seed=963 #589
 @OPEN D28 | 040 fpuraw/tt seed=963 #616
-@OPEN D28 | 040 fpuraw/tt seed=963 #654
 @OPEN D28 | 040 fpuraw/tt seed=963 #846
 @OPEN D28 | 040 fpuraw/tt seed=963 #957
 @OPEN D28 | 040 fpuraw/tt seed=963 #991
 @OPEN D28 | 040 fpuraw/tt seed=963 #1026
-@OPEN D28 | 040 fpuraw/tt seed=963 #1030
 @OPEN D28 | 040 fpuraw/tt seed=963 #1065
 @OPEN D28 | 040 fpuraw/tt seed=963 #1073
 @OPEN D28 | 040 fpuraw/tt seed=963 #1084
-@OPEN D28 | 040 fpuraw/tt seed=963 #1147
 @OPEN D28 | 040 fpuraw/tt seed=963 #1164
-@OPEN D28 | 040 fpuraw/tt seed=963 #1165
 @OPEN D28 | 040 fpuraw/tt seed=963 #1325
 
 # D38 - --strict-ram only. An instruction ending on the last word of a page:

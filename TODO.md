@@ -203,16 +203,13 @@ défaut CPU, dans cet ordre :
   terminé** (MC68030UM-1989 §8.2.2) : rubriques « Restart model » de
   `berr020_test`, `berr030_test` et `fault_transparency_test` ; sur la
   liste de Dirk après sa version (discussion #36).
-- [ ] **FBcc/FDBcc vers une adresse impaire : aucune erreur d'adresse
-  (D28).** MC68030UM-1989 §8.1.3 (p. 414) : erreur d'adresse dès que le
-  processeur tente de précharger à une adresse impaire ; MC68040UM-1993
-  §8.2.2 (p. 221) : « this includes … an odd branch offset that is not
-  taken ». Le cœur (`execFBcc`/`execFDbcc`) teste la cible avec
-  `misaligned<C>()`, faux pour le cœur 68020, et précharge à la cible
-  impaire — son Bcc/DBcc prend l'erreur (`misalignedPC`). 25 vecteurs
-  `@OPEN D28` de `sst68030_fpuraw.known`, 47 de `sst68040_fpu.known`
-  (14 pris, 33 non pris), en accord avec WinUAE. Candidat correctif pour
-  Dirk, sous la liste de vérification complète ; contenu du cadre [F].
+- [ ] **FBcc/FDBcc 68040 non pris avec un déplacement impair : aucune
+  erreur d'adresse (D28).** Le cas pris est corrigé chez Dirk (PR #47,
+  `bf98107f`, 2026-11-25) : les 25 vecteurs 68030 et les 14 vecteurs 68040
+  pris ont quitté `@OPEN D28`. Reste MC68040UM-1993 §8.2.2 (p. 221) :
+  « this includes … an odd branch offset that is not taken » — 33 vecteurs
+  `@OPEN D28` de `sst68040_fpu.known`, en accord avec WinUAE. Contenu du
+  cadre [F].
 - [ ] **D29, question ouverte : l'octet EXC du FPSR avant le Line-F d'un
   EA $3D-$3F en forme mémoire sur 68030.** Le cœur garde l'octet comme
   WinUAE, le fork l'effaçait (MC68881UM-1989 §2.3.3, p. 42 : effacé « at
