@@ -623,6 +623,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-25 (second) — The PTEST limit cells tested an F-line: their FC field was reserved, and with %10101 all 48 pass](#2026-11-25-ptest-fc-fixture)
 - [2026-11-25 — Dirk merges #46-#49: the queue rebased on bf98107f, fifteen patches; the FSAVE frame's E1 was wrong, and the MoiraCompat layer loses the fork's inert members](#2026-11-25-moira-bf98107f)
 - [2026-11-24 (fourth) — Dirk merges four of POM68K's pull requests: the queue rebased on 863b8d02, seventeen patches](#2026-11-24-moira-863b8d02)
 - [2026-11-24 (third) — The SST gates judge agreement per corpus file against a floor, not unanimity: all thirteen green once D28/D29 are re-judged](#2026-11-24-sst-floors)
@@ -1451,6 +1452,34 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-25-ptest-fc-fixture"></a>
+## 2026-11-25 (second) — The PTEST limit cells tested an F-line: their FC field was reserved, and with %10101 all 48 pass
+
+`moira_rules_test`'s `ptestLongDescriptorLimits` cells (root and table
+pointers, lower and upper limits, the index one below, at and one above the
+limit, PTESTR and PTESTW, levels 1 and 2) had listed 48 failures in
+`tests/known/moira_rules_test.txt` since the base became Dirk's core. They
+were not limit defects. The fixture's extension word carried FC field
+%00101, which MC68030UM-1989 (PTEST, p. 3-160) does not define: FC is
+%10XXX (immediate), %01DDD (a data register), %00000 (SFC) or %00001 (DFC),
+and § 8.1.5 makes any other pattern an F-line. Dirk's core decodes it so
+(`MoiraExecMMU_cpp.h`, the PTEST check of the extension word), so every cell
+took the F-line before walking anything.
+
+The fixture now encodes %10101, the immediate #5 (supervisor data) it
+meant, with the citation at the line. All 48 cells pass on `bf98107f` + 15:
+Dirk's walk keeps the limits inclusive, stops before fetching the child
+descriptor, and ends at level 1 without consulting the next table's limit,
+as the cells expect (their reading: WinUAE `cpummu030.c
+mmu030_table_search` @ Hatari e77819f7). The known list goes from 390 to 342 rows; the gate is
+`moira_rules_test` through `tools/known_failures.py`.
+
+**Still open.** The DT = 1 root limit with FCL set stays [F] (MC68030UM
+§ 9.7.1 against Figure 9-28; `TODO.md` § Phase 1 › Boucle amont). The same
+run reports ten listed rows that no longer fail (eight 68000 DIVS
+$80000000 entry-CCR cells, the 68040 FBT.W and FDBF to an odd target): they
+are kept until explained (`TODO.md` § Phase 1 › Listes).
 
 <a id="2026-11-25-moira-bf98107f"></a>
 ## 2026-11-25 — Dirk merges #46-#49: the queue rebased on bf98107f, fifteen patches; the FSAVE frame's E1 was wrong, and the MoiraCompat layer loses the fork's inert members

@@ -76,54 +76,6 @@
 1	68030 PEA (A0) push fault: format A008 (want A008), stacked PC 00001000 (want 00001002), USP=00080004 (want 00080000), pending 00031234
 1	68030 PTEST level 0 after the fault: MMUSR 0400 (want $8400, the ATC entry's B with I)
 1	68030 PTEST level 7 into a /BERR: PC0=00002000 (want 00001004, no exception), MMUSR 0000 (want $8400: B, I, N = 0)
-1	68030 PTEST root lower delta=-1 R=0 level=1: MMUSR=0000/4400 descriptor=00000000/00000000
-1	68030 PTEST root lower delta=-1 R=0 level=2: MMUSR=0000/4400 descriptor=00000000/00000000
-1	68030 PTEST root lower delta=-1 R=1 level=1: MMUSR=0000/4400 descriptor=00000000/00000000
-1	68030 PTEST root lower delta=-1 R=1 level=2: MMUSR=0000/4400 descriptor=00000000/00000000
-1	68030 PTEST root lower delta=0 R=0 level=1: MMUSR=0000/0001 descriptor=00000000/00004010
-1	68030 PTEST root lower delta=0 R=0 level=2: MMUSR=0000/0002 descriptor=00000000/00005008
-1	68030 PTEST root lower delta=0 R=1 level=1: MMUSR=0000/0001 descriptor=00000000/00004010
-1	68030 PTEST root lower delta=0 R=1 level=2: MMUSR=0000/0002 descriptor=00000000/00005008
-1	68030 PTEST root lower delta=1 R=0 level=1: MMUSR=0000/0001 descriptor=00000000/00004018
-1	68030 PTEST root lower delta=1 R=0 level=2: MMUSR=0000/0002 descriptor=00000000/00005008
-1	68030 PTEST root lower delta=1 R=1 level=1: MMUSR=0000/0001 descriptor=00000000/00004018
-1	68030 PTEST root lower delta=1 R=1 level=2: MMUSR=0000/0002 descriptor=00000000/00005008
-1	68030 PTEST root upper delta=-1 R=0 level=1: MMUSR=0000/0001 descriptor=00000000/00004008
-1	68030 PTEST root upper delta=-1 R=0 level=2: MMUSR=0000/0002 descriptor=00000000/00005008
-1	68030 PTEST root upper delta=-1 R=1 level=1: MMUSR=0000/0001 descriptor=00000000/00004008
-1	68030 PTEST root upper delta=-1 R=1 level=2: MMUSR=0000/0002 descriptor=00000000/00005008
-1	68030 PTEST root upper delta=0 R=0 level=1: MMUSR=0000/0001 descriptor=00000000/00004010
-1	68030 PTEST root upper delta=0 R=0 level=2: MMUSR=0000/0002 descriptor=00000000/00005008
-1	68030 PTEST root upper delta=0 R=1 level=1: MMUSR=0000/0001 descriptor=00000000/00004010
-1	68030 PTEST root upper delta=0 R=1 level=2: MMUSR=0000/0002 descriptor=00000000/00005008
-1	68030 PTEST root upper delta=1 R=0 level=1: MMUSR=0000/4400 descriptor=00000000/00000000
-1	68030 PTEST root upper delta=1 R=0 level=2: MMUSR=0000/4400 descriptor=00000000/00000000
-1	68030 PTEST root upper delta=1 R=1 level=1: MMUSR=0000/4400 descriptor=00000000/00000000
-1	68030 PTEST root upper delta=1 R=1 level=2: MMUSR=0000/4400 descriptor=00000000/00000000
-1	68030 PTEST table lower delta=-1 R=0 level=1: MMUSR=0000/0001 descriptor=00000000/00004008
-1	68030 PTEST table lower delta=-1 R=0 level=2: MMUSR=0000/4401 descriptor=00000000/00004008
-1	68030 PTEST table lower delta=-1 R=1 level=1: MMUSR=0000/0001 descriptor=00000000/00004008
-1	68030 PTEST table lower delta=-1 R=1 level=2: MMUSR=0000/4401 descriptor=00000000/00004008
-1	68030 PTEST table lower delta=0 R=0 level=1: MMUSR=0000/0001 descriptor=00000000/00004008
-1	68030 PTEST table lower delta=0 R=0 level=2: MMUSR=0000/0002 descriptor=00000000/00005010
-1	68030 PTEST table lower delta=0 R=1 level=1: MMUSR=0000/0001 descriptor=00000000/00004008
-1	68030 PTEST table lower delta=0 R=1 level=2: MMUSR=0000/0002 descriptor=00000000/00005010
-1	68030 PTEST table lower delta=1 R=0 level=1: MMUSR=0000/0001 descriptor=00000000/00004008
-1	68030 PTEST table lower delta=1 R=0 level=2: MMUSR=0000/0002 descriptor=00000000/00005018
-1	68030 PTEST table lower delta=1 R=1 level=1: MMUSR=0000/0001 descriptor=00000000/00004008
-1	68030 PTEST table lower delta=1 R=1 level=2: MMUSR=0000/0002 descriptor=00000000/00005018
-1	68030 PTEST table upper delta=-1 R=0 level=1: MMUSR=0000/0001 descriptor=00000000/00004008
-1	68030 PTEST table upper delta=-1 R=0 level=2: MMUSR=0000/0002 descriptor=00000000/00005008
-1	68030 PTEST table upper delta=-1 R=1 level=1: MMUSR=0000/0001 descriptor=00000000/00004008
-1	68030 PTEST table upper delta=-1 R=1 level=2: MMUSR=0000/0002 descriptor=00000000/00005008
-1	68030 PTEST table upper delta=0 R=0 level=1: MMUSR=0000/0001 descriptor=00000000/00004008
-1	68030 PTEST table upper delta=0 R=0 level=2: MMUSR=0000/0002 descriptor=00000000/00005010
-1	68030 PTEST table upper delta=0 R=1 level=1: MMUSR=0000/0001 descriptor=00000000/00004008
-1	68030 PTEST table upper delta=0 R=1 level=2: MMUSR=0000/0002 descriptor=00000000/00005010
-1	68030 PTEST table upper delta=1 R=0 level=1: MMUSR=0000/0001 descriptor=00000000/00004008
-1	68030 PTEST table upper delta=1 R=0 level=2: MMUSR=0000/4401 descriptor=00000000/00004008
-1	68030 PTEST table upper delta=1 R=1 level=1: MMUSR=0000/0001 descriptor=00000000/00004008
-1	68030 PTEST table upper delta=1 R=1 level=2: MMUSR=0000/4401 descriptor=00000000/00004008
 1	68030 RTD #8 pop fault: format B008 (want B008), log 00000000 (want 00000008), idx byte 00 (want 12), USP=00080000
 1	68030 RTE: interrupt returns to 00001100, want 00001104
 1	68030 SUBX.B -(A1),-(A0): $A1 - $7D - X, store fault: format A008 (want A008), data output buffer 00000023 (want FFFFFF23)

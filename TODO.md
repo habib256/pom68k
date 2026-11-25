@@ -76,8 +76,8 @@ Dans l'ordre :
    approuver par le propriétaire `scratchpad/2026-11-25/JIT_PLAN.md`
    (questions Q1-Q8) avant tout code JIT (§ Phase 2).
 4. En parallèle, sans bloquer : les points ouverts listés à la fin de
-   `HANDOVER.md` (limite FCL [F], FA physique 68040, cellules PTEST FC
-   %00101, frame $9 du FMOVE 6888x).
+   `HANDOVER.md` (limite FCL [F], FA physique 68040, frame $9 du FMOVE
+   6888x).
 
 ---
 
@@ -269,10 +269,15 @@ Chaque ligne d'une liste se corrige (correctif de la file), se tranche
   ni accord ni tranché), § Phase 1 › Défauts. Les autres lignes D28/D29
   échouent désormais pour d'autres raisons (prédicat $20-$3F → Line-F, bit
   U d'un descripteur) : à reclasser.
-- [ ] **`moira_rules_test`** (`tests/known/moira_rules_test.txt`, 395
+- [ ] **`moira_rules_test`** (`tests/known/moira_rules_test.txt`, 342
   échecs) : cellules du fork, non revues une à une sur ce cœur — contenus
   de cadre du modèle de continuation, lectures WinUAE, détails PTEST/MMUSR,
   temps, défauts possibles.
+- [ ] **Dix lignes de `moira_rules_test.txt` n'échouent plus sur ce cœur**
+  (`known_failures.py` les signale) : les huit « 68000 DIVS $80000000/…
+  entry CCR=… », « 68040 FBT.W to an odd target » et « 68040 FDBF D0 with
+  an odd offset ». Expliquer pourquoi (correctif de la file, PR #47 de
+  Dirk ?), puis abaisser la liste.
 - [ ] **`berr030_test`** : les lectures WinUAE épinglées par le fork sans
   phrase du manuel (format de cadre d'un PMOVE en écriture traduite qui
   faute, image brute de FP7, ordre de bus d'un FMOVEM indirect) — à revoir

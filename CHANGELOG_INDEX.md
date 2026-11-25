@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 888 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 889 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -18,7 +18,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Save states](#save-states) | 11 |
 | [Machine bring-ups](#machine-bring-ups) | 102 |
 | [Build, packaging and release](#build-packaging-and-release) | 29 |
-| [Tests, gates and measurement](#tests-gates-and-measurement) | 44 |
+| [Tests, gates and measurement](#tests-gates-and-measurement) | 45 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 10 |
 | [Cross-cutting](#cross-cutting) | 184 |
 
@@ -750,6 +750,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-09-17 (twenty-third)** — [Five copies of the disk-bay bindings became one, and the one is under a gate](CHANGELOG.md#2026-09-17-disk-bay-bindings)
 - **2026-11-13** — [The `CHECK_IRQ` settle is parked: it changes which block owns a device read, and the gate that says that read is native never ran it native](CHANGELOG.md#2026-11-13-settle-irq-parked)
 - **2026-11-13 (later)** — [`q630_ide_boot_etalon` fails about once in 70 runs, and did so before the transient-refusal retry](CHANGELOG.md#2026-11-13-q630-rare-divergence)
+- **2026-11-25 (second)** — [The PTEST limit cells tested an F-line: their FC field was reserved, and with %10101 all 48 pass](CHANGELOG.md#2026-11-25-ptest-fc-fixture)
 
 ## Documentation, audits and reviews
 

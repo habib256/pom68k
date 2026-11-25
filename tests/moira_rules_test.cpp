@@ -1155,8 +1155,11 @@ void ptestLongDescriptorLimits()
     for (int depth : {1, 2}) {
         TestCpu c(moira::CPUModel::M68030);
         stage(c, 0xf010, 0);                       // PTEST (A0)
+        // [B] MC68030UM-1989 PTEST p. 3-160: FC is %10XXX (immediate),
+        // %01DDD, %00000 (SFC) or %00001 (DFC); §8.1.5 makes any other
+        // pattern an F-line. %10101 is the immediate #5.
         const uint16_t modes = uint16_t(0x8100 | (depth << 10) |
-                                       (read ? 0x0200 : 0) | (1 << 5) | 5);
+                                       (read ? 0x0200 : 0) | (1 << 5) | 0x15);
         p16(c, kCode + 2, modes); c.setIRC(modes);  // result descriptor -> A1
         p16(c, kCode + 4, kNop);
         // TC.E=0 keeps code/stack accesses out of the synthetic tables;
