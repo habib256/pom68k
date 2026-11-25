@@ -16,10 +16,10 @@ its 158 rows against Dirk's rewrite).
 | distinct `pom*` extension identifiers | **0** (0 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
 | `POM68K`-marked lines | **0** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **0 of 48** | `grep -rln POM68K Moira/ \| wc -l` |
-| patches in the queue below | **15** | `ls extern/moira/patches/*.patch` |
+| patches in the queue below | **16** | `ls extern/moira/patches/*.patch` |
 
 Each patch is one commit on top of the base, with its gate or reproducer
-listed below. Patches 1, 3, 4, 7, 9, 10 and 12 cite the manual passages
+listed below. Patches 1, 3, 4, 7, 9, 10, 12 and 16 cite the manual passages
 they implement; 11 infers its rule from three passages; 2, 5, 6, 8 and 15
 cite none; 13 and 14 rest on SingleStepTests only. `patches/queue.tsv` records
 each patch's evidence, upstream pull request and gates, and
@@ -78,6 +78,7 @@ on the pristine and the patched tree, then the machine tiers.
 | 13 | Restore 68000 address error frame timing in DEFAULT mode | `MoiraExceptions_cpp.h` | SingleStepTests/680x0 68000/v1 measures the idle before the group-0 frame writes | `sst68000`, `system_boot_etalon`, `se_boot_etalon`, `classic_boot_etalon` |
 | 14 | Restore 68000 divide overflow flags and signed timing in DEFAULT mode | `MoiraALU_cpp.h` | SingleStepTests/680x0 68000/v1 checks the preserved N/Z flags and the 16/18-clock signed overflow path | `sst68000` |
 | 15 | 68020 core: the discarded refill is an instruction fetch without a cache too | `MoiraDataflow_cpp.h` | none: `readInstr()` charges every other fetched word the narrow-port penalty; this keeps the 68040 machines, which answer the default 16-bit `dsack()`, on the timing they were validated with | `q605_clipboard_etalon`, `icache020_test` |
+| 16 | 68881/68882: an FMOVE to memory or to a data register takes a mid-instruction exception | `MoiraExceptions.h`, `MoiraExceptions_cpp.h`, `MoiraExecFPU_cpp.h` | MC68881UM 6.1, 6.1.3, 7.4.2.6 (Figure 7-16) and MC68030UM 10.4.19 (Figure 10-43): format $9 right after the store, scan PC at +2, instruction address at +8; RTE needs no change, it reloads +2 (MC68030UM 8.1.13, 10.4.1; MC68881UM 6.1.13). Shares the move-out block of `execFMove` with patch 7; reverses the 2026-11-24 deferred reading | `fpu_sanity` |
 
 Patch 14 is exercised alone by `sst68000 --only DIVS,DIVU` on the
 SingleStepTests 68000/v1 corpus; `system_boot_etalon` is the Plus boot

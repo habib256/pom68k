@@ -26,7 +26,7 @@ template <Core C> void writeStackFrame0010(u16 sr, u32 pc, u32 ia, u16 nr);
 template <Core C> void writeStackFrame0011(u16 sr, u32 pc, u32 ea, u16 nr);
 template <Core C> void writeStackFrame0111(u16 sr, u32 pc, u16 nr, u16 ssw, u32 addr, u32 dataOut);
 template <Core C> void writeStackFrame1000(StackFrame &frame, u16 sr, u32 pc, u32 ia, u16 nr, u32 addr);
-template <Core C> void writeStackFrame1001(u16 sr, u32 pc, u32 ia, u16 nr);
+template <Core C> void writeStackFrame1001(u16 sr, u32 pc, u32 ia, u16 nr, u16 op, u32 ea);
 template <Core C> void writeStackFrame1010(u16 sr, u32 pc, u16 nr, u16 ssw = 0, u32 addr = 0, u32 dataOut = 0, u16 stageC = 0, u16 stageB = 0);
 template <Core C> void writeStackFrame1011UAE(u16 sr, u16 nr, u32 pc, u16 ssw, u32 addr, u32 end, bool write, u32 dataOut);
 template <Core C> void writeStackFrame1011(u16 sr, u32 pc, u32 ia, u16 nr, u16 ssw = 0, u32 addr = 0, u32 dataOut = 0, u16 stageC = 0, u16 stageB = 0);
@@ -41,9 +41,13 @@ template <Core C, Mode M> void execFUnimplemented(int n, FpuFormat fmt, bool rm)
 
 // Raises a floating-point arithmetic exception (vectors 48 - 54). A pre-instruction
 // exception is taken before an FPU instruction starts and stacks its address
-// (format 0). A post-instruction exception (68040, FMOVE to memory) is taken
-// after the instruction and stacks the address of the next instruction and the
-// effective address (format 3).
+// (format 0). An exception of an FMOVE to memory or to a data register is taken
+// after the operand has been stored. The 68040 takes it as a post-instruction
+// exception and stacks the address of the next instruction and the effective
+// address (format 3). The 68881 and 68882 report it as a mid-instruction
+// exception: the stack frame holds the scan PC (the address of the next
+// instruction) where the other frames hold the program counter, the address of
+// the instruction, the operation word and the effective address (format 9).
 template <Core C> void execFpuTrap(u16 vector, bool post = false, u32 ea = 0);
 
 // Takes a pending floating-point arithmetic exception (returns false if none is pending)

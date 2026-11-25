@@ -16,7 +16,7 @@ first, an unqualified entry normally being that day's first and so its last
 line here. (Before 2026-07-28 a day's several entries are all unqualified:
 ordered, but unlabelled — the qualifier convention starts with the JIT work.)
 A `> **Superseded:**` blockquote under a heading points at the entry that
-overturned it (`grep -n '^> \*\*Superseded' CHANGELOG.md`, 15 of them).
+overturned it (`grep -n '^> \*\*Superseded' CHANGELOG.md`, 16 of them).
 
 **Adding an entry:** **prepend** the section — the nine 2026-08-10/08-12
 entries were *appended* at the bottom instead and sat there below the
@@ -39,6 +39,8 @@ Each line is a **question a reader arrives with**, pointing at the entry that
 answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
+
+- **"a 6888x reports no post-instruction exception (MC68881UM §6.1)", read as an FMOVE FPn,<ea> exception deferred to the next FPU instruction (2026-11-24) — the same page makes it a mid-instruction exception, format $9, taken after the store** → [A 6888x FMOVE exception is a mid-instruction one](#2026-11-25-fmove-format9)
 
 - **"the Quadras' FPSP … restored" by the FSAVE frame patch (2026-11-24) — the frame set E1 for every operand, and the FPSP unpacked every source as packed decimal: the Quadras booted but computed wrong transcendental results** → [Dirk merges #46-#49](#2026-11-25-moira-bf98107f)
 
@@ -623,6 +625,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-25 (fourth) — A 6888x FMOVE FPn,<ea> exception is a mid-instruction one, format $9 after the store: the 2026-11-24 deferral is reversed, queue patch 16](#2026-11-25-fmove-format9)
 - [2026-11-25 (third) — A 68040 bus error after a successful translation stacks the logical fault address: queue patch 12 amended](#2026-11-25-fa040-logical)
 - [2026-11-25 (second) — The PTEST limit cells tested an F-line: their FC field was reserved, and with %10101 all 48 pass](#2026-11-25-ptest-fc-fixture)
 - [2026-11-25 — Dirk merges #46-#49: the queue rebased on bf98107f, fifteen patches; the FSAVE frame's E1 was wrong, and the MoiraCompat layer loses the fork's inert members](#2026-11-25-moira-bf98107f)
@@ -1454,6 +1457,64 @@ Newest first.
 
 ---
 
+<a id="2026-11-25-fmove-format9"></a>
+## 2026-11-25 (fourth) — A 6888x FMOVE FPn,<ea> exception is a mid-instruction one, format $9 after the store: the 2026-11-24 deferral is reversed, queue patch 16
+
+**The ruling reversed.** On 2026-11-24 ([the base entry](#2026-11-24-dirk-moira-base))
+`fpu_sanity` case 14 was rewritten to Dirk's behaviour: an enabled
+exception of FMOVE FPn,<ea> on a 68881/68882 was recorded and taken as a
+pre-instruction exception (format $0) when the next FPU instruction
+started, on the strength of MC68881UM-1989 § 6.1, "neither the MC68881 nor
+the MC68882 reports the post-instruction exception". The same page (PDF
+p. 226) says what the move-out exception is instead: "a take
+mid-instruction exception primitive is issued after the operand is stored
+in memory", and (p. 228) "FPCP instruction exceptions that arise from the
+move floating-point data register to external destination instructions are
+reported to the MPU as mid-instruction exceptions". § 6.1.3 (p. 232): the
+destination "is written as if the trap were disabled, and then a take
+exception primitive is returned". That ruling is reversed: the exception is
+taken at once, after the store, with the mid-instruction frame.
+
+**The frame.** MC68881UM-1989 § 7.4.2.6, Figure 7-16, and MC68030UM-1989
+§ 10.4.19, Figure 10-43: format $9, ten words — status register at +$00,
+the scan PC (the next instruction) at +$02, format/vector at +$06, the
+address of the F-line operation word at +$08, an internal register at
++$0C, the operation word at +$0E and the destination's effective address at
++$10 (undefined for a data register). A first draft took +$02 and +$08 the
+other way round from the figure's text layer and was corrected from the
+rendered page (MC68030UM PDF p. 542; Table 8-7, p. 432, agrees). RTE is Dirk's,
+unchanged: it reloads the PC from +$02, the scan PC; the processor reads
+the response CIR, null because the FPU has finished (MC68881UM § 6.1.13;
+MC68030UM § 8.1.13, § 10.4.1), and goes on with the next instruction. A
+handler that rewrites +$02 chooses where execution resumes.
+
+**The change.** New local queue patch 16 (not proposed upstream):
+`execFMove` takes the trap right after the store on an external FPU, and
+`writeStackFrame1001()` writes the frame; the 68040 path (format $3, patch
+7's unconditional SNAN/OPERR) is unchanged. `fpu_sanity` case 14 runs every
+020/030 model with both FPUs and five destinations (D0, (A0), (4,A0),
+-(A0), (A0)+): stored value, frame fields, A0, FPSR and FPIAR; with the
+68881 the RTE returns to the scan PC, and `moveOutMidInstruction()` runs a
+handler through RTE with and without a rewritten scan PC, then an FNOP that
+finds nothing pending. New locators in `tests/core_manuals.lock`;
+`docs/MOIRA_CONVERGENCE.md` row 113. WinUAE (@ Hatari e77819f7) traps at
+once but stacks format $3.
+
+**Still open.**
+- The `@D23a` rows of the `sst68030*` known lists still fail: the core
+  stacks 20 bytes where WinUAE's vector holds 12, and the rule normalizes
+  format $2/$3 only. A format-$9 rule is needed; the floors are unchanged
+  and `sst_known_contract_test` keeps its D23a contract skipped.
+- [F] The MC68882 keeps EXC PEND after the acknowledge (MC68881UM § 6.1.13,
+  § 6.4.2.2, § 5.2.2): a handler without FSAVE/BSET/FRESTORE is outside its
+  contract, and what a bare RTE then meets is unknown. The core takes the
+  exception once on both FPUs, as before; the test asserts the RTE on the
+  68881 only. Settled by: a capture on a real 68030 + 68882 with
+  a bare-RTE handler.
+- Two side findings: a pending trap is taken before FMOVEM and FMOVE FPcr
+  dispatch, against MC68881UM § 6.4.2.2; an FMOVE of a signalling NaN to
+  B/W/L sets OPERR, against Table 6-2. Neither is changed here.
+
 <a id="2026-11-25-fa040-logical"></a>
 ## 2026-11-25 (third) — A 68040 bus error after a successful translation stacks the logical fault address: queue patch 12 amended
 
@@ -1833,6 +1894,10 @@ byte on a real 68000.
 
 <a id="2026-11-24-dirk-moira-base"></a>
 ## 2026-11-24 — POM68K runs on Dirk Hoffmann's Moira: twenty-one fixes in a patch queue, the Quadras' FPSP and the Mac slot probes restored
+
+> **Superseded in part:** the 6888x FMOVE FPn,<ea> exception is not deferred
+> to the next FPU instruction; it is a mid-instruction exception, format $9,
+> taken after the store ([2026-11-25 (fourth)](#2026-11-25-fmove-format9)).
 
 **The base.** `extern/moira/Moira` is Dirk's `master` (`450b15ae`, his `FPU`
 branch merged) plus a queue of twenty-one commits exported to

@@ -58,7 +58,7 @@ Tout le reste (jalons produit, vitesse hors CPU, NeoST, dépôt) est après les
 deux phases, hors du chemin principal.
 
 **Reprendre ici (état au 2026-11-25, `231e519b`, CI et macOS verts).**
-`main` = Moira de Dirk `bf98107f` + 15 correctifs ; rien d'ouvert chez lui.
+`main` = Moira de Dirk `bf98107f` + 16 correctifs ; rien d'ouvert chez lui.
 Passés sur x86-64 sur cet arbre : build, `asset-none` 156/156, le jeu de
 vérification de 99 tests (SST, vecteurs CPU, save-state, etalons
 boot/agent/beyond). Note de passation : `scratchpad/2026-11-25/HANDOVER.md`.
@@ -76,7 +76,7 @@ Dans l'ordre :
    approuver par le propriétaire `scratchpad/2026-11-25/JIT_PLAN.md`
    (questions Q1-Q8) avant tout code JIT (§ Phase 2).
 4. En parallèle, sans bloquer : les points ouverts listés à la fin de
-   `HANDOVER.md` (limite FCL [F], frame $9 du FMOVE 6888x).
+   `HANDOVER.md` (limite FCL [F]).
 
 ---
 
@@ -151,7 +151,8 @@ défaut CPU, dans cet ordre :
   (`863b8d02`, coups du cache comptés une fois). Fusionnées le 2026-11-25 :
   #46 (latch du 68020 après MOVE vers SR), #47 (FBcc/FDBcc vers une cible
   impaire), #48 (FRESTORE) et #49 (frame FSAVE UNIMP) ; la file est rebasée
-  sur `bf98107f` et compte 15 correctifs. L'état de chaque correctif et sa
+  sur `bf98107f` et compte 16 correctifs (le 16, local, depuis le
+  2026-11-25). L'état de chaque correctif et sa
   PR se suivent dans `extern/moira/patches/queue.tsv`.
 - [ ] **Mesurer sur un vrai 68030 la limite d'une racine DT=1 avec FCL.**
   MC68030UM §9.7.1 la contrôle « regardless of the state of the FCL bit »,
@@ -204,10 +205,10 @@ défaut CPU, dans cet ordre :
   session du 2026-11-24 : `rebase/evidence/latch-defect.txt`,
   `flushlatch-variant.diff`). Une PR corrective chez Dirk attend l'accord du
   propriétaire et la liste de vérification complète.
-- [ ] **Deux correctifs de la file contredisent des tests de Dirk.** Le 16
+- [ ] **Deux correctifs de la file contredisent des tests de Dirk.** Le 14
   (débordement de division 68000, preuve SingleStepTests seule) fait
   échouer `StackFrame / 68000 exception frames match real hardware` (cas
-  `addrerr30` : SR $2012 au lieu de $201A) ; le 12 (tampon de sortie de
+  `addrerr30` : SR $2012 au lieu de $201A) ; le 10 (tampon de sortie de
   données 68020, MC68020UM §6.2.2) fait différer `ExceptionUAE020` d'UAE sur
   `frame.dob`. Trancher chacun avant toute PR.
 - [ ] **Largeur de port des wrappers 68040.** Ils héritent du `dsack()` 16
@@ -215,7 +216,7 @@ défaut CPU, dans cet ordre :
   bits est-il juste pour les machines 68040 (le 68040 n'a pas de
   dimensionnement dynamique du bus) ? `readInstr()` facture 4 cycles par mot
   d'instruction lu sur un port étroit : toute la cadence des machines 68040
-  en dépend. Le correctif 17 (local) fait payer la même chose au mot jeté de
+  en dépend. Le correctif 15 (local) fait payer la même chose au mot jeté de
   MOVE vers SR/CCR, DBcc expiré et TRAPV pris ; sans lui
   `q605_clipboard_etalon` échoue (ScrapCount 9 → 7). À trancher avant de
   toucher à la largeur : un port 32 bits déplace la cadence de tous les
@@ -524,6 +525,17 @@ de liste connue ou capture attendue.
   correctif 12 ne change que le 68040, `CHANGELOG` 2026-11-25 (third)) ;
   lire MC68030UM §8.2 sur le domaine de l'adresse de faute avant tout
   correctif.
+- [ ] **FMOVE FPn,<ea> du 6888x en format $9 : ce qui reste** (correctif
+  16, `CHANGELOG` 2026-11-25 (fourth)). (1) Une règle format $9 pour les
+  lignes `@D23a` des listes `sst68030*` : le cœur empile 20 octets, le
+  vecteur WinUAE 12, et la règle ne normalise que les formats $2/$3 (le
+  contrat D23a de `sst_known_contract_test` reste sauté). (2) [F] Le
+  MC68882 garde EXC PEND après l'acquittement (MC68881UM §6.1.13,
+  §6.4.2.2) ; le cœur prend l'exception une fois sur les deux FPU.
+  *Tranche : une capture sur un vrai 68030 + 68882 avec un gestionnaire
+  réduit à RTE.* (3) Deux constats annexes : une trappe en attente est
+  prise avant le dispatch de FMOVEM et de FMOVE FPcr, contre MC68881UM
+  §6.4.2.2 ; un FMOVE d'un SNaN vers B/W/L pose OPERR, contre la Table 6-2.
 - [ ] **Trancher l'ordre de lecture de FMOVEM en EA indirect mémoire à
   extension complète avant un Line-F de direction** (« still open » dans
   `POM68K_VENDOR.md § MC68882 FPU execution`).

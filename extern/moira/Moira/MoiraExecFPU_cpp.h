@@ -923,8 +923,7 @@ Moira::execFMove(u16 opcode)
     if (cod == 0b011) {
 
         // The 68040 takes an enabled exception right after a move to memory or to
-        // a data register (post-instruction exception). The 68881 and 68882 report
-        // it when the next FPU instruction starts, like all other exceptions.
+        // a data register (post-instruction exception).
         // On the 68040, a move to a byte, word or long word that raises SNAN or
         // OPERR takes the exception even if it is disabled (MC68040UM 9.7.2.2,
         // 9.7.3.2: a nonmaskable post-instruction exception, taken immediately).
@@ -933,6 +932,16 @@ Moira::execFMove(u16 opcode)
         u32 nonmaskable = hasInternalFPU() && integer ? FPEXP::SIG_NAN | FPEXP::OPERR : 0;
 
         if (auto vector = fpu.trapVector(nonmaskable); vector && hasInternalFPU()) {
+
+            execFpuTrap<C>(vector, true, ea);
+            FINALIZE
+            return;
+        }
+
+        // The 68881 and 68882 store the operand, too, and then report the exception
+        // as a mid-instruction exception (MC68881/MC68882UM 6.1, 6.1.3, 7.4.2.6). The
+        // effective address in the stack frame is undefined for a data register.
+        if (auto vector = fpu.trapVector(); vector && hasExternalFPU()) {
 
             execFpuTrap<C>(vector, true, ea);
             FINALIZE

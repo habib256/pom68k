@@ -32,7 +32,12 @@ class FrameContract(unittest.TestCase):
             # no post-instruction exception, and Dirk Hoffmann's core takes none.
             # There is no frame left to rule; the D12 contracts below keep the
             # --known mechanism under test.
-            raise unittest.SkipTest('D23a: no post-instruction frame on the 6888x (MC68881UM §6.1)')
+            # Reversed 2026-11-25 (CHANGELOG (fourth)): since queue patch 16 the
+            # core takes the FMOVE exception at once with the mid-instruction
+            # format-$9 frame (MC68030UM Figure 10-43). @D23a normalizes a
+            # format $2/$3 frame only; this contract waits for a format-$9 rule.
+            raise unittest.SkipTest('D23a: the 6888x FMOVE frame is format $9 (queue patch 16); '
+                                    'no format-$9 rule yet')
         fixture = Path(__file__).with_name('cpu_vectors') / cls.fixture
         cls.original = json.loads(fixture.read_text())[0]
         cls.frame = cls.original['final']['a7'] & 0xFFFFFF

@@ -76,7 +76,7 @@ A split row counts once, under the class of its first item.
 
 ## Candidates to report first
 
-PRs #42-#49 are merged; the queue's 15 patches are all local
+PRs #42-#49 are merged; the queue's 16 patches are all local
 (`extern/moira/patches/queue.tsv`). Small, general, checkable — each still
 to be confirmed in the manual and by a reproducer on his `master` before
 posting:
@@ -224,7 +224,7 @@ U = UNSURE. "Split" marks a row whose items fall in different classes.
 | 110 | C | split: PTEST and the bus share the walk (indirection, target size by DT) — C; a descriptor-read fault returning the preceding address/count is G (the /BERR escapes PTEST, as row 56) |
 | 111 | G | split: a direct-root write leaves the ATC M bit clear — G; the DT=1 root limit with FCL is U [F]: MC68030UM 9.7.1 vs Figure 9-28, the core keeps Dirk's reading (CHANGELOG 2026-11-25) |
 | 112 | C | Dirk's `MMU::peek()` (side-effect free, descriptors via `read16Dasm`); the POM68K debugger uses it since 2026-11-25 |
-| 113 | G | 6888x arithmetic exceptions delivered since Dirk's 186f904: pre-instruction format $0 at the next FPU instruction (BSUN at once); the fork's post-instruction format $2 below the 040 cannot arise; FMOVE out to memory is mid-instruction format $9 in MC68881UM 6.1 and neither core does that |
+| 113 | G | 6888x arithmetic exceptions delivered since Dirk's 186f904: pre-instruction format $0 at the next FPU instruction (BSUN at once); the fork's post-instruction format $2 below the 040 cannot arise; FMOVE out to memory or Dn is mid-instruction format $9 in MC68881UM 6.1 (scan PC at +2, the FMOVE's address at +8, MC68030UM Figure 10-43): Dirk's core defers it, local queue patch 16 (not yet proposed) takes it at once and RTE resumes at the scan PC |
 | 114 | O | packed zero (no SoftFloat) |
 | 115 | C | group-2 format $2 instruction address |
 | 116 | O | odd-target checks already gated |

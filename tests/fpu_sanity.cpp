@@ -17,7 +17,10 @@
 //  10+ FRESTORE      : frame acceptance (NULL / 68882 IDLE $38 / 68882
 //                      BUSY $D4 skip / garbage -> vector 14), WinUAE
 //                      fpuop_restore-mirrored (fpp.c:2755-2807)
-//  14+ timing        : FADD.X FPm,FPn consumes its MC68882UM Table 8-3
+//  14  FMOVE FPn,<ea> : an enabled exception is a mid-instruction one
+//                      (format $9), taken after the store; RTE resumes at
+//                      the scanPC (MC68881UM §6.1, §7.4.2.6)
+//  15+ timing        : FADD.X FPm,FPn consumes its MC68882UM Table 8-3
 //                      figure (56), FMOVECR its (32) — not a placeholder
 //
 // Exit 0 = all pass, 1 = failure.
@@ -155,6 +158,129 @@ void packedZeros() {
     std::printf("packed signed zero: %d static/dynamic k-factor transfers\n", transfers);
 }
 
+// The frame of a move-out exception, from the stack pointer up.
+// [B] MC68030UM-1989 §10.4.19, Figure 10-43 (manual p. 10-42, PDF p. 542):
+// +$00 status register, +$02 SCAN PC, +$06 1001|vector, +$08 PROGRAM
+// COUNTER, +$0C internal register, +$0E operation word, +$10 effective
+// address; "The program counter value saved in this stack frame is the
+// operation word address of the coprocessor instruction". MC68881UM-1989
+// Figure 7-16 (PDF p. 283) has the same order, and MC68030UM-1989 Table 8-7
+// (PDF p. 432) names +$02 the program counter, "next word to be fetched",
+// and +$08 the instruction address.
+struct MidFrame {
+    uint16_t sr, format, op;
+    uint32_t scanPC, pc, ea;
+};
+
+MidFrame readMidFrame(const TestCpu& cpu, uint32_t sp) {
+    auto m16 = [&](uint32_t a) { return uint16_t(cpu.mem[a] << 8 | cpu.mem[a + 1]); };
+    auto m32 = [&](uint32_t a) { return uint32_t(m16(a)) << 16 | m16(a + 2); };
+    return {m16(sp), m16(sp + 6), m16(sp + 0x0e), m32(sp + 2), m32(sp + 8), m32(sp + 0x10)};
+}
+
+// A 68881 OPERR on FMOVE.L FP0,(A0) of +infinity, through the handler and
+// its RTE. The handler records D0 before the ADDQ that follows the FMOVE has
+// run, and the FNOP after it finds nothing pending.
+// [B] MC68881UM-1989 §6.1.3 (PDF p. 232): with the trap enabled the operand
+// "is written as if the trap were disabled" — the largest positive integer
+// for +infinity — "and then a take exception primitive is returned", a
+// mid-instruction exception. §7.4.2.6, Figure 7-16 (PDF pp. 282-283): the
+// frame. §6.1.13 (PDF pp. 246-247): FPIAR points to the FMOVE; the MC68881
+// clears the exception on the acknowledge, so a handler may be a bare RTE;
+// on RTE the MPU reads the response CIR, which is null (CA=0, PF=1)
+// because the MC68881 has finished the instruction: "the main processor
+// continues ... with the execution of the next instruction".
+// [B] MC68030UM-1989 §8.1.13 (PDF pp. 426-427): RTE of a format $9 frame
+// restores the stacked values and reads the response CIR; §10.4.1 (PDF
+// p. 525): "When an instruction is completed, the processor transfers the
+// value in the scanPC to the program counter". The scan PC is the word at
+// +$02, so a handler that rewrites it chooses where execution resumes.
+// The MC68882 keeps EXC PEND after the acknowledge (MC68881UM-1989
+// §6.4.2.2, §5.2.2): a handler without FSAVE/BSET/FRESTORE is outside its
+// contract, so these sequences run on the MC68881 only.
+// The internal register word at +$0C is not compared.
+// [F] Unknown: its contents. Settled by: a frame captured on a 68030 + 68881.
+void moveOutMidInstruction() {
+    for (auto model : {moira::CPUModel::M68020, moira::CPUModel::M68030})
+    for (bool redirect : {false, true}) {
+        TestCpu cpu;
+        cpu.setModel(model);
+        // The redirecting handler stores $100A (the NOP after the FNOP) at +$02
+        std::vector<std::pair<uint32_t, uint16_t>> handler =
+            {{0x00d0, 0x0000}, {0x00d2, 0x3300},     // vector 52 (OPERR) -> $3300
+             {0x3300, 0x23C0}, {0x3302, 0x0000},     // move.l d0,$5000
+             {0x3304, 0x5000}};
+        if (redirect) {
+            handler.insert(handler.end(),
+                {{0x3306, 0x2F7C}, {0x3308, 0x0000},  // move.l #$100a,(2,sp)
+                 {0x330A, 0x100A}, {0x330C, 0x0002},
+                 {0x330E, 0x4E73}});                 // rte
+        } else {
+            handler.push_back({0x3306, 0x4E73});     // rte
+        }
+        run(cpu, {0xF210, 0x6000,                    // fmove.l fp0,(a0)
+                  0x5280,                            // addq.l  #1,d0
+                  0xF280, 0x0000,                    // fnop
+                  0x4E71},                           // nop
+            0, true, handler);
+        cpu.setFPUModel(MoiraFpu::M68881);
+        cpu.setA(0, 0x4000);
+        cpu.setD(0, 0);
+        const uint32_t inf[3] = {0x7fff0000, 0, 0};
+        cpu.setFP(0, inf);
+        cpu.setFPCR(0x2000);                         // OPERR enabled
+        cpu.setFPSR(0);
+        auto m16 = [&](uint32_t a) { return uint16_t(cpu.mem[a] << 8 | cpu.mem[a + 1]); };
+        auto m32 = [&](uint32_t a) { return uint32_t(m16(a)) << 16 | m16(a + 2); };
+
+        cpu.execute();                               // FMOVE: store, then the trap
+        const uint32_t sp = cpu.getSP();
+        const MidFrame f = readMidFrame(cpu, sp);
+        if (!redirect) {
+            std::printf("68881 move-out model=%d: SP=%08X frame", int(model), sp);
+            for (uint32_t i = 0; i < 20; i += 2) std::printf(" %04X", m16(sp + i));
+            std::printf("\n");
+        }
+        CHECK(m32(0x4000) == 0x7fffffff,
+              "mid-instruction model=%d: ($4000) = %08X, want 7FFFFFFF stored before the trap",
+              int(model), m32(0x4000));
+        CHECK(cpu.getPC0() == 0x3300 && sp == 0x7fec,
+              "mid-instruction model=%d: PC0/SP = %08X/%08X, want 00003300/00007FEC",
+              int(model), cpu.getPC0(), sp);
+        CHECK(f.sr == 0x2700 && f.scanPC == 0x1004 && f.format == 0x90d0 &&
+              f.pc == 0x1000 && f.op == 0xF210 && f.ea == 0x4000,
+              "mid-instruction model=%d: SR %04X scanPC(+2) %08X format %04X PC(+8) %08X "
+              "op %04X EA %08X, want 2700 00001004 90D0 00001000 F210 00004000",
+              int(model), f.sr, f.scanPC, f.format, f.pc, f.op, f.ea);
+        CHECK(cpu.getFPIAR() == 0x1000 && cpu.getFPSR() == 0x00002080,
+              "mid-instruction model=%d: FPIAR/FPSR = %08X/%08X, want 00001000/00002080",
+              int(model), cpu.getFPIAR(), cpu.getFPSR());
+
+        cpu.execute();                               // MOVE.L D0,$5000
+        if (redirect) cpu.execute();                 // MOVE.L #$100A,(2,SP)
+        cpu.execute();                               // RTE
+        CHECK(m32(0x5000) == 0,
+              "mid-instruction model=%d: handler saw D0 = %08X, want 0 (trap before the ADDQ)",
+              int(model), m32(0x5000));
+        if (redirect) {
+            CHECK(cpu.getPC0() == 0x100A && cpu.getSP() == 0x8000,
+                  "mid-instruction RTE model=%d: rewritten scan PC: PC0/SP = %08X/%08X, "
+                  "want 0000100A/00008000", int(model), cpu.getPC0(), cpu.getSP());
+            continue;
+        }
+        CHECK(cpu.getPC0() == 0x1004 && cpu.getSP() == 0x8000 && cpu.getSR() == 0x2700,
+              "mid-instruction RTE model=%d: PC0/SP/SR = %08X/%08X/%04X, want 00001004/00008000/2700 "
+              "(the scan PC, not the FMOVE again)",
+              int(model), cpu.getPC0(), cpu.getSP(), cpu.getSR());
+        cpu.execute();                               // ADDQ.L #1,D0
+        cpu.execute();                               // FNOP: nothing pending
+        CHECK(cpu.getD(0) == 1 && cpu.getPC0() == 0x100A && cpu.getSP() == 0x8000,
+              "mid-instruction model=%d: after FNOP D0/PC0/SP = %08X/%08X/%08X, "
+              "want 00000001/0000100A/00008000 (no second trap)",
+              int(model), cpu.getD(0), cpu.getPC0(), cpu.getSP());
+    }
+}
+
 }  // namespace
 
 int main() {
@@ -289,34 +415,77 @@ int main() {
         { { 0x4000, 0x1234 }, { 0x4002, 0x5678 } });
     CHECK(cpu.getPC0() == 0x3200, "frestore garbage: PC0 = %08X, want 00003200 (vector 14)", cpu.getPC0());
 
-    // 14 — [B] MC68881UM-1989 §6.1 (PDF p. 226): "neither the MC68881 nor
-    // the MC68882 reports the post-instruction exception"; an exception of
-    // an FMOVE to an integer is deferred to the next FPCP instruction
-    // (§6.2.4). Ruling 2026-11-24: the fork stacked a format-$2 post-
-    // instruction frame here after WinUAE (MC68030UM §10.4.20 describes the
-    // primitive, not its use by the 6888x); the manual wins, as Dirk
-    // Hoffmann's core does. The FMOVE completes, OPERR is recorded, and the
-    // next instruction is reached without an exception.
+    // 14 — an enabled exception of FMOVE FPn,<ea> is a mid-instruction
+    // exception, taken right after the store, on every 6888x/MPU pairing,
+    // to memory and to a data register.
+    // [B] MC68881UM-1989 §6.1 (PDF p. 226): "a take mid-instruction
+    // exception primitive is issued after the operand is stored in memory";
+    // (PDF p. 228): "FPCP instruction exceptions that arise from the move
+    // floating-point data register to external destination instructions are
+    // reported to the MPU as mid-instruction exceptions"; §6.1.3 (PDF p. 232): the destination "is written as if
+    // the trap were disabled, and then a take exception primitive is
+    // returned". §7.4.2.6, Figure 7-16 (PDF pp. 282-283): ten-word frame,
+    // ScanPC = the next instruction, PC = the F-line operation word, the
+    // operation word image, EA = the destination address. [B] MC68030UM-1989
+    // §10.4.19, Figure 10-43 (manual p. 10-42, PDF p. 542): +$02 scan PC,
+    // +$08 program counter (see readMidFrame); the EA field is undefined when
+    // no effective address was evaluated (a data register destination).
+    // This reverses the 2026-11-24 ruling, which read §6.1 "neither the
+    // MC68881 nor the MC68882 reports the post-instruction exception" as a
+    // deferral to the next FPCP instruction: the move-out exception is not a
+    // post-instruction one, it is the mid-instruction one of the same page
+    // (PDF p. 226).
+    // [D] WinUAE @ Hatari e77819f7 traps at once but stacks format $3.
     for (auto model : {moira::CPUModel::M68EC020, moira::CPUModel::M68020,
                        moira::CPUModel::M68EC030, moira::CPUModel::M68030})
     for (auto fpuModel : {MoiraFpu::M68881, MoiraFpu::M68882})
-    for (bool memory : {false, true}) {
+    // Destinations: d0, (a0), (4,a0), -(a0), (a0)+. The EA field holds the
+    // address the operand went to; a predecrement has already updated A0.
+    for (int dest : {0, 1, 2, 3, 4}) {
         cpu.setModel(model);
-        run(cpu, {uint16_t(memory ? 0xF210 : 0xF200), 0x6000, 0x4E71, 0x4E71},
+        static const uint16_t ops[] = {0xF200, 0xF210, 0xF228, 0xF220, 0xF218};
+        static const uint32_t eas[] = {0, 0x4000, 0x4004, 0x3FFC, 0x4000};
+        static const uint32_t a0s[] = {0x4000, 0x4000, 0x4000, 0x3FFC, 0x4004};
+        const bool memory = dest != 0;
+        const uint16_t op = ops[dest];
+        const uint32_t scanPC = dest == 2 ? 0x1006 : 0x1004;
+        const uint32_t ea = eas[dest];
+        run(cpu, {op, 0x6000, 0x0004, 0x4E71},     // the displacement is a NOP otherwise
             0, true, {{0x00d0, 0x0000}, {0x00d2, 0x3300}, {0x3300, 0x4E73}});
         cpu.setFPUModel(fpuModel);
         cpu.setA(0, 0x4000);
+        cpu.setD(0, 0);
         const uint32_t inf[3] = {0x7fff0000, 0, 0};
         cpu.setFP(0, inf);
         cpu.setFPCR(0x2000);                      // integer-conversion OPERR
         cpu.execute();
-        CHECK(cpu.getPC0() == 0x1004 && cpu.getSP() == 0x8000 &&
-              (cpu.getFPSR() & 0x2000) && (cpu.getFPSR() & 0x80),
-              "FP deferred model=%d FPU=%d mem=%d: no post-instruction frame, "
-              "OPERR and IOP recorded (PC0/SP/FPSR=%08X/%08X/%08X)",
-              int(model), int(fpuModel), memory, cpu.getPC0(), cpu.getSP(), cpu.getFPSR());
+        const uint32_t sp = cpu.getSP();
+        auto m16 = [&](uint32_t a) { return uint16_t(cpu.mem[a] << 8 | cpu.mem[a + 1]); };
+        auto m32 = [&](uint32_t a) { return uint32_t(m16(a)) << 16 | m16(a + 2); };
+        const MidFrame f = readMidFrame(cpu, sp);
+        const uint32_t stored = memory ? m32(ea) : cpu.getD(0);
+        CHECK(cpu.getPC0() == 0x3300 && sp == 0x7fec && f.format == 0x90d0 &&
+              f.scanPC == scanPC && f.pc == 0x1000 && f.op == op &&
+              (!memory || f.ea == ea) && stored == 0x7fffffff && cpu.getA(0) == a0s[dest] &&
+              cpu.getFPSR() == 0x00002080 && cpu.getFPIAR() == 0x1000,
+              "FP mid-instruction model=%d FPU=%d dest=%d: PC0/SP=%08X/%08X "
+              "format=%04X scanPC(+2)=%08X PC(+8)=%08X op=%04X EA=%08X stored=%08X "
+              "A0=%08X FPSR/FPIAR=%08X/%08X",
+              int(model), int(fpuModel), dest, cpu.getPC0(), sp, f.format,
+              f.scanPC, f.pc, f.op, f.ea, stored, cpu.getA(0),
+              cpu.getFPSR(), cpu.getFPIAR());
+        // A bare RTE handler is within the MC68881's contract only (see
+        // moveOutMidInstruction); the MC68882's is left unasserted.
+        if (fpuModel != MoiraFpu::M68881) continue;
+        cpu.execute();                            // RTE
+        CHECK(cpu.getPC0() == scanPC && cpu.getSP() == 0x8000 && cpu.getA(0) == a0s[dest],
+              "FP mid-instruction RTE model=%d FPU=%d dest=%d: PC0/SP/A0=%08X/%08X/%08X, "
+              "want %08X/00008000/%08X",
+              int(model), int(fpuModel), dest, cpu.getPC0(), cpu.getSP(), cpu.getA(0),
+              scanPC, a0s[dest]);
     }
     cpu.setModel(moira::CPUModel::M68030);
+    moveOutMidInstruction();
 
 #if POM68K_FPU_TIMING
     // 15 ── timing smoke: FADD.X FP1,FP0 costs its MC68882UM Table 8-3
@@ -381,6 +550,6 @@ int main() {
 
     if (failures) { std::printf("[fpu_sanity] FAIL: %d check(s)\n", failures); return 1; }
     std::printf("[fpu_sanity] OK: detached F-line, FMOVECR, FADD, DZ, OPERR, FCMP/FScc, "
-                "FMOVEM, packed, FPCR, FRESTORE/exception frames, 68882 timing/BUSY IRQ\n");
+                "FMOVEM, packed, FPCR, FRESTORE/exception frames, move-out format $9, 68882 timing/BUSY IRQ\n");
     return 0;
 }
