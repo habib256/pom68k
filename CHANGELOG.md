@@ -627,6 +627,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-26 (sixth) — Ten `moira_rules_test` rows that no longer fail, explained and removed: patch 14 and Dirk's #47](#2026-11-26-moira-rules-stale-rows)
 - [2026-11-26 (fifth) — The `@D23a` rows judge the format-$9 frame: 206 of 448 now agree, the floors rise](#2026-11-26-d23a-format9)
 - [2026-11-26 (fourth) — A misaligned access that crosses a page reaches the second page through its own translation: queue patch 19](#2026-11-26-misaligned-across-pages)
 - [2026-11-26 (third) — A bus error during a table search is an ATC fault on the retried access: queue patch 18; two neighbouring 68030/68040 frame questions ruled [F]](#2026-11-26-table-search-berr)
@@ -1463,6 +1464,42 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-26-moira-rules-stale-rows"></a>
+## 2026-11-26 (sixth) — Ten `moira_rules_test` rows that no longer fail, explained and removed: patch 14 and Dirk's #47
+
+`tools/known_failures.py` had reported since 2026-11-25 (second) ten rows
+of `tests/known/moira_rules_test.txt` that no longer fail. Each is
+explained, and each cell is shown to exercise the behaviour: with the code
+that makes it pass removed from a scratch copy of the core, exactly these
+ten rows fail again.
+
+- **Eight "68000 DIVS $80000000/… entry CCR=…"** (`divsOfIntMin`, divisors
+  $0001, $7FFF, $8000, $FFFF, entry CCR $00 and $1F). Queue patch 14
+  (`0014-Restore-68000-divide-overflow-flags-and-signed-timin.patch`)
+  makes the 68000 core's DIVS overflow clear C and leave N and Z unchanged
+  in DEFAULT mode; the cell wants CCR $02 from $00 and $1E from $1F. The
+  rows were stale from the start: `moira_rules_test` built from `1689ebe7`,
+  the commit that wrote the list (the patch was then numbered 21), already
+  passes all eight and fails only the 68010 rows — the list was evidently
+  captured from a run without the patch. The eight 68010 rows stay: patch
+  14 covers the 68000 core only.
+- **"68040 FBT.W to an odd target"** and **"68040 FDBF D0 with an odd
+  offset"** (the frame row; `fbccOddTarget040`). Dirk Hoffmann's #47
+  (`4fe858fa`, in the base `bf98107f` since `bfe39677`) makes a taken FBcc
+  and a taken FDBcc check the target with `checkEvenPC` and take the
+  address error at once, format $2, vector 3, the branch's address and the
+  target with A0 cleared ([B] MC68040UM-1993 § 8.2.2). Both rows failed at
+  `1689ebe7`. Still listed: FBF.W with an odd offset not taken (the 68040
+  raises it taken or not; Dirk's check sits in the taken path only, the
+  open D28 item) and the FDBF row "D0=12340004 (want it untouched)" (the
+  core decrements before the check; [F], ruling D28).
+
+With the two rows the table-search patch removed
+([2026-11-26 (third)](#2026-11-26-table-search-berr)), the list goes from
+342 to 330 rows; `known_failures.py` reports 330 of 330, no new failure and
+no stale row. `oracle/README.md` row D28 gets the 2026-11-25 state: the
+taken case fixed upstream, 33 not-taken vectors `@OPEN D28`.
 
 <a id="2026-11-26-d23a-format9"></a>
 ## 2026-11-26 (fifth) — The `@D23a` rows judge the format-$9 frame: 206 of 448 now agree, the floors rise

@@ -7,14 +7,6 @@
 # contents of its continuation model, WinUAE readings, PTEST/MMUSR details,
 # timing, and possible defects. Each failure stays visible here until it is
 # ruled or fixed (TODO.md, CPU tests on Dirk's core).
-1	68000 DIVS $80000000/$0001 entry CCR=00: CCR=0A want 02
-1	68000 DIVS $80000000/$0001 entry CCR=1F: CCR=1A want 1E
-1	68000 DIVS $80000000/$7FFF entry CCR=00: CCR=0A want 02
-1	68000 DIVS $80000000/$7FFF entry CCR=1F: CCR=1A want 1E
-1	68000 DIVS $80000000/$8000 entry CCR=00: CCR=0A want 02
-1	68000 DIVS $80000000/$8000 entry CCR=1F: CCR=1A want 1E
-1	68000 DIVS $80000000/$FFFF entry CCR=00: CCR=0A want 02
-1	68000 DIVS $80000000/$FFFF entry CCR=1F: CCR=1A want 1E
 1	68000 STOP with a pending interrupt: handler at +48, want +52 (STOP+8 plus the 44-cycle exception); PC0=00002000
 1	68000 reset: 40 cycles against the 68010's 40 (want +2)
 1	68010 DIVS $80000000/$0001 entry CCR=00: CCR=0A want 02
@@ -97,11 +89,9 @@
 1	68040 EORI #0,SR with the second refill word on a /BERR hole: PC0=00002000 (want 00001004), 0 fault(s) taken (want 0)
 1	68040 FADD.P #imm,FP0 (implemented): PC0=00001010, want vector 55 at 00002040
 1	68040 FBF.W, odd offset, not taken: PC0=00001004 format/vector 0000 stacked PC 00000000 address 00000000 (want the handler at once, $200C, 00001000, 00001012)
-1	68040 FBT.W to an odd target: PC0=00001013 format/vector 0000 stacked PC 00000000 address 00000000 (want the handler at once, $200C, 00001000, 00001012)
 1	68040 FBcc predicate $21 with Z=0: next instruction at 00002000 (want 00001004), SP moved by 8
 1	68040 FBcc predicate $21 with Z=1: next instruction at 00002000 (want 00001022), SP moved by 8
 1	68040 FDBF D0 with an odd offset: D0=12340004 (want it untouched)
-1	68040 FDBF D0 with an odd offset: PC0=00001015 format/vector 0000 stacked PC 00000000 address 00000000 (want the handler at once, $200C, 00001000, 00001014)
 1	68040 LINK A6,#-8 push fault: format 7008, stacked PC 00001000 (want 00001004), A6=12345678 (want 00080000), USP=00080004 (want 0007FFF8), 1 /BERR(s)
 1	68040 MOVE CCR,(A2)+ store fault: PC0=00002000 A2=00080000 (want 00080002), 1 /BERR(s) (want 1), format 7008 (want 7008), stacked PC 00001000
 1	68040 MOVE D0,CCR with the second refill word on a /BERR hole: PC0=00002000 (want 00001002), 0 fault(s) taken (want 0)

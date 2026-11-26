@@ -286,15 +286,10 @@ Chaque ligne d'une liste se corrige (correctif de la file), se tranche
   un vecteur tranché qui cesse de s'accorder avec la règle passe inaperçu
   sous `--floors`. Les compter comme accord, comme `@D23a` désormais, ou
   donner un plancher au compte tranché.
-- [ ] **`moira_rules_test`** (`tests/known/moira_rules_test.txt`, 340
+- [ ] **`moira_rules_test`** (`tests/known/moira_rules_test.txt`, 330
   échecs) : cellules du fork, non revues une à une sur ce cœur — contenus
   de cadre du modèle de continuation, lectures WinUAE, détails PTEST/MMUSR,
   temps, défauts possibles.
-- [ ] **Dix lignes de `moira_rules_test.txt` n'échouent plus sur ce cœur**
-  (`known_failures.py` les signale) : les huit « 68000 DIVS $80000000/…
-  entry CCR=… », « 68040 FBT.W to an odd target » et « 68040 FDBF D0 with
-  an odd offset ». Expliquer pourquoi (correctif de la file, PR #47 de
-  Dirk ?), puis abaisser la liste.
 - [ ] **`berr030_test`** : les lectures WinUAE épinglées par le fork sans
   phrase du manuel (format de cadre d'un PMOVE en écriture traduite qui
   faute, image brute de FP7, ordre de bus d'un FMOVEM indirect) — à revoir
