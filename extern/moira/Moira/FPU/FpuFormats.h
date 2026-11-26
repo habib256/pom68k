@@ -50,9 +50,11 @@ struct FpuFormats {
     /** Converts to an integer of 'bits' width (8, 16, or 32). The value is
      * rounded according to the current rounding mode. If it doesn't fit, the
      * invalid flag is raised and the largest value of matching sign is
-     * returned (NaNs return the largest positive value).
+     * returned (NaNs return the most significant bits of their mantissa).
+     * A signaling NaN raises the signaling flag. It raises the invalid flag,
+     * too, only if 'snanIsInvalid' is set (the 68040 rule).
      */
-    static i32 toInteger(FpuEnv &env, const MFloat80 &value, int bits);
+    static i32 toInteger(FpuEnv &env, const MFloat80 &value, int bits, bool snanIsInvalid = true);
 
 
     //

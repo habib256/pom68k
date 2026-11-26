@@ -58,7 +58,7 @@ Tout le reste (jalons produit, vitesse hors CPU, NeoST, dépôt) est après les
 deux phases, hors du chemin principal.
 
 **Reprendre ici (état au 2026-11-26, palier machines AArch64 vert).**
-`main` = Moira de Dirk `bf98107f` + 16 correctifs ; rien d'ouvert chez lui.
+`main` = Moira de Dirk `bf98107f` + 17 correctifs ; rien d'ouvert chez lui.
 Sur le M4, sur `3cfd4718` : build, `asset-none` 156/156, `cpu-vectors`, les
 15 gates SST, et **le palier machines complet** (`ctest -L
 'm040|m030|etalon' -j3`, 320/320 en 4 h 52 ; recensement 319 exécutés, 1
@@ -152,8 +152,8 @@ défaut CPU, dans cet ordre :
   (`863b8d02`, coups du cache comptés une fois). Fusionnées le 2026-11-25 :
   #46 (latch du 68020 après MOVE vers SR), #47 (FBcc/FDBcc vers une cible
   impaire), #48 (FRESTORE) et #49 (frame FSAVE UNIMP) ; la file est rebasée
-  sur `bf98107f` et compte 16 correctifs (le 16, local, depuis le
-  2026-11-25). L'état de chaque correctif et sa
+  sur `bf98107f` et compte 17 correctifs (16 et 17, locaux, depuis le
+  2026-11-25 et le 2026-11-26). L'état de chaque correctif et sa
   PR se suivent dans `extern/moira/patches/queue.tsv`.
 - [ ] **Mesurer sur un vrai 68030 la limite d'une racine DT=1 avec FCL.**
   MC68030UM §9.7.1 la contrôle « regardless of the state of the FCL bit »,
@@ -542,9 +542,10 @@ de liste connue ou capture attendue.
   MC68882 garde EXC PEND après l'acquittement (MC68881UM §6.1.13,
   §6.4.2.2) ; le cœur prend l'exception une fois sur les deux FPU.
   *Tranche : une capture sur un vrai 68030 + 68882 avec un gestionnaire
-  réduit à RTE.* (3) Deux constats annexes : une trappe en attente est
-  prise avant le dispatch de FMOVEM et de FMOVE FPcr, contre MC68881UM
-  §6.4.2.2 ; un FMOVE d'un SNaN vers B/W/L pose OPERR, contre la Table 6-2.
+  réduit à RTE.* (3) Constat annexe : une trappe en attente est prise avant
+  le dispatch de FMOVEM et de FMOVE FPcr, contre MC68881UM §6.4.2.2 (le
+  FMOVE d'un SNaN vers B/W/L ne pose plus OPERR : correctif 17, `CHANGELOG`
+  2026-11-26).
 - [ ] **Trancher l'ordre de lecture de FMOVEM en EA indirect mémoire à
   extension complète avant un Line-F de direction** (« still open » dans
   `POM68K_VENDOR.md § MC68882 FPU execution`).
@@ -559,6 +560,12 @@ Les lignes de cache attendent la décision sur `cache040_test`.
   FPU suivante (format $0) ; le fork et l'oracle la prenaient en format $3.
   Le type non supporté (vecteur 55) est sur la liste de Dirk
   (`POM68K_FPU040_DATATYPE`).
+- [ ] **[F] OPERR d'un FMOVE d'un SNaN vers B/W/L sur 68040.** MC68040UM
+  Table 9-11 (p. 273) ne cite que le NaN non signalant, §9.7.3.2 (p. 274)
+  « NAN » ; le cœur garde SNAN + OPERR, non masquables (correctif 7), le
+  6888x ne pose plus que SNAN (correctif 17, `CHANGELOG` 2026-11-26). Le
+  vecteur pris (SNAN) ne change pas. *Tranche : FPSR après FMOVE.L FP0,D0
+  d'un SNaN sur un vrai 68040, via le FPSP.*
 - [ ] **Trancher FMOVE.P vers Dn (D25) et la valeur de An au moment de la
   trappe de D26.** *Bloqué : FMOVE.P FP0,D0 et FMOVE.P FP0,-(A0){D1} sur un
   vrai 68040.*

@@ -625,6 +625,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-26 — A 6888x FMOVE of a signaling NaN to a byte, word or long word sets SNAN, not OPERR: queue patch 17](#2026-11-26-fmove-snan-int)
 - [2026-11-25 (fourth) — A 6888x FMOVE FPn,<ea> exception is a mid-instruction one, format $9 after the store: the 2026-11-24 deferral is reversed, queue patch 16](#2026-11-25-fmove-format9)
 - [2026-11-25 (third) — A 68040 bus error after a successful translation stacks the logical fault address: queue patch 12 amended](#2026-11-25-fa040-logical)
 - [2026-11-25 (second) — The PTEST limit cells tested an F-line: their FC field was reserved, and with %10101 all 48 pass](#2026-11-25-ptest-fc-fixture)
@@ -1456,6 +1457,68 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-26-fmove-snan-int"></a>
+## 2026-11-26 — A 6888x FMOVE of a signaling NaN to a byte, word or long word sets SNAN, not OPERR: queue patch 17
+
+**The finding.** The [2026-11-25 (fourth)](#2026-11-25-fmove-format9) entry
+noted it as a side finding: `FpuFormats::toInteger()` raised the invalid
+flag for every NaN, so an FMOVE FPn,<ea> of a signaling NaN to B/W/L set
+OPERR next to SNAN in the FPSR exception byte and, with OPERR enabled and
+SNAN disabled, took an OPERR exception (format $9 since patch 16). Oracle
+vectors showed it (`fpu2/off seed=941 #441` and `#1219`, `fpuh/off seed=1311
+#241`).
+
+**The manual.** [B] MC68881UM-1989 Table 6-2 (PDF p. 232, read from the
+rendered page): FMOVE to B, W or L raises OPERR on "Integer
+Overflow/Underflow, Source is Non-Signaling NAN, or Source is ±infinity".
+§ 6.1.2 (PDF pp. 230-231): an SNAN operand sets SNAN; "If the destination
+data format is B, W, or L, then the 8, 16, or 32 most significant bits of
+the SNAN significand, with the SNAN bit set, are written to the
+destination"; with the trap enabled it is written the same way "and then a
+mid-instruction exception is signaled". The stored value was already
+right; only the exception byte (and the OPERR trap) change. AEXC IOP is
+set either way.
+
+**The 68040 is left as it is.** MC68040UM-1993 Table 9-11 (PDF p. 273)
+also lists only a "nonsignaling NAN" for FMOVE to B/W/L, but § 9.7.3.2 (PDF
+p. 274) names any "NAN" among the nonmaskable conditions, and queue patch
+7 makes SNAN and OPERR both nonmaskable there. The vector the 68040 takes
+(SNAN, by priority) does not change either way; whether its FPSR shows
+OPERR is [F], settled by FMOVE.L FP0,D0 of an SNAN on a real 68040 through
+the FPSP (`TODO.md` § Phase 1 › Justesse 68040).
+
+**The change.** New queue patch 17: `toInteger()` takes a flag saying
+whether a signaling NaN is also an operand error; the 6888x passes false,
+the 68040 true. New `fpu_sanity` cell `moveOutSignalingNaN()` (68020 and
+68030, 68881 and 68882, FPCR $0000/$2000/$4000, FMOVE.L/.W/.B FP0,D0 and
+FMOVE.L FP0,(A0)): 48 checks, all failing before (FPSR $00006080 instead
+of $00004080, and an OPERR trap with FPCR = $2000), all passing after. New
+locators in `tests/core_manuals.lock` (MC68881UM § 6.1.2, MC68040UM Table
+9-11).
+
+**Corpora** (aarch64, `bf98107f` + 17), agreement before → after: `sst68030`
+2 265 → 2 268, `_fpu2` 3 453 → 3 458, `_fpuh` 3 740 → 3 752; floors raised
+to match (`sst68030` fpu_off 878 → 881; `_fpu2` 1 036 → 1 038, 1 376 →
+1 378, 1 041 → 1 042; `_fpuh` 1 217 → 1 219, 1 335 → 1 345). 22 vectors now
+agree (5 in `sst68030`, 5 in `_fpu2` with `seed=941 #441`, 12 in `_fpuh`
+with `seed=1311 #241`). Two move the other way and are ruled in
+`tests/sst68030.known`: the oracle (WinUAE @ Hatari e77819f7) sets OPERR on
+two FMOVE.W FPn,Dn of an SNAN (`fpu/identity seed=17 #60`, `seed=31 #65`;
+stored word agrees, FPSR differs by OPERR alone) while it leaves OPERR
+clear on two FMOVE.B (`seed=17 #16`, `seed=31 #55`, which now agree): the
+oracle is not self-consistent, the manual decides. `fpu2/off seed=941
+#1219` no longer stacks a spurious OPERR frame but still fails on the
+format-$9 frame of its SNAN trap (FPCR $BE30), the `@D23a` question of the
+following entries. The 68040 corpora are unchanged; the public 040 vectors
+agree on 384 of 576, as they already did on `c521d776`, and their floor
+goes from 383 to 384.
+
+**Guest software.** [C] InSANE (`Toolbox/InSANE/FPHWNonArith.a`, QSETENV:
+"ALWAYS ENABLE OPERR TRAPPING") runs every 6888x Mac with OPERR enabled;
+an FMOVE of an SNAN to an integer used to enter its OPERRHANDLER, which for
+opclass 011 only clears EXC PEND and leaves through STDTAIL. It no longer
+does, as on the real FPU.
 
 <a id="2026-11-25-clipboard-gate-process"></a>
 ## 2026-11-25 (fifth) — The AArch64 machine tier on the rebased core: one red gate, and it was the gate — `q605_clipboard_etalon` read another process's scrap

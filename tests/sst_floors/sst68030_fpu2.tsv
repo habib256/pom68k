@@ -1,6 +1,6 @@
 # sst68030_fpu2 agreement floors (tests/SstFloors.h): file, vectors that
 # must agree, vectors in the file. Ruled --known vectors are not counted.
 # Raise a row when the run reports RAISE; never lower one to make a gate pass.
-fpu2_identity	1036	2000
-fpu2_off	1376	2000
-fpu2_tt	1041	2000
+fpu2_identity	1038	2000
+fpu2_off	1378	2000
+fpu2_tt	1042	2000

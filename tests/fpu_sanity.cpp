@@ -20,6 +20,7 @@
 //  14  FMOVE FPn,<ea> : an enabled exception is a mid-instruction one
 //                      (format $9), taken after the store; RTE resumes at
 //                      the scanPC (MC68881UM §6.1, §7.4.2.6)
+//      FMOVE SNaN to B/W/L : SNAN, not OPERR (MC68881UM Table 6-2)
 //  15+ timing        : FADD.X FPm,FPn consumes its MC68882UM Table 8-3
 //                      figure (56), FMOVECR its (32) — not a placeholder
 //
@@ -281,6 +282,64 @@ void moveOutMidInstruction() {
     }
 }
 
+// FMOVE of a signaling NaN to a byte, word or long word on a 6888x: SNAN, not
+// OPERR. The destination receives the most significant bits of the
+// significand with the SNAN bit set; with OPERR enabled and SNAN disabled
+// nothing traps; with SNAN enabled the move takes a mid-instruction SNAN
+// exception (vector 54) after the store.
+// [B] MC68881UM-1989 Table 6-2 (PDF p. 232): FMOVE to B, W or L raises OPERR
+// on "Integer Overflow/Underflow, Source is Non-Signaling NAN, or Source is
+// ±infinity". §6.1.2 (PDF p. 231): "If the destination data format is B, W,
+// or L, then the 8, 16, or 32 most significant bits of the SNAN significand,
+// with the SNAN bit set, are written to the destination"; with the trap
+// enabled the result is written the same way "and then a mid-instruction
+// exception is signaled". Both bits set IOP in the accrued byte (§6.1).
+// The 68040 keeps its own rule (queue patch 7: SNAN and OPERR both set and
+// nonmaskable) and is not covered here.
+// [F] Unknown: whether a 68040 sets OPERR for an SNAN source. MC68040UM-1993
+// Table 9-11 (PDF p. 273) lists only a "nonsignaling NAN", §9.7.3.2 (PDF
+// p. 274) any "NAN". Settled by: the FPSR after FMOVE.L FP0,D0 of an SNAN
+// on a real 68040, through the FPSP.
+void moveOutSignalingNaN() {
+    for (auto model : {moira::CPUModel::M68020, moira::CPUModel::M68030})
+    for (auto fpuModel : {MoiraFpu::M68881, MoiraFpu::M68882})
+    for (uint32_t fpcr : {0x0000u, 0x2000u, 0x4000u})
+    for (int dest : {0, 1, 2, 3}) {
+        // fmove.l fp0,d0 / fmove.w fp0,d0 / fmove.b fp0,d0 / fmove.l fp0,(a0)
+        static const uint16_t ops[] = {0xF200, 0xF200, 0xF200, 0xF210};
+        static const uint16_t exts[] = {0x6000, 0x7000, 0x7800, 0x6000};
+        static const uint32_t want[] = {0x6abcdef0, 0xdead6abc, 0xdeadbe6a, 0x6abcdef0};
+        TestCpu cpu;
+        cpu.setModel(model);
+        run(cpu, {ops[dest], exts[dest], 0x4E71}, 0, true,
+            {{0x00d0, 0x0000}, {0x00d2, 0x3300},     // vector 52 (OPERR) -> $3300
+             {0x00d8, 0x0000}, {0x00da, 0x3400},     // vector 54 (SNAN)  -> $3400
+             {0x3300, 0x4E71}, {0x3400, 0x4E71}});
+        cpu.setFPUModel(fpuModel);
+        cpu.setA(0, 0x4000);
+        cpu.setD(0, 0xdeadbeef);
+        const uint32_t snan[3] = {0x7fff0000, 0x2abcdef0, 0x12345678};
+        cpu.setFP(0, snan);
+        cpu.setFPCR(fpcr);
+        cpu.setFPSR(0);
+        auto m16 = [&](uint32_t a) { return uint16_t(cpu.mem[a] << 8 | cpu.mem[a + 1]); };
+        auto m32 = [&](uint32_t a) { return uint32_t(m16(a)) << 16 | m16(a + 2); };
+
+        cpu.execute();
+        const uint32_t stored = dest == 3 ? m32(0x4000) : cpu.getD(0);
+        const bool trap = fpcr == 0x4000;
+        const uint32_t sp = cpu.getSP();
+        CHECK(stored == want[dest] && cpu.getFPSR() == 0x00004080 &&
+              cpu.getPC0() == (trap ? 0x3400u : 0x1004u) && sp == (trap ? 0x7fecu : 0x8000u) &&
+              (!trap || m16(sp + 6) == 0x90d8),
+              "SNAN move-out model=%d FPU=%d FPCR=%04X dest=%d: stored=%08X FPSR=%08X "
+              "PC0/SP=%08X/%08X format=%04X, want %08X 00004080 %s",
+              int(model), int(fpuModel), fpcr, dest, stored, cpu.getFPSR(),
+              cpu.getPC0(), sp, trap ? m16(sp + 6) : 0, want[dest],
+              trap ? "00003400/00007FEC 90D8 (SNAN, format $9)" : "00001004/00008000 (no trap)");
+    }
+}
+
 }  // namespace
 
 int main() {
@@ -486,6 +545,7 @@ int main() {
     }
     cpu.setModel(moira::CPUModel::M68030);
     moveOutMidInstruction();
+    moveOutSignalingNaN();
 
 #if POM68K_FPU_TIMING
     // 15 ── timing smoke: FADD.X FP1,FP0 costs its MC68882UM Table 8-3

@@ -25,17 +25,20 @@ int bcd(u32 w, int shift) { return int((w >> shift) & 0xF); }
 //
 
 i32
-FpuFormats::toInteger(FpuEnv &env, const MFloat80 &value, int bits)
+FpuFormats::toInteger(FpuEnv &env, const MFloat80 &value, int bits, bool snanIsInvalid)
 {
     i64 hi = (1LL << (bits - 1)) - 1;
     i64 lo = -hi - 1;
 
     if (value.isNaN()) {
 
-        // The result consists of the most significant bits of the (quieted) mantissa
+        // The result consists of the most significant bits of the (quieted) mantissa.
+        // On the 68881 and 68882, a signaling NaN is not an operand error
+        // (MC68881/MC68882UM, 6.1.2, Table 6-2).
         u64 man = value.mantissa();
-        if (value.isSignalingNaN()) { env.raiseFlags(FloatFlags::SIG_NAN); man |= 1ULL << 62; }
-        env.raiseFlags(FloatFlags::INVALID);
+        bool snan = value.isSignalingNaN();
+        if (snan) { env.raiseFlags(FloatFlags::SIG_NAN); man |= 1ULL << 62; }
+        if (!snan || snanIsInvalid) env.raiseFlags(FloatFlags::INVALID);
         return (i32)(u32)(man >> (64 - bits));
     }
     if (value.isInfinite()) {

@@ -301,9 +301,9 @@ Moira::writeFpuOpRg(int n, const MFloat80 &val, FpuFormat fmt)
 {
     switch (fmt) {
 
-        case FpuFormat::BYTE:       writeD<Byte>(n, FpuFormats::toInteger(fpu.env, val, 8)); break;
-        case FpuFormat::WORD:       writeD<Word>(n, FpuFormats::toInteger(fpu.env, val, 16)); break;
-        case FpuFormat::LONG:       writeD<Long>(n, FpuFormats::toInteger(fpu.env, val, 32)); break;
+        case FpuFormat::BYTE:       writeD<Byte>(n, FpuFormats::toInteger(fpu.env, val, 8, hasInternalFPU())); break;
+        case FpuFormat::WORD:       writeD<Word>(n, FpuFormats::toInteger(fpu.env, val, 16, hasInternalFPU())); break;
+        case FpuFormat::LONG:       writeD<Long>(n, FpuFormats::toInteger(fpu.env, val, 32, hasInternalFPU())); break;
         case FpuFormat::SINGLE:     writeD<Long>(n, FpuFormats::toSingle(fpu.env, val)); break;
 
         default:                    throw IllegalInstruction();
@@ -319,19 +319,19 @@ Moira::writeFpuOpEa(int n, u32 ea, const MFloat80 &val, FpuFormat fmt, int k)
 
         case FpuFormat::BYTE:
         {
-            writeM<C, M, Byte>(ea, FpuFormats::toInteger(fpu.env, val, 8));
+            writeM<C, M, Byte>(ea, FpuFormats::toInteger(fpu.env, val, 8, hasInternalFPU()));
             updateAn<M, Byte>(n);
             break;
         }
         case FpuFormat::WORD:
         {
-            writeM<C, M, Word>(ea, FpuFormats::toInteger(fpu.env, val, 16));
+            writeM<C, M, Word>(ea, FpuFormats::toInteger(fpu.env, val, 16, hasInternalFPU()));
             updateAn<M, Word>(n);
             break;
         }
         case FpuFormat::LONG:
         {
-            writeM<C, M, Long>(ea, FpuFormats::toInteger(fpu.env, val, 32));
+            writeM<C, M, Long>(ea, FpuFormats::toInteger(fpu.env, val, 32, hasInternalFPU()));
             updateAn<M, Long>(n);
             break;
         }

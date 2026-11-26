@@ -1,0 +1,116 @@
+From 412762ae5f55cfcee588a1d3e5eaa03c93cef350 Mon Sep 17 00:00:00 2001
+From: VERHILLE Arnaud <gist974@gmail.com>
+Date: Thu, 26 Nov 2026 09:00:00 +0400
+Subject: [PATCH 17/17] 68881/68882: an FMOVE of a signaling NaN to an integer is not
+ an operand error
+
+MC68881/MC68882UM Table 6-2 lists the operand errors of an FMOVE to a byte,
+word or long word: "Integer Overflow/Underflow, Source is Non-Signaling
+NAN, or Source is +-infinity". A signaling NaN raises SNAN only (6.1.2):
+"the 8, 16, or 32 most significant bits of the SNAN significand, with the
+SNAN bit set, are written to the destination", and with the trap enabled
+the result is written the same way before the mid-instruction exception.
+
+toInteger() raised the invalid flag for every NaN, so the move set OPERR
+next to SNAN and, with OPERR enabled and SNAN disabled, took an OPERR
+exception the FPU does not report. It now takes a flag that says whether
+a signaling NaN is an operand error, too. The 68040 keeps its rule
+(MC68040UM 9.7.2.2, 9.7.3.2: both conditions are nonmaskable there); its
+Table 9-11 also lists only a nonsignaling NaN, but 9.7.3.2 names any NaN,
+so the 68040 is left as it is. The stored value does not change.
+---
+ Moira/FPU/FpuFormats.cpp | 11 +++++++----
+ Moira/FPU/FpuFormats.h   |  6 ++++--
+ Moira/MoiraExecFPU_cpp.h | 12 ++++++------
+ 3 files changed, 17 insertions(+), 12 deletions(-)
+
+diff --git a/Moira/FPU/FpuFormats.cpp b/Moira/FPU/FpuFormats.cpp
+index 7560442..25edeae 100644
+--- a/Moira/FPU/FpuFormats.cpp
++++ b/Moira/FPU/FpuFormats.cpp
+@@ -25,17 +25,20 @@ int bcd(u32 w, int shift) { return int((w >> shift) & 0xF); }
+ //
+ 
+ i32
+-FpuFormats::toInteger(FpuEnv &env, const MFloat80 &value, int bits)
++FpuFormats::toInteger(FpuEnv &env, const MFloat80 &value, int bits, bool snanIsInvalid)
+ {
+     i64 hi = (1LL << (bits - 1)) - 1;
+     i64 lo = -hi - 1;
+ 
+     if (value.isNaN()) {
+ 
+-        // The result consists of the most significant bits of the (quieted) mantissa
++        // The result consists of the most significant bits of the (quieted) mantissa.
++        // On the 68881 and 68882, a signaling NaN is not an operand error
++        // (MC68881/MC68882UM, 6.1.2, Table 6-2).
+         u64 man = value.mantissa();
+-        if (value.isSignalingNaN()) { env.raiseFlags(FloatFlags::SIG_NAN); man |= 1ULL << 62; }
+-        env.raiseFlags(FloatFlags::INVALID);
++        bool snan = value.isSignalingNaN();
++        if (snan) { env.raiseFlags(FloatFlags::SIG_NAN); man |= 1ULL << 62; }
++        if (!snan || snanIsInvalid) env.raiseFlags(FloatFlags::INVALID);
+         return (i32)(u32)(man >> (64 - bits));
+     }
+     if (value.isInfinite()) {
+diff --git a/Moira/FPU/FpuFormats.h b/Moira/FPU/FpuFormats.h
+index 2fb1dbe..be5c888 100644
+--- a/Moira/FPU/FpuFormats.h
++++ b/Moira/FPU/FpuFormats.h
+@@ -50,9 +50,11 @@ struct FpuFormats {
+     /** Converts to an integer of 'bits' width (8, 16, or 32). The value is
+      * rounded according to the current rounding mode. If it doesn't fit, the
+      * invalid flag is raised and the largest value of matching sign is
+-     * returned (NaNs return the largest positive value).
++     * returned (NaNs return the most significant bits of their mantissa).
++     * A signaling NaN raises the signaling flag. It raises the invalid flag,
++     * too, only if 'snanIsInvalid' is set (the 68040 rule).
+      */
+-    static i32 toInteger(FpuEnv &env, const MFloat80 &value, int bits);
++    static i32 toInteger(FpuEnv &env, const MFloat80 &value, int bits, bool snanIsInvalid = true);
+ 
+ 
+     //
+diff --git a/Moira/MoiraExecFPU_cpp.h b/Moira/MoiraExecFPU_cpp.h
+index 3608851..df5cef3 100644
+--- a/Moira/MoiraExecFPU_cpp.h
++++ b/Moira/MoiraExecFPU_cpp.h
+@@ -301,9 +301,9 @@ Moira::writeFpuOpRg(int n, const MFloat80 &val, FpuFormat fmt)
+ {
+     switch (fmt) {
+ 
+-        case FpuFormat::BYTE:       writeD<Byte>(n, FpuFormats::toInteger(fpu.env, val, 8)); break;
+-        case FpuFormat::WORD:       writeD<Word>(n, FpuFormats::toInteger(fpu.env, val, 16)); break;
+-        case FpuFormat::LONG:       writeD<Long>(n, FpuFormats::toInteger(fpu.env, val, 32)); break;
++        case FpuFormat::BYTE:       writeD<Byte>(n, FpuFormats::toInteger(fpu.env, val, 8, hasInternalFPU())); break;
++        case FpuFormat::WORD:       writeD<Word>(n, FpuFormats::toInteger(fpu.env, val, 16, hasInternalFPU())); break;
++        case FpuFormat::LONG:       writeD<Long>(n, FpuFormats::toInteger(fpu.env, val, 32, hasInternalFPU())); break;
+         case FpuFormat::SINGLE:     writeD<Long>(n, FpuFormats::toSingle(fpu.env, val)); break;
+ 
+         default:                    throw IllegalInstruction();
+@@ -319,19 +319,19 @@ Moira::writeFpuOpEa(int n, u32 ea, const MFloat80 &val, FpuFormat fmt, int k)
+ 
+         case FpuFormat::BYTE:
+         {
+-            writeM<C, M, Byte>(ea, FpuFormats::toInteger(fpu.env, val, 8));
++            writeM<C, M, Byte>(ea, FpuFormats::toInteger(fpu.env, val, 8, hasInternalFPU()));
+             updateAn<M, Byte>(n);
+             break;
+         }
+         case FpuFormat::WORD:
+         {
+-            writeM<C, M, Word>(ea, FpuFormats::toInteger(fpu.env, val, 16));
++            writeM<C, M, Word>(ea, FpuFormats::toInteger(fpu.env, val, 16, hasInternalFPU()));
+             updateAn<M, Word>(n);
+             break;
+         }
+         case FpuFormat::LONG:
+         {
+-            writeM<C, M, Long>(ea, FpuFormats::toInteger(fpu.env, val, 32));
++            writeM<C, M, Long>(ea, FpuFormats::toInteger(fpu.env, val, 32, hasInternalFPU()));
+             updateAn<M, Long>(n);
+             break;
+         }
+-- 
+2.54.0 (Apple Git-157)
+

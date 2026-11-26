@@ -50,3 +50,12 @@ fpu/tt seed=41 #166
 @D12 0017f4 00011aee | random/off seed=91 #54
 @D12 001ef4 00011464 | random/off seed=91 #60
 @D12 0017f4 00011bcc | random/off seed=91 #96
+
+# FMOVE of a signaling NaN to a byte, word or long word (2026-11-26, queue
+# patch 17): MC68881UM-1989 Table 6-2 makes OPERR an error of a non-signaling
+# NaN only; the move sets SNAN. The oracle sets OPERR as well on these two
+# FMOVE.W FPn,Dn (and leaves it clear on the FMOVE.B of seed=17 #16 and
+# seed=31 #55, which now agree). Their stored word agrees; FPSR differs by
+# OPERR alone.
+fpu/identity seed=17 #60
+fpu/identity seed=31 #65
