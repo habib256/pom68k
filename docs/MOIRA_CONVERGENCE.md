@@ -137,7 +137,7 @@ U = UNSURE. "Split" marks a row whose items fall in different classes.
 | 23 | M | save-state ATC flush |
 | 24 | M | 68010 read/write buffers |
 | 25 | G | CALLM/RTM are stubs |
-| 26 | C | 6888x exceptions are taken pre-instruction, format $0, at the next FPU instruction (Dirk's 186f904); no post-instruction frame, which POM68K's 2026-11-24 ruling holds right (but see row 113 for FMOVE out) |
+| 26 | C | 6888x exceptions are taken pre-instruction, format $0, at the next FPU instruction (Dirk's 186f904); no post-instruction frame, which POM68K's 2026-11-24 ruling holds right except for FMOVE FPn,<ea>: that exception is a mid-instruction one, format $9, taken after the store (row 113, queue patch 16) |
 | 27 | G | split: vector 11 with format $2 (Dirk's 6946378) and the UNIMP FSAVE frame (PR #49) exist; the vector-55 unsupported-data-type trap and the BUSY/E3 frame are missing |
 | 28 | G | no 040 data-bearing caches |
 | 29 | G | no 6888x mid-instruction state (format $9, BUSY) |

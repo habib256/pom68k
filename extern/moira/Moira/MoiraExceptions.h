@@ -45,9 +45,15 @@ template <Core C, Mode M> void execFUnimplemented(int n, FpuFormat fmt, bool rm)
 // after the operand has been stored. The 68040 takes it as a post-instruction
 // exception and stacks the address of the next instruction and the effective
 // address (format 3). The 68881 and 68882 report it as a mid-instruction
-// exception: the stack frame holds the scan PC (the address of the next
-// instruction) where the other frames hold the program counter, the address of
-// the instruction, the operation word and the effective address (format 9).
+// exception (format 9, MC68881/MC68882UM 7.4.2.6, MC68030UM 10.4.19):
+//
+//   +$00  Status register
+//   +$02  Scan PC (the address of the next instruction, reloaded by RTE)
+//   +$06  1001 | Vector offset
+//   +$08  Program counter (the address of the F-line operation word)
+//   +$0C  Internal register
+//   +$0E  Operation word
+//   +$10  Effective address of the destination (undefined for a data register)
 template <Core C> void execFpuTrap(u16 vector, bool post = false, u32 ea = 0);
 
 // Takes a pending floating-point arithmetic exception (returns false if none is pending)

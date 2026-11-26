@@ -21,6 +21,8 @@
 //                      (format $9), taken after the store; RTE resumes at
 //                      the scanPC (MC68881UM §6.1, §7.4.2.6)
 //      FMOVE SNaN to B/W/L : SNAN, not OPERR (MC68881UM Table 6-2)
+//      move-out INEX2 to (xxx).L, enabled and disabled; a 68882 handler
+//                      FSAVE / BSET bit 27 / FRESTORE / RTE (MC68881UM §5.2.2)
 //  15+ timing        : FADD.X FPm,FPn consumes its MC68882UM Table 8-3
 //                      figure (56), FMOVECR its (32) — not a placeholder
 //
@@ -196,9 +198,17 @@ MidFrame readMidFrame(const TestCpu& cpu, uint32_t sp) {
 // p. 525): "When an instruction is completed, the processor transfers the
 // value in the scanPC to the program counter". The scan PC is the word at
 // +$02, so a handler that rewrites it chooses where execution resumes.
-// The MC68882 keeps EXC PEND after the acknowledge (MC68881UM-1989
-// §6.4.2.2, §5.2.2): a handler without FSAVE/BSET/FRESTORE is outside its
-// contract, so these sequences run on the MC68881 only.
+// [B] MC68881UM-1989 §7.5.4.2 (manual p. 7-35, PDF p. 299) and Figure 7-34
+// (PDF p. 301): the MC68882 does not replace the take mid-instruction
+// primitive by a null one on the acknowledge; only an FSAVE in the handler
+// does. Without it the RTE's read of the response CIR (the figure; the text
+// says "the next floating-point instruction") takes the same exception
+// again. The handler §5.2.2 prescribes is FSAVE / BSET bit 27 / FRESTORE /
+// RTE (moveOut68882Handler). The core takes the exception once on both FPUs:
+// a known divergence, for a 68882 handler without FSAVE only. These bare-RTE
+// sequences therefore run on the MC68881.
+// [D] WinUAE @ Hatari e77819f7, fpp.c fp_exception_pending(): keeps
+// fp_exp_pend on the 68882, so it takes the exception again, as the manual.
 // The internal register word at +$0C is not compared.
 // [F] Unknown: its contents. Settled by: a frame captured on a 68030 + 68881.
 void moveOutMidInstruction() {
@@ -337,6 +347,110 @@ void moveOutSignalingNaN() {
               int(model), int(fpuModel), fpcr, dest, stored, cpu.getFPSR(),
               cpu.getPC0(), sp, trap ? m16(sp + 6) : 0, want[dest],
               trap ? "00003400/00007FEC 90D8 (SNAN, format $9)" : "00001004/00008000 (no trap)");
+    }
+}
+
+// FMOVE.L FP0,($4000).L of 2.5: inexact. With INEX2 enabled the rounded
+// result (2) is stored and the move takes a mid-instruction exception,
+// vector 49, whose scan PC lies past the two-word absolute address; with it
+// disabled nothing traps and the FPSR records the inexact result.
+// [B] MC68881UM-1989 §6.1.7 (PDF p. 241): "The rounded result is delivered
+// to the destination […] If the destination is memory or an MPU data
+// register, a take mid-instruction exception primitive is returned
+// immediately after the operand is stored". Table 7-6 (PDF p. 281): vector
+// 49, inexact result. §7.4.2.6, Figure 7-16 (PDF pp. 282-283): the frame.
+void moveOutInexactAbsolute() {
+    for (auto model : {moira::CPUModel::M68020, moira::CPUModel::M68030})
+    for (auto fpuModel : {MoiraFpu::M68881, MoiraFpu::M68882})
+    for (bool enabled : {false, true}) {
+        TestCpu cpu;
+        cpu.setModel(model);
+        run(cpu, {0xF239, 0x6000, 0x0000, 0x4000,   // fmove.l fp0,($4000).l
+                  0x4E71},                           // nop
+            0, true, {{0x00c4, 0x0000}, {0x00c6, 0x3300}, {0x3300, 0x4E71}});
+        cpu.setFPUModel(fpuModel);
+        const uint32_t twoAndHalf[3] = {0x40000000, 0xa0000000, 0};
+        cpu.setFP(0, twoAndHalf);
+        cpu.setFPCR(enabled ? 0x0200 : 0);           // INEX2, round to nearest
+        cpu.setFPSR(0);
+        auto m16 = [&](uint32_t a) { return uint16_t(cpu.mem[a] << 8 | cpu.mem[a + 1]); };
+        auto m32 = [&](uint32_t a) { return uint32_t(m16(a)) << 16 | m16(a + 2); };
+
+        cpu.execute();
+        const uint32_t sp = cpu.getSP();
+        CHECK(m32(0x4000) == 2 && cpu.getFPSR() == 0x00000208,
+              "inexact move-out model=%d FPU=%d enabled=%d: ($4000)=%08X FPSR=%08X, "
+              "want 00000002 00000208 (INEX2, AE INEX)",
+              int(model), int(fpuModel), enabled, m32(0x4000), cpu.getFPSR());
+        if (!enabled) {
+            CHECK(cpu.getPC0() == 0x1008 && sp == 0x8000,
+                  "inexact move-out model=%d FPU=%d disabled: PC0/SP=%08X/%08X, "
+                  "want 00001008/00008000 (no trap)", int(model), int(fpuModel), cpu.getPC0(), sp);
+            continue;
+        }
+        const MidFrame f = readMidFrame(cpu, sp);
+        CHECK(cpu.getPC0() == 0x3300 && sp == 0x7fec && f.sr == 0x2700 &&
+              f.scanPC == 0x1008 && f.format == 0x90c4 && f.pc == 0x1000 &&
+              f.op == 0xF239 && f.ea == 0x4000,
+              "inexact move-out model=%d FPU=%d: PC0/SP=%08X/%08X SR %04X scanPC(+2) %08X "
+              "format %04X PC(+8) %08X op %04X EA %08X, want 00003300/00007FEC 2700 "
+              "00001008 90C4 00001000 F239 00004000",
+              int(model), int(fpuModel), cpu.getPC0(), sp, f.sr, f.scanPC, f.format, f.pc,
+              f.op, f.ea);
+    }
+}
+
+// An MC68882 handler as §5.2.2 prescribes it: FSAVE -(A7), BSET #3 of the
+// first byte of the BIU flag word (bit 27: no exception pending), FRESTORE
+// (A7)+, RTE. The move-out exception of an FMOVE.L FP0,(A0) of +infinity
+// (OPERR) returns to the scan PC, and the FNOP that follows takes nothing.
+// [B] MC68881UM-1989 §5.2.2 (PDF p. 219): the handler sequence. Figure 6-5
+// (PDF p. 255): the MC68882 idle frame holds $38 bytes after the format
+// word, the BIU flags in its last long word; §6.4.2.2 (PDF p. 258): bit 27
+// set means no exception is pending. §7.5.4.2 (PDF p. 299): "The FSAVE
+// instruction of the exception handler changes the primitive to a null
+// primitive".
+void moveOut68882Handler() {
+    for (auto model : {moira::CPUModel::M68020, moira::CPUModel::M68030}) {
+        TestCpu cpu;
+        cpu.setModel(model);
+        run(cpu, {0xF210, 0x6000,                    // fmove.l fp0,(a0)
+                  0xF280, 0x0000,                    // fnop
+                  0x4E71},                           // nop
+            0, true,
+            {{0x00d0, 0x0000}, {0x00d2, 0x3300},     // vector 52 (OPERR) -> $3300
+             {0x3300, 0xF327},                       // fsave    -(a7)
+             {0x3302, 0x08EF}, {0x3304, 0x0003},     // bset     #3,($38,a7)
+             {0x3306, 0x0038},
+             {0x3308, 0xF35F},                       // frestore (a7)+
+             {0x330A, 0x4E73}});                     // rte
+        cpu.setFPUModel(MoiraFpu::M68882);
+        cpu.setA(0, 0x4000);
+        const uint32_t inf[3] = {0x7fff0000, 0, 0};
+        cpu.setFP(0, inf);
+        cpu.setFPCR(0x2000);                         // OPERR enabled
+        cpu.setFPSR(0);
+        auto m16 = [&](uint32_t a) { return uint16_t(cpu.mem[a] << 8 | cpu.mem[a + 1]); };
+
+        cpu.execute();                               // FMOVE: store, then the trap
+        CHECK(cpu.getPC0() == 0x3300 && cpu.getSP() == 0x7fec,
+              "68882 handler model=%d: PC0/SP=%08X/%08X, want 00003300/00007FEC",
+              int(model), cpu.getPC0(), cpu.getSP());
+        cpu.execute();                               // FSAVE
+        const uint32_t frame = cpu.getSP();
+        CHECK(frame == 0x7fec - 0x3c && m16(frame) == 0x1f38,
+              "68882 handler model=%d: FSAVE frame at %08X format %04X, want 00007FB0 1F38",
+              int(model), frame, m16(frame));
+        cpu.execute();                               // BSET
+        cpu.execute();                               // FRESTORE
+        cpu.execute();                               // RTE
+        CHECK(cpu.getPC0() == 0x1004 && cpu.getSP() == 0x8000,
+              "68882 handler model=%d: after RTE PC0/SP=%08X/%08X, want 00001004/00008000",
+              int(model), cpu.getPC0(), cpu.getSP());
+        cpu.execute();                               // FNOP: nothing pending
+        CHECK(cpu.getPC0() == 0x1008 && cpu.getSP() == 0x8000,
+              "68882 handler model=%d: after FNOP PC0/SP=%08X/%08X, want 00001008/00008000",
+              int(model), cpu.getPC0(), cpu.getSP());
     }
 }
 
@@ -494,7 +608,9 @@ int main() {
     // deferral to the next FPCP instruction: the move-out exception is not a
     // post-instruction one, it is the mid-instruction one of the same page
     // (PDF p. 226).
-    // [D] WinUAE @ Hatari e77819f7 traps at once but stacks format $3.
+    // [D] WinUAE @ Hatari e77819f7 traps at once but stacks format $3
+    // (newcpu_common.c Exception_build_stack_frame_common(), vectors 48-55
+    // with fpu_exp_pre clear).
     for (auto model : {moira::CPUModel::M68EC020, moira::CPUModel::M68020,
                        moira::CPUModel::M68EC030, moira::CPUModel::M68030})
     for (auto fpuModel : {MoiraFpu::M68881, MoiraFpu::M68882})
@@ -534,7 +650,7 @@ int main() {
               f.scanPC, f.pc, f.op, f.ea, stored, cpu.getA(0),
               cpu.getFPSR(), cpu.getFPIAR());
         // A bare RTE handler is within the MC68881's contract only (see
-        // moveOutMidInstruction); the MC68882's is left unasserted.
+        // moveOutMidInstruction and moveOut68882Handler).
         if (fpuModel != MoiraFpu::M68881) continue;
         cpu.execute();                            // RTE
         CHECK(cpu.getPC0() == scanPC && cpu.getSP() == 0x8000 && cpu.getA(0) == a0s[dest],
@@ -546,6 +662,8 @@ int main() {
     cpu.setModel(moira::CPUModel::M68030);
     moveOutMidInstruction();
     moveOutSignalingNaN();
+    moveOutInexactAbsolute();
+    moveOut68882Handler();
 
 #if POM68K_FPU_TIMING
     // 15 ── timing smoke: FADD.X FP1,FP0 costs its MC68882UM Table 8-3

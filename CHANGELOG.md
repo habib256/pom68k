@@ -40,6 +40,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"[F] … what a bare RTE then meets is unknown" for a 68882 handler without FSAVE, and "a pending trap is taken before FMOVEM and FMOVE FPcr dispatch, against MC68881UM § 6.4.2.2" (2026-11-25 (fourth)) — the first is documented (§ 7.5.4.2, Figure 7-34: taken again), the second is a self-contradiction of the manual, left [F]** → [Patch 16 after review](#2026-11-26-fmove9-review)
+
 - **"a 6888x reports no post-instruction exception (MC68881UM §6.1)", read as an FMOVE FPn,<ea> exception deferred to the next FPU instruction (2026-11-24) — the same page makes it a mid-instruction exception, format $9, taken after the store** → [A 6888x FMOVE exception is a mid-instruction one](#2026-11-25-fmove-format9)
 
 - **"the Quadras' FPSP … restored" by the FSAVE frame patch (2026-11-24) — the frame set E1 for every operand, and the FPSP unpacked every source as packed decimal: the Quadras booted but computed wrong transcendental results** → [Dirk merges #46-#49](#2026-11-25-moira-bf98107f)
@@ -625,6 +627,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-26 (second) — Patch 16 after review: the MC68882 re-take is documented, not unknown; the pending trap before FMOVEM is not an established divergence](#2026-11-26-fmove9-review)
 - [2026-11-26 — A 6888x FMOVE of a signaling NaN to a byte, word or long word sets SNAN, not OPERR: queue patch 17](#2026-11-26-fmove-snan-int)
 - [2026-11-25 (fourth) — A 6888x FMOVE FPn,<ea> exception is a mid-instruction one, format $9 after the store: the 2026-11-24 deferral is reversed, queue patch 16](#2026-11-25-fmove-format9)
 - [2026-11-25 (third) — A 68040 bus error after a successful translation stacks the logical fault address: queue patch 12 amended](#2026-11-25-fa040-logical)
@@ -1458,6 +1461,79 @@ Newest first.
 
 ---
 
+<a id="2026-11-26-fmove9-review"></a>
+## 2026-11-26 (second) — Patch 16 after review: the MC68882 re-take is documented, not unknown; the pending trap before FMOVEM is not an established divergence
+
+**The 68882 after a mid-instruction exception is in the manual.** The
+[2026-11-25 (fourth)](#2026-11-25-fmove-format9) entry graded "what a bare
+RTE then meets" [F]. It is documented: [B] MC68881UM-1989 § 7.5.4.2 (heading
+PDF p. 296; the sentence on manual p. 7-35, PDF p. 299): "When the exception
+handler does not contain an FSAVE instruction, the take mid-instruction
+exception primitive is not replaced by a null primitive, and the next
+floating-point instruction takes the exception again. Figure 7-34 shows the
+dialog for a mid-instruction exception that uses an incomplete handler";
+Figure 7-34 (PDF p. 301, read rendered) shows the RTE's read of the
+response CIR returning "TAKE MID-INSTRUCTION EXCEPTION (PC=0)". Text and
+figure differ on who meets it (the next FPU instruction or the RTE's own
+read) but agree that it is taken again. § 5.2.2 (PDF p. 219): a 68882
+handler must FSAVE first, BSET bit 27 of the BIU flags, FRESTORE just
+before the RTE. The core takes the exception once on both FPUs: a known,
+deliberate divergence for a 68882 handler without FSAVE only, not
+implemented (stability first). [D] WinUAE @ Hatari e77819f7, `fpp.c`
+`fp_exception_pending()`, keeps `fp_exp_pend` on the 68882, as the manual.
+
+**Patch 16 amended, no code change.** Its message restricts the null
+primitive after the acknowledge to the MC68881 (§ 6.1.13) and states the
+68882 re-take; the `execFpuTrap` comment in `MoiraExceptions.h` lists the
+format $9 fields with their offsets; the internal register word is marked
+unspecified; and an open point is written where `execFpuTrap()` clears the
+trace state: a traced FMOVE that takes the exception loses its trace
+event, and MC68030UM-1989 § 8.1.7 (PDF p. 416) defers a trace past a bus or
+an address error only — it says nothing of the RTE of a coprocessor
+mid-instruction exception (`TODO.md`).
+
+**Cells.** `fpu_sanity`: `moveOutInexactAbsolute()` — FMOVE.L FP0,($4000).L
+of 2.5 with INEX2 enabled (vector 49 per Table 7-6, frame $90C4, scan PC
+$1008 past the two-word address, stored 2) and disabled (no trap, FPSR
+$00000208); `moveOut68882Handler()` — the § 5.2.2 handler on a 68882 (FSAVE
+-(A7) gives the $1F38 idle frame, 60 bytes per Table 5-8; BSET #3,($38,A7);
+FRESTORE (A7)+; RTE to the scan PC; the FNOP after it takes nothing). The
+[D] WinUAE citations name their function. New locators in
+`tests/core_manuals.lock` (MC68881UM § 6.1.7, Figure 6-5, Table 7-6,
+§ 7.5.4.2, Figure 7-34). `docs/MOIRA_CONVERGENCE.md` row 26 no longer says
+the 2026-11-24 ruling holds right without the FMOVE-out exception. SST
+agreement unchanged on every corpus.
+
+**The pending trap before FMOVEM / FMOVE FPcr: [F], not a divergence.** The
+2026-11-25 (fourth) entry called the core's behaviour (a pending 6888x
+exception is taken before every FPU instruction but FSAVE/FRESTORE) a
+divergence "against MC68881UM § 6.4.2.2". Read from the rendered pages,
+the manual contradicts itself. Against reporting: § 6.4.2.2 (manual
+p. 6-35, PDF p. 259) — EXC PEND is negated "when an instruction (other
+than an FMOVEM, FMOVE control register, FSAVE, FRESTORE) begins
+execution", and the take pre-instruction primitive is returned when an
+instruction "(other than an FMOVEM, FMOVE control register, FSAVE, or
+FRESTORE)" is initiated; § 7.4.2.5 (PDF p. 281) names arithmetic and
+conditional instructions only; § 7.5.1.4-7.5.1.5 (PDF pp. 290-291): these
+instructions "cannot cause an exception". For reporting: § 6.1 (manual
+p. 6-2, PDF p. 226) — a pending exception is reported "until the next write
+to the command or condition coprocessor interface register", which FMOVEM
+and FMOVE control do (§ 7.5.1); § 6.1.6 and § 6.1.7 — "when the next
+floating-point instruction is attempted"; § 7.5.4.1 (manual p. 7-32, PDF
+p. 296), the MC68882 after the acknowledge: "Any floating-point instruction
+other than an FSAVE (or an FRESTORE of the null state) reports the same
+exception again." A reading that reconciles them exists (the overview
+sentences summarise, § 6.4.2.2 is the mechanism), but it is a reading, and
+§ 7.5.4.1 contests it for the 68882. The core keeps Dirk's behaviour; no
+cell is committed. **[F]** Settled by: FDIV.L #0,FP0 with DZ enabled, then
+FMOVE.L FPSR,D0, on a real 68030 + 68881 and + 68882 — does the DZ handler
+run with the stacked PC on the FMOVE, or does the FMOVE complete? [C] Guest
+side: InSANE's handlers start with FSAVE ("MUST BE FIRST FPU
+INSTRUCTION", `FPHWNonArith.a`), harmless under either reading; SANE's
+`FP881Ctrl.a` FPbegin and InSANE QGETENV/QSETENV read FPSR/FPCR with FMOVE
+control at package entry — the path a machine tier would show if the core
+changed.
+
 <a id="2026-11-26-fmove-snan-int"></a>
 ## 2026-11-26 — A 6888x FMOVE of a signaling NaN to a byte, word or long word sets SNAN, not OPERR: queue patch 17
 
@@ -1566,6 +1642,16 @@ background process's scrap (inferred, not reproduced).
 
 <a id="2026-11-25-fmove-format9"></a>
 ## 2026-11-25 (fourth) — A 6888x FMOVE FPn,<ea> exception is a mid-instruction one, format $9 after the store: the 2026-11-24 deferral is reversed, queue patch 16
+
+> **Corrected (2026-11-26):** under "Still open", the MC68882 outcome after
+> a handler without FSAVE is documented, not [F]: MC68881UM § 7.5.4.2 and
+> Figure 7-34 — the exception is taken again; the core takes it once, a
+> known, deliberate divergence. The pending trap taken before FMOVEM and
+> FMOVE FPcr is not an established divergence: the manual contradicts
+> itself (§ 6.4.2.2, § 7.4.2.5, § 7.5.1.4-5 against § 6.1 p. 6-2,
+> § 6.1.6-7, § 7.5.4.1); the core keeps Dirk's behaviour, [F] — see
+> [2026-11-26 (second)](#2026-11-26-fmove9-review). The SNaN finding is
+> fixed by queue patch 17 ([2026-11-26](#2026-11-26-fmove-snan-int)).
 
 **The ruling reversed.** On 2026-11-24 ([the base entry](#2026-11-24-dirk-moira-base))
 `fpu_sanity` case 14 was rewritten to Dirk's behaviour: an enabled

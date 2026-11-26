@@ -538,14 +538,22 @@ de liste connue ou capture attendue.
   16, `CHANGELOG` 2026-11-25 (fourth)). (1) Une règle format $9 pour les
   lignes `@D23a` des listes `sst68030*` : le cœur empile 20 octets, le
   vecteur WinUAE 12, et la règle ne normalise que les formats $2/$3 (le
-  contrat D23a de `sst_known_contract_test` reste sauté). (2) [F] Le
-  MC68882 garde EXC PEND après l'acquittement (MC68881UM §6.1.13,
-  §6.4.2.2) ; le cœur prend l'exception une fois sur les deux FPU.
-  *Tranche : une capture sur un vrai 68030 + 68882 avec un gestionnaire
-  réduit à RTE.* (3) Constat annexe : une trappe en attente est prise avant
-  le dispatch de FMOVEM et de FMOVE FPcr, contre MC68881UM §6.4.2.2 (le
-  FMOVE d'un SNaN vers B/W/L ne pose plus OPERR : correctif 17, `CHANGELOG`
-  2026-11-26).
+  contrat D23a de `sst_known_contract_test` reste sauté). (2) Le MC68882
+  reprend l'exception après un gestionnaire sans FSAVE (MC68881UM §7.5.4.2,
+  Figure 7-34 — documenté, plus [F]) ; le cœur la prend une fois sur les
+  deux FPU. Divergence connue et voulue, à implanter seulement si une
+  machine en dépend (garder FSAVE/FRESTORE et l'acquittement cohérents).
+  (3) [F] Une exception en attente est-elle signalée à FMOVE FPcr / FMOVEM ?
+  MC68881UM §6.4.2.2, §7.4.2.5 et §7.5.1.4-5 disent non ; §6.1 (p. 6-2),
+  §6.1.6-7 et §7.5.4.1 (p. 7-32, 68882) disent « la prochaine instruction
+  FPU ». Le cœur la prend (comportement de Dirk), pas de changement
+  (`CHANGELOG` 2026-11-26 (second)). *Tranche : FDIV.L #0,FP0 (DZ activé)
+  puis FMOVE.L FPSR,D0 sur un vrai 68030 + 68881 et + 68882.* (4) [F]
+  Trace d'un FMOVE qui prend une exception en milieu d'instruction :
+  `execFpuTrap()` efface l'événement, l'instruction n'est pas tracée après
+  le RTE ; MC68030UM §8.1.7 ne diffère la trace qu'après une erreur de bus
+  ou d'adresse. *Tranche : FMOVE tracé (T1) avec OPERR activé sur un vrai
+  68030 + 6888x.*
 - [ ] **Trancher l'ordre de lecture de FMOVEM en EA indirect mémoire à
   extension complète avant un Line-F de direction** (« still open » dans
   `POM68K_VENDOR.md § MC68882 FPU execution`).

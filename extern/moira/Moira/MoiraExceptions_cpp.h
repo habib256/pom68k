@@ -235,7 +235,7 @@ Moira::writeStackFrame1001(u16 sr, u32 pc, u32 ia, u16 nr, u16 op, u32 ea)
     // Operation word
     push<C, Word>(op);
 
-    // Internal register
+    // Internal register. The manuals do not specify its contents.
     push<C, Word>(0);
 
     // Program counter (address of the operation word)
@@ -782,7 +782,10 @@ Moira::execFpuTrap(u16 vector, bool post, u32 ea)
     setSupervisorMode(true);
     clearTraceFlags();
 
-    // Write stack frame
+    // Write stack frame. A traced FMOVE that takes a mid-instruction exception
+    // loses its trace event here (TRACE_EXC is cleared above). Open: MC68030UM
+    // 8.1.7 defers a trace past a bus or an address error only and does not say
+    // whether the FMOVE is traced after the RTE of a coprocessor exception.
     if (post && hasInternalFPU()) {
         writeStackFrame0011<C>(status, reg.pc, ea, vector);
     } else if (post) {

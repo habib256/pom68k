@@ -1,8 +1,8 @@
-From 2c41e29d7c03f2e3d6b5ba8ca1f05f5a1876a664 Mon Sep 17 00:00:00 2001
+From 0b09429f199507bfcd8b4d0466b6d3e868bb0feb Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Wed, 25 Nov 2026 18:00:00 +0400
-Subject: [PATCH 16/16] 68881/68882: an FMOVE to memory or to a data register
- takes a mid-instruction exception
+Subject: [PATCH 16/16] 68881/68882: an FMOVE to memory or to a data register takes a
+ mid-instruction exception
 
 MC68881/MC68882UM 6.1: "FPCP instruction exceptions that arise from the
 move floating-point data register to external destination instructions
@@ -15,28 +15,40 @@ pre-instruction exception when the next FPU instruction started.
 
 execFMove now takes it right after the store, and writeStackFrame1001()
 writes the ten-word frame of MC68881/MC68882UM 7.4.2.6 (Figure 7-16) and
-MC68030UM 10.4.19 (Figure 10-43): the scan PC (the address of the next
-instruction) at +2, the address of the F-line operation word at +8, an
-internal register at +C, the operation word at +E and the effective
-address of the destination at +10 (undefined for a data register).
+MC68030UM 10.4.19 (Figure 10-43): the status register at +0, the scan PC
+(the address of the next instruction) at +2, the format and vector offset
+at +6, the address of the F-line operation word at +8, an internal
+register at +C (its contents are not specified; the core writes 0), the
+operation word at +E and the effective address of the destination at +10
+(undefined for a data register).
 
 RTE needs no change: it reloads the program counter from +2, the scan PC.
-The processor reads the response CIR (MC68030UM 8.1.13); the FPU has
-completed the move before it requests the exception and answers with a
-null primitive (MC68881/MC68882UM 6.1.13), which ends the instruction, and
-the processor continues at the scan PC (MC68030UM 10.4.1).
+The processor reads the response CIR (MC68030UM 8.1.13). The MC68881 has
+completed the move and cleared the exception on the acknowledge; it
+answers with a null primitive (MC68881/MC68882UM 6.1.13), which ends the
+instruction, and the processor continues at the scan PC (MC68030UM
+10.4.1).
 
-The MC68882 does not clear the exception on the acknowledge
-(MC68881/MC68882UM 6.1.13, 6.4.2.2); as before, the core takes it once
-on both FPUs. The 68040 path (format 3) is unchanged.
+The MC68882 does not replace the take mid-instruction primitive on the
+acknowledge; only an FSAVE in the handler does (MC68881/MC68882UM 7.5.4.2,
+Figure 7-34). With a handler that does not begin with FSAVE, the RTE reads
+the primitive again and the exception is taken again; the handler the
+manual requires is FSAVE, BSET of bit 27 of the BIU flags, FRESTORE, RTE
+(5.2.2). The core takes the exception once on both FPUs: it differs from
+the manual only for a 68882 handler without FSAVE.
+
+A traced FMOVE that takes the exception loses its trace event
+(execFpuTrap() clears it); MC68030UM 8.1.7 defers a trace past a bus or an
+address error only and leaves this case open. The 68040 path (format 3)
+is unchanged.
 ---
- Moira/MoiraExceptions.h     | 12 ++++++++----
- Moira/MoiraExceptions_cpp.h | 27 +++++++++++++++++++++++++--
+ Moira/MoiraExceptions.h     | 18 ++++++++++++++----
+ Moira/MoiraExceptions_cpp.h | 32 +++++++++++++++++++++++++++++---
  Moira/MoiraExecFPU_cpp.h    | 13 +++++++++++--
- 3 files changed, 44 insertions(+), 8 deletions(-)
+ 3 files changed, 54 insertions(+), 9 deletions(-)
 
 diff --git a/Moira/MoiraExceptions.h b/Moira/MoiraExceptions.h
-index f59f142..0e5c795 100644
+index f59f142..0ea7bc9 100644
 --- a/Moira/MoiraExceptions.h
 +++ b/Moira/MoiraExceptions.h
 @@ -26,7 +26,7 @@ template <Core C> void writeStackFrame0010(u16 sr, u32 pc, u32 ia, u16 nr);
@@ -48,7 +60,7 @@ index f59f142..0e5c795 100644
  template <Core C> void writeStackFrame1010(u16 sr, u32 pc, u16 nr, u16 ssw = 0, u32 addr = 0, u32 dataOut = 0, u16 stageC = 0, u16 stageB = 0);
  template <Core C> void writeStackFrame1011UAE(u16 sr, u16 nr, u32 pc, u16 ssw, u32 addr, u32 end, bool write, u32 dataOut);
  template <Core C> void writeStackFrame1011(u16 sr, u32 pc, u32 ia, u16 nr, u16 ssw = 0, u32 addr = 0, u32 dataOut = 0, u16 stageC = 0, u16 stageB = 0);
-@@ -41,9 +41,13 @@ template <Core C, Mode M> void execFUnimplemented(int n, FpuFormat fmt, bool rm)
+@@ -41,9 +41,19 @@ template <Core C, Mode M> void execFUnimplemented(int n, FpuFormat fmt, bool rm)
  
  // Raises a floating-point arithmetic exception (vectors 48 - 54). A pre-instruction
  // exception is taken before an FPU instruction starts and stacks its address
@@ -59,14 +71,20 @@ index f59f142..0e5c795 100644
 +// after the operand has been stored. The 68040 takes it as a post-instruction
 +// exception and stacks the address of the next instruction and the effective
 +// address (format 3). The 68881 and 68882 report it as a mid-instruction
-+// exception: the stack frame holds the scan PC (the address of the next
-+// instruction) where the other frames hold the program counter, the address of
-+// the instruction, the operation word and the effective address (format 9).
++// exception (format 9, MC68881/MC68882UM 7.4.2.6, MC68030UM 10.4.19):
++//
++//   +$00  Status register
++//   +$02  Scan PC (the address of the next instruction, reloaded by RTE)
++//   +$06  1001 | Vector offset
++//   +$08  Program counter (the address of the F-line operation word)
++//   +$0C  Internal register
++//   +$0E  Operation word
++//   +$10  Effective address of the destination (undefined for a data register)
  template <Core C> void execFpuTrap(u16 vector, bool post = false, u32 ea = 0);
  
  // Takes a pending floating-point arithmetic exception (returns false if none is pending)
 diff --git a/Moira/MoiraExceptions_cpp.h b/Moira/MoiraExceptions_cpp.h
-index 4d1983c..59a69d5 100644
+index 4d1983c..6a39b95 100644
 --- a/Moira/MoiraExceptions_cpp.h
 +++ b/Moira/MoiraExceptions_cpp.h
 @@ -225,9 +225,30 @@ Moira::writeStackFrame1000(StackFrame &frame, u16 sr, u32 pc, u32 ia, u16 nr, u3
@@ -80,13 +98,13 @@ index 4d1983c..59a69d5 100644
 +
 +    // Effective address
 +    push<C, Long>(ea);
-+
+ 
 +    // Operation word
 +    push<C, Word>(op);
 +
-+    // Internal register
++    // Internal register. The manuals do not specify its contents.
 +    push<C, Word>(0);
- 
++
 +    // Program counter (address of the operation word)
 +    push<C, Long>(ia);
 +
@@ -101,11 +119,16 @@ index 4d1983c..59a69d5 100644
  }
  
  template <Core C> void
-@@ -762,8 +783,10 @@ Moira::execFpuTrap(u16 vector, bool post, u32 ea)
+@@ -761,9 +782,14 @@ Moira::execFpuTrap(u16 vector, bool post, u32 ea)
+     setSupervisorMode(true);
      clearTraceFlags();
  
-     // Write stack frame
+-    // Write stack frame
 -    if (post) {
++    // Write stack frame. A traced FMOVE that takes a mid-instruction exception
++    // loses its trace event here (TRACE_EXC is cleared above). Open: MC68030UM
++    // 8.1.7 defers a trace past a bus or an address error only and does not say
++    // whether the FMOVE is traced after the RTE of a coprocessor exception.
 +    if (post && hasInternalFPU()) {
          writeStackFrame0011<C>(status, reg.pc, ea, vector);
 +    } else if (post) {
