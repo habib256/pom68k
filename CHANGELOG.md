@@ -1467,6 +1467,18 @@ Newest first.
 ---
 
 <a id="2026-11-26-patch15-rejustified"></a>
+## 2026-11-26 (eighth) — AArch64 machine tier green on the 19-patch queue
+
+The full machine tier (`ctest -L 'm040|m030|etalon' -j3`) ran on `43d3ab94`
+(Dirk's `bf98107f` + 19 queue patches) on the M4: 320 of 320 pass in
+17 530 s, 319 executed, `cd_pressed_toc_etalon` soft-skipped (no pressed
+disc on this host). No timeout, no rerun. This is the first whole-tier run
+that includes patches 17 (6888x SNaN to integer), 18 (bus error during a
+table search) and 19 (misaligned access crossing a page); 18 and 19 sit on
+the translation path of every 68030/68040 machine. The run is recorded in
+`STATUS.md`. The x86-64 leg of the same tier is still owed on this tree
+(`TODO.md` § Reprendre ici).
+
 ## 2026-11-26 (seventh) — Queue patch 15 re-justified: on the 68020/68030 the manuals' rule, on the 68040 a speed setting tied to a 16-bit port the manual rules out
 
 The [2026-11-25 (fifth)](#2026-11-25-clipboard-gate-process) entry left

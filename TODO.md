@@ -57,29 +57,23 @@ ses gates enregistrés absents dans `cmake/pom68k_jit_gates.tsv`. Bascule et
 Tout le reste (jalons produit, vitesse hors CPU, NeoST, dépôt) est après les
 deux phases, hors du chemin principal.
 
-**Reprendre ici (état au 2026-11-26, après la série du jour).**
+**Reprendre ici (état au 2026-11-26, palier AArch64 vert sur la série).**
 `main` = Moira de Dirk `bf98107f` + 19 correctifs (17 : SNaN vers entier
 du 6888x ; 18 : /BERR pendant une recherche de table ; 19 : accès mal
 aligné qui franchit une page) ; rien d'ouvert chez lui. Le palier machines
-AArch64 complet est vert sur `3cfd4718` (320/320 en 4 h 52, 319 exécutés,
-`cd_pressed_toc_etalon` sauté), enregistré dans `STATUS.md`, **avant** les
-correctifs 17-19. Sur la série du 2026-11-26 (M4) : build complet,
-`asset-none` 156/156 (3 fumées GUI sautées, ImGui absent), `cpu-vectors`,
-les 15 gates SST avec leurs corpus (planchers égaux aux mesures),
-`moira_rules`/`berr020`/`berr030`/`fault_transparency` par
-`known_failures`, `fpu_sanity`, `fpu040`, `fpu_context`, `moira_state`,
-`sst_known_contract`, `core_grades`, `docs_test`, `file_size_budget`,
-`moira_queue` ; **aucun etalon machine**. Note de passation précédente :
-`scratchpad/2026-11-25/HANDOVER.md`. Dans l'ordre :
+AArch64 complet est vert sur `43d3ab94`, donc avec les 19 correctifs
+(320/320 en 4 h 52, `-j3`, 319 exécutés, `cd_pressed_toc_etalon` sauté
+faute de disque pressé), enregistré dans `STATUS.md`. Sur le même arbre :
+`asset-none` 156/156 (3 fumées GUI sautées, ImGui absent), `cpu-vectors`
+6/6, les 15 gates SST avec leurs corpus, `moira_queue`. Note de passation
+précédente : `scratchpad/2026-11-25/HANDOVER.md`. Dans l'ordre :
 
-1. **Le palier machines AArch64 sur la série** (`ctest -L
-   'm040|m030|etalon' -j3`) : les correctifs 18 et 19 touchent chaque
-   machine 68030/68040 (MMU active), le 17 chaque Mac à 6888x.
+1. Fait : le palier machines AArch64 sur la série (ci-dessus).
 2. **Le même palier sur x86-64** (`git pull`, build borné, `asset-none`,
    puis `ctest -L 'm040|m030|etalon'`), puis
    `tools/status_md.py --record-run` : critère 6 de § Phase 1. Dernier
    passage complet x86-64 : 320/320 sur `6e7f5179`, avant le rebase et
-   avant les correctifs 12 amendé et 16.
+   avant les correctifs 12 amendé et 16 à 19.
 3. **Verdict de stabilité** du cœur de Dirk ; s'il est stable, faire
    approuver par le propriétaire `scratchpad/2026-11-25/JIT_PLAN.md`
    (questions Q1-Q8) avant tout code JIT (§ Phase 2).
