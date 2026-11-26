@@ -4,8 +4,8 @@
 core_identity	406	600
 core_off	774	800
 core_tt	569	600
-fault_identity	276	600
-fault_tt	486	600
+fault_identity	303	600
+fault_tt	498	600
 mmu_identity	403	600
 mmu_off	598	600
 mmu_tt	594	600

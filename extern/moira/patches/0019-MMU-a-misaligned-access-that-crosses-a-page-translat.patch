@@ -1,0 +1,259 @@
+From 08b3fd349995a89e1e12c6982ef79e4aa7c715b8 Mon Sep 17 00:00:00 2001
+From: VERHILLE Arnaud <gist974@gmail.com>
+Date: Thu, 26 Nov 2026 07:46:20 +0400
+Subject: [PATCH 19/19] MMU: a misaligned access that crosses a page translates
+ its second page
+
+readBus() and writeBus() translated the first byte of an access only and
+reached the rest at phys + 2 (read2x16, write2x16) or phys + 1 (an odd
+word). When a misaligned word or long word crosses into a page that is not
+physically contiguous, its second part read or wrote the page that follows
+the first one physically. With logical page $10000000 mapped to $33000 and
+$10001000 to $35000, MOVE.L (A0),D1 with A0 = $10000FFE read $AEAFA0A1
+(the bytes at $34000) instead of $AEAF5051, MOVE.L D1,(A0) wrote $34000,
+and an invalid second page took no exception at all. The 68030 behaved the
+same.
+
+MC68040UM 8.4.6.2: MA "is set if an ATC fault occurs for second-page
+access that spans two pages in memory", and SIZE "corresponds to the
+original access size"; 8.4.6.4: the FA "contains the address of the first
+byte of the transfer, regardless of which of the two or three bus
+transfers for the misaligned access was faulted". MC68030UM 9: "As the MMU
+receives each logical address from the CPU core, it searches the ATC".
+
+Pages are aligned and at least 256 bytes long (MC68030UM 9.7.2, PS; 4 or
+8 Kbytes on the 68040, MC68040UM 3.1), so only an access that runs past a
+256-byte boundary can cross one, where it enters its second long word.
+For such an access, with the MMU enabled, readBus() and writeBus() now
+translate that long word too (translateAcross()); if it does not follow
+the first one physically, readAcross() and writeAcross() carry out the
+access in words, a word whose bytes lie on different pages in two bytes.
+Every other access takes the old path with no second lookup. An ATC fault
+on the second page stacks MA and the first byte's logical address on a
+68040. On a 68030 the frame keeps the logical address of the second page,
+where a PTEST finds the fault, and the original size; MC68030UM 8.2 does
+not describe this case, and Figure 8-9 can also be read as the remaining
+size of the faulted cycle.
+
+The bus order is not the processor's. MC68040UM 4.1: "If a misaligned
+access crosses two pages, then the partial access to the first page
+always happens twice". Here both pages are translated before the first
+data cycle and the first part is transferred once, or not at all when the
+second page faults: a peripheral on the first page sees one access, not
+two.
+---
+ Moira/Moira.h             |  4 ++
+ Moira/MoiraDataflow.h     |  5 +++
+ Moira/MoiraDataflow_cpp.h | 77 +++++++++++++++++++++++++++++++++++++++
+ Moira/MoiraExecMMU_cpp.h  | 48 ++++++++++++++++++++++++
+ 4 files changed, 134 insertions(+)
+
+diff --git a/Moira/Moira.h b/Moira/Moira.h
+index 462045c..caf0b52 100644
+--- a/Moira/Moira.h
++++ b/Moira/Moira.h
+@@ -1135,6 +1135,10 @@ private:
+     // Translates a logical address to a physical address
+     template <Core C, bool write, Size S> u32 translate(u32 addr, u8 fc, bool *ci = nullptr);
+ 
++    // Translates the second long word of a misaligned access. Returns true if
++    // it does not follow the first one physically (the access crosses pages).
++    template <Core C, bool write, Size S> bool translateAcross(u32 addr, u32 phys, u32 &next);
++
+ 
+ private:
+     
+diff --git a/Moira/MoiraDataflow.h b/Moira/MoiraDataflow.h
+index 4806848..738d9b8 100644
+--- a/Moira/MoiraDataflow.h
++++ b/Moira/MoiraDataflow.h
+@@ -147,6 +147,11 @@ template <Core C, Flags F = 0> void write2x8(u32 addr, u32 val);
+ template <Core C, Flags F = 0> u32 read4x8(u32 addr);
+ template <Core C, Flags F = 0> void write4x8(u32 addr, u32 val);
+ 
++// Reads/writes a misaligned word or longword whose first n bytes lie at lo
++// on one page and the others at hi on the next
++template <Core C, Size S, Flags F = 0> u32 readAcross(u32 lo, u32 hi, u32 n);
++template <Core C, Size S, Flags F = 0> void writeAcross(u32 lo, u32 hi, u32 n, u32 val);
++
+ // Reads/writes an aligned longword, dispatching on the addressed port width
+ template <Core C, Flags F = 0> u32 readLongSplit(u32 addr);
+ template <Core C, Flags F = 0> void writeLongSplit(u32 addr, u32 val);
+diff --git a/Moira/MoiraDataflow_cpp.h b/Moira/MoiraDataflow_cpp.h
+index 2cf66f1..f5991c8 100644
+--- a/Moira/MoiraDataflow_cpp.h
++++ b/Moira/MoiraDataflow_cpp.h
+@@ -740,6 +740,57 @@ Moira::writeLongSplit(u32 addr, u32 val)
+     }
+ }
+ 
++template <Core C, Size S, Flags F> u32
++Moira::readAcross(u32 lo, u32 hi, u32 n)
++{
++    // Byte i of the operand is at lo + i on the first page and at hi + i - n
++    // on the second. A word whose bytes lie on different pages is read as two
++    // bytes.
++    auto at = [&](u32 i) { return (i < n ? lo + i : hi + i - n) & addrMask<C>(); };
++    auto word = [&](u32 i) {
++        if (i + 1 != n) return u32(read16(at(i)));
++        u32 result = u32(read8(at(i))) << 8;
++        return result | read8(at(i + 1));
++    };
++
++    if constexpr (S == Word) {
++
++        if constexpr (F & POLL) POLL_IPL;
++        return word(0);
++    }
++
++    u32 result;
++    try { result = word(0) << 16; } catch (BusError &e) { e.upperWord = true; throw; }
++    if constexpr (F & POLL) POLL_IPL;
++    try { result |= word(2); } catch (BusError &e) { e.upperWord = false; throw; }
++    return result;
++}
++
++template <Core C, Size S, Flags F> void
++Moira::writeAcross(u32 lo, u32 hi, u32 n, u32 val)
++{
++    // See readAcross()
++    auto at = [&](u32 i) { return (i < n ? lo + i : hi + i - n) & addrMask<C>(); };
++    auto word = [&](u32 i, u16 v) {
++        if (i + 1 != n) { write16(at(i), v); return; }
++        write8(at(i), u8(v >> 8));
++        write8(at(i + 1), u8(v));
++    };
++
++    if constexpr (S == Word) {
++
++        if constexpr (F & POLL) POLL_IPL;
++        if constexpr (F & COMMIT_IRD) commitIrd<C>();
++        word(0, u16(val));
++        return;
++    }
++
++    try { word(0, u16(val >> 16)); } catch (BusError &e) { e.upperWord = true; throw; }
++    if constexpr (F & POLL) POLL_IPL;
++    if constexpr (F & COMMIT_IRD) commitIrd<C>();
++    try { word(2, u16(val)); } catch (BusError &e) { e.upperWord = false; throw; }
++}
++
+ template <Core C, AddrSpace AS, Size S, Flags F> u32
+ Moira::read(u32 addr)
+ {
+@@ -808,6 +859,15 @@ try
+     // Derive the physical address. On a 68040, addr keeps the logical address
+     // for the handler below: it is the fault address (see completeBusError).
+     u32 phys = translate<C, false, S>(addr, getFC());
++
++    // A misaligned access may cross into a page that is mapped elsewhere.
++    // Pages are aligned and at least 256 bytes long, so only an access that
++    // runs past a 256-byte boundary can cross one (see translateAcross).
++    u32 next = 0, n = 0;
++    if constexpr (C == Core::C68020 && S != Byte) {
++        if ((addr & 0xFF) + S > 0x100 && mmu.isEnabled() &&
++            translateAcross<C, false, S>(addr, phys, next)) n = 4 - (addr & 3);
++    }
+     if (cpuModel < CPUModel::M68EC040) addr = phys;
+ 
+     // Check if a watchpoint has been reached
+@@ -815,6 +875,10 @@ try
+         didReachWatchpoint(phys, S, false, false);
+     }
+ 
++    if constexpr (C == Core::C68020 && S != Byte) {
++        if (n) return readAcross<C, S, F>(phys, next, n);
++    }
++
+     if constexpr (S == Byte) {
+ 
+         if constexpr (F & POLL) POLL_IPL;
+@@ -1032,6 +1096,15 @@ try
+     // Derive the physical address. On a 68040, addr keeps the logical address
+     // for the handler below: it is the fault address (see completeBusError).
+     u32 phys = translate<C, true, S>(addr, getFC(), ci);
++
++    // A misaligned access may cross into a page that is mapped elsewhere.
++    // Pages are aligned and at least 256 bytes long, so only an access that
++    // runs past a 256-byte boundary can cross one (see translateAcross).
++    u32 next = 0, n = 0;
++    if constexpr (C == Core::C68020 && S != Byte) {
++        if ((addr & 0xFF) + S > 0x100 && mmu.isEnabled() &&
++            translateAcross<C, true, S>(addr, phys, next)) n = 4 - (addr & 3);
++    }
+     if (cpuModel < CPUModel::M68EC040) addr = phys;
+ 
+     // Check if a watchpoint has been reached
+@@ -1039,6 +1112,10 @@ try
+         didReachWatchpoint(phys, S, true, false);
+     }
+ 
++    if constexpr (C == Core::C68020 && S != Byte) {
++        if (n) { writeAcross<C, S, F>(phys, next, n, val); return; }
++    }
++
+     if constexpr (S == Byte) {
+ 
+         if constexpr (F & POLL) POLL_IPL;
+diff --git a/Moira/MoiraExecMMU_cpp.h b/Moira/MoiraExecMMU_cpp.h
+index 1693fed..eea4872 100644
+--- a/Moira/MoiraExecMMU_cpp.h
++++ b/Moira/MoiraExecMMU_cpp.h
+@@ -198,6 +198,54 @@ Moira::translate(u32 addr, u8 fc, bool *ci)
+     }
+ }
+ 
++template <Core C, bool write, Size S> bool
++Moira::translateAcross(u32 addr, u32 phys, u32 &next)
++{
++    /* The second page of a misaligned access has its own translation. Pages
++     * are aligned and at least 256 bytes long, so the caller only asks for an
++     * access that runs past a 256-byte boundary, and the crossing is where
++     * the access enters its second long word.
++     *
++     * [B] MC68030UM § 9.7.2 — the TC page size field PS selects 256 bytes
++     *     (%1000) to 32 Kbytes; MC68040UM § 3.1: the TC P bit selects 4 or
++     *     8 Kbytes.
++     *
++     * Both pages are translated before the first bus cycle, and the first
++     * part is then transferred once. This is not the processor's bus order:
++     * MC68040UM § 4.1 says "If a misaligned access crosses two pages, then
++     * the partial access to the first page always happens twice". A
++     * peripheral on the first page sees one access, not two, and a fault on
++     * the second page leaves the first page untouched.
++     */
++    try {
++
++        next = translate<C, write, S>((addr & ~3) + 4, getFC());
++
++    } catch (BusError &e) {
++
++        // [B] MC68040UM § 8.4.6.2 — MA "is set if an ATC fault occurs for
++        //     second-page access that spans two pages in memory"; the SIZE
++        //     field is the original access size. § 8.4.6.4: the FA "contains
++        //     the address of the first byte of the transfer, regardless of
++        //     which of the two or three bus transfers ... was faulted".
++        // [F] The 68030 frame stacks the logical address of the second page,
++        //     where a PTEST in the handler finds the fault, and SIZE as
++        //     translate() sets it (the original size). MC68030UM Figure 8-9
++        //     ("Size Code for Data Cycle") can also be read as the remaining
++        //     size of the faulted cycle (1, 2 or 3 bytes), the reading of
++        //     queue patch 11. Settled by: a 68030 long word access crossing
++        //     into an invalid page.
++        if (cpuModel >= CPUModel::M68EC040) {
++
++            e.stackFrame.addr = addr & addrMask<C>();
++            e.stackFrame.ssw |= SSW040::MA;
++        }
++        throw;
++    }
++
++    return next != (phys & ~3) + 4;
++}
++
+ //
+ // Instruction handlers
+ //
+-- 
+2.54.0 (Apple Git-157)
+

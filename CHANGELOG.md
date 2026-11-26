@@ -627,6 +627,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-26 (fourth) — A misaligned access that crosses a page reaches the second page through its own translation: queue patch 19](#2026-11-26-misaligned-across-pages)
 - [2026-11-26 (third) — A bus error during a table search is an ATC fault on the retried access: queue patch 18; two neighbouring 68030/68040 frame questions ruled [F]](#2026-11-26-table-search-berr)
 - [2026-11-26 (second) — Patch 16 after review: the MC68882 re-take is documented, not unknown; the pending trap before FMOVEM is not an established divergence](#2026-11-26-fmove9-review)
 - [2026-11-26 — A 6888x FMOVE of a signaling NaN to a byte, word or long word sets SNAN, not OPERR: queue patch 17](#2026-11-26-fmove-snan-int)
@@ -1461,6 +1462,87 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-26-misaligned-across-pages"></a>
+## 2026-11-26 (fourth) — A misaligned access that crosses a page reaches the second page through its own translation: queue patch 19
+
+**The finding.** `readBus()`/`writeBus()` translated the first byte of an
+access only; the second word of a misaligned long word went to `phys + 2`
+(`read2x16`/`write2x16`), and an odd word straddled `phys`/`phys + 1` in
+one host call. When the second page is not physically contiguous, those
+bytes went to the page that follows the first one physically. Reproducer
+(`moira_rules_test` `misalignedAccessAcrossPages`, 48 checks): 4 KB pages,
+logical page 0 → physical $33000, page 1 → $35000. On the 68030, the
+68LC040 and the 68040, `MOVE.L (A0),D1` at offset $FFE read $AEAFA0A1
+(want $AEAF5051, the bytes at $34000 instead of $35000), at $FFD
+$ADAEAFA0, at $FFF $AFA0A1A2; `MOVE.W` at $FFF read $AFA0; every write
+landed on $34000; and with the second page invalid the instruction retired
+(PC0 = $1002) without an exception — the 68040 frames wanted SSW $0D05
+(MA, ATC, read, long; $0C05 write, $0D45/$0C45 word) with FA = the first
+byte.
+
+**The manuals.** [B] MC68040UM-1993 § 8.4.6.2: MA "is set if an ATC fault
+occurs for second-page access that spans two pages in memory", SIZE is
+"the original access size"; § 8.4.6.4: the FA is the first byte
+"regardless of which of the two or three bus transfers ... was faulted".
+MC68030UM-1989 § 9: "As the MMU receives each logical address from the CPU
+core, it searches the ATC"; § 9.7.2: PS selects pages of 256 bytes to
+32 Kbytes (the 68040: 4 or 8 Kbytes, § 3.1). Dirk's own 68030 data cache
+already translates each long word of a spanning access separately
+(`Cache.cpp`, `readDataCache()`); the fix takes the same shape.
+
+**The change.** Queue patch 19 (numbered 18 on its branch): pages are
+aligned and at least 256 bytes, so only an access that runs past a
+256-byte boundary can cross one (the prefilter `(addr & 0xFF) + S >
+0x100`, added after review; per-file SST counts identical with and without
+it); every other access takes the old path with no second lookup. For a
+candidate, with the MMU enabled, `translateAcross()` translates that long
+word; if it is not physically contiguous, `readAcross()`/`writeAcross()`
+carry out the access in words, splitting a word whose bytes straddle the
+boundary into two byte cycles. Contiguous mappings, aligned accesses and
+MMU-off machines take the old path unchanged. A second-page ATC fault on
+the 68040 stacks MA with the first byte's logical FA (and so does an ATC
+fault from a second-page table-search /BERR, patch 18). Sibling cells,
+`misalignedAccessUnchangedPaths`: in-page misaligned longs keep an aligned
+access's descriptor traffic, a contiguous crossing keeps the two-word bus
+path, a 68040 crossing write into a write-protected page stacks SSW $0C05
+and leaves the first page unwritten.
+
+**[F], kept.** (1) The 68030 frame of a second-page fault: the core
+stacks the logical address of the second page (where a handler's PTEST
+finds the fault) and SIZE as the original size; MC68030UM § 8.2 does not
+describe the case, and Figure 8-9 ("Size Code for Data Cycle") can be read
+as the remaining 1-3 bytes of the faulted cycle (patch 11's reading). A
+host /BERR on the second page's bus cycle on a 68030 stacks the host's
+physical address and, through patch 11's physical "rest" test, SIZ_L
+(tied to the 68030 fault-address domain, [2026-11-26 (third)](#2026-11-26-table-search-berr)).
+(2) Not modelled: MC68040UM § 4.1 (p. 4-3), "If a misaligned access
+crosses two pages, then the partial access to the first page always
+happens twice". Both pages are translated before the first data cycle and
+the first part is transferred once, or not at all when the second page
+faults: a peripheral on the first page sees one access, not two. Settled
+by: a bus capture of a crossing access on a real 68030 and 68040. (3) The
+68030 write path keeps the first page's cache-inhibit attribute for both
+long words in its data cache. Review follow-ups are listed in `TODO.md`.
+
+**Machine tier.** Every Mac OS 68030/68040 machine runs with the MMU
+enabled; a misaligned access spanning a 256-byte boundary now costs one
+more ATC lookup, and one more table walk when the second page misses.
+Under identity or contiguous mappings (24/32-bit tables) the result is
+unchanged; VM paging and any page-crossing misaligned access to a
+non-contiguous mapping now read and write the right physical bytes. The
+machine etalons were not run in this series.
+
+**Oracle agreement** ([D] WinUAE @ Hatari e77819f7, which translates each
+page; aarch64, `bf98107f` + 19). Ten SST files rose and none fell; floors
+raised in the same commit: `sst68030` fault_identity 32 → 36, fault_tt
+14 → 18 (total 2 268 → 2 276); `sst68040` fault_identity 276 → 303,
+fault_tt 486 → 498 (5 929 → 5 968); `sst68030_solo` fault_identity
+154 → 184, fault_tt 188 → 213 (3 583 → 3 638); `sst68030_rmw` rmw_identity
+1 252 → 1 304, rmw_tt 1 200 → 1 262 (2 452 → 2 566); `sst68040_8k`
+fault_identity_8k 231 → 260, fault_tt_8k 392 → 394 (3 019 → 3 050). The
+public vectors (`tests/cpu_vectors/manifest.json`): 030 811 → 819, 040
+384 → 386.
 
 <a id="2026-11-26-table-search-berr"></a>
 ## 2026-11-26 (third) — A bus error during a table search is an ATC fault on the retried access: queue patch 18; two neighbouring 68030/68040 frame questions ruled [F]

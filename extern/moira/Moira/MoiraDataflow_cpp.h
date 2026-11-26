@@ -740,6 +740,57 @@ Moira::writeLongSplit(u32 addr, u32 val)
     }
 }
 
+template <Core C, Size S, Flags F> u32
+Moira::readAcross(u32 lo, u32 hi, u32 n)
+{
+    // Byte i of the operand is at lo + i on the first page and at hi + i - n
+    // on the second. A word whose bytes lie on different pages is read as two
+    // bytes.
+    auto at = [&](u32 i) { return (i < n ? lo + i : hi + i - n) & addrMask<C>(); };
+    auto word = [&](u32 i) {
+        if (i + 1 != n) return u32(read16(at(i)));
+        u32 result = u32(read8(at(i))) << 8;
+        return result | read8(at(i + 1));
+    };
+
+    if constexpr (S == Word) {
+
+        if constexpr (F & POLL) POLL_IPL;
+        return word(0);
+    }
+
+    u32 result;
+    try { result = word(0) << 16; } catch (BusError &e) { e.upperWord = true; throw; }
+    if constexpr (F & POLL) POLL_IPL;
+    try { result |= word(2); } catch (BusError &e) { e.upperWord = false; throw; }
+    return result;
+}
+
+template <Core C, Size S, Flags F> void
+Moira::writeAcross(u32 lo, u32 hi, u32 n, u32 val)
+{
+    // See readAcross()
+    auto at = [&](u32 i) { return (i < n ? lo + i : hi + i - n) & addrMask<C>(); };
+    auto word = [&](u32 i, u16 v) {
+        if (i + 1 != n) { write16(at(i), v); return; }
+        write8(at(i), u8(v >> 8));
+        write8(at(i + 1), u8(v));
+    };
+
+    if constexpr (S == Word) {
+
+        if constexpr (F & POLL) POLL_IPL;
+        if constexpr (F & COMMIT_IRD) commitIrd<C>();
+        word(0, u16(val));
+        return;
+    }
+
+    try { word(0, u16(val >> 16)); } catch (BusError &e) { e.upperWord = true; throw; }
+    if constexpr (F & POLL) POLL_IPL;
+    if constexpr (F & COMMIT_IRD) commitIrd<C>();
+    try { word(2, u16(val)); } catch (BusError &e) { e.upperWord = false; throw; }
+}
+
 template <Core C, AddrSpace AS, Size S, Flags F> u32
 Moira::read(u32 addr)
 {
@@ -808,11 +859,24 @@ try
     // Derive the physical address. On a 68040, addr keeps the logical address
     // for the handler below: it is the fault address (see completeBusError).
     u32 phys = translate<C, false, S>(addr, getFC());
+
+    // A misaligned access may cross into a page that is mapped elsewhere.
+    // Pages are aligned and at least 256 bytes long, so only an access that
+    // runs past a 256-byte boundary can cross one (see translateAcross).
+    u32 next = 0, n = 0;
+    if constexpr (C == Core::C68020 && S != Byte) {
+        if ((addr & 0xFF) + S > 0x100 && mmu.isEnabled() &&
+            translateAcross<C, false, S>(addr, phys, next)) n = 4 - (addr & 3);
+    }
     if (cpuModel < CPUModel::M68EC040) addr = phys;
 
     // Check if a watchpoint has been reached
     if ((flags & State::CHECK_WP) && debugger.watchpointMatches(phys, S)) {
         didReachWatchpoint(phys, S, false, false);
+    }
+
+    if constexpr (C == Core::C68020 && S != Byte) {
+        if (n) return readAcross<C, S, F>(phys, next, n);
     }
 
     if constexpr (S == Byte) {
@@ -1032,11 +1096,24 @@ try
     // Derive the physical address. On a 68040, addr keeps the logical address
     // for the handler below: it is the fault address (see completeBusError).
     u32 phys = translate<C, true, S>(addr, getFC(), ci);
+
+    // A misaligned access may cross into a page that is mapped elsewhere.
+    // Pages are aligned and at least 256 bytes long, so only an access that
+    // runs past a 256-byte boundary can cross one (see translateAcross).
+    u32 next = 0, n = 0;
+    if constexpr (C == Core::C68020 && S != Byte) {
+        if ((addr & 0xFF) + S > 0x100 && mmu.isEnabled() &&
+            translateAcross<C, true, S>(addr, phys, next)) n = 4 - (addr & 3);
+    }
     if (cpuModel < CPUModel::M68EC040) addr = phys;
 
     // Check if a watchpoint has been reached
     if ((flags & State::CHECK_WP) && debugger.watchpointMatches(phys, S)) {
         didReachWatchpoint(phys, S, true, false);
+    }
+
+    if constexpr (C == Core::C68020 && S != Byte) {
+        if (n) { writeAcross<C, S, F>(phys, next, n, val); return; }
     }
 
     if constexpr (S == Byte) {

@@ -3,8 +3,8 @@
 # Raise a row when the run reports RAISE; never lower one to make a gate pass.
 core_identity_8k	329	500
 core_tt_8k	476	500
-fault_identity_8k	231	500
-fault_tt_8k	392	500
+fault_identity_8k	260	500
+fault_tt_8k	394	500
 mmu_identity_8k	350	500
 mmu_tt_8k	497	500
 random_identity_8k	287	500

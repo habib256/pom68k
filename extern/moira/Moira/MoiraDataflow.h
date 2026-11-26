@@ -147,6 +147,11 @@ template <Core C, Flags F = 0> void write2x8(u32 addr, u32 val);
 template <Core C, Flags F = 0> u32 read4x8(u32 addr);
 template <Core C, Flags F = 0> void write4x8(u32 addr, u32 val);
 
+// Reads/writes a misaligned word or longword whose first n bytes lie at lo
+// on one page and the others at hi on the next
+template <Core C, Size S, Flags F = 0> u32 readAcross(u32 lo, u32 hi, u32 n);
+template <Core C, Size S, Flags F = 0> void writeAcross(u32 lo, u32 hi, u32 n, u32 val);
+
 // Reads/writes an aligned longword, dispatching on the addressed port width
 template <Core C, Flags F = 0> u32 readLongSplit(u32 addr);
 template <Core C, Flags F = 0> void writeLongSplit(u32 addr, u32 val);

@@ -198,6 +198,54 @@ Moira::translate(u32 addr, u8 fc, bool *ci)
     }
 }
 
+template <Core C, bool write, Size S> bool
+Moira::translateAcross(u32 addr, u32 phys, u32 &next)
+{
+    /* The second page of a misaligned access has its own translation. Pages
+     * are aligned and at least 256 bytes long, so the caller only asks for an
+     * access that runs past a 256-byte boundary, and the crossing is where
+     * the access enters its second long word.
+     *
+     * [B] MC68030UM § 9.7.2 — the TC page size field PS selects 256 bytes
+     *     (%1000) to 32 Kbytes; MC68040UM § 3.1: the TC P bit selects 4 or
+     *     8 Kbytes.
+     *
+     * Both pages are translated before the first bus cycle, and the first
+     * part is then transferred once. This is not the processor's bus order:
+     * MC68040UM § 4.1 says "If a misaligned access crosses two pages, then
+     * the partial access to the first page always happens twice". A
+     * peripheral on the first page sees one access, not two, and a fault on
+     * the second page leaves the first page untouched.
+     */
+    try {
+
+        next = translate<C, write, S>((addr & ~3) + 4, getFC());
+
+    } catch (BusError &e) {
+
+        // [B] MC68040UM § 8.4.6.2 — MA "is set if an ATC fault occurs for
+        //     second-page access that spans two pages in memory"; the SIZE
+        //     field is the original access size. § 8.4.6.4: the FA "contains
+        //     the address of the first byte of the transfer, regardless of
+        //     which of the two or three bus transfers ... was faulted".
+        // [F] The 68030 frame stacks the logical address of the second page,
+        //     where a PTEST in the handler finds the fault, and SIZE as
+        //     translate() sets it (the original size). MC68030UM Figure 8-9
+        //     ("Size Code for Data Cycle") can also be read as the remaining
+        //     size of the faulted cycle (1, 2 or 3 bytes), the reading of
+        //     queue patch 11. Settled by: a 68030 long word access crossing
+        //     into an invalid page.
+        if (cpuModel >= CPUModel::M68EC040) {
+
+            e.stackFrame.addr = addr & addrMask<C>();
+            e.stackFrame.ssw |= SSW040::MA;
+        }
+        throw;
+    }
+
+    return next != (phys & ~3) + 4;
+}
+
 //
 // Instruction handlers
 //

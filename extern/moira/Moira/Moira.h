@@ -1135,6 +1135,10 @@ private:
     // Translates a logical address to a physical address
     template <Core C, bool write, Size S> u32 translate(u32 addr, u8 fc, bool *ci = nullptr);
 
+    // Translates the second long word of a misaligned access. Returns true if
+    // it does not follow the first one physically (the access crosses pages).
+    template <Core C, bool write, Size S> bool translateAcross(u32 addr, u32 phys, u32 &next);
+
 
 private:
     

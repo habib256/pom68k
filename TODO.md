@@ -58,7 +58,7 @@ Tout le reste (jalons produit, vitesse hors CPU, NeoST, dépôt) est après les
 deux phases, hors du chemin principal.
 
 **Reprendre ici (état au 2026-11-26, palier machines AArch64 vert).**
-`main` = Moira de Dirk `bf98107f` + 18 correctifs ; rien d'ouvert chez lui.
+`main` = Moira de Dirk `bf98107f` + 19 correctifs ; rien d'ouvert chez lui.
 Sur le M4, sur `3cfd4718` : build, `asset-none` 156/156, `cpu-vectors`, les
 15 gates SST, et **le palier machines complet** (`ctest -L
 'm040|m030|etalon' -j3`, 320/320 en 4 h 52 ; recensement 319 exécutés, 1
@@ -152,7 +152,7 @@ défaut CPU, dans cet ordre :
   (`863b8d02`, coups du cache comptés une fois). Fusionnées le 2026-11-25 :
   #46 (latch du 68020 après MOVE vers SR), #47 (FBcc/FDBcc vers une cible
   impaire), #48 (FRESTORE) et #49 (frame FSAVE UNIMP) ; la file est rebasée
-  sur `bf98107f` et compte 18 correctifs (16, 17 et 18, locaux, depuis le
+  sur `bf98107f` et compte 19 correctifs (16 à 19, locaux, depuis le
   2026-11-25 et le 2026-11-26). L'état de chaque correctif et sa
   PR se suivent dans `extern/moira/patches/queue.tsv`.
 - [ ] **Mesurer sur un vrai 68030 la limite d'une racine DT=1 avec FCL.**
@@ -529,6 +529,21 @@ de liste connue ou capture attendue.
   Réglé pour le 6888x (MC68881UM-1989 §4.7.3, Table 4-20, note 3) ; le
   MC68040UM-1993 ne dit rien du bit 5. *Tranche : FBcc `$F2A1` sur un
   vrai 68040.*
+- [ ] **[F] Cadre 68030 d'une faute sur la seconde page d'un accès mal
+  aligné.** Le correctif 19 empile l'adresse logique du premier octet de
+  la seconde page et la taille d'origine (MC68030UM §8.2 muet) ; la Figure
+  8-9 (« Size Code for Data Cycle ») peut se lire comme les 1 à 3 octets
+  restants du cycle fautif, comme le lit le correctif 11 (SIZ 3 octets =
+  %11 n'a pas de constante SSW030 dans Moira). Si un gestionnaire termine
+  le cycle par logiciel (DF effacé), le rejeu des cycles complétés de
+  `readBus()`/`writeBus()` (correctifs 3/9, branche `completed.addr == addr
+  + 2`) ne reconnaît qu'un second MOT à addr + 2 : pour un franchissement à
+  l'octet 1 ou 3 il fusionnerait les mauvais octets. Une /BERR de la carte
+  sur la seconde page empile l'adresse physique et SIZ_L (test « rest » du
+  correctif 11). `misalignedAccessAcrossPages` épingle FA et DF, pas SIZE.
+  *Bloqué : un vrai 68030, accès long qui franchit vers une page invalide
+  aux décalages 1, 2 et 3, et vers une page dont la carte répond /BERR —
+  SSW SIZE et SP+$10.*
 - [ ] **[F] Adresse de faute 68030 d'une /BERR après traduction.**
   `completeBusError()` reçoit encore l'adresse physique sur 68020/68030 (le
   correctif 12 ne change que le 68040, `CHANGELOG` 2026-11-25 (third)).
@@ -610,9 +625,21 @@ Les lignes de cache attendent la décision sur `cache040_test`.
   Terrain réel : les etalons 68040 en mode 24 bits, où logique et physique
   diffèrent. *Bloqué : frame d'un vrai 68040 pour une écriture de mot
   terminée par TEA à A1A0 = 00, et pour une faute ATC.*
-- [ ] **Un accès mal aligné qui franchit une page** : `readBus()`/
-  `writeBus()` traduisent une fois et prennent `phys + 2` pour le second
-  mot (68030 aussi).
+- [ ] **Accès mal aligné qui franchit une page : les suites du correctif
+  19** (`CHANGELOG` 2026-11-26 (fourth)), chacune seule : (1) les
+  points d'arrêt sur données du chemin `readAcross()`/`writeAcross()` ne
+  testent que la plage physique de la première page (débogueur seul) ;
+  (2) la partie lecture de TAS/CAS/CAS2 n'est pas contrôlée en écriture
+  sur la seconde page (`translateAcross<C, false, S>`), alors que
+  MC68030UM §8.2.3 et MC68040UM §8.4.6.7 traitent un RMW comme une
+  écriture pour la protection ; (3) le bit LK du SSW 68040 n'est jamais
+  posé par `completeBusError()`/`translate()` ; (4) l'état de (An)+ /
+  -(An) après une faute sur la seconde page (68030 et 68040) n'est pas
+  épinglé ; (5) le double accès à la première page de MC68040UM §4.1
+  n'est pas modélisé (les deux pages sont traduites d'abord) ; (6) le
+  chemin d'écriture 68030 garde l'attribut d'inhibition de cache de la
+  première page pour les deux longs. *Bloqué pour (5) : une capture de bus
+  d'un accès qui franchit une page sur un vrai 68030 et 68040.*
 - [ ] **PTEST dont la propre recherche de table prend une /BERR.** 68030 :
   B et I sans exception (MC68030UM §9.7.4, Table 9-3 ; ligne connue
   « 68030 PTEST level 7 into a /BERR ») ; 68040 : MMUSR = B seul, « all

@@ -1029,6 +1029,234 @@ void tableSearchBusError040()
     }
 }
 
+// A misaligned access that crosses into the next page reaches that page
+// through its own translation. Logical page 0 maps to physical $33000 and
+// page 1 to $35000, so the bytes after the boundary are not at phys + n.
+// [B] MC68040UM-1993 §8.4.6.2: MA "is set if an ATC fault occurs for
+// second-page access that spans two pages in memory", SIZE "corresponds to
+// the original access size"; §8.4.6.4: the FA "contains the address of the
+// first byte of the transfer, regardless of which of the two or three bus
+// transfers for the misaligned access was faulted". MC68030UM-1989 §9
+// (p. 9-1): "As the MMU receives each logical address from the CPU core, it
+// searches the ATC".
+// Not modelled: MC68040UM §4.1 (p. 4-3), "the partial access to the first
+// page always happens twice". The core translates both pages before the
+// first data cycle and transfers the first part once, or not at all when
+// the second page faults.
+// [F] For an invalid second page the 68030 frame carries the logical
+// address of that page (where a PTEST finds the fault); MC68030UM §8.2 does
+// not describe the case. This pins that address and DF only, not the SIZE
+// field, which is open (original size, or the remaining 1-3 bytes of the
+// faulted cycle as MC68030UM Figure 8-9 may be read).
+void misalignedAccessAcrossPages()
+{
+    constexpr uint32_t kPage0 = 0x33000, kPage1 = 0x35000;
+    struct Setup { moira::CPUModel model; const char* name; uint32_t base; };
+    const Setup setups[] = {
+        { moira::CPUModel::M68030,   "68030",   0x40000000 },
+        { moira::CPUModel::M68LC040, "68LC040", 0x10000000 },
+        { moira::CPUModel::M68040,   "68040",   0x10000000 },
+    };
+    const auto map = [&](TestCpu& c, const Setup& s, bool secondValid) {
+        const bool m040 = s.model >= moira::CPUModel::M68EC040;
+        if (m040) {
+            // 4K pages; root $4000, pointer table $4200, page table $6000.
+            p32(c, 0x4020, 0x4202); p32(c, 0x4200, 0x6002);
+            p32(c, 0x6000, kPage0 | 0x59);
+            p32(c, 0x6004, secondValid ? (kPage1 | 0x59) : 0);
+            c.setURP040(0x4000); c.setSRP040(0x4000);
+            c.setITT0(0x0000C040); c.setDTT0(0x0000C040);
+            c.setTC040(0x8000);
+        } else {
+            // 4K pages, TIA = TIB = 10 bits; TT0/TT1 cover $00xxxxxx.
+            constexpr uint32_t kTc = 0x80000000u | 0xCu << 20 | 0xAu << 12 | 0xAu << 8;
+            p32(c, 0x30000 + 0x100 * 4, 0x31000 | 2);       // TIA $100 -> TIB table
+            p32(c, 0x31000, kPage0 | 1);
+            p32(c, 0x31004, secondValid ? (kPage1 | 1) : 0);
+            c.mmu030(kTc, uint64_t(0x7FFF0002u) << 32 | 0x30000,
+                     0x00008124u, 0x00008114u);
+        }
+    };
+    for (const auto& s : setups)
+    for (unsigned offset : {0xFFDu, 0xFFEu, 0xFFFu})
+    for (bool longSize : {true, false})
+    for (bool write : {false, true}) {
+        if (!longSize && offset != 0xFFF) continue;     // a word crosses at $FFF only
+        const unsigned bytes = longSize ? 4 : 2, first = 0x1000 - offset;
+        const uint32_t logical = s.base + offset;
+        // MOVE.L/W (A0),D1 or MOVE.L/W D1,(A0)
+        const uint16_t opcode = uint16_t((longSize ? 0x2000 : 0x3000) |
+                                         (write ? 0x0081 : 0x0210));
+        TestCpu c(s.model);
+        p32(c, 2 * 4, kHandler);
+        p16(c, kHandler, kNop);
+        stage(c, opcode, 0);
+        for (unsigned i = 0; i < 0x2000; i++) {
+            c.mem[kPage0 + i] = uint8_t(0xA0 + i % 16);  // page 0 and the page after it
+            c.mem[kPage1 + i] = uint8_t(0x50 + i % 16);  // page 1
+        }
+        map(c, s, true);
+        c.setA(0, logical); c.setD(1, 0x89ABCDEF);
+        const bool contained = executeContained(c);
+        uint32_t want = 0, got = 0;
+        bool memoryOk = true;
+        for (unsigned i = 0; i < bytes; i++) {
+            const uint32_t pa = i < first ? kPage0 + offset + i : kPage1 + (i - first);
+            const uint8_t data = uint8_t(0x89ABCDEFu >> (8 * (bytes - 1 - i)));
+            if (write) memoryOk &= c.mem[pa] == data;
+            want = want << 8 | (write ? data : c.mem[pa]);
+        }
+        // Nothing lands on the page that physically follows page 0.
+        for (unsigned i = 0; i < 4; i++) memoryOk &= c.mem[kPage0 + 0x1000 + i] == uint8_t(0xA0 + i);
+        got = write ? want : (longSize ? c.getD(1) : c.getD(1) & 0xFFFF);
+        if (!write) want = longSize ? want : want & 0xFFFF;
+        CHECK(contained && c.getPC0() == kCode + 2 && got == want && memoryOk,
+              "%s %s.%c across pages at logical %08X: PC0=%08X, %s %08X (want %08X), "
+              "page boundary bytes %s",
+              s.name, write ? "MOVE D1,(A0)" : "MOVE (A0),D1", longSize ? 'L' : 'W',
+              logical, c.getPC0(), write ? "wrote" : "read", got, want,
+              memoryOk ? "ok" : "WRONG");
+
+        // The second page is invalid: an ATC fault on its access
+        TestCpu f(s.model);
+        p32(f, 2 * 4, kHandler);
+        p16(f, kHandler, kNop);
+        stage(f, opcode, 0);
+        map(f, s, false);
+        f.setA(0, logical); f.setD(1, 0x89ABCDEF);
+        const bool faultContained = executeContained(f);
+        const uint32_t sp = f.getSP();
+        const uint16_t format = g16(f, sp + 6);
+        if (s.model >= moira::CPUModel::M68EC040) {
+            const uint16_t ssw = g16(f, sp + 0x0C);
+            const uint32_t fa = g32(f, sp + 0x14);
+            const uint16_t wantSsw = uint16_t(0x0C05 | (write ? 0 : 0x0100) |
+                                              (longSize ? 0 : 0x0040));  // MA ATC, TM=5
+            CHECK(faultContained && f.getPC0() == kHandler && format == 0x7008 &&
+                  ssw == wantSsw && fa == logical,
+                  "%s %s.%c across into an invalid page at %08X: PC0=%08X format %04X "
+                  "SSW %04X (want %04X, MA), fault address %08X (want the first byte %08X)",
+                  s.name, write ? "MOVE D1,(A0)" : "MOVE (A0),D1", longSize ? 'L' : 'W',
+                  logical, f.getPC0(), format, ssw, wantSsw, fa, logical);
+        } else {
+            const uint16_t ssw = g16(f, sp + 0x0A);
+            const uint32_t fa = g32(f, sp + 0x10);
+            CHECK(faultContained && f.getPC0() == kHandler &&
+                  (format & 0xF000) >= 0xA000 && (ssw & 0x0100) &&
+                  fa == s.base + 0x1000,
+                  "%s %s.%c across into an invalid page at %08X: PC0=%08X format %04X "
+                  "SSW %04X (want DF), fault address %08X (want the second page %08X)",
+                  s.name, write ? "MOVE D1,(A0)" : "MOVE (A0),D1", longSize ? 'L' : 'W',
+                  logical, f.getPC0(), format, ssw, fa, s.base + 0x1000);
+        }
+    }
+}
+
+// Siblings of misalignedAccessAcrossPages: what must not change.
+// (a) A misaligned long word inside one page reads and writes the same bytes
+//     and walks the tables exactly as an aligned access to the same page
+//     does: no lookup of the next page (queue patch 19 only translates an
+//     access that runs past a 256-byte boundary).
+// (b) A crossing into a page that follows the first one physically keeps
+//     the old bus path: two word cycles at phys and phys + 2.
+// (c) A crossing write into a write-protected page on the 68040 is an ATC
+//     fault with MA. [B] MC68040UM-1993 §8.4.6.2: ATC is set for a
+//     "privilege violation (write protected or supervisor only)", MA for a
+//     "second-page access that spans two pages". The first page is left
+//     unwritten: the core translates both pages first, where §4.1 has the
+//     processor access the first page (twice); that order is not modelled.
+void misalignedAccessUnchangedPaths()
+{
+    constexpr uint32_t kPage0 = 0x33000;
+    struct Setup { moira::CPUModel model; const char* name; uint32_t base, tables; };
+    const Setup setups[] = {
+        { moira::CPUModel::M68030,   "68030",   0x40000000, 0x31000 },
+        { moira::CPUModel::M68LC040, "68LC040", 0x10000000, 0x6000 },
+        { moira::CPUModel::M68040,   "68040",   0x10000000, 0x6000 },
+    };
+    const auto map = [&](TestCpu& c, const Setup& s, uint32_t page1) {
+        if (s.model >= moira::CPUModel::M68EC040) {
+            p32(c, 0x4020, 0x4202); p32(c, 0x4200, 0x6002);
+            p32(c, 0x6000, kPage0 | 0x59);
+            p32(c, 0x6004, page1 | 0x59);
+            c.setURP040(0x4000); c.setSRP040(0x4000);
+            c.setITT0(0x0000C040); c.setDTT0(0x0000C040);
+            c.setTC040(0x8000);
+        } else {
+            constexpr uint32_t kTc = 0x80000000u | 0xCu << 20 | 0xAu << 12 | 0xAu << 8;
+            p32(c, 0x30000 + 0x100 * 4, 0x31000 | 2);
+            p32(c, 0x31000, kPage0 | 1);
+            p32(c, 0x31004, page1 | 1 | (page1 & 4));      // bit 2: WP
+            c.mmu030(kTc, uint64_t(0x7FFF0002u) << 32 | 0x30000,
+                     0x00008124u, 0x00008114u);
+        }
+    };
+    const auto run = [&](TestCpu& c, const Setup& s, uint32_t page1, uint16_t opcode,
+                         uint32_t logical, uint32_t traceAt) {
+        p32(c, 2 * 4, kHandler);
+        p16(c, kHandler, kNop);
+        stage(c, opcode, 0);
+        for (unsigned i = 0; i < 0x2000; i++) c.mem[kPage0 + i] = uint8_t(0xA0 + i % 16);
+        map(c, s, page1);
+        c.setA(0, logical); c.setD(1, 0x89ABCDEF);
+        c.traceBus = true; c.busBase = traceAt; c.bus.clear();
+        return executeContained(c);
+    };
+    for (const auto& s : setups)
+    for (bool write : {false, true}) {
+        const uint16_t opcode = write ? 0x2081 : 0x2210;    // MOVE.L D1,(A0) / (A0),D1
+        // (a) in one page: the descriptor traffic of an aligned access
+        TestCpu ref(s.model);
+        run(ref, s, 0x35000, opcode, s.base + 0x800, s.tables);
+        for (unsigned offset : {0x801u, 0x802u, 0x803u}) {
+            TestCpu c(s.model);
+            const bool contained = run(c, s, 0x35000, opcode, s.base + offset, s.tables);
+            uint32_t want = 0;
+            for (unsigned i = 0; i < 4; i++)
+                want = want << 8 | c.mem[kPage0 + offset + i];
+            const uint32_t got = write ? 0x89ABCDEF : c.getD(1);
+            CHECK(contained && c.getPC0() == kCode + 2 && got == want &&
+                  !ref.bus.empty() && c.bus == ref.bus,
+                  "%s MOVE.L %s at page offset %03X: PC0=%08X, %08X (want %08X), "
+                  "descriptor cycles \"%s\" (want those of an aligned access, \"%s\")",
+                  s.name, write ? "D1,(A0)" : "(A0),D1", offset, c.getPC0(), got,
+                  want, c.bus.c_str(), ref.bus.c_str());
+        }
+        // (b) crossing into the physically next page: the old two-word path
+        {
+            TestCpu c(s.model);
+            const bool contained = run(c, s, kPage0 + 0x1000, opcode, s.base + 0xFFD,
+                                       kPage0 + 0xFF0);
+            uint32_t want = 0;
+            for (unsigned i = 0; i < 4; i++) want = want << 8 | c.mem[kPage0 + 0xFFD + i];
+            const uint32_t got = write ? 0x89ABCDEF : c.getD(1);
+            const char* wantBus = write ? "W13 W15" : "w13 w15";
+            CHECK(contained && c.getPC0() == kCode + 2 && got == want && c.bus == wantBus,
+                  "%s MOVE.L %s across into the contiguous page: PC0=%08X, %08X "
+                  "(want %08X), bus \"%s\" (want \"%s\")",
+                  s.name, write ? "D1,(A0)" : "(A0),D1", c.getPC0(), got, want,
+                  c.bus.c_str(), wantBus);
+        }
+        // (c) a crossing write into a write-protected page (68040)
+        if (write && s.model >= moira::CPUModel::M68EC040) {
+            TestCpu c(s.model);
+            const bool contained = run(c, s, 0x35000 | 0x04, opcode, s.base + 0xFFE,
+                                       kPage0 + 0xFF0);
+            const uint32_t sp = c.getSP();
+            const uint16_t ssw = g16(c, sp + 0x0C);
+            const uint32_t fa = g32(c, sp + 0x14);
+            CHECK(contained && c.getPC0() == kHandler && g16(c, sp + 6) == 0x7008 &&
+                  ssw == 0x0C05 && fa == s.base + 0xFFE &&
+                  c.mem[kPage0 + 0xFFE] == 0xAE && c.mem[kPage0 + 0xFFF] == 0xAF,
+                  "%s MOVE.L D1,(A0) across into a write-protected page: PC0=%08X "
+                  "SSW %04X (want 0C05: MA, ATC, write, long), fault address %08X "
+                  "(want %08X), first page %02X%02X (want AEAF, unwritten)",
+                  s.name, c.getPC0(), ssw, fa, s.base + 0xFFE,
+                  c.mem[kPage0 + 0xFFE], c.mem[kPage0 + 0xFFF]);
+        }
+    }
+}
+
 void ordinaryStoreStillAdvances040()
 {
     // [D] WinUAE cpuemu_31.c @ Hatari e77819f7: ordinary MOVE stores
@@ -3979,6 +4207,8 @@ int main(int argc, char** argv)
     movepFaultRestarts040();
     hostBusErrorFaultAddressIsLogical040();
     tableSearchBusError040();
+    misalignedAccessAcrossPages();
+    misalignedAccessUnchangedPaths();
     ordinaryStoreStillAdvances040();
     ttrTableFollowsRegisters();
     clrReadsOnlyOn68000();
