@@ -1,4 +1,4 @@
-From 4656b4342b89b952e78d03edac1c2e09617ca504 Mon Sep 17 00:00:00 2001
+From 396e26a020569f48ed36f06b87fa0a1bb00237bd Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 16:10:16 +0400
 Subject: [PATCH 15/15] 68020 core: the discarded refill is an instruction
@@ -6,11 +6,25 @@ Subject: [PATCH 15/15] 68020 core: the discarded refill is an instruction
 
 readStatusRefill() sent the discarded program word through readInstr() only
 when the instruction cache is emulated. Without one, it used a plain program
-read, which skips what readInstr() charges for every other instruction word:
-the narrow-port penalty of a 16-bit dsack().
+read, which skips what readInstr() charges every other instruction word
+fetched from a port narrower than 32 bits (dsack()).
 
 The refill now goes through readInstr() on every 68020-core model, so the
-word costs what any other fetched word costs on that bus.
+discarded word costs what any other fetched word costs on that bus. The
+manuals count it as an ordinary prefetch bus cycle: an instruction prefetch
+is one bus cycle on a 32-bit port and two on a 16-bit port (MC68020UM
+Table 5-6, MC68030UM Table 7-6), and the timing tables charge the refill
+word the instruction discards like any other prefetch: MOVE EA,SR is
+11(0/2/0) worst case against 5(0/1/0) for MOVE EA,CCR, an expired DBcc
+10(0/3/0), a taken TRAPV 32(1/2/5) (MC68020UM 8.2, 8.2.7, 8.2.15, 8.2.17;
+MC68030UM 11.2.2, 11.3.3, 11.6.7, 11.6.15, 11.6.17, 12.7.1).
+
+The change matters only where the instruction cache is not emulated, the
+68040 models: the 68020 and 68030 already went through readInstr(). There
+the charge follows the host's dsack() answer, and with the default 16-bit
+answer a 68040 pays it although MC68040UM 7.2 says the 68040 does not
+size its bus dynamically: a host that models a 68040 bus answers
+DSACK_32.
 ---
  Moira/MoiraDataflow_cpp.h | 6 ++----
  1 file changed, 2 insertions(+), 4 deletions(-)
@@ -33,5 +47,5 @@ index dd92749..2cf66f1 100644
      (void)read<C, AddrSpace::PROG, Word>(addr);
  }
 -- 
-2.53.0
+2.54.0 (Apple Git-157)
 

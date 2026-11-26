@@ -627,6 +627,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-26 (seventh) — Queue patch 15 re-justified: on the 68020/68030 the manuals' rule, on the 68040 a speed setting tied to a 16-bit port the manual rules out](#2026-11-26-patch15-rejustified)
 - [2026-11-26 (sixth) — Ten `moira_rules_test` rows that no longer fail, explained and removed: patch 14 and Dirk's #47](#2026-11-26-moira-rules-stale-rows)
 - [2026-11-26 (fifth) — The `@D23a` rows judge the format-$9 frame: 206 of 448 now agree, the floors rise](#2026-11-26-d23a-format9)
 - [2026-11-26 (fourth) — A misaligned access that crosses a page reaches the second page through its own translation: queue patch 19](#2026-11-26-misaligned-across-pages)
@@ -1464,6 +1465,64 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-26-patch15-rejustified"></a>
+## 2026-11-26 (seventh) — Queue patch 15 re-justified: on the 68020/68030 the manuals' rule, on the 68040 a speed setting tied to a 16-bit port the manual rules out
+
+The [2026-11-25 (fifth)](#2026-11-25-clipboard-gate-process) entry left
+patch 15 (the discarded refill word of MOVE to SR/CCR, an expired DBcc and
+a taken TRAPV goes through `readInstr()` without an emulated instruction
+cache) with no evidence: its only gate, `q605_clipboard_etalon`, had read
+another process's scrap. A read-only ruling re-judged it on its merits; the
+code facts were checked again on this tree and the manual pages read
+rendered. No code changes, no cycle changes.
+
+**What the patch changes.** `iCache.setEmulated()` (`Moira.cpp`
+`setModel`) emulates the instruction cache from the 68EC020 up to, not
+including, the 68EC040. On the 68020/68030 `readStatusRefill()` already
+went through `readInstr()`: the patch changes nothing there. On the
+68LC040/68040 the word went through a plain program read; through
+`readInstr()` it pays the narrow-port charge (`portSize(dsack(phys)) != 4`
+→ +4 Moira cycles, one machine cycle at the default `cacheBoost_` of 4).
+
+**The 68020/68030 rule, [B].** A refill word that the instruction later
+discards is an ordinary prefetch bus cycle of the same cost: an instruction
+prefetch is one bus cycle on a 32-bit port and two on a 16-bit one
+(MC68020UM-1992 Table 5-6, p. 68; MC68030UM-1989 Table 7-6, p. 335), and the
+timing tables count the discarded word as a prefetch — MC68020UM § 8.2,
+§ 8.2.7 (p. 244: MOVE EA,SR 11(0/2/0) worst case against MOVE EA,CCR
+5(0/1/0)), § 8.2.15 (p. 252: DBcc expired 10(0/3/0)), § 8.2.17 (p. 254:
+TRAPV); MC68030UM § 11.2.2 (p. 556, the instruction pipe), § 11.3.3
+(p. 560, no-cache case), § 11.6.7 (p. 582: MOVE EA,SR no-cache 10(0/2/0),
+EA,CCR 4(0/1/0)), § 11.6.15 (p. 590: DBcc expired 13(0/3/0)), § 11.6.17,
+§ 12.7.1 (p. 630, the REFILL signal).
+
+**The 68040 half, [F].** The charge exists only because the 68040 wrappers
+inherit Moira's default 16-bit `dsack()`, which MC68040UM-1993 § 7.2
+(p. 145, manual p. 7-3) contradicts: "the M68040 does not support dynamic
+bus sizing", and memory blocks "must be 32 bits wide". It is a speed
+setting, tuned together with `cacheBoost_`, on which the 68040 machines were
+validated. Settled by: a reference (TimeDBRA or Speedometer on a real
+Quadra [A], or MAME [D]) in a recalibration that switches the wrappers to
+32 bits and retunes in one commit.
+
+**The change, metadata only.** Patch 15's message is rewritten with these
+citations (the patch file is regenerated; the diff is unchanged); its
+`queue.tsv` row cites the locators, drops `q605_clipboard_etalon` from its
+gates and notes "040 half [F] until the port width/cadence is
+recalibrated"; the inventory row matches; the locators are added to
+`tests/core_manuals.lock`. `src/Moira040Cpu.h` now declares the
+inherited answer explicitly, `dsack()` returning `DSACK_16` for every
+address — the value Moira's default already returned, no 68040 wrapper
+overrode it, so behaviour is identical — with the [B] § 7.2 contradiction
+and the [F] status in its comment. `Cpu030` (LC II) declares its 16-bit
+answer the same way.
+
+**Found on the way, not changed** (`TODO.md`): ANDI/ORI/EORI to SR
+(`execAndisr`) read the discarded word as an uncharged data-space read,
+against MC68020UM § 8.2.16 (p. 253: 15(0/2/0) worst case, two prefetches);
+and `jumpToVector()` reads the handler's first word with a plain program
+read, bypassing the instruction cache and its charge.
 
 <a id="2026-11-26-moira-rules-stale-rows"></a>
 ## 2026-11-26 (sixth) — Ten `moira_rules_test` rows that no longer fail, explained and removed: patch 14 and Dirk's #47

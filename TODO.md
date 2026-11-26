@@ -57,17 +57,24 @@ ses gates enregistrés absents dans `cmake/pom68k_jit_gates.tsv`. Bascule et
 Tout le reste (jalons produit, vitesse hors CPU, NeoST, dépôt) est après les
 deux phases, hors du chemin principal.
 
-**Reprendre ici (état au 2026-11-26, palier machines AArch64 vert).**
-`main` = Moira de Dirk `bf98107f` + 19 correctifs ; rien d'ouvert chez lui.
-Sur le M4, sur `3cfd4718` : build, `asset-none` 156/156, `cpu-vectors`, les
-15 gates SST, et **le palier machines complet** (`ctest -L
-'m040|m030|etalon' -j3`, 320/320 en 4 h 52 ; recensement 319 exécutés, 1
-sauté : `cd_pressed_toc_etalon`, pas de disque pressé sur cet hôte),
-enregistré dans `STATUS.md`. Note de passation précédente :
+**Reprendre ici (état au 2026-11-26, après la série du jour).**
+`main` = Moira de Dirk `bf98107f` + 19 correctifs (17 : SNaN vers entier
+du 6888x ; 18 : /BERR pendant une recherche de table ; 19 : accès mal
+aligné qui franchit une page) ; rien d'ouvert chez lui. Le palier machines
+AArch64 complet est vert sur `3cfd4718` (320/320 en 4 h 52, 319 exécutés,
+`cd_pressed_toc_etalon` sauté), enregistré dans `STATUS.md`, **avant** les
+correctifs 17-19. Sur la série du 2026-11-26 (M4) : build complet,
+`asset-none` 156/156 (3 fumées GUI sautées, ImGui absent), `cpu-vectors`,
+les 15 gates SST avec leurs corpus (planchers égaux aux mesures),
+`moira_rules`/`berr020`/`berr030`/`fault_transparency` par
+`known_failures`, `fpu_sanity`, `fpu040`, `fpu_context`, `moira_state`,
+`sst_known_contract`, `core_grades`, `docs_test`, `file_size_budget`,
+`moira_queue` ; **aucun etalon machine**. Note de passation précédente :
 `scratchpad/2026-11-25/HANDOVER.md`. Dans l'ordre :
 
-1. **Fait le 2026-11-26** — jambe AArch64 du critère 6 (`CHANGELOG`
-   2026-11-25 (fifth)).
+1. **Le palier machines AArch64 sur la série** (`ctest -L
+   'm040|m030|etalon' -j3`) : les correctifs 18 et 19 touchent chaque
+   machine 68030/68040 (MMU active), le 17 chaque Mac à 6888x.
 2. **Le même palier sur x86-64** (`git pull`, build borné, `asset-none`,
    puis `ctest -L 'm040|m030|etalon'`), puis
    `tools/status_md.py --record-run` : critère 6 de § Phase 1. Dernier
@@ -212,18 +219,27 @@ défaut CPU, dans cet ordre :
   `addrerr30` : SR $2012 au lieu de $201A) ; le 10 (tampon de sortie de
   données 68020, MC68020UM §6.2.2) fait différer `ExceptionUAE020` d'UAE sur
   `frame.dob`. Trancher chacun avant toute PR.
-- [ ] **Largeur de port des wrappers 68040.** Ils héritent du `dsack()` 16
-  bits par défaut de Moira, alors que `Cpu020` répond 32 bits : un port 16
-  bits est-il juste pour les machines 68040 (le 68040 n'a pas de
-  dimensionnement dynamique du bus) ? `readInstr()` facture 4 cycles par mot
+- [ ] **[F] Largeur de port des wrappers 68040 et moitié 68040 du
+  correctif 15.** `Moira040Cpu` répond `DSACK_16` (explicite depuis le
+  2026-11-26, valeur héritée de Moira), contre MC68040UM §7.2 (p. 7-3 :
+  pas de dimensionnement dynamique, mémoire « 32 bits wide ») ; `Cpu020`
+  répond 32 bits. `readInstr()` facture 4 cycles Moira par mot
   d'instruction lu sur un port étroit : toute la cadence des machines 68040
-  en dépend. Le correctif 15 (local) fait payer la même chose au mot jeté de
-  MOVE vers SR/CCR, DBcc expiré et TRAPV pris. Sa seule preuve par gate
-  était `q605_clipboard_etalon` (ScrapCount 9 → 7), qui lisait le scrap du
-  processus en cours à une trame arbitraire (`CHANGELOG` 2026-11-25
-  (fifth)) : le correctif 15 n'a donc plus de preuve et doit être rejugé
-  sur ses mérites (manuel, ou retiré). À trancher avant de toucher à la
-  largeur : un port 32 bits déplace la cadence de tous les gates 68040.
+  en dépend, réglée avec `cacheBoost_`. Le correctif 15 a sa preuve [B]
+  pour le 68020/68030 (MC68020UM Table 5-6, §8.2.7, §8.2.15, §8.2.17 ;
+  MC68030UM Table 7-6, §11.6.7, §11.6.15 : le mot jeté est un préchargement
+  ordinaire) et n'y change rien ; sur 68040 il ne coûte que par ce port 16
+  bits (`CHANGELOG` 2026-11-26 (seventh)). *Tranche : une référence
+  (TimeDBRA ou Speedometer d'un vrai Quadra, ou MAME) et une recalibration
+  qui passe à 32 bits et rerègle `cacheBoost_` dans le même commit ; un
+  port 32 bits déplace la cadence de tous les gates 68040.*
+- [ ] **Deux lectures jetées non facturées** (relevées le 2026-11-26) :
+  ANDI/ORI/EORI vers SR (`execAndisr`) lisent le mot jeté en espace
+  données sans la facturation de `readInstr()`, contre MC68020UM §8.2.16
+  (15(0/2/0) au pire, deux préchargements) ; `jumpToVector()` lit le
+  premier mot du gestionnaire par une lecture programme simple, hors cache
+  d'instructions. Mesurer l'effet sur `icache020_test` avant tout
+  correctif (chez Dirk : même boucle amont).
 - [ ] **« Lire le presse-papiers de l'invité » peut lire le scrap d'un
   autre processus.** `readGuestScrapText` lit les globales $960 du
   processus en cours ; sur une image avec un processus d'arrière-plan

@@ -200,6 +200,20 @@ protected:
     // CINV/CPUSH is the guest announcing that it just wrote code.
     void didChangeCACR(moira::u32) override { this->jit_.flushAll(); }
 
+    // The port width Moira's bus model asks of every access: readInstr()
+    // charges each instruction word fetched from a port narrower than 32
+    // bits 4 more cycles, and queue patch 15 charges the discarded refill
+    // word the same. This is the value the 68040 boards always inherited
+    // from Moira's default; it is written here to make the choice visible.
+    // [B] MC68040UM-1993 §7.2 (p. 7-3): "the M68040 does not support dynamic
+    // bus sizing", and contiguous memory "must be 32 bits wide" — a 16-bit
+    // answer contradicts the manual.
+    // [F] Kept as a speed setting, tuned together with cacheBoost_: the
+    // 68040 machines were validated on this cadence. Settled by: a reference
+    // (TimeDBRA or Speedometer on a real Quadra, or MAME) in one
+    // recalibration that answers DSACK_32 and retunes cacheBoost_ with it.
+    moira::u8 dsack(moira::u32) const override { return moira::DSACK_16; }
+
     void catchUp() {
         this->self().onPeriphCatchUp();
         if (this->clock < periphDeadline_) return;
