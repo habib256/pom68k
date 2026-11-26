@@ -18,6 +18,9 @@
 // The harness replaces only the oracle's declared frame bytes with their
 // manual-defined values and then compares the entire final state. A stale
 // oracle frame or any unrelated difference fails instead of being excused.
+// `@D23a` (redefined 2026-11-26) derives a whole expected stack from the
+// oracle's: see midInstructionFrame. A vector so derived that then agrees counts
+// as agreement, held by the floors (tests/SstFloors.h), not as ruled.
 //
 // `@SR <hex manual SR> | <name>` (sst68000 only, which accepts nothing
 // else): the corpus's final SR must differ from the manual's in X and C
@@ -41,6 +44,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <vector>
 
 namespace sstknown {
 
@@ -160,11 +164,98 @@ private:
     bool loaded_ = false;
 };
 
+// D23a: a 6888x exception on FMOVE FPn,<ea> (020/030), oracle format $3.
+// [B] MC68881UM-1989 § 6.1 (PDF pp. 226, 228): the exception of a move to an
+// external destination is reported as a mid-instruction one, after the store.
+// [B] MC68030UM-1989 § 10.4.19, Figure 10-43 (PDF p. 542): its frame is
+// format $9, ten words: SR +$00, scan PC +$02, 1001|vector +$06, the F-line
+// operation word's address +$08, an internal register +$0C, the operation
+// word +$0E, the effective address +$10.
+// [D] WinUAE @ Hatari e77819f7 stacks format $3 (12 bytes: SR, PC, 0011|
+// vector, EA) for it. The expected state is derived from the oracle's: the
+// 20-byte frame replaces the 12-byte one (same top, so 8 bytes lower), the
+// SR, scan PC, vector and EA taken from the oracle's frame, +$08 the
+// vector's initial PC and +$0E the word there; whatever the handler stacked
+// below the frame (the FSAVE of the fpuh corpus) moves down 8 bytes with
+// it, and so do A7 and the active supervisor stack pointer. The internal
+// register is not compared ([F]: the manual gives it no defined content);
+// `Vector::unjudged` names its two bytes. Every other byte and register is
+// compared as recorded.
+template<class Vector>
+bool midInstructionFrame(Vector& v, uint32_t frame, std::string& why) {
+    if constexpr (!requires { v.unjudged; }) {
+        why = "D23a rule: this harness has no external FPU (stale or invalid rule)";
+        return false;
+    } else {
+        auto byte = [&](uint32_t addr) -> uint8_t {
+            addr &= 0xFFFFFF;
+            for (const auto& c : v.fin.ram) if ((c.addr & 0xFFFFFF) == addr) return c.val;
+            for (const auto& c : v.initial.ram) if ((c.addr & 0xFFFFFF) == addr) return c.val;
+            return 0;
+        };
+        auto initialByte = [&](uint32_t addr) -> uint8_t {
+            addr &= 0xFFFFFF;
+            for (const auto& c : v.initial.ram) if ((c.addr & 0xFFFFFF) == addr) return c.val;
+            return 0;
+        };
+        const uint16_t format = uint16_t(byte(frame + 6) << 8 | byte(frame + 7));
+        const uint16_t opword = uint16_t(initialByte(v.initial.pc) << 8 | initialByte(v.initial.pc + 1));
+        const uint16_t command = uint16_t(initialByte(v.initial.pc + 2) << 8 | initialByte(v.initial.pc + 3));
+        const uint32_t sp = v.fin.a[7] & 0xFFFFFF;
+        const bool master = (v.fin.sr & 0x1000) != 0;
+        // The oracle's frame: format $3, an FPCP vector (48-54), on the
+        // active supervisor stack at or above A7, under an FMOVE FPn,<ea>
+        // (coprocessor 1, command word 011x xxxx xxxx xxxx).
+        if (!v.initial.hasFp || format < 0x30C0 || format > 0x30D8 || (format & 3) ||
+            (opword & 0xFFC0) != 0xF200 || (command >> 13) != 3 ||
+            !(v.fin.sr & 0x2000) || sp > frame || frame - sp > 0x100 ||
+            (master ? v.fin.msp : v.fin.isp) != v.fin.a[7]) {
+            why = "D23a rule requires an oracle format-3 FMOVE-out frame on the active stack (stale or invalid rule)";
+            return false;
+        }
+        // Every final byte from A7 to the oracle frame's top, read before
+        // any is rewritten.
+        std::vector<uint8_t> old(frame + 12 - sp);
+        for (uint32_t a = sp; a < frame + 12; ++a) old[a - sp] = byte(a);
+        auto put = [&](uint32_t addr, uint8_t value) {
+            addr &= 0xFFFFFF;
+            for (auto& c : v.fin.ram) if ((c.addr & 0xFFFFFF) == addr) { c.val = value; return; }
+            v.fin.ram.push_back({addr, value});
+        };
+        auto putLong = [&](uint32_t addr, uint32_t value) {
+            for (int i = 0; i < 4; ++i) put(addr + i, uint8_t(value >> (24 - 8 * i)));
+        };
+        auto oldLong = [&](uint32_t addr) {
+            const uint32_t i = addr - sp;
+            return uint32_t(old[i]) << 24 | uint32_t(old[i + 1]) << 16 | uint32_t(old[i + 2]) << 8 | old[i + 3];
+        };
+        for (uint32_t a = sp; a < frame; ++a) put(a - 8, old[a - sp]);  // the handler's pushes
+        const uint32_t base = frame - 8;
+        put(base + 0x00, old[frame - sp]);                    // SR
+        put(base + 0x01, old[frame + 1 - sp]);
+        putLong(base + 0x02, oldLong(frame + 2));             // scan PC
+        put(base + 0x06, uint8_t(0x90 | (format >> 8 & 0x0F)));
+        put(base + 0x07, uint8_t(format));                    // vector offset
+        putLong(base + 0x08, v.initial.pc);                   // the FMOVE's address
+        put(base + 0x0E, uint8_t(opword >> 8));               // operation word
+        put(base + 0x0F, uint8_t(opword));
+        putLong(base + 0x10, oldLong(frame + 8));             // effective address
+        for (uint32_t a : {base + 0x0C, base + 0x0D}) {       // internal register
+            std::erase_if(v.fin.ram, [&](const auto& c) { return (c.addr & 0xFFFFFF) == a; });
+            v.unjudged.push_back(a);
+        }
+        v.fin.a[7] -= 8;
+        (master ? v.fin.msp : v.fin.isp) -= 8;
+        return true;
+    }
+}
+
 // Retain raw fixtures. Validate the old oracle contract before replacing
 // exactly the fields ruled against it; every other state comparison stays live.
 template<class Vector>
 bool normalizeFrame(Vector& v, const FrameRule& rule, std::string& why) {
     const uint32_t frame = rule.base;
+    if (rule.kind == FrameKind::ExternalFpu) return midInstructionFrame(v, frame, why);
     auto byte = [&](uint32_t addr) -> uint8_t {
         addr &= 0xFFFFFF;
         for (const auto& c : v.fin.ram) if ((c.addr & 0xFFFFFF) == addr) return c.val;
@@ -176,12 +267,9 @@ bool normalizeFrame(Vector& v, const FrameRule& rule, std::string& why) {
                uint32_t(byte(addr + 2)) << 8 | byte(addr + 3);
     };
     const uint16_t format = uint16_t(byte(frame + 6) << 8 | byte(frame + 7));
-    const bool external = rule.kind == FrameKind::ExternalFpu;
-    if (external ? (!v.initial.hasFp || format < 0x30C0 || format > 0x30DC || (format & 3)) :
-        ((format != 0x2014 && format != 0x2018 && format != 0x201C) ||
-         longword(frame + 8) != longword(frame + 2) || rule.instruction == longword(frame + 2))) {
-        why = external ? "D23a rule requires an oracle format-3 FPU frame (stale or invalid rule)" :
-                         "D12 rule requires an oracle group-2 frame with IA=resume PC (stale or invalid rule)";
+    if ((format != 0x2014 && format != 0x2018 && format != 0x201C) ||
+        longword(frame + 8) != longword(frame + 2) || rule.instruction == longword(frame + 2)) {
+        why = "D12 rule requires an oracle group-2 frame with IA=resume PC (stale or invalid rule)";
         return false;
     }
     auto put = [&](uint32_t addr, uint8_t value) {
@@ -189,10 +277,8 @@ bool normalizeFrame(Vector& v, const FrameRule& rule, std::string& why) {
         for (auto& c : v.fin.ram) if ((c.addr & 0xFFFFFF) == addr) { c.val = value; return; }
         v.fin.ram.push_back({addr, value});
     };
-    if (external) put(frame + 6, 0x20);
-    const uint32_t instruction = external ? v.initial.pc : rule.instruction;
     for (int i = 0; i < 4; ++i)
-        put(frame + 8 + i, uint8_t(instruction >> (24 - 8 * i)));
+        put(frame + 8 + i, uint8_t(rule.instruction >> (24 - 8 * i)));
     return true;
 }
 

@@ -36,8 +36,9 @@ under T0.
 `d23a-contract.json` is a separate, unmodified vector from the locked July
 030 corpus (`fpu/off seed=11 #292`). It is not part of either stream above.
 `sst_known_contract_test.py` uses its oracle format-$3 frame to prove that
-the tagged D23a rule changes only the expected format/instruction address:
-unrelated register or RAM errors and stale rules must still fail.
+the tagged D23a rule replaces only that frame by the manual's format-$9 one
+(8 bytes lower, A7 with it) and compares its fields: unrelated register or
+RAM errors and stale rules must still fail.
 
 The page-end cells include legal MOVEM word/long loads and stores, with
 the register mask ending the valid page or crossing into the invalid page.

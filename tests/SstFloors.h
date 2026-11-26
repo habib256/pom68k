@@ -21,7 +21,10 @@
 // and does not fail: raising a floor is a deliberate edit.
 //
 // A ruled vector (a `--known` entry met as the list says) is counted apart,
-// never as agreement; so is an open one (`@OPEN`, printed as `M open`). `--write-floors FILE` rewrites the floors from a whole
+// never as agreement; so is an open one (`@OPEN`, printed as `M open`).
+// A `@D23a` vector is the exception: it is judged against a whole expected
+// state derived from the oracle's (tests/SstKnown.h), and agreeing with it
+// is agreement. `--write-floors FILE` rewrites the floors from a whole
 // run that violates nothing; no gate passes it.
 #pragma once
 

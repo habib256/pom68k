@@ -24,20 +24,17 @@ class FrameContract(unittest.TestCase):
         instruction = f' {cls.instruction:08x}' if cls.tag == '@D12' else ''
         return f'{cls.tag} {frame:06x}{instruction} | {name}\n'
 
+    # How a vector whose rule holds is counted: a D23a vector is judged
+    # against a whole derived state and counts as agreement; D12 as ruled.
+    agreed = '1/1'
+    known = '0 known divergence(s)'
+
     @classmethod
     def setUpClass(cls):
-        if cls.tag == '@D23a':
-            # Ruling 2026-11-24: the D23a vector stacks WinUAE's post-instruction
-            # frame for a 68882 FMOVE; MC68881UM-1989 §6.1 says the 6888x reports
-            # no post-instruction exception, and Dirk Hoffmann's core takes none.
-            # There is no frame left to rule; the D12 contracts below keep the
-            # --known mechanism under test.
-            # Reversed 2026-11-25 (CHANGELOG (fourth)): since queue patch 16 the
-            # core takes the FMOVE exception at once with the mid-instruction
-            # format-$9 frame (MC68030UM Figure 10-43). @D23a normalizes a
-            # format $2/$3 frame only; this contract waits for a format-$9 rule.
-            raise unittest.SkipTest('D23a: the 6888x FMOVE frame is format $9 (queue patch 16); '
-                                    'no format-$9 rule yet')
+        # D23a (redefined 2026-11-26): the fixture's oracle frame is WinUAE's
+        # 12-byte format $3 for a 68882 FMOVE FPn,<ea>; the rule derives the
+        # manual's 20-byte format-$9 mid-instruction frame from it
+        # (MC68030UM-1989 Figure 10-43, tests/SstKnown.h).
         fixture = Path(__file__).with_name('cpu_vectors') / cls.fixture
         cls.original = json.loads(fixture.read_text())[0]
         cls.frame = cls.original['final']['a7'] & 0xFFFFFF
@@ -61,7 +58,8 @@ class FrameContract(unittest.TestCase):
     def test_manual_frame_compares_whole_vector(self):
         code, out = self.replay()
         self.assertEqual(code, 0, out)
-        self.assertIn('1 known divergence(s)', out)
+        self.assertIn(f'{self.agreed} across', out)
+        self.assertIn(self.known, out)
 
     def test_unrelated_register_still_fails(self):
         row = copy.deepcopy(self.original)
@@ -122,9 +120,61 @@ class FrameContract(unittest.TestCase):
         self.assertIn('1 known divergence(s)', out)
 
 
+class MidInstructionContract(unittest.TestCase):
+    """The format-$9 fields derived from the oracle's frame are compared. The
+    internal register (+$0C, [F]) is not: the oracle's PC sits under it, and
+    the whole-vector replay above passes with --strict-ram."""
+    runner = None
+    emulator = []
+    fixture, tag, instruction, agreed = (FrameContract.fixture, FrameContract.tag,
+                                         FrameContract.instruction, FrameContract.agreed)
+    make_rule = classmethod(FrameContract.make_rule.__func__)
+    setUpClass = classmethod(FrameContract.setUpClass.__func__)
+    replay = FrameContract.replay
+
+    def oracle_frame_changed(self, offset, value):
+        row = copy.deepcopy(self.original)
+        ram = dict(row['final']['ram'])
+        ram[self.frame + offset] = value
+        row['final']['ram'] = sorted(ram.items())
+        return self.replay(row)
+
+    def test_oracle_frame_fails_unruled(self):
+        code, out = self.replay(rule='')
+        self.assertEqual(code, 1, out)
+        self.assertIn('A7 got $17EC want $17F4', out)
+
+    def test_scan_pc_is_compared(self):
+        code, out = self.oracle_frame_changed(5, self.original_byte(5) ^ 2)
+        self.assertEqual(code, 1, out)
+        self.assertIn(f'RAM[${self.frame - 8 + 5:06X}]', out)
+
+    def test_vector_is_compared(self):
+        code, out = self.oracle_frame_changed(7, self.original_byte(7) ^ 4)
+        self.assertEqual(code, 1, out)
+        self.assertIn(f'RAM[${self.frame - 8 + 7:06X}]', out)
+
+    def test_effective_address_is_compared(self):
+        code, out = self.oracle_frame_changed(11, self.original_byte(11) ^ 1)
+        self.assertEqual(code, 1, out)
+        self.assertIn(f'RAM[${self.frame + 11:06X}]', out)
+
+    def test_post_instruction_rule_is_stale(self):
+        # A format-$2 frame (the 2026-11-16 reading of this ruling) is no
+        # longer an oracle frame the rule accepts.
+        code, out = self.oracle_frame_changed(6, 0x20)
+        self.assertEqual(code, 1, out)
+        self.assertIn('stale or invalid rule', out)
+
+    def original_byte(self, offset):
+        return dict(self.original['final']['ram']).get(self.frame + offset, 0)
+
+
 class Group2Contract(FrameContract):
     fixture = 'd12-contract.json'
     tag = '@D12'
+    agreed = '0/1'
+    known = '1 known divergence(s)'
 
     def test_wrong_instruction_address_still_fails(self):
         code, out = self.replay(rule=self.rule.replace('00001000', '00001004'))
@@ -218,4 +268,6 @@ if __name__ == '__main__':
     OpenContract.runner = args.runner
     OpenOn040.runner = args.runner040
     OpenContract.emulator = FrameContract.emulator
+    MidInstructionContract.runner = args.runner
+    MidInstructionContract.emulator = FrameContract.emulator
     unittest.main(argv=[sys.argv[0]] + remaining)

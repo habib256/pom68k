@@ -81,6 +81,10 @@ struct Vector {
     CpuState initial, fin;
     long length = -1;
     long steps = 1;             // instructions to run (fuzz030.py --steps)
+    // Final bytes a --known rule leaves undefined (the internal register of
+    // a D23a format-$9 frame, tests/SstKnown.h): not compared, even under
+    // --strict-ram.
+    std::vector<uint32_t> unjudged;
 };
 
 // ── Flat 16 MB test bus (no Mac hardware, no contention) ─────────────────
@@ -218,7 +222,7 @@ void parseState(const char*& p, CpuState& st) {
 
 bool parseVector(const char*& p, Vector& v) {
     skipWs(p); if (*p!='{') return false; ++p;
-    v.name.clear(); v.length=-1; v.steps=1;
+    v.name.clear(); v.length=-1; v.steps=1; v.unjudged.clear();
     while (true) {
         skipWs(p);
         if (*p=='}'){++p;break;}
@@ -371,7 +375,8 @@ void setupVector(TestCpu& cpu, const Vector& v) {
         std::unordered_set<uint32_t> listed;
         for (const RamCell& c : v.fin.ram) listed.insert(c.addr & 0xFFFFFF);
         for (uint32_t a : cpu.dirty) {
-            if (listed.count(a)) continue;
+            if (listed.count(a) || std::find(v.unjudged.begin(), v.unjudged.end(), a) != v.unjudged.end())
+                continue;
             const auto it = init.find(a);
             const uint8_t want = it == init.end() ? 0 : it->second;
             const uint8_t got = cpu.mem[a];
@@ -517,8 +522,11 @@ int main(int argc, char** argv) {
             const bool isKnown = known.listed(v.name);
             if (manualFrame && !validFrame) ++broken;   // stale or invalid frame rule
             // Under --floors every ruled-list violation is named: each fails the gate.
+            // A D23a vector is judged against a whole expected state derived
+            // from the oracle's (tests/SstKnown.h): agreeing, it is agreement.
             if (manualFrame) {
-                if (ok) ++knownHere;
+                if (ok && manualFrame->kind == sstknown::FrameKind::ExternalFpu) ++passed;
+                else if (ok) ++knownHere;
                 else if (int(firstFew.size())<examples || (judged && !validFrame)) firstFew.push_back({v.name,why});
             } else if (known.open(v.name)) {         // @OPEN: must keep agreeing
                 if (ok) ++openHere;

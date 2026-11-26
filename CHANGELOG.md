@@ -627,6 +627,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-26 (fifth) — The `@D23a` rows judge the format-$9 frame: 206 of 448 now agree, the floors rise](#2026-11-26-d23a-format9)
 - [2026-11-26 (fourth) — A misaligned access that crosses a page reaches the second page through its own translation: queue patch 19](#2026-11-26-misaligned-across-pages)
 - [2026-11-26 (third) — A bus error during a table search is an ATC fault on the retried access: queue patch 18; two neighbouring 68030/68040 frame questions ruled [F]](#2026-11-26-table-search-berr)
 - [2026-11-26 (second) — Patch 16 after review: the MC68882 re-take is documented, not unknown; the pending trap before FMOVEM is not an established divergence](#2026-11-26-fmove9-review)
@@ -1462,6 +1463,87 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-26-d23a-format9"></a>
+## 2026-11-26 (fifth) — The `@D23a` rows judge the format-$9 frame: 206 of 448 now agree, the floors rise
+
+**The rule.** Since queue patch 16 ([2026-11-25 (fourth)](#2026-11-25-fmove-format9))
+a 6888x exception on FMOVE FPn,<ea> stacks the manual's mid-instruction
+frame, format $9, 20 bytes ([B] MC68881UM-1989 § 6.1; MC68030UM-1989
+§ 10.4.19, Figure 10-43), where the WinUAE vectors hold a format-$3 frame
+of 12 bytes. The `@D23a` rows of the five `sst68030*` known lists still
+normalized format $3 into the withdrawn format-$2 reading, and all 448
+failed, first on A7. `@D23a` keeps its tag and its 448 rows and is
+redefined (`tests/SstKnown.h`, `midInstructionFrame`): each tagged
+vector's expected state is derived from the oracle's — the 20-byte frame
+in place of the 12-byte one, same top, 8 bytes lower; SR, scan PC, vector
+offset and EA taken from the oracle's frame, +$08 the vector's initial PC,
++$0E the operation word found there; A7, the active supervisor stack
+pointer (ISP or MSP by the final M bit) and whatever the handler stacked
+below the frame (the 60-byte FSAVE of `sst68030_fpuh`) move down 8 bytes
+with it. The internal register at +$0C is not compared, even under
+`--strict-ram` ([F]: the figure gives it no content; `Vector::unjudged`).
+The rule refuses a frame that is not format $3 with an FPCP vector, an
+instruction that is not FMOVE FPn,<ea>, or a stack the frame is not on.
+Everything else is compared as recorded, and a tagged vector that then
+agrees counts as **agreement**, held by the per-file floors, where the
+`@D12` rows stay counted apart as ruled.
+
+**The counts** (aarch64, `bf98107f` + 19), agreement before → after,
+tagged rows agreeing:
+
+| Gate | Agree before | Agree after | `@D23a` agreeing |
+|---|---:|---:|---:|
+| `sst68030` | 2 276 | 2 280 | 4 / 10 |
+| `sst68030_solo` | 3 638 | 3 639 | 1 / 3 |
+| `sst68030_fpuraw` | 1 646 | 1 647 | 1 / 17 |
+| `sst68030_fpu2` | 3 458 | 3 658 | 200 / 206 |
+| `sst68030_fpuh` | 3 752 | 3 752 | 0 / 212 |
+
+Floors raised to match: `sst68030` fpu_off 885; `_solo` fpu_off 304;
+`_fpuraw` fpuraw_off 1 071; `_fpu2` identity 1 111, off 1 442, tt 1 105.
+
+**The 242 tagged vectors that still disagree**, none on the format-$9
+frame:
+- 212 `fpuh`: the 60-byte 68882 IDLE frame the handler's FSAVE stacks below
+  it differs from WinUAE's at +$04-$07, +$28-$33 and +$38-$3B in all of
+  them, as in the untagged `fpuh` vectors; one (`fpuh/tt seed=1313 #869`,
+  FMOVE.P) also in its packed-decimal store.
+- 14 `fpuraw`: the core takes a Line-F (format $0, vector 11) on an FMOVE
+  whose k-factor or dynamic-k field holds bits the format does not use;
+  WinUAE ignores them.
+- 10 (`sst68030` 6, `_solo` 2, `_fpuraw` 2): the U bit of the handler
+  page's descriptor ($4007), set by the core and not by the oracle.
+- 6 `fpu2` (`identity seed=942 #620`, `#991`; `off seed=941 #1472`; `tt
+  seed=943 #1008`, `#1221`, `#1529`): all six are FMOVE.W FPn,<ea> of a
+  signaling NaN with the SNAN trap enabled, and differ only by the OPERR
+  bit the oracle sets in FPSR. Queue patch 17 follows MC68881UM Table 6-2
+  (no OPERR for an SNaN); the oracle sets OPERR on FMOVE.W and not on
+  FMOVE.B, the inconsistency already ruled for two untagged vectors in
+  `tests/sst68030.known` ([2026-11-26](#2026-11-26-fmove-snan-int)). They
+  keep their `@D23a` row (one row per vector) and count as disagreement.
+
+**The nine tagged vectors that failed on the SNaN OPERR** (measured on the
+D23a branch before patch 17 was under it): the eight of `fpu2` (`identity
+seed=942 #530`; `off seed=941 #145`, `#161`, `#715`, `#1054`, `#1141`;
+`tt seed=943 #622`, `#1545`) now agree. `fpu/identity seed=29 #134`
+(`sst68030`) no longer differs in FPSR and fails only on the U bit of the
+handler page, with the other nine of that cause. `fpu2/off seed=941 #1219`
+(untagged; an FMOVE.B FP4,(A1)+ of an SNaN with SNAN disabled and OPERR
+enabled, then FSAVE -(A7)) takes no exception on either side since patch
+17: it fails at $17FC, offset +$38 of the 60-byte IDLE frame its FSAVE
+stacks — the `fpuh` cause, not a format-$9 frame — so it stays untagged
+(the rule refuses it).
+
+**Proof.** With the scan PC and instruction address swapped in the derived
+frame, all four gates with agreeing rows fell to their old counts and below
+the new floors, and the `fpuh` vectors gained frame mismatches at +$05 and
++$0B; restored, all green (measured on the D23a branch). `sst_known_contract_test`
+runs its D23a contract again (it was skipped since 2026-11-24), with new
+cells: the oracle frame fails unruled, a changed scan PC, vector or EA
+fails, and a format-$2 frame is a stale rule. `oracle/README.md` row D23a
+is rewritten; rows 26 and 113 of the fork history in
+`extern/moira/POM68K_VENDOR.md` get a superseded note.
 
 <a id="2026-11-26-misaligned-across-pages"></a>
 ## 2026-11-26 (fourth) — A misaligned access that crosses a page reaches the second page through its own translation: queue patch 19

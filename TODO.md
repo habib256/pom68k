@@ -267,7 +267,10 @@ Chaque ligne d'une liste se corrige (correctif de la file), se tranche
   3 453 / 6 000 / 30 ; `_fpuh` 3 740 / 6 000 / 27 ; `_fpuraw` 1 646 / 6 000 /
   148 ; `_rmw` 2 452 / 6 000 / 0 ; `sst68040` 5 929 / 7 200 / 21 ; `_8k`
   3 019 / 4 000 / 6 ; `_fline` 1 095 / 4 500 / 0 ; `_fpu` 2 956 / 7 500 /
-  154 ; `_fpu2` 2 656 / 6 000 / 22 ; `_fpuh` 2 671 / 6 000 / 24. Reste à
+  154 ; `_fpu2` 2 656 / 6 000 / 22 ; `_fpuh` 2 671 / 6 000 / 24. Les
+  chiffres du jour sont dans `CHANGELOG` 2026-11-26 ; depuis le
+  2026-11-26 (fifth), un vecteur `@D23a` qui s'accorde compte comme
+  accord. Reste à
   classer chaque désaccord, en commençant par les plus grandes familles
   (68000 : `RTE`, `RTR`, `CHK`, `MOVEM.l`, `RTS`, `BSR` ; 68030 : `rmw_*`,
   `fpuraw_*`, `fpu2_*` ; 68040 : `fline_identity` à 0 / 1 500,
@@ -278,7 +281,12 @@ Chaque ligne d'une liste se corrige (correctif de la file), se tranche
   ni accord ni tranché), § Phase 1 › Défauts. Les autres lignes D28/D29
   échouent désormais pour d'autres raisons (prédicat $20-$3F → Line-F, bit
   U d'un descripteur) : à reclasser.
-- [ ] **`moira_rules_test`** (`tests/known/moira_rules_test.txt`, 342
+- [ ] **Les vecteurs tranchés ne sont tenus par aucun plancher** (décision
+  du propriétaire) : `@D12` (et `@SR` sur `sst68000`) sont comptés à part ;
+  un vecteur tranché qui cesse de s'accorder avec la règle passe inaperçu
+  sous `--floors`. Les compter comme accord, comme `@D23a` désormais, ou
+  donner un plancher au compte tranché.
+- [ ] **`moira_rules_test`** (`tests/known/moira_rules_test.txt`, 340
   échecs) : cellules du fork, non revues une à une sur ce cœur — contenus
   de cadre du modèle de continuation, lectures WinUAE, détails PTEST/MMUSR,
   temps, défauts possibles.
@@ -556,10 +564,13 @@ de liste connue ou capture attendue.
   page non identité dont la carte termine le cycle traduit par /BERR —
   l'adresse empilée à SP+$10.*
 - [ ] **FMOVE FPn,<ea> du 6888x en format $9 : ce qui reste** (correctif
-  16, `CHANGELOG` 2026-11-25 (fourth)). (1) Une règle format $9 pour les
-  lignes `@D23a` des listes `sst68030*` : le cœur empile 20 octets, le
-  vecteur WinUAE 12, et la règle ne normalise que les formats $2/$3 (le
-  contrat D23a de `sst_known_contract_test` reste sauté). (2) Le MC68882
+  16, `CHANGELOG` 2026-11-25 (fourth)). (1) Les lignes `@D23a` jugent le
+  cadre format $9 depuis le 2026-11-26 (`CHANGELOG` 2026-11-26 (fifth)) :
+  206 sur 448 s'accordent ; les 242 autres échouent ailleurs que sur le
+  cadre — cadre IDLE de FSAVE (212 `fpuh`, ligne ci-dessous), Line-F sur
+  les bits k inutilisés (14 `fpuraw`), bit U de la page du gestionnaire
+  (10), OPERR que l'oracle pose sur un FMOVE.W d'un SNaN (6 `fpu2`,
+  tranché pour le manuel, correctif 17). (2) Le MC68882
   reprend l'exception après un gestionnaire sans FSAVE (MC68881UM §7.5.4.2,
   Figure 7-34 — documenté, plus [F]) ; le cœur la prend une fois sur les
   deux FPU. Divergence connue et voulue, à implanter seulement si une
@@ -575,6 +586,18 @@ de liste connue ou capture attendue.
   le RTE ; MC68030UM §8.1.7 ne diffère la trace qu'après une erreur de bus
   ou d'adresse. *Tranche : FMOVE tracé (T1) avec OPERR activé sur un vrai
   68030 + 6888x.*
+- [ ] **Cadre IDLE de FSAVE du 68882 contre WinUAE.** Les octets +$04-$07,
+  +$28-$33 et +$38-$3B du cadre de 60 octets diffèrent dans chaque vecteur
+  `sst68030_fpuh` qui atteint le FSAVE du gestionnaire (dont les 212
+  `@D23a`), et dans `fpu2/off seed=941 #1219` (+$38). Lire MC68881UM §6.4.2
+  (cadre IDLE, Table 5-8) avant de trancher : défaut du cœur → correctif ;
+  lecture de l'oracle → règle ; sinon [F] avec une capture nommée.
+- [ ] **FMOVE FPn,<ea> avec des bits inutilisés non nuls dans le champ k
+  ou k dynamique** : Line-F sur ce cœur, exécuté par WinUAE (14 vecteurs
+  `@D23a` de `sst68030_fpuraw`). Trancher contre MC68881UM §4.
+- [ ] **Bit U de la page du gestionnaire d'exception sur 68030** : posé par
+  le cœur (lecture du vecteur ou préchargement du gestionnaire), pas par
+  WinUAE ($4007 ; 10 vecteurs `@D23a`, d'autres non étiquetés).
 - [ ] **Trancher l'ordre de lecture de FMOVEM en EA indirect mémoire à
   extension complète avant un Line-F de direction** (« still open » dans
   `POM68K_VENDOR.md § MC68882 FPU execution`).

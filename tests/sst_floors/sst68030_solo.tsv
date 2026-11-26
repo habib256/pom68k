@@ -7,7 +7,7 @@ core_tt	234	400
 fault_identity	184	400
 fault_tt	213	400
 fpu_identity	290	400
-fpu_off	303	400
+fpu_off	304	400
 fpu_tt	290	400
 mmu_identity	194	398
 mmu_off	176	400

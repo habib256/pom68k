@@ -1,9 +1,13 @@
 # Manual-defined oracle differences for sst68030_fpuh. See tests/SstKnown.h.
 
-# D23a (2026-11-16): MC68030UM-1989 Figure 10-45 uses format 2 and
-# the F-line instruction address. The oracle instead emits format 3/EA.
-# These tagged entries normalize only those frame bytes; the entire final
-# state is still compared, and a stale oracle frame fails the gate.
+# D23a (redefined 2026-11-26): an enabled 6888x exception on FMOVE FPn,<ea>
+# is a mid-instruction one, taken after the store (MC68881UM-1989 § 6.1):
+# format $9, 20 bytes (MC68030UM-1989 Figure 10-43), where the oracle stacks
+# format $3, 12 bytes. Each tagged vector's expected state is derived from
+# the oracle's (tests/SstKnown.h): the manual's frame 8 bytes lower, A7 and
+# whatever the handler stacked below it with it, the internal register not
+# compared. Everything else is compared as recorded; a vector that then
+# agrees counts as agreement, and a stale oracle frame fails the gate.
 @D23a 0017f4 | fpuh/identity seed=1312 #0
 @D23a 0017f4 | fpuh/identity seed=1312 #1032
 @D23a 001ef4 | fpuh/identity seed=1312 #1075
