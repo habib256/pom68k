@@ -627,6 +627,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-26 (third) — A bus error during a table search is an ATC fault on the retried access: queue patch 18; two neighbouring 68030/68040 frame questions ruled [F]](#2026-11-26-table-search-berr)
 - [2026-11-26 (second) — Patch 16 after review: the MC68882 re-take is documented, not unknown; the pending trap before FMOVEM is not an established divergence](#2026-11-26-fmove9-review)
 - [2026-11-26 — A 6888x FMOVE of a signaling NaN to a byte, word or long word sets SNAN, not OPERR: queue patch 17](#2026-11-26-fmove-snan-int)
 - [2026-11-25 (fourth) — A 6888x FMOVE FPn,<ea> exception is a mid-instruction one, format $9 after the store: the 2026-11-24 deferral is reversed, queue patch 16](#2026-11-25-fmove-format9)
@@ -1460,6 +1461,92 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-26-table-search-berr"></a>
+## 2026-11-26 (third) — A bus error during a table search is an ATC fault on the retried access: queue patch 18; two neighbouring 68030/68040 frame questions ruled [F]
+
+**The finding.** `MMU040::walk()` and `MMU030::walk()` read descriptors
+with the host's `read32()`. A /BERR the board raised there escaped
+`translate()`, and `completeBusError()` built a physical bus error frame
+for the access. Reproducer (`moira_rules_test` `tableSearchBusError040`):
+4 KB pages, the page descriptor of logical $10000100 at physical $6000 on a
+/BERR hole; `MOVE.L (A0),D0` on the 68LC040 and the 68040 stacked SSW
+$0105 (want $0505) and `MOVE.L D0,(A0)` $0005 (want $0405): no ATC bit.
+On the 68030 (`tableSearchBusError030`, two rows of the known list) the
+frame carried the descriptor address $00080000 instead of the logical
+$40000000, and no ATC entry was created, so a level-0 PTEST in the handler
+read MMUSR $0400 instead of $8400.
+
+**The manuals.** [B] MC68040UM-1993 § 8.4.6.2 (rendered p. 8-26): ATC "is
+set for an ATC fault due to a nonresident entry (bus error during table
+search or invalid descriptor encountered)"; § 8.2.1: a TEA "during a bus
+cycle used to access the translation tables" makes "an internal access
+fault ... when the aborted access is retried"; § 3.5: an access that hits
+the entry of such a search is aborted. MC68030UM-1989 § 9.4: the B bit of
+an ATC entry "is set ... if a bus error ... is encountered during the
+table search", "the bus error exception is taken on the retry"; § 8.1.2
+the same.
+
+**The change.** Queue patch 18 (numbered 17 on its branch, renumbered when
+the queue took the SNaN patch first): `translate()` catches the host
+BusError of its own walk and ends the search like an invalid descriptor —
+a nonresident entry on the 68040, an entry with B set on the 68030 — so the
+access faults on that entry with the logical address, through the
+existing MMU-fault frame. PTEST and PLOAD, which walk the tables
+themselves, are unchanged: the 68030 row "PTEST level 7 into a /BERR" stays
+in the known list, and the 68040 PTEST into a /BERR (MMUSR B, § 3.1 Figure
+3-6) is not decided here. A host that supplies a complete custom frame for
+a descriptor read loses it (the manual leaves no physical bus error on
+that path). Two rows leave `tests/known/moira_rules_test.txt` ("68030 /BERR
+on a descriptor fetch …", "68030 PTEST level 0 after the fault …"); nothing
+is added. SST agreement is unchanged on every corpus.
+`docs/MOIRA_CONVERGENCE.md` row 72: its first half (descriptor /BERR, no
+ATC bit) is covered; the eager U write remains.
+
+**Ruled on the way, no change: a faulted 68040 normal write stays in WB3.**
+Moira stacks it in WB3 (WB3S = $8x, WB3A = FA, WB3D register-aligned) with
+WB1S = WB2S = 0, for a physical bus error and an ATC fault alike
+(`writeStackFrame0111`). [B] MC68040UM-1993 Table 8-6 (p. 8-31): "Normal
+Write Physical bus Error" has 1V = 1 in every row; "Write Page Fault" has
+1V = 0, 2V = 1; § 8.4.6.7 example 3 (p. 8-29): "the WB1S field indicates
+that it is valid. The FA and WB1A are equivalent"; example 5: a page fault
+has "WB1S = 0, and WB2S indicates that it is valid"; § 8.4.6.5 and Table
+8-5 (p. 8-27): WB2D/WB3D are register-aligned, WB1D memory-aligned. [D]
+WinUAE `cpummu.c` `mmu_bus_error()` @ Hatari e77819f7 puts every 68040
+write fault in WB3, as Moira does. [C] Apple's SCSI handlers
+(`OS/SCSIMgr4pt3/HALc96Routines.a` BusErrHandler96,
+`OS/SCSIMgr/SCSIMgrHW96.a`) complete WB1, WB2 then WB3 through
+`DoWriteBack`, which writes `move.B/W/L d1,(a1)` from the low bits of each
+WBnD: it reads every slot as register-aligned, and the pseudo-DMA data-out
+loop writes words at a long-aligned address (`HALc96Data.a`, `InitItt.c`).
+From WB1 laid out as Table 8-5 says, that handler would write bits 15-0,
+not the data in 31-16. Manual and ROM usage disagree for the one case a
+Mac guest exercises, so nothing moves. **[F]** Settled by: a real 68040
+(or 68LC040) frame for a word write to a long-aligned address terminated
+by TEA, and the same for an ATC fault, or a Quadra trace of the SCSI
+data-out bus error path.
+
+**Ruled on the way, no change: the 68030 data fault address after a
+successful translation.** On the 68020/68030 `readBus()`/`writeBus()`
+replace `addr` by the translated address, so a /BERR the board raises
+after a successful translation stacks the physical address at SP+$10 of
+the $A/$B frame (queue patch 12 changed the 68040 only). [B] MC68030UM-1989
+was searched for the domain of the "data cycle fault address" (Table 8-7,
+rendered p. 8-25; § 8.1.2, § 8.2.1-8.2.3; Section 9, § 9.10.3): no sentence
+says logical or physical. Every passage is consistent with logical
+(§ 8.2.2, the handler transfers the data "to the location indicated by the
+data fault address in the address space defined by the SSW"; § 8.2.3, the
+fault recurs "unless the cause of the fault, such as a non-resident page in
+a virtual memory system, has been corrected"; § 9.10.3, PTEST "using the
+address and type of access that produced the error"), none states it. [C]
+`DeclData/PrimaryInit.a` and `OS/SlotMgr/SlotMgr.a` (`myBusExcptn`,
+`pBusException`) compare only the high byte of `DFAddr`, in 32-bit mode
+where slot space is identity-mapped. The core keeps the physical address
+(MMU-detected faults, and since patch 18 a /BERR during a table search,
+already stack the logical one); the completed-cycle replay of patches 3/9
+and patch 11's "rest" size test depend on the answer. **[F]** Settled by: a
+real 68030 with a non-identity page mapping whose board terminates the
+translated cycle with /BERR — the stacked SP+$10.
 
 <a id="2026-11-26-fmove9-review"></a>
 ## 2026-11-26 (second) — Patch 16 after review: the MC68882 re-take is documented, not unknown; the pending trap before FMOVEM is not an established divergence

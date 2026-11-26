@@ -58,7 +58,7 @@ Tout le reste (jalons produit, vitesse hors CPU, NeoST, dépôt) est après les
 deux phases, hors du chemin principal.
 
 **Reprendre ici (état au 2026-11-26, palier machines AArch64 vert).**
-`main` = Moira de Dirk `bf98107f` + 17 correctifs ; rien d'ouvert chez lui.
+`main` = Moira de Dirk `bf98107f` + 18 correctifs ; rien d'ouvert chez lui.
 Sur le M4, sur `3cfd4718` : build, `asset-none` 156/156, `cpu-vectors`, les
 15 gates SST, et **le palier machines complet** (`ctest -L
 'm040|m030|etalon' -j3`, 320/320 en 4 h 52 ; recensement 319 exécutés, 1
@@ -152,7 +152,7 @@ défaut CPU, dans cet ordre :
   (`863b8d02`, coups du cache comptés une fois). Fusionnées le 2026-11-25 :
   #46 (latch du 68020 après MOVE vers SR), #47 (FBcc/FDBcc vers une cible
   impaire), #48 (FRESTORE) et #49 (frame FSAVE UNIMP) ; la file est rebasée
-  sur `bf98107f` et compte 17 correctifs (16 et 17, locaux, depuis le
+  sur `bf98107f` et compte 18 correctifs (16, 17 et 18, locaux, depuis le
   2026-11-25 et le 2026-11-26). L'état de chaque correctif et sa
   PR se suivent dans `extern/moira/patches/queue.tsv`.
 - [ ] **Mesurer sur un vrai 68030 la limite d'une racine DT=1 avec FCL.**
@@ -529,11 +529,17 @@ de liste connue ou capture attendue.
   Réglé pour le 6888x (MC68881UM-1989 §4.7.3, Table 4-20, note 3) ; le
   MC68040UM-1993 ne dit rien du bit 5. *Tranche : FBcc `$F2A1` sur un
   vrai 68040.*
-- [ ] **Adresse de faute 68030 d'une /BERR après traduction.**
+- [ ] **[F] Adresse de faute 68030 d'une /BERR après traduction.**
   `completeBusError()` reçoit encore l'adresse physique sur 68020/68030 (le
-  correctif 12 ne change que le 68040, `CHANGELOG` 2026-11-25 (third)) ;
-  lire MC68030UM §8.2 sur le domaine de l'adresse de faute avant tout
-  correctif.
+  correctif 12 ne change que le 68040, `CHANGELOG` 2026-11-25 (third)).
+  MC68030UM-1989 lu (Table 8-7, §8.1.2, §8.2.1-8.2.3, §9, §9.10.3) : aucune
+  phrase ne dit logique ou physique ; les gestionnaires de la ROM
+  (`PrimaryInit.a`, `SlotMgr.a`) ne comparent que l'octet fort de `DFAddr`
+  en mode 32 bits. Pas de changement (`CHANGELOG` 2026-11-26 (third)).
+  Dépendent de la réponse : le rejeu des cycles complétés (correctifs 3/9)
+  et le test « rest » du correctif 11. *Bloqué : un vrai 68030 avec une
+  page non identité dont la carte termine le cycle traduit par /BERR —
+  l'adresse empilée à SP+$10.*
 - [ ] **FMOVE FPn,<ea> du 6888x en format $9 : ce qui reste** (correctif
   16, `CHANGELOG` 2026-11-25 (fourth)). (1) Une règle format $9 pour les
   lignes `@D23a` des listes `sst68030*` : le cœur empile 20 octets, le
@@ -594,14 +600,28 @@ Les lignes de cache attendent la décision sur `cache040_test`.
   WB2 d'une MOVE16 en attente et combinaisons WB2/WB3 (MC68040UM-1993,
   Table 8-6) ; invalidation sur faute de poussée déclenchée par un accès NC
   (§ 7.6.1).
-- [ ] **/BERR après traduction : les questions voisines de la FA logique**
-  (correctif 12, `CHANGELOG` 2026-11-25 (third)), chacune à trancher seule :
-  (1) une écriture normale fautive va en WB3 chez Moira, en WB1 avec WB1A
-  = FA dans l'exemple 3 de MC68040UM-1993 §8.4.6.7 ; (2) le bit ATC du SSW
-  quand la /BERR frappe la recherche de table ; (3) un accès mal aligné
-  qui franchit une page — `readBus()`/`writeBus()` traduisent une fois et
-  prennent `phys + 2` pour le second mot (68030 aussi). Terrain réel : les
-  etalons 68040 en mode 24 bits, où logique et physique diffèrent.
+- [ ] **[F] WB1/WB2/WB3 d'une écriture normale fautive sur un vrai
+  68040.** MC68040UM-1993 Table 8-6 et §8.4.6.7 : /BERR → WB1 (WB1D aligné
+  mémoire, Table 8-5), faute ATC → WB2 ; Moira et WinUAE la mettent en
+  WB3. Le gestionnaire SCSI de la ROM (`HALc96Routines.a`, `DoWriteBack`)
+  lit chaque WB comme aligné registre et écrit des mots au pseudo-DMA à une
+  adresse alignée long : depuis WB1 selon la Table 8-5 il écrirait la
+  mauvaise moitié. Pas de changement (`CHANGELOG` 2026-11-26 (third)).
+  Terrain réel : les etalons 68040 en mode 24 bits, où logique et physique
+  diffèrent. *Bloqué : frame d'un vrai 68040 pour une écriture de mot
+  terminée par TEA à A1A0 = 00, et pour une faute ATC.*
+- [ ] **Un accès mal aligné qui franchit une page** : `readBus()`/
+  `writeBus()` traduisent une fois et prennent `phys + 2` pour le second
+  mot (68030 aussi).
+- [ ] **PTEST dont la propre recherche de table prend une /BERR.** 68030 :
+  B et I sans exception (MC68030UM §9.7.4, Table 9-3 ; ligne connue
+  « 68030 PTEST level 7 into a /BERR ») ; 68040 : MMUSR = B seul, « all
+  other bits are zero » (MC68040UM §3.1, Figure 3-6). Le correctif 18 ne
+  traite que l'accès (`translate()`), pas les recherches de PTEST et de
+  PLOAD (`MMU040::test()`, `MMU030::load()`/`test()`), où la BusError
+  s'échappe encore. Ajouter à `tableSearchBusError040` : un second accès à
+  la même page faute sur l'entrée ATC non résidente sans nouvelle
+  recherche (§3.5).
 - [ ] **Fermer la preuve du mode cache actif.** Aucun `sst68040` enregistré
   avec le cache, aucun boot interprète cache actif ; le débogueur lit la RAM
   sous le cache et tout écrivain hôte de RAM invitée est un maître non

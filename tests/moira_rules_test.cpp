@@ -986,6 +986,49 @@ void hostBusErrorFaultAddressIsLogical040()
     }
 }
 
+// [B] MC68040UM-1993 §8.4.6.2 — the SSW's ATC bit "is set for an ATC fault
+// due to a nonresident entry (bus error during table search or invalid
+// descriptor encountered)"; §8.2.1 — a TEA "during a bus cycle used to
+// access the translation tables" makes the internal access fault taken
+// "when the aborted access is retried"; §3.5 — the ATC entry that search
+// created makes the retried access abort. The board answers the page
+// descriptor fetch with /BERR: the frame is an ATC fault on the operand's
+// logical address, not a physical bus error on the descriptor.
+void tableSearchBusError040()
+{
+    constexpr uint32_t kLogical = 0x10000100, kPageDescriptor = 0x6000;
+    for (auto model : {moira::CPUModel::M68LC040, moira::CPUModel::M68040})
+    for (bool write : {false, true}) {
+        TestCpu c(model);
+        const uint16_t opcode = write ? 0x2080 : 0x2010;    // MOVE.L D0,(A0) / (A0),D0
+        p32(c, 2 * 4, kHandler);
+        p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
+        stage(c, opcode, 0);
+        c.setA(0, kLogical); c.setD(0, 0x89ABCDEF);
+        // 4K pages; the page descriptor of logical $10000000 sits on the hole.
+        // Code, vectors, stack and tables pass through the transparent $00xxxxxx.
+        p32(c, 0x4020, 0x4202); p32(c, 0x4200, 0x6002);
+        p32(c, kPageDescriptor, 0x00F00059);
+        c.setURP040(0x4000); c.setSRP040(0x4000);
+        c.setITT0(0x0000C040); c.setDTT0(0x0000C040);
+        c.setTC040(0x8000);
+        c.holeAt = kPageDescriptor;
+        c.holeArmed = true;
+        const bool contained = executeContained(c);
+        const uint32_t sp = c.getSP();
+        const uint16_t format = g16(c, sp + 6), ssw = g16(c, sp + 0x0C);
+        const uint32_t fa = g32(c, sp + 0x14);
+        const uint16_t wantSsw = write ? 0x0405 : 0x0505;  // ATC, TM=5, long
+        CHECK(contained && c.holeTrips == 1 && c.getPC0() == kHandler &&
+              format == 0x7008 && ssw == wantSsw && fa == kLogical,
+              "68040 model=%u %s, /BERR on the page descriptor fetch: format %04X "
+              "SSW %04X (want %04X, ATC), fault address %08X (want the logical "
+              "%08X), %u trip(s)",
+              unsigned(model), write ? "MOVE.L D0,(A0)" : "MOVE.L (A0),D0",
+              format, ssw, wantSsw, fa, kLogical, c.holeTrips);
+    }
+}
+
 void ordinaryStoreStillAdvances040()
 {
     // [D] WinUAE cpuemu_31.c @ Hatari e77819f7: ordinary MOVE stores
@@ -3935,6 +3978,7 @@ int main(int argc, char** argv)
     fpuStoreFaultRestarts040();
     movepFaultRestarts040();
     hostBusErrorFaultAddressIsLogical040();
+    tableSearchBusError040();
     ordinaryStoreStillAdvances040();
     ttrTableFollowsRegisters();
     clrReadsOnlyOn68000();

@@ -37,7 +37,6 @@
 1	68020 MOVE to SR: interrupt returns to 00001004, want 00001008
 1	68020 RTE: interrupt returns to 00001100, want 00001104
 1	68020: MOVEM (d16,PC) read at 001016 FC=5, want 6
-1	68030 /BERR on a descriptor fetch: PC0=00002000 (want the bus error handler 00002000), fault address 00080000 (want the logical 40000000)
 1	68030 ANDI #$FFFF,SR with the second refill word on a /BERR hole: PC0=00002000 (want 00001004), 0 fault(s) taken (want 0)
 1	68030 ANDI to SR: interrupt returns to 00001004, want 00001008
 1	68030 ASL (A0) of $C001, store fault: format A008 (want A008), data output buffer 00008002 (want 00018002)
@@ -74,7 +73,6 @@
 1	68030 ORI #0,SR with the second refill word on a /BERR hole: PC0=00002000 (want 00001004), 0 fault(s) taken (want 0)
 1	68030 PACK -(A3),-(A2) source fault: PC0=00002000 A3=00080002 (want 0007FFFE) A2=00030000 stacked PC 00001000 (want 00001000) SSW 0155 (want word size)
 1	68030 PEA (A0) push fault: format A008 (want A008), stacked PC 00001000 (want 00001002), USP=00080004 (want 00080000), pending 00031234
-1	68030 PTEST level 0 after the fault: MMUSR 0400 (want $8400, the ATC entry's B with I)
 1	68030 PTEST level 7 into a /BERR: PC0=00002000 (want 00001004, no exception), MMUSR 0000 (want $8400: B, I, N = 0)
 1	68030 RTD #8 pop fault: format B008 (want B008), log 00000000 (want 00000008), idx byte 00 (want 12), USP=00080000
 1	68030 RTE: interrupt returns to 00001100, want 00001104

@@ -216,8 +216,21 @@ MMU030::translate(u32 addr, u8 fc, bool write, bool *ci)
     if (!line) {
 
         MmuContext context;
-        u32 physAddr = walk(addr, fc, write, context);
-        line = atcInsert(addr, fc, physAddr, context.status(), context.ci);
+        u32 physAddr = 0, status;
+
+        // A bus error during the table search sets the B bit of the entry, and
+        // the access takes the exception on its retry.
+        // [B] MC68030UM § 9.4 — B "is set for an entry if a bus error, an
+        //     invalid descriptor, a supervisor violation, or a limit violation
+        //     is encountered during the table search"; § 8.1.2.
+        try {
+            physAddr = walk(addr, fc, write, context);
+            status = context.status();
+        } catch (const BusError &) {
+            status = MMUSR_BUS_ERROR | MMUSR_INVALID;
+            context.ci = false;
+        }
+        line = atcInsert(addr, fc, physAddr, status, context.ci);
     }
     
     auto &e = atc[*line];

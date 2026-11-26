@@ -183,7 +183,7 @@ U = UNSURE. "Split" marks a row whose items fall in different classes.
 | 69 | G | 040 write-allocate frames (040 cache model) |
 | 70 | G | 040 push-fault frames (040 cache model) |
 | 71 | G | MA never set; a page-crossing operand is translated once, at its first byte |
-| 72 | G | 040 descriptor /BERR escapes and sets no ATC bit; U written eagerly at every level (queue patch 12 only fixes the FA of the original access) |
+| 72 | G | split: a descriptor /BERR no longer escapes — the walk ends as on an invalid descriptor and the access takes an ATC fault on its logical address (queue patch 18, 68040 and 68030); U is still written eagerly at every level |
 | 73 | C | 040 ATC keeps R/W/S and PA on failure |
 | 74 | G | 040 MOVEM restarts (repeats memory indirection) |
 | 75 | G | split: 040 ATC fully associative, not 16×4; JIT accounting is M |
