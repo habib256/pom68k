@@ -61,7 +61,8 @@ deux phases, hors du chemin principal.
 `main` = Moira de Dirk `bf98107f` + 19 correctifs. Quatre sont proposés
 chez lui depuis le 2026-11-27 : PR #50 (correctif 18), #51 (10), #52
 (moitié DBcc du 1) et #53 (12) ; trois autres branches sont prêtes mais
-non poussées (16, et les deux moitiés du 4). Le palier machines AArch64
+sans PR (16, et les deux moitiés du 4 ; textes dans
+`extern/moira/pr-drafts/`). Le palier machines AArch64
 complet est vert sur l'arbre de ce commit (`m040|m030|etalon`, 321/321
 avec le nouveau `q605_fpsp_moveout_etalon`), enregistré dans `STATUS.md`.
 Dans l'ordre :
@@ -79,9 +80,9 @@ Dans l'ordre :
    (un écart est un constat à instruire, pas à ré-épingler). Dernier
    passage complet x86-64 : 320/320 sur `6e7f5179`, avant le rebase et
    avant les correctifs 12 amendé et 16 à 19.
-   Les branches de PR ne sont pas dans ce dépôt : elles vivent sur le
-   fork GitHub `habib256/Moira` (clone de travail du M4 :
-   `~/src/moira-pr`, textes sous `~/src/moira-pr-work/`).
+   Les sept branches de PR vivent sur le fork GitHub `habib256/Moira`
+   (`git clone https://github.com/habib256/Moira.git`) ; les textes des
+   trois PR non ouvertes sont dans `extern/moira/pr-drafts/`.
 3. **Verdict de stabilité** du cœur de Dirk ; s'il est stable, faire
    approuver par le propriétaire `scratchpad/2026-11-25/JIT_PLAN.md`
    (questions Q1-Q8) avant tout code JIT (§ Phase 2).
@@ -174,7 +175,13 @@ défaut CPU, dans cet ordre :
   chacune, et la branche DBcc a été reconçue sans changement d'horloge.
   Ces quatre sont ouvertes chez Dirk : #50 (18), #51 (10), #52 (1), #53
   (12) ; suivre ses retours, et rebaser #53 ou #50 selon l'ordre de
-  fusion. Les trois autres ne sont pas poussées. Correctif 18 → `mmu-table-search-bus-error` ;
+  fusion.
+  **Trois restent à soumettre**, après accord du propriétaire sur le texte
+  exact : `6888x-fmove-out-mid-instruction` (`8869492`, correctif 16),
+  `trace-frame-fault` (`cf7f5f0`) et `reset-bus-fault` (`4592ccd`, les deux
+  moitiés du 4). Branches poussées sur le fork `habib256/Moira`, sans PR ;
+  textes dans `extern/moira/pr-drafts/`. Deux vérifications chacune : les
+  passer à quatre comme la première vague avant de poster. Correctif 18 → `mmu-table-search-bus-error` ;
   10 → `68020-data-output-buffer` ; 1 (moitié DBcc seule) →
   `dbcc-expired-refill` ; 12 → `68040-fault-address` ; 16 →
   `6888x-fmove-out-mid-instruction` ; 4 → `reset-bus-fault` et
