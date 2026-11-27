@@ -1,7 +1,7 @@
 From ce60508d7b2dfb11a6dfdbb9f9c7d0c739fb9c2f Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 00:30:37 +0400
-Subject: [PATCH 04/19] Halt on a double bus fault during reset; take a fault
+Subject: [PATCH 04/20] Halt on a double bus fault during reset; take a fault
  on the trace frame
 
 MC68030UM 8.1.1: "if bus error or address error occur during the exception

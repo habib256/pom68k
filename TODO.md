@@ -58,7 +58,8 @@ Tout le reste (jalons produit, vitesse hors CPU, NeoST, dépôt) est après les
 deux phases, hors du chemin principal.
 
 **Reprendre ici (état au 2026-11-27, reprise sur x86-64).**
-`main` = Moira de Dirk `bf98107f` + 19 correctifs. Quatre sont proposés
+`main` = Moira de Dirk `bf98107f` + 20 correctifs (le 20 depuis le
+2026-11-27 (second) : RM et reprise après RTE des TAS/CAS/CAS2). Quatre sont proposés
 chez lui depuis le 2026-11-27 : PR #50 (correctif 18), #51 (10), #52
 (moitié DBcc du 1) et #53 (12) ; trois autres branches sont prêtes mais
 sans PR (16, et les deux moitiés du 4 ; textes dans
@@ -86,8 +87,11 @@ Dans l'ordre :
 3. **Verdict de stabilité** du cœur de Dirk ; s'il est stable, faire
    approuver par le propriétaire `scratchpad/2026-11-25/JIT_PLAN.md`
    (questions Q1-Q8) avant tout code JIT (§ Phase 2).
-4. En parallèle, sans bloquer : les points ouverts listés à la fin de
-   `HANDOVER.md` (limite FCL [F]).
+4. En parallèle, sans bloquer : le seul point encore ouvert de la note de
+   passation `scratchpad/2026-11-25/HANDOVER.md` est la limite FCL [F]
+   (§ Phase 1 › Boucle amont, « Mesurer sur un vrai 68030 ») ; les autres
+   sont faits (adresse de faute 68040 : correctif 12, PR #53 ; FMOVE vers la
+   mémoire du 6888x : correctif 16 ; banc PTEST : `e8d8bd03`).
 
 ---
 
@@ -162,8 +166,8 @@ défaut CPU, dans cet ordre :
   (`863b8d02`, coups du cache comptés une fois). Fusionnées le 2026-11-25 :
   #46 (latch du 68020 après MOVE vers SR), #47 (FBcc/FDBcc vers une cible
   impaire), #48 (FRESTORE) et #49 (frame FSAVE UNIMP) ; la file est rebasée
-  sur `bf98107f` et compte 19 correctifs (16 à 19, locaux, depuis le
-  2026-11-25 et le 2026-11-26). L'état de chaque correctif et sa
+  sur `bf98107f` et compte 20 correctifs (16 à 19, locaux, depuis le
+  2026-11-25 et le 2026-11-26 ; 20, RM des TAS/CAS/CAS2, le 2026-11-27). L'état de chaque correctif et sa
   PR se suivent dans `extern/moira/patches/queue.tsv`.
 - [ ] **Sept PR préparées le 2026-11-27 ; quatre postées (#50 à #53),
   trois en attente de l'accord du propriétaire.** Une branche d'un commit chacune sur `bf98107f`, dans le
@@ -175,7 +179,11 @@ défaut CPU, dans cet ordre :
   chacune, et la branche DBcc a été reconçue sans changement d'horloge.
   Ces quatre sont ouvertes chez Dirk : #50 (18), #51 (10), #52 (1), #53
   (12) ; suivre ses retours, et rebaser #53 ou #50 selon l'ordre de
-  fusion.
+  fusion. Vérifié le 2026-11-27 : chacune s'applique seule sur
+  `bf98107f`, CI verte, sans revue ; toute paire se combine sauf #50 et
+  #53, qui ajoutent chacune leur injection de faute à `TestCPU` et leurs
+  `TEST_CASE` au même endroit de `Tests/Unit/MmuExecTests.cpp` (rien dans
+  `Moira/`) — la seconde fusionnée garde les deux mécanismes.
   **Trois restent à soumettre**, après accord du propriétaire sur le texte
   exact : `6888x-fmove-out-mid-instruction` (`8869492`, correctif 16),
   `trace-frame-fault` (`cf7f5f0`) et `reset-bus-fault` (`4592ccd`, les deux
@@ -227,10 +235,12 @@ défaut CPU, dans cet ordre :
   (MC68030UM §8.2.1, FB/FC) : le cœur faute l'instruction qui a préchargé et
   la relance, une instruction non idempotente (TAS, champ de bits, FPU) agit
   deux fois (38 lignes de `fault_transparency_test.txt`).
-- [ ] **Bit RM du SSW pour TAS/CAS/CAS2** (MC68020UM §6.2.1 ; rubrique
-  « OPEN DEFECT » de `tests/known/berr020_test.txt`). À corriger dans la
-  file. Le SSW de la PR #42 (fusionnée) ne pose jamais RM ; son commentaire
-  cite §6.2.1 pour la faute de donnée relative au PC, ce qui est une
+- [ ] **Bit LK du SSW 68040 pour TAS/CAS/CAS2** (MC68040UM §8.4.6.2 ;
+  `SSW040::LK` défini, jamais posé). Le 68020/68030 pose RM depuis le
+  correctif 20 (`CHANGELOG` 2026-11-27 (second)) ; le 68040 attend sa
+  propre lecture du §8.4.6 (continuation après RTE comprise).
+- [ ] **Faute de donnée relative au PC (PR #42).** Son commentaire cite
+  MC68020UM §6.2.1 pour la faute de donnée relative au PC, ce qui est une
   inférence (meilleur appui : MC68030UM §6.1.2) — et le chemin 68030 de
   Moira signale encore une telle faute FB|RB (revue du 2026-11-24 ;
   reproducteurs hors dépôt, scratchpad de session `pr-review/`).

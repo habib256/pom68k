@@ -76,8 +76,8 @@ A split row counts once, under the class of its first item.
 
 ## Candidates to report first
 
-PRs #42-#49 are merged; the queue's 19 patches are all local
-(`extern/moira/patches/queue.tsv`). Small, general, checkable — each still
+PRs #42-#49 are merged; of the queue's 20 patches, four are proposed
+(#50-#53) and the others are local (`extern/moira/patches/queue.tsv`). Small, general, checkable — each still
 to be confirmed in the manual and by a reproducer on his `master` before
 posting:
 

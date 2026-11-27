@@ -1,7 +1,7 @@
 From 5ec75f251c8c8f8e687169cf828aa45a7a32c4fd Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 01:26:03 +0400
-Subject: [PATCH 12/19] 68040: the fault address is the logical first byte of
+Subject: [PATCH 12/20] 68040: the fault address is the logical first byte of
  the faulted access
 
 MC68040UM 8.4.6.4: "The FA is a physical address only for cache pushes and

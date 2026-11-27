@@ -1,7 +1,7 @@
 From fbfcc295966db6fdf76a59c8e4ac70817c6937af Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Thu, 26 Nov 2026 07:32:15 +0400
-Subject: [PATCH 18/19] MMU: a bus error during a table search is an ATC fault
+Subject: [PATCH 18/20] MMU: a bus error during a table search is an ATC fault
  on the retried access
 
 MC68040UM 8.4.6.2: the ATC bit of the SSW "is set for an ATC fault due to

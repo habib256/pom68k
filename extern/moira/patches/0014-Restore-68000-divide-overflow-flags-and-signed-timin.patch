@@ -1,7 +1,7 @@
 From 002fde56e108c3f1d764a5308491176d3b82f70e Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 08:05:14 +0400
-Subject: [PATCH 14/19] Restore 68000 divide overflow flags and signed timing
+Subject: [PATCH 14/20] Restore 68000 divide overflow flags and signed timing
  in DEFAULT mode
 
 In the default configuration, a 68000 DIVU or DIVS that overflows leaves N

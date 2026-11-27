@@ -425,6 +425,7 @@ struct StackFrame
 
     bool write;                 ///< Set if the faulting bus access was a write (68020+)
     u32 data;                   ///< Data of a faulting write access (68020+)
+    u32 next = 0;               ///< End of a locked read-modify-write instruction (68020, 68030)
 };
 
 /// The status register (SR)

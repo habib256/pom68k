@@ -1629,7 +1629,12 @@ Moira::execCas(u16 opcode)
     u32 ea, data;
 
     readExt<C>();
-    readOp<C, M, S, STD_AE_FRAME>(dst, &ea, &data);
+
+    // The operand cycles are locked, the cycles that compute the address are not
+    ea = computeEA<C, M, S, STD_AE_FRAME>(dst);
+    updateAnPD<M, S>(dst);
+    try { data = readM<C, M, S, STD_AE_FRAME>(ea); } catch (BusError &e) { lockedBusError<C>(e); throw; }
+    updateAnPI<M, S>(dst);
 
     auto compare = readD(dc);
 
@@ -1652,7 +1657,7 @@ Moira::execCas(u16 opcode)
 
     } else {
 
-        writeM<C, M, S>(ea, readD<S>(du));
+        try { writeM<C, M, S>(ea, readD<S>(du)); } catch (BusError &e) { lockedBusError<C>(e); throw; }
 
         //           00  10  20        00  10  20        00  10  20
         //           .b  .b  .b        .w  .w  .w        .l  .l  .l
@@ -1689,8 +1694,11 @@ Moira::execCas2(u16 opcode)
 
     u32 ea1 = reg.r[rn1];
     u32 ea2 = reg.r[rn2];
-    u32 data1 = readM<C, M, S>(ea1);
-    u32 data2 = readM<C, M, S>(ea2);
+    u32 data1, data2;
+    try {
+        data1 = readM<C, M, S>(ea1);
+        data2 = readM<C, M, S>(ea2);
+    } catch (BusError &e) { lockedBusError<C>(e); throw; }
 
     auto compare1 = readD(dc1);
     auto compare2 = readD(dc2);
@@ -1704,8 +1712,10 @@ Moira::execCas2(u16 opcode)
     }
     if (reg.sr.z) {
 
-        writeM<C, M, S>(ea1, reg.d[du1]);
-        writeM<C, M, S>(ea2, reg.d[du2]);
+        try {
+            writeM<C, M, S>(ea1, reg.d[du1]);
+            writeM<C, M, S>(ea2, reg.d[du2]);
+        } catch (BusError &e) { lockedBusError<C>(e); throw; }
 
         prefetch<C, POLL>();
         CYCLES_68020(15)
@@ -5107,6 +5117,23 @@ Moira::readRteFrame68020(u16 &newsr, u32 &newpc)
             u16 ssw = (u16)read<C, AddrSpace::DATA, Word>(frameBase + 0xA);
             bool data = !(ssw & (SSW030::FC | SSW030::FB | SSW030::RM | SSW030::DF));
 
+            /* A handler that has emulated a read-modify-write operation clears DF
+             * and leaves RM set. RTE then expects the entire instruction to be
+             * completed, even if the fault occurred on the first read cycle
+             * (MC68020UM 6.2.2; MC68030UM 8.2.2), and continues behind it. Its
+             * end is kept in an internal register of the frame (0 if the host
+             * has supplied the frame). With DF set, the instruction is rerun
+             * from its start (MC68020UM 6.2.3; MC68030UM 8.2.3).
+             */
+            if ((ssw & SSW030::RM) && !(ssw & SSW030::DF)) {
+
+                if (u32 next = read<C, AddrSpace::DATA, Long>(frameBase + 0x1C)) {
+
+                    newpc = next;
+                    restart.valid = false;
+                }
+            }
+
             completed.armed = false;
             if (data) {
 
@@ -5458,12 +5485,23 @@ Moira::execTasEa(u16 opcode)
         constexpr int delay = M == Mode::PI ? 4 : (M == Mode::AI || M == Mode::PD || M == Mode::IX) ? 2 : 0;
         if constexpr (delay) SYNC(delay);
 
-        readOp<C, M, Byte>(dst, &ea, &data);
+        if constexpr (C == Core::C68020) {
+
+            // The operand cycles are locked, the cycles that compute the address are not
+            ea = computeEA<C, M, Byte>(dst);
+            updateAnPD<M, Byte>(dst);
+            try { data = readM<C, M, Byte>(ea); } catch (BusError &e) { lockedBusError<C>(e); throw; }
+            updateAnPI<M, Byte>(dst);
+
+        } else {
+
+            readOp<C, M, Byte>(dst, &ea, &data);
+        }
 
         setMoveFlags<Byte>(data);
         data |= 0x80;
 
-        writeOp<C, M, S>(dst, ea, data);
+        try { writeOp<C, M, S>(dst, ea, data); } catch (BusError &e) { lockedBusError<C>(e); throw; }
         prefetch<C, POLL>();
         SYNC(2);
     }

@@ -16,10 +16,10 @@ its 158 rows against Dirk's rewrite).
 | distinct `pom*` extension identifiers | **0** (0 of them `pomJit*`) | `grep -rhoE '\bpom[A-Za-z0-9_]*' Moira/ \| sort -u \| wc -l` |
 | `POM68K`-marked lines | **0** | `grep -rn POM68K Moira/ \| wc -l` |
 | source files carrying a marker | **0 of 48** | `grep -rln POM68K Moira/ \| wc -l` |
-| patches in the queue below | **19** | `ls extern/moira/patches/*.patch` |
+| patches in the queue below | **20** | `ls extern/moira/patches/*.patch` |
 
 Each patch is one commit on top of the base, with its gate or reproducer
-listed below. Patches 1, 3, 4, 7, 9, 10, 12, 15 and 16-19 cite the manual
+listed below. Patches 1, 3, 4, 7, 9, 10, 12, 15 and 16-20 cite the manual
 passages they implement (15's 68040 half is [F]); 11 infers its rule from
 three passages; 2, 5, 6 and 8 cite none; 13 and 14 rest on SingleStepTests only. `patches/queue.tsv` records
 each patch's evidence, upstream pull request and gates, and
@@ -82,6 +82,7 @@ on the pristine and the patched tree, then the machine tiers.
 | 17 | 68881/68882: an FMOVE of a signaling NaN to an integer is not an operand error | `FPU/FpuFormats.h`, `FPU/FpuFormats.cpp`, `MoiraExecFPU_cpp.h` | MC68881UM 6.1.2, Table 6-2: OPERR for a non-signaling NaN only; the move set OPERR next to SNAN and took an OPERR trap with SNAN disabled. The 68040 keeps patch 7 (MC68040UM Table 9-11 and 9.7.3.2 disagree on an SNAN source). Contested: MC68881UM 4.5.4.2 read with Table 6-2 gives SNAN and OPERR together when the SNAN trap is disabled; [F] until a 68881/68882 capture | `fpu_sanity`, `sst68030`, `sst68030_fpu2`, `sst68030_fpuh` |
 | 18 | MMU: a bus error during a table search is an ATC fault on the retried access | `MMU/MMU030.cpp`, `MMU/MMU040.cpp` | MC68040UM 8.4.6.2 (SSW ATC: "bus error during table search"), 3.5, 8.2.1; MC68030UM 9.4 (ATC entry B bit), 8.1.2: the walk ends like on an invalid descriptor and the access faults on the logical address; a host /BERR on a descriptor read escaped as a physical bus error on the descriptor. PTEST and PLOAD walks unchanged; a frame supplied by the host (`BusError::custom`) is thrown on unmodified | `moira_rules_test` |
 | 19 | MMU: a misaligned access that crosses a page translates its second page | `Moira.h`, `MoiraDataflow.h`, `MoiraDataflow_cpp.h`, `MoiraExecMMU_cpp.h` | MC68040UM 8.4.6.2 (MA, original SIZE), 8.4.6.4 (FA = first byte); MC68030UM 9, 9.7.2 (pages of at least 256 bytes: only an access past a 256-byte boundary is checked): the second part went to `phys + 2`, a wrong physical page under a non-contiguous mapping, and an invalid second page took no fault. `translateAcross()` translates the second long word; `readAcross()`/`writeAcross()` split a crossing word into bytes. 68030 frame of a second-page fault (second page's logical address, original size) is [F]; MC68040UM 4.1's double access to the first page is not modelled (both pages are translated first) | `moira_rules_test` |
+| 20 | 68020/68030: report a locked read-modify-write fault with RM | `MoiraTypes.h`, `MoiraDataflow.h`, `MoiraDataflow_cpp.h`, `MoiraExceptions.h`, `MoiraExceptions_cpp.h`, `MoiraExec_cpp.h` | MC68020UM 6.2.1, MC68030UM 8.2.1: RM marks a fault in a data cycle of TAS, CAS or CAS2, read or write; the address computation and instruction fetches are not locked. MC68020UM 6.2.2-6.2.3, MC68030UM 8.2.2-8.2.3: with RM set and DF cleared RTE continues behind the instruction (its end is captured at the fault and kept in the frame's internal register at $1C), with DF set it reruns it; a handler that emulated the operation looped before. Host frames untouched; the 68040 LK bit is not covered. Registers an `(An)+`/`-(An)` handler sees follow the core's restart model (the 68030 path restores the start-of-instruction registers) | `berr020_test` |
 
 Patch 14 is exercised alone by `sst68000 --only DIVS,DIVU` on the
 SingleStepTests 68000/v1 corpus; `system_boot_etalon` is the Plus boot

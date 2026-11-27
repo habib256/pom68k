@@ -1,7 +1,7 @@
 From f78a397c0b8051d70d60516402a35a9df9ffc289 Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 13:52:56 +0400
-Subject: [PATCH 01/19] Serve the expired DBcc and trapping TRAPV refill from
+Subject: [PATCH 01/20] Serve the expired DBcc and trapping TRAPV refill from
  the instruction cache
 
 On the 68020 core, an expired DBcc and a trapping TRAPV read the program

@@ -1365,6 +1365,29 @@ Moira::completeBusError(BusError &e, u32 addr, bool instructionFetch)
     e.complete = true;
 }
 
+template <Core C> void
+Moira::lockedBusError(BusError &e)
+{
+    /* The data cycles of TAS, CAS and CAS2 form an indivisible read-modify-write
+     * operation. The 68020 and 68030 mark a fault in any of them with RM, so that
+     * a handler can emulate the entire instruction (MC68020UM 6.2.1, 6.2.2;
+     * MC68030UM 8.2.1, 8.2.2). Frames supplied by the host are left untouched.
+     *
+     * All instruction words have been read when a locked cycle runs. The end
+     * of the instruction is kept for RTE, which continues there after a
+     * handler that has emulated the operation (see execRte).
+     */
+    if constexpr (C == Core::C68020) {
+
+        if (e.custom || cpuModel >= CPUModel::M68EC040) return;
+        if (e.stackFrame.ssw & SSW030::DF) {
+
+            e.stackFrame.ssw |= SSW030::RM;
+            e.stackFrame.next = reg.pc;
+        }
+    }
+}
+
 template <Flags F> StackFrame
 Moira::makeFrame(u32 addr, u32 pc, u16 sr, u16 ird)
 {

@@ -1,7 +1,7 @@
 From 3f96a5815531ab082df7e1023171ee1028228cf4 Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 01:19:00 +0400
-Subject: [PATCH 09/19] Completed cycles: the second word of a split long word
+Subject: [PATCH 09/20] Completed cycles: the second word of a split long word
 
 A long word access on a narrow port is two word cycles. When the second one
 faults and the handler completes it (DF cleared), the data input buffer holds

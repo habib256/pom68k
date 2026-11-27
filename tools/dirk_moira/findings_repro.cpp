@@ -16,6 +16,7 @@ struct Cpu : public Moira {
     mutable long progReads = 0;          // instruction-space reads in [lo, hi)
     u32 lo = 0, hi = 0;
     mutable long berrCount = 0;
+    u32 wfault = 0;                      // a write to this address asserts /BERR too
 
     void w16(u32 a, u16 v) { mem[a] = u8(v >> 8); mem[a + 1] = u8(v); }
     void w32(u32 a, u32 v) { w16(a, u16(v >> 16)); w16(a + 2, u16(v)); }
@@ -23,14 +24,15 @@ struct Cpu : public Moira {
     u32 r32(u32 a) const { return u32(r16(a)) << 16 | r16(a + 2); }
 
     void berr(u32 a) const { if (a >= 0xF00000) { berrCount++; throw BusError(a); } }
+    void wberr(u32 a) const { berr(a); if (wfault && a == wfault) { berrCount++; throw BusError(a); } }
     void note(u32 a) const { if (a >= lo && a < hi) progReads++; }
 
     u8 read8(u32 a) const override { berr(a); note(a); return mem[a & 0xFFFFF]; }
     u16 read16(u32 a) const override { berr(a); note(a); return r16(a & 0xFFFFF); }
     u32 read32(u32 a) const override { berr(a); note(a); return r32(a & 0xFFFFF); }
-    void write8(u32 a, u8 v) const override { berr(a); const_cast<Cpu*>(this)->mem[a & 0xFFFFF] = v; }
-    void write16(u32 a, u16 v) const override { berr(a); const_cast<Cpu*>(this)->w16(a & 0xFFFFF, v); }
-    void write32(u32 a, u32 v) const override { berr(a); const_cast<Cpu*>(this)->w32(a & 0xFFFFF, v); }
+    void write8(u32 a, u8 v) const override { wberr(a); const_cast<Cpu*>(this)->mem[a & 0xFFFFF] = v; }
+    void write16(u32 a, u16 v) const override { wberr(a); const_cast<Cpu*>(this)->w16(a & 0xFFFFF, v); }
+    void write32(u32 a, u32 v) const override { wberr(a); const_cast<Cpu*>(this)->w32(a & 0xFFFFF, v); }
     u8 dsack(u32) const override { return port32 ? DSACK_32 : DSACK_16; }
 };
 
@@ -139,6 +141,55 @@ static void fsaveUnimp() {
                 fmt >> 12, (fmt & 0xFFF) / 4, hdr, hdr >> 24, (hdr >> 16) & 0xFF);
 }
 
+// 6. A fault in a locked read-modify-write (TAS, CAS, CAS2): the SSW sets RM
+//    (MC68020UM-1992 6.2.1; MC68030UM-1989 8.2.1), on the read and on the
+//    write cycle. A handler that emulates the whole instruction clears DF and
+//    leaves RM set: RTE then continues after the instruction, "even if the
+//    fault occurred on the first read cycle" (MC68020UM-1992 6.2.2, 6.2.3).
+static u16 lockedSsw(CPUModel m, int kind, bool write) {
+    Cpu c; boot(c, m);
+    const u32 opnd = write ? 0x9000 : 0xF00000;
+    c.wfault = write ? opnd : 0;
+    u32 a = kCode;
+    if (kind == 0) { c.w16(a, 0x4AD0); a += 2; }                          // TAS (A0)
+    if (kind == 1) { c.w16(a, 0x0ED0); c.w16(a + 2, 0x0040); a += 4; }    // CAS.L D0,D1,(A0)
+    if (kind == 2) { c.w16(a, 0x0EFC); c.w16(a + 2, 0x8040); c.w16(a + 4, 0x90C2); a += 6; } // CAS2.L D0:D2,D1:D3,(A0):(A1)
+    c.w16(a, 0x60FE);
+    c.w16(kHandler, 0x60FE);
+    c.reset();
+    c.setA(0, opnd); c.setA(1, 0x9100);
+    c.setD(0, 0); c.setD(2, 0);                    // compare operands equal memory: the writes happen
+    runUntil(c, kHandler);
+    return c.r16(c.getSP() + 0xA);
+}
+static void lockedRmw() {
+    const char* names[] = { "TAS.B", "CAS.L", "CAS2.L" };
+    for (CPUModel m : { CPUModel::M68020, CPUModel::M68030 }) {
+        for (int k = 0; k < 3; k++) {
+            u16 r = lockedSsw(m, k, false), w = lockedSsw(m, k, true);
+            std::printf("  %s %-7s read fault SSW=$%04X  write fault SSW=$%04X   manual: RM ($0080) set in both\n",
+                        m == CPUModel::M68020 ? "68020" : "68030", names[k], r, w);
+        }
+    }
+    // The handler emulates TAS (A0): it sets bit 7 of the operand, clears DF, keeps RM.
+    // (An)+ and -(An) are left out: the 68030 path of the core restores the registers
+    // of the instruction's start before the handler runs, the 68020 path does not.
+    for (CPUModel m : { CPUModel::M68020, CPUModel::M68030 }) {
+        Cpu c; boot(c, m);
+        c.wfault = 0x9000;
+        c.w16(kCode, 0x4AD0); c.w16(kCode + 2, 0x7E01); c.w16(kCode + 4, 0x60FE);     // TAS (A0); MOVEQ #1,D7
+        c.w16(kHandler + 0, 0x08AF); c.w16(kHandler + 2, 0x0000); c.w16(kHandler + 4, 0x000A); // BCLR #0,($A,A7): DF
+        c.w16(kHandler + 6, 0x4E73);                                                     // RTE
+        c.reset();
+        c.setA(0, 0x9000);
+        c.setD(7, 0);
+        for (int i = 0; i < 40 && c.getPC0() != kCode + 4; i++) c.execute();
+        std::printf("  %s    TAS, handler clears DF: bus errors %ld, executed the instruction after TAS: %s   manual: 1, yes\n",
+                    m == CPUModel::M68020 ? "68020" : "68030", c.berrCount,
+                    c.getPC0() == kCode + 4 && c.getD(7) == 1 ? "yes" : "no");
+    }
+}
+
 int main() {
     std::puts("1. Host /BERR on a byte read: special status word");
     hostBerr(CPUModel::M68020, "68020");
@@ -152,4 +203,6 @@ int main() {
     cachedReads();
     std::puts("5. 68040 FMOD and FSAVE");
     fsaveUnimp();
+    std::puts("6. Locked read-modify-write: RM in the SSW, and RTE after a handler that emulated it");
+    lockedRmw();
 }

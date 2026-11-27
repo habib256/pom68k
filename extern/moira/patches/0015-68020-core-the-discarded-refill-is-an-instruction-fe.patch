@@ -1,7 +1,7 @@
 From d7cbfd1a4744335ac950ba24b2002852058f2b0a Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 16:10:16 +0400
-Subject: [PATCH 15/19] 68020 core: the discarded refill is an instruction
+Subject: [PATCH 15/20] 68020 core: the discarded refill is an instruction
  fetch without a cache too
 
 readStatusRefill() sent the discarded program word through readInstr() only

@@ -1,7 +1,7 @@
 From 427e9d74d5bd57267afb876f260cf6a9a5f5adea Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Thu, 26 Nov 2026 07:46:20 +0400
-Subject: [PATCH 19/19] MMU: a misaligned access that crosses a page translates
+Subject: [PATCH 19/20] MMU: a misaligned access that crosses a page translates
  its second page
 
 readBus() and writeBus() translated the first byte of an access only and

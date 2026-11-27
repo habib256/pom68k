@@ -629,6 +629,7 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-27 (second) — A fault in TAS, CAS or CAS2 reports RM, and RTE continues behind an emulated one: queue patch 20](#2026-11-27-locked-rmw-rm)
 - [2026-11-27 — Seven pull-request branches prepared for Dirk, each verified twice; the "latch refill defect" is documented behaviour](#2026-11-27-dirk-pr-branches)
 - [2026-11-26 (ninth) — The 19-patch queue triaged for Dirk: no patch goes out as written; nine messages corrected, four defects fixed (patches 4, 7, 16, 18), one finding refuted (19)](#2026-11-26-queue-triage)
 - [2026-11-26 (eighth) — AArch64 machine tier green on the 19-patch queue](#2026-11-26-machine-tier-19)
@@ -1470,6 +1471,60 @@ Newest first.
 - **2026-07-14** — [M0–M3.5 + first real-ROM boot](#2026-07-14-m0-m35-first-rom-boot)
 
 ---
+
+<a id="2026-11-27-locked-rmw-rm"></a>
+## 2026-11-27 (second) — A fault in TAS, CAS or CAS2 reports RM, and RTE continues behind an emulated one: queue patch 20
+
+**Dirk's side, checked first.** His `master` is still `bf98107f` (#46-#49,
+2026-11-25); `dev`, `m68010` and `FPU` are all behind it, and the Moira copy
+inside vAmiga 5.1 (its last commit 2026-11-25) is an older generation, not a
+newer one. PR #50-#53 are open, one commit each on `bf98107f`, heads equal to
+`queue.tsv`, mergeable, CI green, no review or comment yet; discussion #36
+has no new reply. Nothing to rebase.
+
+**The defect.** MC68020UM-1992 §6.2.1 and MC68030UM-1989 §8.2.1 define RM,
+"read-modify-write on data cycle"; the core never set it (the « OPEN
+DEFECT » rubric of `tests/known/berr020_test.txt`). §6.2.2 / §8.2.2 add the
+other half: a handler emulates the whole locked instruction, clears DF and
+leaves RM set, "because the RTE instruction expects the entire operation to
+have been completed if the RM bit is set and the DF bit is cleared. This is
+true even if the fault occurred on the first read cycle." Reproduced on the
+unmodified `bf98107f` (rebuilt from `Moira/` minus the queue, tree equal to
+`BASE.tree`) with `tools/dirk_moira/findings_repro.cpp` case 6: SSW $0155 /
+$0115 for TAS (read / write fault) where the manual sets $0080 too, and a
+handler that emulates TAS and clears DF looped through 14 bus errors on
+both the 68020 and the 68030, since RTE reran the instruction.
+
+**Patch 20.** `lockedBusError()` sets RM on a bus error in the operand
+cycles of TAS, CAS and CAS2 — read and write — and only there: the cycles
+that compute the effective address are split out of `readOp()` so a
+memory-indirect pointer fault keeps RM clear; host frames
+(`BusError::custom`) and the 68040 are untouched. The end of the
+instruction is captured at the fault into `StackFrame::next` and stacked in
+the frame's internal register at $1C; RTE with RM set and DF clear continues
+there and drops the 68020 rollback, with DF set it reruns as before
+(§6.2.3 / §8.2.3). A first draft read `reg.pc` when writing the frame: right
+on the 68020 path, wrong on the 68030 path, whose `processException()`
+restores the start-of-instruction registers first — the new `berr020_test`
+cell caught CAS continuing two bytes late (CAS2 passed only because its
+extension words decode as harmless instructions), and the reproducer was
+fixed to check that the next instruction actually runs.
+
+**Gates (x86-64, Debug worktree).** `berr020_test` 114/114 listed failures,
+none new (the rubric left; new cells on 68EC020, 68020 and 68030: RM on
+the read and the write cycle, continuation behind TAS/CAS/CAS2 with `(An)`,
+`d16(An)`, `(xxx).L` and `([bd,An])` operands, and RM clear on a fault of
+the memory-indirect pointer);
+`berr030_test`, `icache020_test`, `moira_rules_test`,
+`fault_transparency_test` unchanged; `sst68030` 2280/3082, `_solo`
+3639/5592, `_rmw` 2566/6000, each on its floor. `moira_queue check`: BASE +
+20.
+
+**Left open.** The 68040 LK bit (MC68040UM SSW, defined in `SSW040`, never
+set) needs its own reading of §8.4.6. What a handler sees in `(An)+`/`-(An)`
+follows the core's restart model (the 68030 path restores the registers of
+the instruction's start, the 68020 path does not): [F] against the silicon.
+No PR text yet: the owner reviews it first.
 
 <a id="2026-11-27-dirk-pr-branches"></a>
 ## 2026-11-27 — Seven pull-request branches prepared for Dirk, each verified twice; the "latch refill defect" is documented behaviour

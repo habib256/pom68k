@@ -1,7 +1,7 @@
 From bebf034914e492c4d4e3bed23e8fe1fd1a6ddd79 Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Wed, 25 Nov 2026 18:00:00 +0400
-Subject: [PATCH 16/19] 68881/68882: an FMOVE to memory or to a data register
+Subject: [PATCH 16/20] 68881/68882: an FMOVE to memory or to a data register
  takes a mid-instruction exception
 
 MC68881/MC68882UM 6.1: "FPCP instruction exceptions that arise from the

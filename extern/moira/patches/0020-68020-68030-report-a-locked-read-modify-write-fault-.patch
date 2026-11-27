@@ -1,0 +1,301 @@
+From ec7ffbd1e0ca30760832fe67e2b724e737adcc90 Mon Sep 17 00:00:00 2001
+From: VERHILLE Arnaud <gist974@gmail.com>
+Date: Fri, 27 Nov 2026 14:58:33 +0400
+Subject: [PATCH 20/20] 68020/68030: report a locked read-modify-write fault with RM
+
+MC68020UM 6.2.1 and MC68030UM 8.2.1 define the RM bit of the special status
+word: "Read-modify-write on data cycle". The core never set it. A bus error
+in a data cycle of TAS, CAS or CAS2 now sets RM, in the read cycle and in the
+write cycle alike; the cycles that compute the effective address and the
+instruction fetches are not locked and keep RM clear. Frames supplied by the
+host are left untouched; the 68040 (LK) is not covered.
+
+MC68020UM 6.2.2 and MC68030UM 8.2.2: a handler emulates the entire locked
+instruction, clears DF and leaves RM set, "because the RTE instruction
+expects the entire operation to have been completed if the RM bit is set
+and the DF bit is cleared. This is true even if the fault occurred on the
+first read cycle." RTE now continues behind the instruction in that case.
+Its end is captured when the fault occurs (all instruction words have been
+read by then) and kept in an internal register of the bus fault frame
+(offset $1C). With DF set, RTE reruns the entire instruction as before
+(MC68020UM 6.2.3, MC68030UM 8.2.3).
+
+Before, such a handler looped: RTE restarted the instruction, which faulted
+again (findings_repro case 6: 14 bus errors where the manual expects one).
+---
+ Moira/MoiraDataflow.h       |  3 +++
+ Moira/MoiraDataflow_cpp.h   | 23 ++++++++++++++++
+ Moira/MoiraExceptions.h     |  6 ++---
+ Moira/MoiraExceptions_cpp.h | 27 ++++++++++---------
+ Moira/MoiraExec_cpp.h       | 54 +++++++++++++++++++++++++++++++------
+ Moira/MoiraTypes.h          |  1 +
+ 6 files changed, 91 insertions(+), 23 deletions(-)
+
+diff --git a/Moira/MoiraDataflow.h b/Moira/MoiraDataflow.h
+index 738d9b8..b717cfa 100644
+--- a/Moira/MoiraDataflow.h
++++ b/Moira/MoiraDataflow.h
+@@ -181,6 +181,9 @@ template <Flags F = 0> StackFrame makeFrame(u32 addr);
+ // (addr is the address of the operand, which tells a split long word's cycles apart)
+ template <Size S, bool W> void completeBusError(BusError &e, u32 addr, bool instructionFetch = false);
+ 
++// Marks a bus error in a data cycle of TAS, CAS or CAS2 as part of a read-modify-write operation
++template <Core C> void lockedBusError(BusError &e);
++
+ // Creates an address error that is raised before the bus cycle has started
+ template <Core C> AddressError earlyAddressError(const StackFrame &frame);
+ 
+diff --git a/Moira/MoiraDataflow_cpp.h b/Moira/MoiraDataflow_cpp.h
+index f5991c8..e5b553c 100644
+--- a/Moira/MoiraDataflow_cpp.h
++++ b/Moira/MoiraDataflow_cpp.h
+@@ -1365,6 +1365,29 @@ Moira::completeBusError(BusError &e, u32 addr, bool instructionFetch)
+     e.complete = true;
+ }
+ 
++template <Core C> void
++Moira::lockedBusError(BusError &e)
++{
++    /* The data cycles of TAS, CAS and CAS2 form an indivisible read-modify-write
++     * operation. The 68020 and 68030 mark a fault in any of them with RM, so that
++     * a handler can emulate the entire instruction (MC68020UM 6.2.1, 6.2.2;
++     * MC68030UM 8.2.1, 8.2.2). Frames supplied by the host are left untouched.
++     *
++     * All instruction words have been read when a locked cycle runs. The end
++     * of the instruction is kept for RTE, which continues there after a
++     * handler that has emulated the operation (see execRte).
++     */
++    if constexpr (C == Core::C68020) {
++
++        if (e.custom || cpuModel >= CPUModel::M68EC040) return;
++        if (e.stackFrame.ssw & SSW030::DF) {
++
++            e.stackFrame.ssw |= SSW030::RM;
++            e.stackFrame.next = reg.pc;
++        }
++    }
++}
++
+ template <Flags F> StackFrame
+ Moira::makeFrame(u32 addr, u32 pc, u16 sr, u16 ird)
+ {
+diff --git a/Moira/MoiraExceptions.h b/Moira/MoiraExceptions.h
+index 0ea7bc9..29a3512 100644
+--- a/Moira/MoiraExceptions.h
++++ b/Moira/MoiraExceptions.h
+@@ -27,9 +27,9 @@ template <Core C> void writeStackFrame0011(u16 sr, u32 pc, u32 ea, u16 nr);
+ template <Core C> void writeStackFrame0111(u16 sr, u32 pc, u16 nr, u16 ssw, u32 addr, u32 dataOut);
+ template <Core C> void writeStackFrame1000(StackFrame &frame, u16 sr, u32 pc, u32 ia, u16 nr, u32 addr);
+ template <Core C> void writeStackFrame1001(u16 sr, u32 pc, u32 ia, u16 nr, u16 op, u32 ea);
+-template <Core C> void writeStackFrame1010(u16 sr, u32 pc, u16 nr, u16 ssw = 0, u32 addr = 0, u32 dataOut = 0, u16 stageC = 0, u16 stageB = 0);
+-template <Core C> void writeStackFrame1011UAE(u16 sr, u16 nr, u32 pc, u16 ssw, u32 addr, u32 end, bool write, u32 dataOut);
+-template <Core C> void writeStackFrame1011(u16 sr, u32 pc, u32 ia, u16 nr, u16 ssw = 0, u32 addr = 0, u32 dataOut = 0, u16 stageC = 0, u16 stageB = 0);
++template <Core C> void writeStackFrame1010(u16 sr, u32 pc, u16 nr, u16 ssw = 0, u32 addr = 0, u32 dataOut = 0, u16 stageC = 0, u16 stageB = 0, u32 next = 0);
++template <Core C> void writeStackFrame1011UAE(u16 sr, u16 nr, u32 pc, u16 ssw, u32 addr, u32 end, bool write, u32 dataOut, u32 next = 0);
++template <Core C> void writeStackFrame1011(u16 sr, u32 pc, u32 ia, u16 nr, u16 ssw = 0, u32 addr = 0, u32 dataOut = 0, u16 stageC = 0, u16 stageB = 0, u32 next = 0);
+ 
+ // Emulates an exception other than address errors, bus errors, and interrupts
+ // (nr is the trap number for TRAP and the effective address for FPU_UNIMPLEMENTED)
+diff --git a/Moira/MoiraExceptions_cpp.h b/Moira/MoiraExceptions_cpp.h
+index a3a2234..170f8d1 100644
+--- a/Moira/MoiraExceptions_cpp.h
++++ b/Moira/MoiraExceptions_cpp.h
+@@ -252,11 +252,11 @@ Moira::writeStackFrame1001(u16 sr, u32 pc, u32 ia, u16 nr, u16 op, u32 ea)
+ }
+ 
+ template <Core C> void
+-Moira::writeStackFrame1010(u16 sr, u32 pc, u16 nr, u16 ssw, u32 addr, u32 dataOut, u16 stageC, u16 stageB)
++Moira::writeStackFrame1010(u16 sr, u32 pc, u16 nr, u16 ssw, u32 addr, u32 dataOut, u16 stageC, u16 stageB, u32 next)
+ {
+-    // Internal registers
+-    push<C, Word>(0);
+-    push<C, Word>(0);
++    // Internal registers (the end of a read-modify-write operation, see execRte)
++    push<C, Word>(u16(next));
++    push<C, Word>(u16(next >> 16));
+ 
+     // Data output buffer
+     push<C, Long>(dataOut);
+@@ -291,7 +291,7 @@ Moira::writeStackFrame1010(u16 sr, u32 pc, u16 nr, u16 ssw, u32 addr, u32 dataOu
+ }
+ 
+ template <Core C> void
+-Moira::writeStackFrame1011(u16 sr, u32 pc, u32 ia, u16 nr, u16 ssw, u32 addr, u32 dataOut, u16 stageC, u16 stageB)
++Moira::writeStackFrame1011(u16 sr, u32 pc, u32 ia, u16 nr, u16 ssw, u32 addr, u32 dataOut, u16 stageC, u16 stageB, u32 next)
+ {
+     // Internal registers
+     push<C, Long>(0);
+@@ -320,9 +320,9 @@ Moira::writeStackFrame1011(u16 sr, u32 pc, u32 ia, u16 nr, u16 ssw, u32 addr, u3
+     // Stage B address
+     push<C, Long>(0);
+ 
+-    // Internal registers
+-    push<C, Long>(0);
++    // Internal registers (the end of a read-modify-write operation, see execRte)
+     push<C, Long>(0);
++    push<C, Long>(next);
+ 
+     // Data output buffer
+     push<C, Long>(dataOut);
+@@ -377,7 +377,7 @@ static bool hasIndexedOperand(u16 ird)
+ }
+ 
+ template <Core C> void
+-Moira::writeStackFrame1011UAE(u16 sr, u16 nr, u32 pc, u16 ssw, u32 addr, u32 end, bool write, u32 dataOut)
++Moira::writeStackFrame1011UAE(u16 sr, u16 nr, u32 pc, u16 ssw, u32 addr, u32 end, bool write, u32 dataOut, u32 next)
+ {
+     u16 stageC = 0, stageB = 0;
+     if (nr == 2 && !write) {
+@@ -385,7 +385,7 @@ Moira::writeStackFrame1011UAE(u16 sr, u16 nr, u32 pc, u16 ssw, u32 addr, u32 end
+         stageB = peekInstr((end + 4) & addrMask<C>());
+     }
+     // The data output buffer holds the value of a faulting write (MC68020UM 6.2.2)
+-    writeStackFrame1011<C>(sr, 0, pc, nr, ssw, addr, write ? dataOut : 0, stageC, stageB);
++    writeStackFrame1011<C>(sr, 0, pc, nr, ssw, addr, write ? dataOut : 0, stageC, stageB, next);
+ }
+ 
+ template <Core C> void
+@@ -541,10 +541,12 @@ Moira::execBusError(StackFrame frame, int delay, const Registers *saved)
+         bool write = !(frame.ssw & SSW030::RW) && (frame.ssw & SSW030::DF);
+         u32 dataOut = write ? frame.data : 0;
+ 
++        u32 next = (frame.ssw & SSW030::RM) ? frame.next : 0;
++
+         if (write) {
+-            writeStackFrame1010<C>(status, reg.pc0, 2, frame.ssw, frame.addr, dataOut, stageC, stageB);
++            writeStackFrame1010<C>(status, reg.pc0, 2, frame.ssw, frame.addr, dataOut, stageC, stageB, next);
+         } else {
+-            writeStackFrame1011<C>(status, frame.pc, reg.pc0, 2, frame.ssw, frame.addr, dataOut, stageC, stageB);
++            writeStackFrame1011<C>(status, frame.pc, reg.pc0, 2, frame.ssw, frame.addr, dataOut, stageC, stageB, next);
+         }
+ 
+     } else {
+@@ -584,7 +586,8 @@ Moira::execBusError(StackFrame frame, int delay, const Registers *saved)
+         if (ix && move && frame.write && indexed(srcMode, srcReg)) {
+             if (dstMode == 5 || (dstMode == 7 && dstReg <= 1)) pc -= 2;
+         }
+-        writeStackFrame1011UAE<C>(status, 2, pc, frame.ssw, frame.addr, end, frame.write, frame.data);
++        u32 next = (frame.ssw & SSW030::RM) ? frame.next : 0;
++        writeStackFrame1011UAE<C>(status, 2, pc, frame.ssw, frame.addr, end, frame.write, frame.data, next);
+ 
+         // Remember how to restart the instruction
+         restart.valid = saved != nullptr;
+diff --git a/Moira/MoiraExec_cpp.h b/Moira/MoiraExec_cpp.h
+index 55e3ed6..804c4c1 100644
+--- a/Moira/MoiraExec_cpp.h
++++ b/Moira/MoiraExec_cpp.h
+@@ -1629,7 +1629,12 @@ Moira::execCas(u16 opcode)
+     u32 ea, data;
+ 
+     readExt<C>();
+-    readOp<C, M, S, STD_AE_FRAME>(dst, &ea, &data);
++
++    // The operand cycles are locked, the cycles that compute the address are not
++    ea = computeEA<C, M, S, STD_AE_FRAME>(dst);
++    updateAnPD<M, S>(dst);
++    try { data = readM<C, M, S, STD_AE_FRAME>(ea); } catch (BusError &e) { lockedBusError<C>(e); throw; }
++    updateAnPI<M, S>(dst);
+ 
+     auto compare = readD(dc);
+ 
+@@ -1652,7 +1657,7 @@ Moira::execCas(u16 opcode)
+ 
+     } else {
+ 
+-        writeM<C, M, S>(ea, readD<S>(du));
++        try { writeM<C, M, S>(ea, readD<S>(du)); } catch (BusError &e) { lockedBusError<C>(e); throw; }
+ 
+         //           00  10  20        00  10  20        00  10  20
+         //           .b  .b  .b        .w  .w  .w        .l  .l  .l
+@@ -1689,8 +1694,11 @@ Moira::execCas2(u16 opcode)
+ 
+     u32 ea1 = reg.r[rn1];
+     u32 ea2 = reg.r[rn2];
+-    u32 data1 = readM<C, M, S>(ea1);
+-    u32 data2 = readM<C, M, S>(ea2);
++    u32 data1, data2;
++    try {
++        data1 = readM<C, M, S>(ea1);
++        data2 = readM<C, M, S>(ea2);
++    } catch (BusError &e) { lockedBusError<C>(e); throw; }
+ 
+     auto compare1 = readD(dc1);
+     auto compare2 = readD(dc2);
+@@ -1704,8 +1712,10 @@ Moira::execCas2(u16 opcode)
+     }
+     if (reg.sr.z) {
+ 
+-        writeM<C, M, S>(ea1, reg.d[du1]);
+-        writeM<C, M, S>(ea2, reg.d[du2]);
++        try {
++            writeM<C, M, S>(ea1, reg.d[du1]);
++            writeM<C, M, S>(ea2, reg.d[du2]);
++        } catch (BusError &e) { lockedBusError<C>(e); throw; }
+ 
+         prefetch<C, POLL>();
+         CYCLES_68020(15)
+@@ -5107,6 +5117,23 @@ Moira::readRteFrame68020(u16 &newsr, u32 &newpc)
+             u16 ssw = (u16)read<C, AddrSpace::DATA, Word>(frameBase + 0xA);
+             bool data = !(ssw & (SSW030::FC | SSW030::FB | SSW030::RM | SSW030::DF));
+ 
++            /* A handler that has emulated a read-modify-write operation clears DF
++             * and leaves RM set. RTE then expects the entire instruction to be
++             * completed, even if the fault occurred on the first read cycle
++             * (MC68020UM 6.2.2; MC68030UM 8.2.2), and continues behind it. Its
++             * end is kept in an internal register of the frame (0 if the host
++             * has supplied the frame). With DF set, the instruction is rerun
++             * from its start (MC68020UM 6.2.3; MC68030UM 8.2.3).
++             */
++            if ((ssw & SSW030::RM) && !(ssw & SSW030::DF)) {
++
++                if (u32 next = read<C, AddrSpace::DATA, Long>(frameBase + 0x1C)) {
++
++                    newpc = next;
++                    restart.valid = false;
++                }
++            }
++
+             completed.armed = false;
+             if (data) {
+ 
+@@ -5458,12 +5485,23 @@ Moira::execTasEa(u16 opcode)
+         constexpr int delay = M == Mode::PI ? 4 : (M == Mode::AI || M == Mode::PD || M == Mode::IX) ? 2 : 0;
+         if constexpr (delay) SYNC(delay);
+ 
+-        readOp<C, M, Byte>(dst, &ea, &data);
++        if constexpr (C == Core::C68020) {
++
++            // The operand cycles are locked, the cycles that compute the address are not
++            ea = computeEA<C, M, Byte>(dst);
++            updateAnPD<M, Byte>(dst);
++            try { data = readM<C, M, Byte>(ea); } catch (BusError &e) { lockedBusError<C>(e); throw; }
++            updateAnPI<M, Byte>(dst);
++
++        } else {
++
++            readOp<C, M, Byte>(dst, &ea, &data);
++        }
+ 
+         setMoveFlags<Byte>(data);
+         data |= 0x80;
+ 
+-        writeOp<C, M, S>(dst, ea, data);
++        try { writeOp<C, M, S>(dst, ea, data); } catch (BusError &e) { lockedBusError<C>(e); throw; }
+         prefetch<C, POLL>();
+         SYNC(2);
+     }
+diff --git a/Moira/MoiraTypes.h b/Moira/MoiraTypes.h
+index e1750ba..5c61a79 100644
+--- a/Moira/MoiraTypes.h
++++ b/Moira/MoiraTypes.h
+@@ -425,6 +425,7 @@ struct StackFrame
+ 
+     bool write;                 ///< Set if the faulting bus access was a write (68020+)
+     u32 data;                   ///< Data of a faulting write access (68020+)
++    u32 next = 0;               ///< End of a locked read-modify-write instruction (68020, 68030)
+ };
+ 
+ /// The status register (SR)
+-- 
+2.53.0
+

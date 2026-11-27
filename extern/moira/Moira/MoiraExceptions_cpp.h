@@ -252,11 +252,11 @@ Moira::writeStackFrame1001(u16 sr, u32 pc, u32 ia, u16 nr, u16 op, u32 ea)
 }
 
 template <Core C> void
-Moira::writeStackFrame1010(u16 sr, u32 pc, u16 nr, u16 ssw, u32 addr, u32 dataOut, u16 stageC, u16 stageB)
+Moira::writeStackFrame1010(u16 sr, u32 pc, u16 nr, u16 ssw, u32 addr, u32 dataOut, u16 stageC, u16 stageB, u32 next)
 {
-    // Internal registers
-    push<C, Word>(0);
-    push<C, Word>(0);
+    // Internal registers (the end of a read-modify-write operation, see execRte)
+    push<C, Word>(u16(next));
+    push<C, Word>(u16(next >> 16));
 
     // Data output buffer
     push<C, Long>(dataOut);
@@ -291,7 +291,7 @@ Moira::writeStackFrame1010(u16 sr, u32 pc, u16 nr, u16 ssw, u32 addr, u32 dataOu
 }
 
 template <Core C> void
-Moira::writeStackFrame1011(u16 sr, u32 pc, u32 ia, u16 nr, u16 ssw, u32 addr, u32 dataOut, u16 stageC, u16 stageB)
+Moira::writeStackFrame1011(u16 sr, u32 pc, u32 ia, u16 nr, u16 ssw, u32 addr, u32 dataOut, u16 stageC, u16 stageB, u32 next)
 {
     // Internal registers
     push<C, Long>(0);
@@ -320,9 +320,9 @@ Moira::writeStackFrame1011(u16 sr, u32 pc, u32 ia, u16 nr, u16 ssw, u32 addr, u3
     // Stage B address
     push<C, Long>(0);
 
-    // Internal registers
+    // Internal registers (the end of a read-modify-write operation, see execRte)
     push<C, Long>(0);
-    push<C, Long>(0);
+    push<C, Long>(next);
 
     // Data output buffer
     push<C, Long>(dataOut);
@@ -377,7 +377,7 @@ static bool hasIndexedOperand(u16 ird)
 }
 
 template <Core C> void
-Moira::writeStackFrame1011UAE(u16 sr, u16 nr, u32 pc, u16 ssw, u32 addr, u32 end, bool write, u32 dataOut)
+Moira::writeStackFrame1011UAE(u16 sr, u16 nr, u32 pc, u16 ssw, u32 addr, u32 end, bool write, u32 dataOut, u32 next)
 {
     u16 stageC = 0, stageB = 0;
     if (nr == 2 && !write) {
@@ -385,7 +385,7 @@ Moira::writeStackFrame1011UAE(u16 sr, u16 nr, u32 pc, u16 ssw, u32 addr, u32 end
         stageB = peekInstr((end + 4) & addrMask<C>());
     }
     // The data output buffer holds the value of a faulting write (MC68020UM 6.2.2)
-    writeStackFrame1011<C>(sr, 0, pc, nr, ssw, addr, write ? dataOut : 0, stageC, stageB);
+    writeStackFrame1011<C>(sr, 0, pc, nr, ssw, addr, write ? dataOut : 0, stageC, stageB, next);
 }
 
 template <Core C> void
@@ -541,10 +541,12 @@ Moira::execBusError(StackFrame frame, int delay, const Registers *saved)
         bool write = !(frame.ssw & SSW030::RW) && (frame.ssw & SSW030::DF);
         u32 dataOut = write ? frame.data : 0;
 
+        u32 next = (frame.ssw & SSW030::RM) ? frame.next : 0;
+
         if (write) {
-            writeStackFrame1010<C>(status, reg.pc0, 2, frame.ssw, frame.addr, dataOut, stageC, stageB);
+            writeStackFrame1010<C>(status, reg.pc0, 2, frame.ssw, frame.addr, dataOut, stageC, stageB, next);
         } else {
-            writeStackFrame1011<C>(status, frame.pc, reg.pc0, 2, frame.ssw, frame.addr, dataOut, stageC, stageB);
+            writeStackFrame1011<C>(status, frame.pc, reg.pc0, 2, frame.ssw, frame.addr, dataOut, stageC, stageB, next);
         }
 
     } else {
@@ -584,7 +586,8 @@ Moira::execBusError(StackFrame frame, int delay, const Registers *saved)
         if (ix && move && frame.write && indexed(srcMode, srcReg)) {
             if (dstMode == 5 || (dstMode == 7 && dstReg <= 1)) pc -= 2;
         }
-        writeStackFrame1011UAE<C>(status, 2, pc, frame.ssw, frame.addr, end, frame.write, frame.data);
+        u32 next = (frame.ssw & SSW030::RM) ? frame.next : 0;
+        writeStackFrame1011UAE<C>(status, 2, pc, frame.ssw, frame.addr, end, frame.write, frame.data, next);
 
         // Remember how to restart the instruction
         restart.valid = saved != nullptr;

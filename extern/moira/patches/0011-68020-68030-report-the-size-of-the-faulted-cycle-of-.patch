@@ -1,7 +1,7 @@
 From 56f1626237446b057bfdd3887cc67239c5cbf951 Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 01:21:44 +0400
-Subject: [PATCH 11/19] 68020/68030: report the size of the faulted cycle of a
+Subject: [PATCH 11/20] 68020/68030: report the size of the faulted cycle of a
  split long word
 
 When the second word of a long word access faults, the special status word

@@ -204,6 +204,73 @@ void lockedFault(moira::CPUModel model, unsigned kind) {
     check(c.getPC0() == handler && c.faults == 2,
           "locked fault with DF set reruns the operation");
 }
+// A handler that emulates the whole locked operation clears DF and leaves RM
+// set; RTE then continues behind the instruction, whichever of its cycles
+// faulted (MC68020UM-1992 §6.2.2, §6.2.3).
+void lockedEmulated(moira::CPUModel model, unsigned kind, bool write) {
+    ++cases;
+    Cpu c(model);
+    c.lng(0, 0x80000); c.lng(4, code); c.lng(8, handler);
+    c.word(code, kind == 0 ? 0x4ad0 : kind == 1 ? 0x0cd0 : 0x0cfc);
+    c.word(code + 2, kind == 2 ? 0x8040 : 0x0040);
+    c.word(code + 4, kind == 2 ? 0x90c2 : 0x4e71);
+    c.word(code + 6, 0x4e71); c.word(code + 8, 0x4e71);
+    const uint32_t next = code + (kind == 0 ? 2 : kind == 1 ? 4 : 6);
+    c.word(next, 0x7e01); c.word(next + 2, 0x60fe);   // MOVEQ #1,D7; BRA.S *
+    // BCLR #0,10(SP), clearing DF in the stacked SSW; then RTE.
+    c.word(handler, 0x08af); c.word(handler + 2, 0); c.word(handler + 4, 10);
+    c.word(handler + 6, 0x4e73);
+    c.reset(); c.setSR(0x2700); c.setA(0, operand); c.setA(1, operand + 4);
+    c.setD(0, 0); c.setD(2, 0);  // the comparisons match: the operation writes
+    c.fault = operand; c.writeFault = write;
+    c.execute();
+    const auto sp = c.getSP();
+    check(c.getPC0() == handler && (c.word(sp + 10) & 0x01c0) == (write ? 0x0180 : 0x01c0),
+          "TAS/CAS/CAS2: read and write cycles both report RM");
+    c.setD(7, 0);
+    for (int i = 0; i < 6 && c.getPC0() != next + 2; ++i) c.execute();
+    check(c.getPC0() == next + 2 && c.getD(7) == 1 && c.faults == 1,
+          "locked fault with DF cleared continues behind the instruction");
+}
+// Effective addresses with extension words: the end RTE continues at follows
+// the last extension word, and a fault on the pointer of a memory-indirect
+// mode is not part of the locked operation (RM clear).
+void lockedEa(moira::CPUModel model, unsigned ea, bool pointerFault) {
+    ++cases;
+    Cpu c(model);
+    constexpr uint32_t base = 0x50000, ptr = base + 0x100;
+    c.lng(0, 0x80000); c.lng(4, code); c.lng(8, handler);
+    std::vector<uint16_t> w;
+    switch (ea) {
+        case 0: w = {0x4ae8, 0x0010}; break;                                   // TAS $10(A0)
+        case 1: w = {0x4af9, uint16_t(operand >> 16), uint16_t(operand)}; break; // TAS (operand).L
+        case 2: w = {0x0ce8, 0x0040, 0x0010}; break;                           // CAS.W D0,D1,$10(A0)
+        default: w = {0x4af0, 0x0161, 0x0100}; break;                          // TAS ([$100,A0])
+    }
+    uint32_t a = code;
+    for (auto v : w) { c.word(a, v); a += 2; }
+    const uint32_t next = a;
+    c.word(next, 0x7e01); c.word(next + 2, 0x60fe);   // MOVEQ #1,D7; BRA.S *
+    // BCLR #0,10(SP), clearing DF in the stacked SSW; then RTE.
+    c.word(handler, 0x08af); c.word(handler + 2, 0); c.word(handler + 4, 10);
+    c.word(handler + 6, 0x4e73);
+    c.lng(ptr, operand);
+    c.reset(); c.setSR(0x2700); c.setD(0, 0); c.setD(7, 0);
+    c.setA(0, ea == 3 ? base : operand - 0x10);
+    c.fault = pointerFault ? ptr : operand; c.writeFault = !pointerFault;
+    c.execute();
+    const auto ssw = c.word(c.getSP() + 10);
+    if (pointerFault) {
+        check(c.getPC0() == handler && (ssw & 0x01c0) == 0x0140,
+              "memory-indirect pointer fault is not a locked cycle");
+        return;
+    }
+    check(c.getPC0() == handler && (ssw & 0x01c0) == 0x0180,
+          "locked write fault behind extension words reports RM");
+    for (int i = 0; i < 6 && c.getPC0() != next + 2; ++i) c.execute();
+    check(c.getPC0() == next + 2 && c.getD(7) == 1 && c.faults == 1,
+          "locked fault with DF cleared continues behind the extension words");
+}
 void lockedPrefetch(moira::CPUModel model) {
     ++cases;
     Cpu c(model);
@@ -277,9 +344,19 @@ int main() {
     for (auto model : {moira::CPUModel::M68EC020, moira::CPUModel::M68020}) {
         aliasAndReset(model, false); aliasAndReset(model, true);
         cpuSpace(model, false); cpuSpace(model, true);
-        for (unsigned kind = 0; kind < 3; ++kind) lockedFault(model, kind);
         lockedPrefetch(model);
         redirectedPc(model); nestedFaults(model);
+    }
+    // The 68030 reports a locked operation the same way (MC68030UM-1989 §8.2.1, §8.2.2).
+    for (auto model : {moira::CPUModel::M68EC020, moira::CPUModel::M68020, moira::CPUModel::M68030})
+        for (unsigned kind = 0; kind < 3; ++kind) {
+            lockedFault(model, kind);
+            for (bool write : {false, true}) lockedEmulated(model, kind, write);
+            lockedEa(model, kind, false);
+        }
+    for (auto model : {moira::CPUModel::M68EC020, moira::CPUModel::M68020, moira::CPUModel::M68030}) {
+        lockedEa(model, 3, false);
+        lockedEa(model, 3, true);
     }
     std::printf("berr020_test: %u executed sequences, %d failure(s)\n", cases, failures);
     return failures ? 1 : 0;

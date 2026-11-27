@@ -14,7 +14,3 @@
 # "68020/68030: do not rerun a data cycle a handler has completed").
 16	no data bus callback for the completed operand
 2	redirected PC: identical next opcode must issue a new data access
-
-# OPEN DEFECT: the SSW of a fault in a locked read-modify-write (TAS, CAS,
-# CAS2) does not set RM (MC68020UM-1992 §6.2.1). To fix in the queue.
-6	TAS/CAS/CAS2: frame identifies a locked RMW data fault

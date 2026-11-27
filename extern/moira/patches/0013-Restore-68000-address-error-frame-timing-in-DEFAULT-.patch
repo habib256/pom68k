@@ -1,7 +1,7 @@
 From 2504405129469481e5072421a907a449c0c364b1 Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 07:53:08 +0400
-Subject: [PATCH 13/19] Restore 68000 address error frame timing in DEFAULT
+Subject: [PATCH 13/20] Restore 68000 address error frame timing in DEFAULT
  mode
 
 In the default configuration, the idle before the group-0 frame of a 68000

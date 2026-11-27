@@ -1,7 +1,7 @@
 From 2f50ba212b1ef6ad09f662b4fb8f0588b0857b3a Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 00:56:58 +0400
-Subject: [PATCH 07/19] 68040: an FMOVE to an integer takes SNAN and OPERR
+Subject: [PATCH 07/20] 68040: an FMOVE to an integer takes SNAN and OPERR
  unconditionally
 
 MC68040UM 9.7.2.2: when an FMOVE to byte, word or long word meets an SNAN,

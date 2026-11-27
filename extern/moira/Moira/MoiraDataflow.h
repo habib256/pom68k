@@ -181,6 +181,9 @@ template <Flags F = 0> StackFrame makeFrame(u32 addr);
 // (addr is the address of the operand, which tells a split long word's cycles apart)
 template <Size S, bool W> void completeBusError(BusError &e, u32 addr, bool instructionFetch = false);
 
+// Marks a bus error in a data cycle of TAS, CAS or CAS2 as part of a read-modify-write operation
+template <Core C> void lockedBusError(BusError &e);
+
 // Creates an address error that is raised before the bus cycle has started
 template <Core C> AddressError earlyAddressError(const StackFrame &frame);
 

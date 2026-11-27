@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 902 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 903 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 29 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 46 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 10 |
-| [Cross-cutting](#cross-cutting) | 190 |
+| [Cross-cutting](#cross-cutting) | 191 |
 
 ---
 
@@ -964,4 +964,5 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-26 (fourth)** — [A misaligned access that crosses a page reaches the second page through its own translation: queue patch 19](CHANGELOG.md#2026-11-26-misaligned-across-pages)
 - **2026-11-26 (ninth)** — [The 19-patch queue triaged for Dirk: no patch goes out as written; nine messages corrected, four defects fixed (patches 4, 7, 16, 18), one finding refuted (19)](CHANGELOG.md#2026-11-26-queue-triage)
 - **2026-11-27** — [Seven pull-request branches prepared for Dirk, each verified twice; the "latch refill defect" is documented behaviour](CHANGELOG.md#2026-11-27-dirk-pr-branches)
+- **2026-11-27 (second)** — [A fault in TAS, CAS or CAS2 reports RM, and RTE continues behind an emulated one: queue patch 20](CHANGELOG.md#2026-11-27-locked-rmw-rm)
 

@@ -1,7 +1,7 @@
 From 98e06d1765f85bf4c94c787dfe63b3f46184a99d Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 01:20:00 +0400
-Subject: [PATCH 10/19] 68020: the long bus fault frame carries the data output
+Subject: [PATCH 10/20] 68020: the long bus fault frame carries the data output
  buffer
 
 MC68020UM 6.2.2: "For data write faults, the handler must transfer the
