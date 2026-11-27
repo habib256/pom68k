@@ -1,7 +1,7 @@
-From b6b1d4c1da475317df2702238faf3925e6b3e2db Mon Sep 17 00:00:00 2001
+From fbfcc295966db6fdf76a59c8e4ac70817c6937af Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Thu, 26 Nov 2026 07:32:15 +0400
-Subject: [PATCH 18/18] MMU: a bus error during a table search is an ATC fault
+Subject: [PATCH 18/19] MMU: a bus error during a table search is an ATC fault
  on the retried access
 
 MC68040UM 8.4.6.2: the ATC bit of the SSW "is set for an ATC fault due to
@@ -28,16 +28,19 @@ translate() now ends the walk on a bus error the way it ends it on an
 invalid descriptor: the 68040 inserts a nonresident entry, the 68030 an
 entry with B set, and the access faults on that entry with the logical
 address. PTEST and PLOAD, which walk the tables themselves, are unchanged.
+
+A frame supplied by the host (BusError::custom) is not absorbed by the
+search: it is thrown on to the access, unmodified.
 ---
- Moira/MMU/MMU030.cpp | 17 +++++++++++++++--
- Moira/MMU/MMU040.cpp | 12 ++++++++++--
- 2 files changed, 25 insertions(+), 4 deletions(-)
+ Moira/MMU/MMU030.cpp | 18 ++++++++++++++++--
+ Moira/MMU/MMU040.cpp | 14 ++++++++++++--
+ 2 files changed, 28 insertions(+), 4 deletions(-)
 
 diff --git a/Moira/MMU/MMU030.cpp b/Moira/MMU/MMU030.cpp
-index dc9b2a8..e8fd50b 100644
+index dc9b2a8..4129813 100644
 --- a/Moira/MMU/MMU030.cpp
 +++ b/Moira/MMU/MMU030.cpp
-@@ -216,8 +216,21 @@ MMU030::translate(u32 addr, u8 fc, bool write, bool *ci)
+@@ -216,8 +216,22 @@ MMU030::translate(u32 addr, u8 fc, bool write, bool *ci)
      if (!line) {
  
          MmuContext context;
@@ -53,7 +56,8 @@ index dc9b2a8..e8fd50b 100644
 +        try {
 +            physAddr = walk(addr, fc, write, context);
 +            status = context.status();
-+        } catch (const BusError &) {
++        } catch (const BusError &e) {
++            if (e.custom) throw;    // a frame supplied by the host is passed on
 +            status = MMUSR_BUS_ERROR | MMUSR_INVALID;
 +            context.ci = false;
 +        }
@@ -62,10 +66,10 @@ index dc9b2a8..e8fd50b 100644
      
      auto &e = atc[*line];
 diff --git a/Moira/MMU/MMU040.cpp b/Moira/MMU/MMU040.cpp
-index 0d46883..4dc0675 100644
+index 0d46883..86f465a 100644
 --- a/Moira/MMU/MMU040.cpp
 +++ b/Moira/MMU/MMU040.cpp
-@@ -130,8 +130,16 @@ MMU040::translate(u32 addr, u8 fc, bool write, bool *ci)
+@@ -130,8 +130,18 @@ MMU040::translate(u32 addr, u8 fc, bool write, bool *ci)
      // On a cache miss, walk the tables and update the cache
      if (!line) {
  
@@ -80,7 +84,9 @@ index 0d46883..4dc0675 100644
 +        //     nonresident entry (bus error during table search or invalid
 +        //     descriptor encountered)"; § 3.5, § 8.2.1: the access faults when
 +        //     it is retried.
-+        try { physAddr = walk(addr, super, write, status); } catch (const BusError &) { status = 0; }
++        // A frame supplied by the host is passed on.
++        try { physAddr = walk(addr, super, write, status); }
++        catch (const BusError &e) { if (e.custom) throw; status = 0; }
          line = atcInsert(addr, fc, physAddr, status);
      }
  

@@ -57,23 +57,31 @@ ses gates enregistrés absents dans `cmake/pom68k_jit_gates.tsv`. Bascule et
 Tout le reste (jalons produit, vitesse hors CPU, NeoST, dépôt) est après les
 deux phases, hors du chemin principal.
 
-**Reprendre ici (état au 2026-11-26, palier AArch64 vert sur la série).**
-`main` = Moira de Dirk `bf98107f` + 19 correctifs (17 : SNaN vers entier
-du 6888x ; 18 : /BERR pendant une recherche de table ; 19 : accès mal
-aligné qui franchit une page) ; rien d'ouvert chez lui. Le palier machines
-AArch64 complet est vert sur `43d3ab94`, donc avec les 19 correctifs
-(320/320 en 4 h 52, `-j3`, 319 exécutés, `cd_pressed_toc_etalon` sauté
-faute de disque pressé), enregistré dans `STATUS.md`. Sur le même arbre :
-`asset-none` 156/156 (3 fumées GUI sautées, ImGui absent), `cpu-vectors`
-6/6, les 15 gates SST avec leurs corpus, `moira_queue`. Note de passation
-précédente : `scratchpad/2026-11-25/HANDOVER.md`. Dans l'ordre :
+**Reprendre ici (état au 2026-11-27, reprise sur x86-64).**
+`main` = Moira de Dirk `bf98107f` + 19 correctifs. Quatre sont proposés
+chez lui depuis le 2026-11-27 : PR #50 (correctif 18), #51 (10), #52
+(moitié DBcc du 1) et #53 (12) ; trois autres branches sont prêtes mais
+non poussées (16, et les deux moitiés du 4). Le palier machines AArch64
+complet est vert sur l'arbre de ce commit (`m040|m030|etalon`, 321/321
+avec le nouveau `q605_fpsp_moveout_etalon`), enregistré dans `STATUS.md`.
+Dans l'ordre :
 
-1. Fait : le palier machines AArch64 sur la série (ci-dessus).
-2. **Le même palier sur x86-64** (`git pull`, build borné, `asset-none`,
-   puis `ctest -L 'm040|m030|etalon'`), puis
-   `tools/status_md.py --record-run` : critère 6 de § Phase 1. Dernier
+1. Fait : le palier machines AArch64 (ci-dessus).
+2. **Le même palier sur x86-64.** Sur l'hôte x86-64 :
+   `git pull` ; `cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo` ;
+   `cmake --build build --parallel 4` (jamais `--parallel` nu) ;
+   `ctest --test-dir build -L asset-none --output-on-failure` ;
+   `python3 tools/moira_queue.py check` ; puis
+   `ctest --test-dir build -L 'm040|m030|etalon' -j3` et
+   `tools/status_md.py --record-run` : critère 6 de § Phase 1. À
+   surveiller : `q605_fpsp_moveout_etalon` (nouveau, jamais exécuté sur
+   x86-64), l'empreinte de `fault_transparency_test`, les planchers SST
+   (un écart est un constat à instruire, pas à ré-épingler). Dernier
    passage complet x86-64 : 320/320 sur `6e7f5179`, avant le rebase et
    avant les correctifs 12 amendé et 16 à 19.
+   Les branches de PR ne sont pas dans ce dépôt : elles vivent sur le
+   fork GitHub `habib256/Moira` (clone de travail du M4 :
+   `~/src/moira-pr`, textes sous `~/src/moira-pr-work/`).
 3. **Verdict de stabilité** du cœur de Dirk ; s'il est stable, faire
    approuver par le propriétaire `scratchpad/2026-11-25/JIT_PLAN.md`
    (questions Q1-Q8) avant tout code JIT (§ Phase 2).
@@ -156,6 +164,28 @@ défaut CPU, dans cet ordre :
   sur `bf98107f` et compte 19 correctifs (16 à 19, locaux, depuis le
   2026-11-25 et le 2026-11-26). L'état de chaque correctif et sa
   PR se suivent dans `extern/moira/patches/queue.tsv`.
+- [ ] **Sept PR préparées le 2026-11-27 ; quatre postées (#50 à #53),
+  trois en attente de l'accord du propriétaire.** Une branche d'un commit chacune sur `bf98107f`, dans le
+  clone `~/src/moira-pr` (worktrees et textes de PR sous
+  `~/src/moira-pr-work/`), chacune avec son test `Tests/Unit` qui échoue
+  sur son `master` et deux vérifications adverses (manuels ; reproduction
+  et code). Les quatre premières (18, 10, 1, 12 : première vague à
+  soumettre, dans cet ordre) ont reçu en plus quatre vérifications adverses
+  chacune, et la branche DBcc a été reconçue sans changement d'horloge.
+  Ces quatre sont ouvertes chez Dirk : #50 (18), #51 (10), #52 (1), #53
+  (12) ; suivre ses retours, et rebaser #53 ou #50 selon l'ordre de
+  fusion. Les trois autres ne sont pas poussées. Correctif 18 → `mmu-table-search-bus-error` ;
+  10 → `68020-data-output-buffer` ; 1 (moitié DBcc seule) →
+  `dbcc-expired-refill` ; 12 → `68040-fault-address` ; 16 →
+  `6888x-fmove-out-mid-instruction` ; 4 → `reset-bus-fault` et
+  `trace-frame-fault`. Les branches diffèrent des correctifs de la file
+  (tests, documentation de Dirk, bit I/N de la trame 68000 pour la trace,
+  ordre des notifications au reset) : à la fusion, rebaser la file et
+  retirer ce que son `master` couvre. Plusieurs touchent le même harnais
+  de test (`MmuExecTests.cpp`, `BusErrorTests.cpp`) : la seconde fusionnée
+  demandera un rebase. Détail : `CHANGELOG.md` 2026-11-27.
+  Questions pour la discussion #36, sans code : 3, 19, 7, 8, 2, 5. Restent
+  locaux : 6, 9, 11, 13, 14, 15, 17, et la moitié TRAPV du 1.
 - [ ] **Mesurer sur un vrai 68030 la limite d'une racine DT=1 avec FCL.**
   MC68030UM §9.7.1 la contrôle « regardless of the state of the FCL bit »,
   la figure 9-28, WinUAE et le cœur de Dirk non ; le cœur garde la lecture
@@ -197,16 +227,6 @@ défaut CPU, dans cet ordre :
   inférence (meilleur appui : MC68030UM §6.1.2) — et le chemin 68030 de
   Moira signale encore une telle faute FB|RB (revue du 2026-11-24 ;
   reproducteurs hors dépôt, scratchpad de session `pr-review/`).
-- [ ] **Remplissage depuis le verrou d'un mot sans cache actif** (défaut
-  amont, PR #43 fusionnée). Cache d'instructions désactivé (CACR E=0) sur
-  68020/68030, un MOVE vers SR/CCR à une adresse 4n+2 est rechargé depuis le
-  verrou d'un long mot sans accès bus, contre MC68020UM §2.1 et §4.1 (le pipe
-  est vidé et rechargé) ; le correctif 1 (DBcc expiré, TRAPV) a la même
-  propriété. `iCache.flushLatch()` avant le rechargement rend l'accès bus
-  sans changer le cas cache chaud (reproducteurs hors dépôt, scratchpad de
-  session du 2026-11-24 : `rebase/evidence/latch-defect.txt`,
-  `flushlatch-variant.diff`). Une PR corrective chez Dirk attend l'accord du
-  propriétaire et la liste de vérification complète.
 - [ ] **Deux correctifs de la file contredisent des tests de Dirk.** Le 14
   (débordement de division 68000, preuve SingleStepTests seule) fait
   échouer `StackFrame / 68000 exception frames match real hardware` (cas
@@ -623,6 +643,15 @@ Les lignes de cache attendent la décision sur `cache040_test`.
   6888x ne pose plus que SNAN (correctif 17, `CHANGELOG` 2026-11-26). Le
   vecteur pris (SNAN) ne change pas. *Tranche : FPSR après FMOVE.L FP0,D0
   d'un SNaN sur un vrai 68040, via le FPSP.*
+- [ ] **[F] Trame FSAVE après l'exception non masquable d'un FMOVE vers
+  B/W/L (correctif 7).** Le cœur l'écrit au format instruction non
+  implémentée ($4130) avec les champs de MC68040UM Table 9-16 (opclasse 011) ;
+  la table cite aussi WBTEMP pour OPERR, que seule la trame busy ($4160)
+  possède. Le gestionnaire FPSP du ROM Quadra 605 s'en satisfait
+  (`q605_fpsp_moveout_etalon`). *Tranche : le mot de format d'un FSAVE dans
+  un gestionnaire OPERR, après FMOVE.L FP0,D0 d'un infini, sur un vrai 68040.*
+  Non couverts : la source égale au plus grand entier négatif (§9.7.3.2) et
+  le dépassement non masquable (§9.7.4.2).
 - [ ] **Trancher FMOVE.P vers Dn (D25) et la valeur de An au moment de la
   trappe de D26.** *Bloqué : FMOVE.P FP0,D0 et FMOVE.P FP0,-(A0){D1} sur un
   vrai 68040.*

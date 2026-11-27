@@ -1,0 +1,101 @@
+From ce60508d7b2dfb11a6dfdbb9f9c7d0c739fb9c2f Mon Sep 17 00:00:00 2001
+From: VERHILLE Arnaud <gist974@gmail.com>
+Date: Tue, 24 Nov 2026 00:30:37 +0400
+Subject: [PATCH 04/19] Halt on a double bus fault during reset; take a fault
+ on the trace frame
+
+MC68030UM 8.1.1: "if bus error or address error occur during the exception
+processing sequence for a reset a double bus fault occurs. The processor
+halts". reset() fetched the vectors outside any handler, so a BusError
+thrown by the host escaped to the caller instead of halting the CPU. Seen
+on a host whose reset vectors are unmapped. reset() now halts on a
+BusError or an AddressError.
+
+execute() stacked the trace frame outside any handler too, and a host
+BusError escaped the same way. It now goes through processException(),
+like a fault during interrupt processing a few lines below: the bus error
+exception is taken. MC68030UM 7.5.4: "When a bus error or an address error
+occurs during the exception processing sequence for a previous bus error,
+a previous address error, or a reset exception, the bus or address error
+causes a double bus fault"; a trace exception is not in that list. When
+the bus error frame cannot be stacked either, processException() halts:
+that is the Quadra 605 whose supervisor stack pointer had been corrupted.
+
+The manuals are not of one voice on this. The M68000 manual supports it
+(5.4.4 defines the double bus fault by a bus error during bus error
+processing; 6.3.9.1 gives the frame of a bus error taken "during the last
+step of exception processing"). MC68020UM 5.5.4 and MC68030UM 7.5.4,
+8.1.2 and section 12 give the narrow list; the processing-states chapters
+of both say more loosely that a bus error "while in the exception
+processing state" is catastrophic. MC68040UM leans the other way: 7.6.3
+and the flowcharts of Figures 8-1 and 8-4 send a fault during any
+exception processing, interrupts included, to the double bus fault. The
+core already takes the bus error on its interrupt path for every model;
+this change makes the trace path the same. The 68040 case is open until a
+capture.
+
+The status register the bus error frame stacks is the one the trace
+exception had already switched to supervisor mode, as on the interrupt
+path; what the processor stacks there is not described.
+---
+ Moira/Moira.cpp | 36 +++++++++++++++++++++++++++++-------
+ 1 file changed, 29 insertions(+), 7 deletions(-)
+
+diff --git a/Moira/Moira.cpp b/Moira/Moira.cpp
+index b9ca9bc..55853b4 100644
+--- a/Moira/Moira.cpp
++++ b/Moira/Moira.cpp
+@@ -157,13 +157,26 @@ Moira::reset()
+     fpu.reset();
+     completed.armed = false;
+ 
+-    switch (cpuModel) {
++    // A bus or address error while the reset vectors are fetched is a double
++    // bus fault: the processor halts (MC68030UM 8.1.1)
++    try {
+ 
+-        case CPUModel::M68000: reset<Core::C68000>(); break;
+-        case CPUModel::M68010: reset<Core::C68010>(); break;
+-        
+-        default:
+-            reset<Core::C68020>();
++        switch (cpuModel) {
++
++            case CPUModel::M68000: reset<Core::C68000>(); break;
++            case CPUModel::M68010: reset<Core::C68010>(); break;
++
++            default:
++                reset<Core::C68020>();
++        }
++
++    } catch (const BusError &) {
++
++        halt();
++
++    } catch (const AddressError &) {
++
++        halt();
+     }
+ }
+ 
+@@ -214,7 +227,16 @@ Moira::execute()
+ 
+             // Process pending trace exception (if any)
+             if (flags & TRACE_EXC) {
+-                execException(M68kException::TRACE);
++
++                // A fault while the trace frame is stacked is an ordinary bus
++                // or address error: a double bus fault needs a fault while a
++                // bus error, an address error or a reset is processed
++                // (MC68030UM 7.5.4, 8.1.2)
++                try {
++                    execException(M68kException::TRACE);
++                } catch (const std::exception &exc) {
++                    processException(exc);
++                }
+                 goto done;
+             }
+ 
+-- 
+2.54.0 (Apple Git-157)
+

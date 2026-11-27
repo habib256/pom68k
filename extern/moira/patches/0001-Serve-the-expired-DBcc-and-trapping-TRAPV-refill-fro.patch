@@ -1,18 +1,31 @@
-From db0c292eae869d603e385c69851fc21bc8f03b22 Mon Sep 17 00:00:00 2001
+From f78a397c0b8051d70d60516402a35a9df9ffc289 Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 13:52:56 +0400
-Subject: [PATCH 01/15] Serve the expired DBcc and trapping TRAPV refill from
+Subject: [PATCH 01/19] Serve the expired DBcc and trapping TRAPV refill from
  the instruction cache
 
-An expired DBcc and a trapping TRAPV read a program word they discard,
-like MOVE to SR/CCR. With an emulated instruction cache, that read now goes
-through readStatusRefill() as well, so a cached word costs no bus access.
+On the 68020 core, an expired DBcc and a trapping TRAPV read the program
+word at PC + 2 and discard it, like MOVE to SR/CCR. With an emulated
+instruction cache, that read now goes through readStatusRefill() as well,
+so a cached word costs no bus access.
 
 In the cache case, MC68020UM 8.2.15 gives DBcc (cc = False, Count
 Expired) 10(0/0/0) and 8.2.17 gives TRAPV (Trap) 25(1/0/5): no prefetch
 (instruction access). MC68030UM 11.6.15 and 11.6.17 give 10(0/0/0) and
-22(1/0/5) for the I-cache case. Without an emulated cache the read stays a
-bus access, as before.
+22(1/0/5) for the I-cache case.
+
+The discarded read of TRAPV is Moira's model, not a statement of the
+manuals: both tables give a trapping TRAPV the prefetches of TRAP #n,
+which reads no such word. Only the absence of an instruction access in
+the cache case is cited for it.
+
+Without MOIRA_EMULATE_ICACHE the read stays a bus access, as before. With
+an emulated cache that CACR has disabled, the word now comes through
+readInstr(): it costs no bus access when the one-longword latch holds it,
+although the no-cache columns count three prefetches for the expired DBcc
+(10(0/3/0) and 13(0/3/0)); a word that is fetched is charged as an
+instruction fetch, and a bus error on it takes the instruction fetch path.
+The MOVE to SR/CCR refill has the same property.
 ---
  Moira/MoiraDataflow.h | 2 +-
  Moira/MoiraExec_cpp.h | 4 ++--
@@ -54,5 +67,5 @@ index 2bfbf94..3cd07b7 100644
          }
  
 -- 
-2.53.0
+2.54.0 (Apple Git-157)
 

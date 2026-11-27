@@ -107,7 +107,7 @@ Two 68000 rules of the same kind predate the 68030 oracle and are flagged
 in `extern/moira/POM68K_VENDOR.md` § *SingleStepTests/680x0 convergence
 patches*: the early exit of every DIVS overflow at 16/18 cycles, and ASR
 past the operand width clearing C and X. The first follows SingleStepTests
-(D), is held by `sst68000` (queue patch 16), and NeoST's copy disagrees with
+(D), is held by `sst68000` (queue patch 14), and NeoST's copy disagrees with
 it (`TODO.md § Moteur › Convergence`). The second was reversed on
 2026-11-24: the 68000 now takes the manual's last bit shifted out, the
 sign, and the 3 736 corpus vectors that say 0 are listed in

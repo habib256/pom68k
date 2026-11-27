@@ -1,20 +1,36 @@
-From 799931dd6c91dfab03c7623b5bd129f7b2e3acba Mon Sep 17 00:00:00 2001
+From 2f50ba212b1ef6ad09f662b4fb8f0588b0857b3a Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 00:56:58 +0400
-Subject: [PATCH 07/15] 68040: an FMOVE to an integer takes SNAN and OPERR
+Subject: [PATCH 07/19] 68040: an FMOVE to an integer takes SNAN and OPERR
  unconditionally
 
-MC68040UM 9.7.2.2 and 9.7.3.2: when an FMOVE to byte, word or long word
-meets an SNAN, or a source too large, infinite or NaN, "the processor
+MC68040UM 9.7.2.2: when an FMOVE to byte, word or long word meets an SNAN,
+"a nonmaskable post-instruction exception occurs and is taken immediately".
+9.7.3.2: for a source too large, infinite or NaN, "the processor
 immediately takes a post-instruction exception", whether the exception is
-enabled or not; the FPSP then completes the instruction. The move took the
-exception only when FPCR enabled it. trapVector() now accepts a mask of
-nonmaskable conditions, which the 68040 passes for integer destinations.
+enabled or not. The move took the exception only when FPCR enabled it.
+trapVector() now accepts a mask of nonmaskable conditions, which the 68040
+passes for integer destinations.
+
+The M68040FPSP handler the vector points to completes the move from the
+state frame of its FSAVE, so the exception alone is not enough: with an
+idle frame the handler of a Quadra ROM read stale stack memory and, for a
+signaling NaN, stored a ROM address in the destination. A following FSAVE
+now stores the frame of MC68040UM 9.8 for an opclass 011 SNAN or OPERR
+(Table 9-16): the FMOVE command word in CMDREG1B, the unrounded source
+operand in ETEMP (a signaling NaN with its SNAN bit set), its tag in STAG,
+E1 and T set. It is written in the unimplemented instruction layout, whose
+fields the busy frame shares; FPTEMP holds the source operand too, where
+the handler looks for the magnitude of the integer.
+
+Not covered: the source equal to the largest negative integer (9.7.3.2,
+"erroneous MC68040 condition") and the nonmaskable overflow (9.7.4.2) take
+no exception, and WBTEMP, which only the busy frame has, is not stored.
 ---
- Moira/FPU/FPU.cpp        | 4 ++--
- Moira/FPU/FPU.h          | 5 +++--
- Moira/MoiraExecFPU_cpp.h | 9 ++++++++-
- 3 files changed, 13 insertions(+), 5 deletions(-)
+ Moira/FPU/FPU.cpp        |  4 ++--
+ Moira/FPU/FPU.h          |  5 +++--
+ Moira/MoiraExecFPU_cpp.h | 29 ++++++++++++++++++++++++++++-
+ 3 files changed, 33 insertions(+), 5 deletions(-)
 
 diff --git a/Moira/FPU/FPU.cpp b/Moira/FPU/FPU.cpp
 index 70a67e6..5af4968 100644
@@ -54,10 +70,10 @@ index 4f7d59a..d9e7a84 100644
      /// Checks if an exception that is set and enabled prevents the result from
      /// being stored (SNAN, OPERR and DZ, MC68881/MC68882UM, 6.1)
 diff --git a/Moira/MoiraExecFPU_cpp.h b/Moira/MoiraExecFPU_cpp.h
-index b165f13..06a2e0e 100644
+index b165f13..998b6c2 100644
 --- a/Moira/MoiraExecFPU_cpp.h
 +++ b/Moira/MoiraExecFPU_cpp.h
-@@ -925,7 +925,14 @@ Moira::execFMove(u16 opcode)
+@@ -925,7 +925,34 @@ Moira::execFMove(u16 opcode)
          // The 68040 takes an enabled exception right after a move to memory or to
          // a data register (post-instruction exception). The 68881 and 68882 report
          // it when the next FPU instruction starts, like all other exceptions.
@@ -70,9 +86,29 @@ index b165f13..06a2e0e 100644
 +        u32 nonmaskable = hasInternalFPU() && integer ? FPEXP::SIG_NAN | FPEXP::OPERR : 0;
 +
 +        if (auto vector = fpu.trapVector(nonmaskable); vector && hasInternalFPU()) {
++
++            // The M68040FPSP completes such a move from the frame of its FSAVE:
++            // the command word, the unrounded source operand (a signaling NaN
++            // with its SNAN bit set) and its tag, E1 and T (MC68040UM 9.8,
++            // Table 9-16, SNAN and OPERR for opclass 011)
++            if (integer) {
++
++                auto &src = fpu.fpr[dst];
++                auto &f = fpu.unimp.frame;
++                u32 hi = u32(src.mantissa() >> 32) | (src.isNaN() ? 1 << 30 : 0);
++
++                for (auto &l : f) l = 0;
++                f[2]  = FPU::frameTag(src) << 29;                       // $0C: STAG
++                f[3]  = u32(ext) << 16;                                 // $10: CMDREG1B
++                f[5]  = 1 << 28 | 1 << 26;                              // $18: T, E1
++                f[6]  = f[9]  = u32(src.signExp()) << 16;               // $1C: FPTEMP, $28: ETEMP
++                f[7]  = f[10] = hi;
++                f[8]  = f[11] = u32(src.mantissa());
++                fpu.unimp.valid = true;
++            }
  
              execFpuTrap<C>(vector, true, ea);
              FINALIZE
 -- 
-2.53.0
+2.54.0 (Apple Git-157)
 

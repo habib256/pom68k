@@ -20,6 +20,8 @@
 //  14  FMOVE FPn,<ea> : an enabled exception is a mid-instruction one
 //                      (format $9), taken after the store; RTE resumes at
 //                      the scanPC (MC68881UM §6.1, §7.4.2.6)
+//      a traced FMOVE keeps its trace past that exception
+//      (MC68030UM §8.1.7, Table 8-6)
 //      FMOVE SNaN to B/W/L : SNAN, not OPERR (MC68881UM Table 6-2)
 //      move-out INEX2 to (xxx).L, enabled and disabled; a 68882 handler
 //                      FSAVE / BSET bit 27 / FRESTORE / RTE (MC68881UM §5.2.2)
@@ -289,6 +291,53 @@ void moveOutMidInstruction() {
               "mid-instruction model=%d: after FNOP D0/PC0/SP = %08X/%08X/%08X, "
               "want 00000001/0000100A/00008000 (no second trap)",
               int(model), cpu.getD(0), cpu.getPC0(), cpu.getSP());
+    }
+}
+
+// A traced FMOVE that takes the mid-instruction exception is still traced.
+// [B] MC68030UM-1989 §8.1.7: "If an instruction forces an exception as part
+// of its normal execution, the forced exception processing occurs before the
+// trace exception is processed"; Table 8-6: coprocessor mid-instruction in
+// group 2, trace in group 4.1. The trace exception follows the format $9
+// frame, before the first instruction of the FPU handler, as after a TRAP.
+// [F] That point, rather than after the RTE that ends the instruction
+// (MC68881UM-1989 §6.1.13), is read from §8.1.7. Settled by: a traced
+// FMOVE.L FP0,(A0) of an infinity with OPERR enabled on a 68030 + 68881.
+void moveOutTraced() {
+    for (auto model : {moira::CPUModel::M68020, moira::CPUModel::M68030}) {
+        TestCpu cpu;
+        cpu.setModel(model);
+        run(cpu, {0xF210, 0x6000,                    // fmove.l fp0,(a0)
+                  0x4E71, 0x4E71},
+            0, true,
+            {{0x00d0, 0x0000}, {0x00d2, 0x3300},     // vector 52 (OPERR) -> $3300
+             {0x0024, 0x0000}, {0x0026, 0x3400},     // vector 9 (trace) -> $3400
+             {0x3300, 0x4E71}, {0x3302, 0x4E71},
+             {0x3400, 0x4E71}, {0x3402, 0x4E71}});
+        cpu.setFPUModel(MoiraFpu::M68881);
+        cpu.setA(0, 0x4000);
+        const uint32_t inf[3] = {0x7fff0000, 0, 0};
+        cpu.setFP(0, inf);
+        cpu.setFPCR(0x2000);                         // OPERR enabled
+        cpu.setFPSR(0);
+        cpu.setSR(0xA700);                           // T1
+        auto m16 = [&](uint32_t a) { return uint16_t(cpu.mem[a] << 8 | cpu.mem[a + 1]); };
+        auto m32 = [&](uint32_t a) { return uint32_t(m16(a)) << 16 | m16(a + 2); };
+
+        cpu.execute();                               // FMOVE: store, then the trap
+        const MidFrame f = readMidFrame(cpu, cpu.getSP());
+        CHECK(cpu.getPC0() == 0x3300 && cpu.getSP() == 0x7fec && f.sr == 0xA700 &&
+              f.format == 0x90d0 && cpu.getSR() == 0x2700,
+              "traced mid-instruction model=%d: PC0/SP %08X/%08X frame SR %04X format %04X "
+              "SR %04X, want 00003300/00007FEC A700 90D0 2700",
+              int(model), cpu.getPC0(), cpu.getSP(), f.sr, f.format, cpu.getSR());
+        cpu.execute();                               // the trace exception
+        const uint32_t sp = cpu.getSP();
+        CHECK(cpu.getPC0() == 0x3400 && sp == 0x7fe0 && m16(sp) == 0x2700 &&
+              m32(sp + 2) == 0x3300 && m16(sp + 6) == 0x2024 && m32(sp + 8) == 0x1000,
+              "traced mid-instruction model=%d: PC0/SP %08X/%08X, trace frame SR %04X PC %08X "
+              "format %04X instruction %08X, want 00003400/00007FE0 2700 00003300 2024 00001000",
+              int(model), cpu.getPC0(), sp, m16(sp), m32(sp + 2), m16(sp + 6), m32(sp + 8));
     }
 }
 
@@ -661,6 +710,7 @@ int main() {
     }
     cpu.setModel(moira::CPUModel::M68030);
     moveOutMidInstruction();
+    moveOutTraced();
     moveOutSignalingNaN();
     moveOutInexactAbsolute();
     moveOut68882Handler();

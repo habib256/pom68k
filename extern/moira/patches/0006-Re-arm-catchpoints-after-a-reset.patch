@@ -1,11 +1,15 @@
-From 6d7a1a99a3bffc99d0e7be2ee9d7718a64f20c29 Mon Sep 17 00:00:00 2001
+From 047e9c19f60503372b449e8beba6ba0db873d87a Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 00:48:37 +0400
-Subject: [PATCH 06/15] Re-arm catchpoints after a reset
+Subject: [PATCH 06/19] Re-arm catchpoints after a reset
 
 reset() clears the state flags and Debugger::reset() sets CHECK_BP and
-CHECK_WP again for the guards that exist, but not CHECK_CP: a catchpoint set
-before a reset was no longer checked afterwards.
+CHECK_WP again for the guards that exist, but not CHECK_CP.
+
+The core itself does not read CHECK_CP: jumpToVector() calls
+catchpointMatches() unconditionally, so a catchpoint is still checked after
+a reset. Only the flag bit is lost, which matters to a host that reads it
+to decide whether the CPU needs the checked path.
 ---
  Moira/MoiraDebugger.cpp | 1 +
  1 file changed, 1 insertion(+)
@@ -23,5 +27,5 @@ index 1927d5c..cef25ce 100644
  
  void
 -- 
-2.53.0
+2.54.0 (Apple Git-157)
 

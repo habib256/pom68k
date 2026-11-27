@@ -1,6 +1,6 @@
 # CHANGELOG — index by subsystem
 
-**Generated** by `tools/changelog_index.py` from the 900 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
+**Generated** by `tools/changelog_index.py` from the 902 dated entries in `CHANGELOG.md`. Do not edit by hand: regenerate. `docs_test` § 7 only compares the entry COUNT, so a stale hook or a wrong anchor here passes it — regenerate after every CHANGELOG edit.
 
 `CHANGELOG.md` carries two indexes of its own — [by date](CHANGELOG.md#index-by-date), newest first, and [by topic](CHANGELOG.md#index-by-topic), phrased as the question a reader arrives with. This third one answers a different question: *everything that ever happened to one subsystem*.
 
@@ -20,7 +20,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 | [Build, packaging and release](#build-packaging-and-release) | 29 |
 | [Tests, gates and measurement](#tests-gates-and-measurement) | 46 |
 | [Documentation, audits and reviews](#documentation-audits-and-reviews) | 10 |
-| [Cross-cutting](#cross-cutting) | 188 |
+| [Cross-cutting](#cross-cutting) | 190 |
 
 ---
 
@@ -322,7 +322,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-24 (third)** — [The SST gates judge agreement per corpus file against a floor, not unanimity: all thirteen green once D28/D29 are re-judged](CHANGELOG.md#2026-11-24-sst-floors)
 - **2026-11-25 (third)** — [A 68040 bus error after a successful translation stacks the logical fault address: queue patch 12 amended](CHANGELOG.md#2026-11-25-fa040-logical)
 - **2026-11-26 (second)** — [Patch 16 after review: the MC68882 re-take is documented, not unknown; the pending trap before FMOVEM is not an established divergence](CHANGELOG.md#2026-11-26-fmove9-review)
-- **2026-11-26 (seventh)** — [Queue patch 15 re-justified: on the 68020/68030 the manuals' rule, on the 68040 a speed setting tied to a 16-bit port the manual rules out](CHANGELOG.md#2026-11-26-seventh--queue-patch-15-re-justified-on-the-6802068030-the-manuals-rule-on-the-68040-a-speed-setting-tied-to-a-16-bit-port-the-manual-rules-out)
+- **2026-11-26 (seventh)** — [Queue patch 15 re-justified: on the 68020/68030 the manuals' rule, on the 68040 a speed setting tied to a 16-bit port the manual rules out](CHANGELOG.md#2026-11-26-patch15-rejustified)
 - **2026-11-26 (third)** — [A bus error during a table search is an ATC fault on the retried access: queue patch 18; two neighbouring 68030/68040 frame questions ruled [F]](CHANGELOG.md#2026-11-26-table-search-berr)
 
 ## MCU firmware LLE — Egret, Cuda, PIC, PG&E
@@ -676,7 +676,7 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-13 (sixth)** — [The two-instruction interrupt delay after an SR write has a CPU gate: it was held by one boot](CHANGELOG.md#2026-11-13-irq-delay-gate)
 - **2026-11-21 (third)** — [The LC 580 names its own ROM; four things the ROM catalogue's first day left open](CHANGELOG.md#2026-11-21-lc580-own-rom)
 - **2026-11-25 (fifth)** — [The AArch64 machine tier on the rebased core: one red gate, and it was the gate — `q605_clipboard_etalon` read another process's scrap](CHANGELOG.md#2026-11-25-clipboard-gate-process)
-- **2026-11-26 (eighth)** — [AArch64 machine tier green on the 19-patch queue](CHANGELOG.md#2026-11-26-patch15-rejustified)
+- **2026-11-26 (eighth)** — [AArch64 machine tier green on the 19-patch queue](CHANGELOG.md#2026-11-26-machine-tier-19)
 
 ## Build, packaging and release
 
@@ -962,4 +962,6 @@ Grouping is a keyword heuristic over each entry's hook. An entry filed under the
 - **2026-11-26** — [A 6888x FMOVE of a signaling NaN to a byte, word or long word sets SNAN, not OPERR: queue patch 17](CHANGELOG.md#2026-11-26-fmove-snan-int)
 - **2026-11-26 (fifth)** — [The `@D23a` rows judge the format-$9 frame: 206 of 448 now agree, the floors rise](CHANGELOG.md#2026-11-26-d23a-format9)
 - **2026-11-26 (fourth)** — [A misaligned access that crosses a page reaches the second page through its own translation: queue patch 19](CHANGELOG.md#2026-11-26-misaligned-across-pages)
+- **2026-11-26 (ninth)** — [The 19-patch queue triaged for Dirk: no patch goes out as written; nine messages corrected, four defects fixed (patches 4, 7, 16, 18), one finding refuted (19)](CHANGELOG.md#2026-11-26-queue-triage)
+- **2026-11-27** — [Seven pull-request branches prepared for Dirk, each verified twice; the "latch refill defect" is documented behaviour](CHANGELOG.md#2026-11-27-dirk-pr-branches)
 

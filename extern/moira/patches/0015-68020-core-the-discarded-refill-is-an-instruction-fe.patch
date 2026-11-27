@@ -1,7 +1,7 @@
-From 396e26a020569f48ed36f06b87fa0a1bb00237bd Mon Sep 17 00:00:00 2001
+From d7cbfd1a4744335ac950ba24b2002852058f2b0a Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 16:10:16 +0400
-Subject: [PATCH 15/15] 68020 core: the discarded refill is an instruction
+Subject: [PATCH 15/19] 68020 core: the discarded refill is an instruction
  fetch without a cache too
 
 readStatusRefill() sent the discarded program word through readInstr() only
@@ -10,21 +10,25 @@ read, which skips what readInstr() charges every other instruction word
 fetched from a port narrower than 32 bits (dsack()).
 
 The refill now goes through readInstr() on every 68020-core model, so the
-discarded word costs what any other fetched word costs on that bus. The
-manuals count it as an ordinary prefetch bus cycle: an instruction prefetch
-is one bus cycle on a 32-bit port and two on a 16-bit port (MC68020UM
-Table 5-6, MC68030UM Table 7-6), and the timing tables charge the refill
-word the instruction discards like any other prefetch: MOVE EA,SR is
-11(0/2/0) worst case against 5(0/1/0) for MOVE EA,CCR, an expired DBcc
-10(0/3/0), a taken TRAPV 32(1/2/5) (MC68020UM 8.2, 8.2.7, 8.2.15, 8.2.17;
-MC68030UM 11.2.2, 11.3.3, 11.6.7, 11.6.15, 11.6.17, 12.7.1).
+discarded word costs what any other fetched word costs on that bus. An
+instruction prefetch is one bus cycle on a 32-bit port and two on a 16-bit
+port (MC68020UM Table 5-6, MC68030UM Table 7-6).
 
-The change matters only where the instruction cache is not emulated, the
-68040 models: the 68020 and 68030 already went through readInstr(). There
-the charge follows the host's dsack() answer, and with the default 16-bit
-answer a 68040 pays it although MC68040UM 7.2 says the 68040 does not
-size its bus dynamically: a host that models a 68040 bus answers
-DSACK_32.
+The timing tables show a second prefetch for MOVE EA,SR, 11(0/2/0) worst
+case (MC68020UM 8.2.7), and three for an expired DBcc, 10(0/3/0) (8.2.15).
+They show none for MOVE EA,CCR, 5(0/1/0), nor for a trapping TRAPV, which
+has the prefetches of TRAP #n (8.2.17): the discarded read of those two is
+Moira's model, and this change only makes it cost what the model's other
+fetches cost. MC68030UM 12.7.1 ties the refill to operations that can
+change the program space.
+
+The change reaches the models whose instruction cache is not emulated: the
+68040 family, and a 68020 or 68030 built with MOIRA_EMULATE_ICACHE=false.
+The expired DBcc and the trapping TRAPV are concerned only once they go
+through readStatusRefill(). The charge follows the host's dsack() answer,
+and with the default 16-bit answer a 68040 pays it although MC68040UM 7.2
+says the 68040 does not size its bus dynamically: a host that models a
+68040 bus answers DSACK_32, and then nothing changes.
 ---
  Moira/MoiraDataflow_cpp.h | 6 ++----
  1 file changed, 2 insertions(+), 4 deletions(-)

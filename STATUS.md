@@ -17,19 +17,19 @@ carry `tools/gate_execution_census.py`'s executed/soft-skipped pair: quote the
 pair, never the green total alone — a soft-skipped gate exited 0 and proved
 nothing about the behaviour it names.
 
-## Union across hosts — 645 gates
+## Union across hosts — 646 gates
 
 | `ctest -L` | selects |
 |---|---|
 | `cpu-vectors` | 8 |
-| `etalon` | 321 |
+| `etalon` | 322 |
 | `etalon-core` | 16 |
 | `gui` | 3 |
 | `interp-only` | 9 |
 | `jit` | 109 |
 | `jit-fast` | 8 |
 | `m030` | 154 |
-| `m040` | 107 |
+| `m040` | 108 |
 | `smoke` | 9 |
 | `unit` | 275 |
 | `wasm` | 46 |
@@ -40,45 +40,45 @@ scheduling slots are per-host manifest facts and live in the sections below.
 
 ## Registered on aarch64
 
-535 gates registered; 110 union gates cannot register here: `cache040_test`, `callm_rtm_test`, `cpu_vectors030_jit_test`, `cpu_vectors040_jit_test`, `jit_asset_free_lockstep_test`, `jit_backend_parity_test`, `jit_backend_test`, `jit_centris650_boot_etalon`, `jit_copyback_bsr_040_test`, `jit_copyback_pair_040_control_test`, `jit_copyback_pair_040_test`, `jit_copyback_write_040_control_test`, `jit_copyback_write_040_test`, `jit_duo230_boot_etalon`, `jit_iifx_boot_etalon`, `jit_iisi_boot_etalon`, `jit_iivx_boot_etalon`, `jit_lc3_boot_etalon`, `jit_lcii_boot_etalon`, `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_030_blocks_test`, `jit_lockstep_030_no_data_window_test`, `jit_lockstep_030_test`, `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_68000_test`, `jit_lockstep_a64_coarse_test`, `jit_lockstep_blocks_test`, `jit_lockstep_board_centris650_test`, `jit_lockstep_board_duo230_test`, `jit_lockstep_board_iici_jitter_test`, `jit_lockstep_board_iici_test`, `jit_lockstep_board_iici_threaded_blocks_test`, `jit_lockstep_board_iifx_test`, `jit_lockstep_board_iivx_test`, `jit_lockstep_board_lc3_test`, `jit_lockstep_board_pb170_test`, `jit_lockstep_board_pb180_test`, `jit_lockstep_board_q630_jitter_test`, `jit_lockstep_board_q630_test`, `jit_lockstep_board_q630_threaded_test`, `jit_lockstep_board_q700_test`, `jit_lockstep_board_se30_test`, `jit_lockstep_noaccess_test`, `jit_lockstep_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`, `jit_mactv_boot_etalon`, `jit_pb140_boot_etalon`, `jit_pb180_boot_etalon`, `jit_pb180c_boot_etalon`, `jit_program_fuzz_000_test`, `jit_program_fuzz_000_trace_test`, `jit_program_fuzz_020_irq7_test`, `jit_program_fuzz_030_devport_test`, `jit_program_fuzz_030_ext2_test`, `jit_program_fuzz_030_ext_test`, `jit_program_fuzz_030_fpexc_test`, `jit_program_fuzz_030_mmupage_test`, `jit_program_fuzz_030_mmuprot_plain_test`, `jit_program_fuzz_030_mmuprot_test`, `jit_program_fuzz_030_mmutt_test`, `jit_program_fuzz_030_smc_test`, `jit_program_fuzz_030_sys_test`, `jit_program_fuzz_030_t0_test`, `jit_program_fuzz_030_test`, `jit_program_fuzz_030_trace_test`, `jit_program_fuzz_030_vmrte_test`, `jit_program_fuzz_040_dcache_cacr_test`, `jit_program_fuzz_040_dcache_replay_test`, `jit_program_fuzz_040_dcache_test`, `jit_program_fuzz_040_devport_test`, `jit_program_fuzz_040_ext2_test`, `jit_program_fuzz_040_ext_test`, `jit_program_fuzz_040_fpexc_test`, `jit_program_fuzz_040_mmu_dcache_test`, `jit_program_fuzz_040_mmupage_test`, `jit_program_fuzz_040_mmuprot_cas_test`, `jit_program_fuzz_040_mmuprot_test`, `jit_program_fuzz_040_mmutt_test`, `jit_program_fuzz_040_smc_test`, `jit_program_fuzz_040_sys_mmu_test`, `jit_program_fuzz_040_sys_test`, `jit_program_fuzz_040_t0_test`, `jit_program_fuzz_040_test`, `jit_program_fuzz_040_trace_test`, `jit_program_fuzz_040_vmrte_test`, `jit_program_fuzz_lc040_test`, `jit_q605_boot_etalon`, `jit_q630_boot_etalon`, `jit_q700_boot_etalon`, `jit_restart_write_030_test`, `jit_se30_boot_etalon`, `jit_sst68030`, `jit_sst68030_fpu2`, `jit_sst68030_fpuh`, `jit_sst68030_fpuraw`, `jit_sst68030_rmw`, `jit_sst68030_solo`, `jit_sst68040`, `jit_sst68040_8k`, `jit_sst68040_fline`, `jit_sst68040_fpu`, `jit_sst68040_fpu2`, `jit_sst68040_fpuh`, `jit_store_guard_a64_test`, `mmu040_atc_test`, `moira_interp_callm_rtm_test`.
+536 gates registered; 110 union gates cannot register here: `cache040_test`, `callm_rtm_test`, `cpu_vectors030_jit_test`, `cpu_vectors040_jit_test`, `jit_asset_free_lockstep_test`, `jit_backend_parity_test`, `jit_backend_test`, `jit_centris650_boot_etalon`, `jit_copyback_bsr_040_test`, `jit_copyback_pair_040_control_test`, `jit_copyback_pair_040_test`, `jit_copyback_write_040_control_test`, `jit_copyback_write_040_test`, `jit_duo230_boot_etalon`, `jit_iifx_boot_etalon`, `jit_iisi_boot_etalon`, `jit_iivx_boot_etalon`, `jit_lc3_boot_etalon`, `jit_lcii_boot_etalon`, `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_030_blocks_test`, `jit_lockstep_030_no_data_window_test`, `jit_lockstep_030_test`, `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_68000_test`, `jit_lockstep_a64_coarse_test`, `jit_lockstep_blocks_test`, `jit_lockstep_board_centris650_test`, `jit_lockstep_board_duo230_test`, `jit_lockstep_board_iici_jitter_test`, `jit_lockstep_board_iici_test`, `jit_lockstep_board_iici_threaded_blocks_test`, `jit_lockstep_board_iifx_test`, `jit_lockstep_board_iivx_test`, `jit_lockstep_board_lc3_test`, `jit_lockstep_board_pb170_test`, `jit_lockstep_board_pb180_test`, `jit_lockstep_board_q630_jitter_test`, `jit_lockstep_board_q630_test`, `jit_lockstep_board_q630_threaded_test`, `jit_lockstep_board_q700_test`, `jit_lockstep_board_se30_test`, `jit_lockstep_noaccess_test`, `jit_lockstep_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`, `jit_mactv_boot_etalon`, `jit_pb140_boot_etalon`, `jit_pb180_boot_etalon`, `jit_pb180c_boot_etalon`, `jit_program_fuzz_000_test`, `jit_program_fuzz_000_trace_test`, `jit_program_fuzz_020_irq7_test`, `jit_program_fuzz_030_devport_test`, `jit_program_fuzz_030_ext2_test`, `jit_program_fuzz_030_ext_test`, `jit_program_fuzz_030_fpexc_test`, `jit_program_fuzz_030_mmupage_test`, `jit_program_fuzz_030_mmuprot_plain_test`, `jit_program_fuzz_030_mmuprot_test`, `jit_program_fuzz_030_mmutt_test`, `jit_program_fuzz_030_smc_test`, `jit_program_fuzz_030_sys_test`, `jit_program_fuzz_030_t0_test`, `jit_program_fuzz_030_test`, `jit_program_fuzz_030_trace_test`, `jit_program_fuzz_030_vmrte_test`, `jit_program_fuzz_040_dcache_cacr_test`, `jit_program_fuzz_040_dcache_replay_test`, `jit_program_fuzz_040_dcache_test`, `jit_program_fuzz_040_devport_test`, `jit_program_fuzz_040_ext2_test`, `jit_program_fuzz_040_ext_test`, `jit_program_fuzz_040_fpexc_test`, `jit_program_fuzz_040_mmu_dcache_test`, `jit_program_fuzz_040_mmupage_test`, `jit_program_fuzz_040_mmuprot_cas_test`, `jit_program_fuzz_040_mmuprot_test`, `jit_program_fuzz_040_mmutt_test`, `jit_program_fuzz_040_smc_test`, `jit_program_fuzz_040_sys_mmu_test`, `jit_program_fuzz_040_sys_test`, `jit_program_fuzz_040_t0_test`, `jit_program_fuzz_040_test`, `jit_program_fuzz_040_trace_test`, `jit_program_fuzz_040_vmrte_test`, `jit_program_fuzz_lc040_test`, `jit_q605_boot_etalon`, `jit_q630_boot_etalon`, `jit_q700_boot_etalon`, `jit_restart_write_030_test`, `jit_se30_boot_etalon`, `jit_sst68030`, `jit_sst68030_fpu2`, `jit_sst68030_fpuh`, `jit_sst68030_fpuraw`, `jit_sst68030_rmw`, `jit_sst68030_solo`, `jit_sst68040`, `jit_sst68040_8k`, `jit_sst68040_fline`, `jit_sst68040_fpu`, `jit_sst68040_fpu2`, `jit_sst68040_fpuh`, `jit_store_guard_a64_test`, `mmu040_atc_test`, `moira_interp_callm_rtm_test`.
 
 | dimension | value | gates |
 |---|---|---|
 | assets | none | 156 |
 | assets | optional | 27 |
-| assets | required | 352 |
-| host | any | 535 |
+| assets | required | 353 |
+| host | any | 536 |
 | scope | component | 179 |
-| scope | profile | 352 |
+| scope | profile | 353 |
 | scope | repository | 4 |
 | tier | daily | 156 |
-| tier | full | 363 |
+| tier | full | 364 |
 | tier | platform | 16 |
-| slots_src | assumed | 431 |
+| slots_src | assumed | 432 |
 | slots_src | measured | 104 |
 
-Scheduling cost if every gate ran at once: 737 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 738 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## Registered on x86_64
 
-535 gates registered; 110 union gates cannot register here: `cache040_test`, `callm_rtm_test`, `cpu_vectors030_jit_test`, `cpu_vectors040_jit_test`, `jit_asset_free_lockstep_test`, `jit_backend_parity_test`, `jit_backend_test`, `jit_centris650_boot_etalon`, `jit_copyback_bsr_040_test`, `jit_copyback_pair_040_control_test`, `jit_copyback_pair_040_test`, `jit_copyback_write_040_control_test`, `jit_copyback_write_040_test`, `jit_duo230_boot_etalon`, `jit_iifx_boot_etalon`, `jit_iisi_boot_etalon`, `jit_iivx_boot_etalon`, `jit_lc3_boot_etalon`, `jit_lcii_boot_etalon`, `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_030_blocks_test`, `jit_lockstep_030_no_data_window_test`, `jit_lockstep_030_test`, `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_68000_test`, `jit_lockstep_a64_coarse_test`, `jit_lockstep_blocks_test`, `jit_lockstep_board_centris650_test`, `jit_lockstep_board_duo230_test`, `jit_lockstep_board_iici_jitter_test`, `jit_lockstep_board_iici_test`, `jit_lockstep_board_iici_threaded_blocks_test`, `jit_lockstep_board_iifx_test`, `jit_lockstep_board_iivx_test`, `jit_lockstep_board_lc3_test`, `jit_lockstep_board_pb170_test`, `jit_lockstep_board_pb180_test`, `jit_lockstep_board_q630_jitter_test`, `jit_lockstep_board_q630_test`, `jit_lockstep_board_q630_threaded_test`, `jit_lockstep_board_q700_test`, `jit_lockstep_board_se30_test`, `jit_lockstep_noaccess_test`, `jit_lockstep_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`, `jit_mactv_boot_etalon`, `jit_pb140_boot_etalon`, `jit_pb180_boot_etalon`, `jit_pb180c_boot_etalon`, `jit_program_fuzz_000_test`, `jit_program_fuzz_000_trace_test`, `jit_program_fuzz_020_irq7_test`, `jit_program_fuzz_030_devport_test`, `jit_program_fuzz_030_ext2_test`, `jit_program_fuzz_030_ext_test`, `jit_program_fuzz_030_fpexc_test`, `jit_program_fuzz_030_mmupage_test`, `jit_program_fuzz_030_mmuprot_plain_test`, `jit_program_fuzz_030_mmuprot_test`, `jit_program_fuzz_030_mmutt_test`, `jit_program_fuzz_030_smc_test`, `jit_program_fuzz_030_sys_test`, `jit_program_fuzz_030_t0_test`, `jit_program_fuzz_030_test`, `jit_program_fuzz_030_trace_test`, `jit_program_fuzz_030_vmrte_test`, `jit_program_fuzz_040_dcache_cacr_test`, `jit_program_fuzz_040_dcache_replay_test`, `jit_program_fuzz_040_dcache_test`, `jit_program_fuzz_040_devport_test`, `jit_program_fuzz_040_ext2_test`, `jit_program_fuzz_040_ext_test`, `jit_program_fuzz_040_fpexc_test`, `jit_program_fuzz_040_mmu_dcache_test`, `jit_program_fuzz_040_mmupage_test`, `jit_program_fuzz_040_mmuprot_cas_test`, `jit_program_fuzz_040_mmuprot_test`, `jit_program_fuzz_040_mmutt_test`, `jit_program_fuzz_040_smc_test`, `jit_program_fuzz_040_sys_mmu_test`, `jit_program_fuzz_040_sys_test`, `jit_program_fuzz_040_t0_test`, `jit_program_fuzz_040_test`, `jit_program_fuzz_040_trace_test`, `jit_program_fuzz_040_vmrte_test`, `jit_program_fuzz_lc040_test`, `jit_q605_boot_etalon`, `jit_q630_boot_etalon`, `jit_q700_boot_etalon`, `jit_restart_write_030_test`, `jit_se30_boot_etalon`, `jit_sst68030`, `jit_sst68030_fpu2`, `jit_sst68030_fpuh`, `jit_sst68030_fpuraw`, `jit_sst68030_rmw`, `jit_sst68030_solo`, `jit_sst68040`, `jit_sst68040_8k`, `jit_sst68040_fline`, `jit_sst68040_fpu`, `jit_sst68040_fpu2`, `jit_sst68040_fpuh`, `jit_store_guard_a64_test`, `mmu040_atc_test`, `moira_interp_callm_rtm_test`.
+536 gates registered; 110 union gates cannot register here: `cache040_test`, `callm_rtm_test`, `cpu_vectors030_jit_test`, `cpu_vectors040_jit_test`, `jit_asset_free_lockstep_test`, `jit_backend_parity_test`, `jit_backend_test`, `jit_centris650_boot_etalon`, `jit_copyback_bsr_040_test`, `jit_copyback_pair_040_control_test`, `jit_copyback_pair_040_test`, `jit_copyback_write_040_control_test`, `jit_copyback_write_040_test`, `jit_duo230_boot_etalon`, `jit_iifx_boot_etalon`, `jit_iisi_boot_etalon`, `jit_iivx_boot_etalon`, `jit_lc3_boot_etalon`, `jit_lcii_boot_etalon`, `jit_lockstep_030_a64_alignment_test`, `jit_lockstep_030_a64_experimental_test`, `jit_lockstep_030_blocks_test`, `jit_lockstep_030_no_data_window_test`, `jit_lockstep_030_test`, `jit_lockstep_030_x64_alignment_test`, `jit_lockstep_030_x64_experimental_test`, `jit_lockstep_030_x64_packed_ccr_test`, `jit_lockstep_68000_test`, `jit_lockstep_a64_coarse_test`, `jit_lockstep_blocks_test`, `jit_lockstep_board_centris650_test`, `jit_lockstep_board_duo230_test`, `jit_lockstep_board_iici_jitter_test`, `jit_lockstep_board_iici_test`, `jit_lockstep_board_iici_threaded_blocks_test`, `jit_lockstep_board_iifx_test`, `jit_lockstep_board_iivx_test`, `jit_lockstep_board_lc3_test`, `jit_lockstep_board_pb170_test`, `jit_lockstep_board_pb180_test`, `jit_lockstep_board_q630_jitter_test`, `jit_lockstep_board_q630_test`, `jit_lockstep_board_q630_threaded_test`, `jit_lockstep_board_q700_test`, `jit_lockstep_board_se30_test`, `jit_lockstep_noaccess_test`, `jit_lockstep_test`, `jit_lockstep_x64_fine_test`, `jit_lockstep_x64_test`, `jit_mactv_boot_etalon`, `jit_pb140_boot_etalon`, `jit_pb180_boot_etalon`, `jit_pb180c_boot_etalon`, `jit_program_fuzz_000_test`, `jit_program_fuzz_000_trace_test`, `jit_program_fuzz_020_irq7_test`, `jit_program_fuzz_030_devport_test`, `jit_program_fuzz_030_ext2_test`, `jit_program_fuzz_030_ext_test`, `jit_program_fuzz_030_fpexc_test`, `jit_program_fuzz_030_mmupage_test`, `jit_program_fuzz_030_mmuprot_plain_test`, `jit_program_fuzz_030_mmuprot_test`, `jit_program_fuzz_030_mmutt_test`, `jit_program_fuzz_030_smc_test`, `jit_program_fuzz_030_sys_test`, `jit_program_fuzz_030_t0_test`, `jit_program_fuzz_030_test`, `jit_program_fuzz_030_trace_test`, `jit_program_fuzz_030_vmrte_test`, `jit_program_fuzz_040_dcache_cacr_test`, `jit_program_fuzz_040_dcache_replay_test`, `jit_program_fuzz_040_dcache_test`, `jit_program_fuzz_040_devport_test`, `jit_program_fuzz_040_ext2_test`, `jit_program_fuzz_040_ext_test`, `jit_program_fuzz_040_fpexc_test`, `jit_program_fuzz_040_mmu_dcache_test`, `jit_program_fuzz_040_mmupage_test`, `jit_program_fuzz_040_mmuprot_cas_test`, `jit_program_fuzz_040_mmuprot_test`, `jit_program_fuzz_040_mmutt_test`, `jit_program_fuzz_040_smc_test`, `jit_program_fuzz_040_sys_mmu_test`, `jit_program_fuzz_040_sys_test`, `jit_program_fuzz_040_t0_test`, `jit_program_fuzz_040_test`, `jit_program_fuzz_040_trace_test`, `jit_program_fuzz_040_vmrte_test`, `jit_program_fuzz_lc040_test`, `jit_q605_boot_etalon`, `jit_q630_boot_etalon`, `jit_q700_boot_etalon`, `jit_restart_write_030_test`, `jit_se30_boot_etalon`, `jit_sst68030`, `jit_sst68030_fpu2`, `jit_sst68030_fpuh`, `jit_sst68030_fpuraw`, `jit_sst68030_rmw`, `jit_sst68030_solo`, `jit_sst68040`, `jit_sst68040_8k`, `jit_sst68040_fline`, `jit_sst68040_fpu`, `jit_sst68040_fpu2`, `jit_sst68040_fpuh`, `jit_store_guard_a64_test`, `mmu040_atc_test`, `moira_interp_callm_rtm_test`.
 
 | dimension | value | gates |
 |---|---|---|
 | assets | none | 156 |
 | assets | optional | 27 |
-| assets | required | 352 |
-| host | any | 535 |
+| assets | required | 353 |
+| host | any | 536 |
 | scope | component | 179 |
-| scope | profile | 352 |
+| scope | profile | 353 |
 | scope | repository | 4 |
 | tier | daily | 156 |
-| tier | full | 363 |
+| tier | full | 364 |
 | tier | platform | 16 |
-| slots_src | assumed | 440 |
+| slots_src | assumed | 441 |
 | slots_src | measured | 95 |
 
-Scheduling cost if every gate ran at once: 861 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
+Scheduling cost if every gate ran at once: 862 slots of 256 MiB (`slots_src` says which rows are measured — an `assumed` gate is scheduled as one slot because nobody has measured it here).
 
 ## PRODUCT_LLE on aarch64
 
@@ -250,3 +250,4 @@ overwrites it, including a one-gate `ctest -R`.
 | Nov 22 10:59 +04 | x86_64 | default | 154 | 153 | 1 | 0 | 68030 PC-relative operands in program space (D46), native in the JIT through the program-space thunk; core grade review complete: ctest -L m030 -j8, 154/154 in 3172 s; census 153 executed / 1 soft-skipped (lcii_floppy144_etalon, no 1.44 MB image) / 0 failed |
 | Nov 25 22:24 +04 | aarch64 | default | 320 | 319 | 1 | 0 | AArch64 machine tier m040\|m030\|etalon on 3cfd4718 (Dirk bf98107f + 16 patches, interpreter) |
 | Nov 26 09:13 +04 | aarch64 | default | 320 | 319 | 1 | 0 | AArch64 machine tier m040\|m030\|etalon on 43d3ab94 (bf98107f + 19 patches), -j3, 17 530 s; cd_pressed_toc_etalon soft-skipped (no pressed disc) |
+| Nov 26 20:10 +04 | aarch64 | default | 321 | 320 | 1 | 0 | AArch64 machine tier m040\|m030\|etalon on the uncommitted tree over 39845810 (bf98107f + 19 patches after the 2026-11-26 fixes to patches 4, 7, 16, 18; q605_fpsp_moveout_etalon added), -j3, 21 549 s on a host shared with other test runs |

@@ -959,7 +959,10 @@ Moira::cyclesDiv(u32 op1, u16 op2) const
         u32 aquot = magnitude / u32(abs(divisor));
         u32 limit = 0xffff;
         if constexpr (compat == Compatibility::DEFAULT) {
+            // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
             // The signed-overflow path exits at 16 or 18 clocks.
+            // [F] Not measured. Settled by: the cycle count of an overflowing
+            // DIVS on a real 68000.
             limit = (dividend < 0) != (divisor < 0) ? 0x8000 : 0x7fff;
         }
         if (aquot > limit) {
@@ -1167,7 +1170,11 @@ template <Core C, Size S> void
 Moira::setUndefinedDIVU(u32 dividend, u16 divisor)
 {
     if constexpr (C == Core::C68000 && compat == Compatibility::DEFAULT) {
-        // The measured overflow leaves N and Z unchanged.
+        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
+        // The corpus leaves N and Z unchanged on overflow; M68000PRM calls
+        // them undefined.
+        // [F] Not measured. Settled by: the CCR of an overflowing divide on
+        // a real 68000.
         reg.sr.c = 0;
         return;
     }
@@ -1205,7 +1212,11 @@ template <Core C, Size S> void
 Moira::setUndefinedDIVS(i32 dividend, i16 divisor)
 {
     if constexpr (C == Core::C68000 && compat == Compatibility::DEFAULT) {
-        // The measured overflow leaves N and Z unchanged.
+        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
+        // The corpus leaves N and Z unchanged on overflow; M68000PRM calls
+        // them undefined.
+        // [F] Not measured. Settled by: the CCR of an overflowing divide on
+        // a real 68000.
         reg.sr.c = 0;
         return;
     }

@@ -40,6 +40,8 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ### Retractions, reversals and corrections
 
+- **"a refill served from the latch with the cache disabled under-counts the no-cache column" (2026-11-24, `TODO.md`) and "trace as after a TRAP" for a 6888x mid-instruction exception (2026-11-26 (ninth))** — the first is documented behaviour (MC68030UM 11.6, MC68020UM 1.6); the second is one of two readings, left [F] → [Seven PR branches](#2026-11-27-dirk-pr-branches)
+- **"the 68020/68030 already went through readInstr()" and the MOVE EA,CCR / TRAPV rows as evidence of a charged refill (2026-11-26 (seventh)); "A signaling NaN raises SNAN only (6.1.2)" (2026-11-26)** — the first is false without an emulated cache and the rows show no extra prefetch; the second is contested by MC68881UM 4.5.4.2 → [Queue triage](#2026-11-26-queue-triage)
 - **"[F] … what a bare RTE then meets is unknown" for a 68882 handler without FSAVE, and "a pending trap is taken before FMOVEM and FMOVE FPcr dispatch, against MC68881UM § 6.4.2.2" (2026-11-25 (fourth)) — the first is documented (§ 7.5.4.2, Figure 7-34: taken again), the second is a self-contradiction of the manual, left [F]** → [Patch 16 after review](#2026-11-26-fmove9-review)
 
 - **"a 6888x reports no post-instruction exception (MC68881UM §6.1)", read as an FMOVE FPn,<ea> exception deferred to the next FPU instruction (2026-11-24) — the same page makes it a mid-instruction exception, format $9, taken after the store** → [A 6888x FMOVE exception is a mid-instruction one](#2026-11-25-fmove-format9)
@@ -627,6 +629,9 @@ answers it. Not exhaustive — the complete list is [by date](#index-by-date).
 
 ## Index by date
 
+- [2026-11-27 — Seven pull-request branches prepared for Dirk, each verified twice; the "latch refill defect" is documented behaviour](#2026-11-27-dirk-pr-branches)
+- [2026-11-26 (ninth) — The 19-patch queue triaged for Dirk: no patch goes out as written; nine messages corrected, four defects fixed (patches 4, 7, 16, 18), one finding refuted (19)](#2026-11-26-queue-triage)
+- [2026-11-26 (eighth) — AArch64 machine tier green on the 19-patch queue](#2026-11-26-machine-tier-19)
 - [2026-11-26 (seventh) — Queue patch 15 re-justified: on the 68020/68030 the manuals' rule, on the 68040 a speed setting tied to a 16-bit port the manual rules out](#2026-11-26-patch15-rejustified)
 - [2026-11-26 (sixth) — Ten `moira_rules_test` rows that no longer fail, explained and removed: patch 14 and Dirk's #47](#2026-11-26-moira-rules-stale-rows)
 - [2026-11-26 (fifth) — The `@D23a` rows judge the format-$9 frame: 206 of 448 now agree, the floors rise](#2026-11-26-d23a-format9)
@@ -1466,7 +1471,217 @@ Newest first.
 
 ---
 
-<a id="2026-11-26-patch15-rejustified"></a>
+<a id="2026-11-27-dirk-pr-branches"></a>
+## 2026-11-27 — Seven pull-request branches prepared for Dirk, each verified twice; the "latch refill defect" is documented behaviour
+
+Follows the 2026-11-26 (ninth) triage, which owed a reproducer on Dirk's tree
+for every candidate. Each candidate is now one commit on his `bf98107f`, in a
+worktree of the clone `~/src/moira-pr` (PR texts beside them under
+`~/src/moira-pr-work/`), with a `Tests/Unit` case that fails on his `master`.
+Each was then attacked by two independent verifiers, one re-reading the
+locked Motorola manuals, one rebuilding his `master`, reproducing the
+failure, mutating the fix and probing the edges. Their findings were applied,
+and his full `ctest` (26 tests) was run on every final commit. Nothing was
+pushed or posted at that point: the owner validates first (see **Posted**
+below).
+
+| Patch | Branch | Commit | Fails on his `master` | Full `ctest` |
+|---|---|---|---|---|
+| 18 | `mmu-table-search-bus-error` | `0885a87` | 38 of 68 assertions | 26/26 |
+| 1 (DBcc half) | `dbcc-expired-refill` | `5093775` | 52 of 296 | 26/26 |
+| 16 | `6888x-fmove-out-mid-instruction` | `8869492` | 501 of 1037 (FPU tests) | 26/26 |
+| 4 (trace half) | `trace-frame-fault` | `cf7f5f0` | 38 of 68 | 26/26 |
+| 4 (reset half) | `reset-bus-fault` | `4592ccd` | 120 of 210 | 26/26 |
+| 10 | `68020-data-output-buffer` | `ae3d743` | 4 write checks | 26/26 |
+| 12 | `68040-fault-address` | `f2c0979` | 13 | 26/26 |
+
+**Second round, same day: the first wave of four.** The owner asked for four
+adversarial verifications of the four branches to submit first (patches 18,
+10, 1 and 12). Each was attacked through four lenses (the manuals, a
+reproduction on his `master`, the code, a maintainer's reading), corrected,
+verified again in its final state and rerun through his full `ctest`; the
+table gives those final commits. No branch was refuted. The DBcc branch was
+redesigned: its first version read the discarded word before the cycles were
+counted, so PR #45 charged a cache fill and an expired DBcc cost 12 or 16
+clocks on a miss, above the 10 of the worst case in [B] MC68020UM 8.2.15. The
+read now follows `CYCLES_68020(10)`, like the refetch, and no clock differs
+from his `master`. The MMU branch gained the U/M-write, upper-level and
+68030 pipe-stage cases (his `master` halts when stage B lies on a page whose
+descriptor read faults); the 68040 branch gained the narrow-port, byte,
+68LC040 and 68030-guard cases. The other three branches keep their two
+verifications.
+
+**Posted.** On the owner's instruction the four texts were shortened (from
+about 6 100 to 3 500 words in all) and the pull requests opened on
+`dirkwhoffmann/Moira` from the fork `habib256/Moira`: #50 (patch 18), #51
+(patch 10), #52 (the DBcc half of patch 1) and #53 (patch 12).
+`queue.tsv` records them as `proposed` with their heads. The other three
+branches are not pushed.
+
+**What the verifications overturned.**
+
+- **The "latch refill" is not a defect.** The 2026-11-24 entry and a `TODO.md`
+  item held that an expired DBcc served from the one-longword latch with the
+  cache disabled under-counts the no-cache column. [B] MC68030UM 11.6: that
+  column is "the average of the odd-word-aligned case and the
+  even-word-aligned case (rounded up to an integral number of bus cycles)".
+  [B] MC68020UM 1.6: "even if the instruction cache is disabled, an
+  instruction prefetch may hit in the cache holding register and cause an
+  external bus cycle to be aborted". [B] MC68030UM 12.7.1 gives DBcc two
+  refill requests and the CCR operations none. The `TODO.md` item is removed,
+  and the DBcc branch goes out alone, without the "latch flush" commit a
+  first draft carried.
+- **Trace after a 6888x mid-instruction exception is open, not settled.** The
+  ninth entry's "trace as after a TRAP" rests on [B] MC68030UM 8.1.7 and
+  Table 8-6 (cp mid-instruction in group 2). [B] MC68030UM 10.4.4, 10.4.19,
+  10.5.2.5 and MC68881UM 7.4.2.6 can be read as placing the trace after the
+  handler's RTE, when the dialog ends. [F] Settled by: a capture on a 68020
+  or 68030 with a 68881. The branch keeps the first reading and states the
+  second; the messages of patches 16 and 4 in the queue now say both.
+- **68040, fault during exception processing.** [B] MC68040UM 7.6.3 and
+  Figures 8-1 and 8-4 lean toward a halt on any fault during exception
+  processing, where Moira's interrupt path takes the bus error. The trace
+  branch follows Moira's existing choice and asks Dirk the question. [F] for
+  the 68040.
+- **Per branch:** the MMU text cited the wrong figure (3-10, not 3-9) and
+  lacked the U/M-write and persistence cases; the reset text claimed a PC
+  after the halt that the code does not produce (measured: 0); the trace
+  branch lacked the odd-vector and odd-SSP cases (68000/68010, no host bus
+  error needed) and the 68000 I/N bit; the DOB text claimed zero upper bytes
+  that the code does not clip; the FA040 text did not disclose that the
+  table-search and narrow-port faults change too.
+
+**Differences from the queue.** The branches carry Dirk-side tests, his
+documentation, the I/N bit and the delegate order at reset; the queue is not
+realigned on them. On a merge, rebase the queue on his `master` and drop
+what it covers. Several branches touch `MmuExecTests.cpp` or
+`BusErrorTests.cpp`: the second one merged needs a rebase.
+
+**Home side.** The AArch64 machine tier was rerun on the queue with the
+fixes of patches 4, 7, 16 and 18 (`m040|m030|etalon`, 321 of 321, with the
+new `q605_fpsp_moveout_etalon`; `STATUS.md`). Not run: the x86-64 leg.
+
+---
+
+<a id="2026-11-26-queue-triage"></a>
+## 2026-11-26 (ninth) — The 19-patch queue triaged for Dirk: no patch goes out as written; nine messages corrected, four defects fixed (patches 4, 7, 16, 18), one finding refuted (19)
+
+Each patch was read by an analyst and then by two independent reviewers, one
+re-reading the cited Motorola manuals (locked editions, hashes checked), one
+reading the diff against Dirk's unmodified `bf98107f`. The lowest of the
+three opinions is kept. Nothing was built or run by the reviewers: these are
+readings, not reproductions, and a reproducer on his tree is still owed for
+every candidate.
+
+**Verdict.** Candidates after named work, in order: 18, 10, 1 (DBcc half),
+12, 16, 4 (reset half). Questions for discussion #36 before any code: 3, 19,
+7, 8, 2, 5. Local: 6, 9, 11, 13, 14, 15, 17. The order and the work owed are
+in `TODO.md` § Boucle amont, the per-patch notes in
+`extern/moira/patches/queue.tsv`.
+
+**What the patch messages got wrong, now corrected in the queue.**
+
+- Patch 1 presented the discarded read of a trapping TRAPV as hardware
+  behaviour. MC68020UM 8.2.17 and MC68030UM 11.6.17 give TRAPV (Trap) the
+  prefetches of TRAP #n; the read is Moira's model. With an emulated cache
+  that CACR disables, the latch can serve the word where the no-cache
+  columns count three prefetches for the expired DBcc: the property of the
+  merged PR #43, already open in `TODO.md`.
+- Patch 4 cited MC68030UM 8.1.2 for a halt on a fault while the trace frame
+  is stacked. 8.1.2 names bus error, address error and reset processing and
+  the frame read of an RTE. The trace half is [F]; the code comment says so.
+- Patch 6 claimed "a catchpoint set before a reset was no longer checked
+  afterwards". On upstream `jumpToVector()` calls `catchpointMatches()`
+  without reading CHECK_CP; only `src/MoiraCompat.h` reads the bit.
+- Patch 12 claimed instruction fetches already stacked the logical address.
+  A host /BERR on a translated 68040 instruction fetch stacked the physical
+  one, and the patch changes it (MC68040UM 8.4.6.7).
+- Patch 15 cited MOVE EA,CCR 5(0/1/0) and TRAPV 32(1/2/5) as evidence of a
+  charged refill; both rows show no extra prefetch. It also said the
+  68020/68030 "already went through readInstr()", false for a
+  `MOIRA_EMULATE_ICACHE=false` build. This corrects the
+  [seventh entry](#2026-11-26-patch15-rejustified) on those two points.
+- Patch 16 called the lost trace event of a traced FMOVE an open case.
+  MC68030UM 8.1.7 ("the forced exception processing occurs before the trace
+  exception is processed") and Table 8-6 (coprocessor mid-instruction in
+  group 2, trace in group 4.1) make it a defect; it is open in `TODO.md`.
+- Patch 17 said "A signaling NaN raises SNAN only (6.1.2)"; 6.1.2 has no
+  "only". MC68881UM 4.5.4.2, read with Table 6-2, gives SNAN and OPERR
+  together when the SNAN trap is disabled, which is upstream's behaviour,
+  and MC68040UM Table 9-11 has Table 6-2's wording, so the 6888x/68040
+  split the patch introduces has no manual ground. The patch stays, graded
+  [F] until a 68881/68882 capture; this qualifies the
+  [first entry of the day](#2026-11-26-fmove-snan-int).
+- Patches 13 and 14 called SingleStepTests a measurement ("measures", "The
+  measured overflow"). The corpus is grade D; the comments now carry the
+  pinned revision and an [F] naming the capture. Patch 14 had no commit body.
+- Patch 5 omitted that a `MOIRA_VIRTUAL_API=false` host must define the new
+  delegate.
+
+**Defects found in the queue's code, fixed the same day.**
+
+- **Patch 4 — a fault on the trace frame halted the CPU.** MC68030UM 7.5.4:
+  "When a bus error or an address error occurs during the exception
+  processing sequence for a previous bus error, a previous address error, or
+  a reset exception, the bus or address error causes a double bus fault"; a
+  trace exception is not in the list, and 8.1.2 says the same. The fault now
+  goes through `processException()`, as on the interrupt path a few lines
+  below: the bus error exception is taken, and only a second fault halts
+  (the Quadra 605 with a corrupted stack pointer still halts). `reset()`
+  catches `BusError` and `AddressError`, no longer every `std::exception`.
+  The patch is renamed. Gate: `moira_rules_test` `traceFrameFault`
+  (68000/020/030/040; the SR that bus error frame stacks is [F]).
+- **Patch 16 — a traced FMOVE lost its trace event** when it took the
+  6888x mid-instruction exception. MC68030UM 8.1.7 processes a forced
+  exception before the trace and Table 8-6 has the coprocessor
+  mid-instruction exception in group 2, the trace in 4.1. `execFpuTrap()`
+  keeps `TRACE_EXC` for that case; the trace exception follows the format $9
+  frame, before the handler's first instruction, as after a TRAP. That
+  point (rather than after the RTE, MC68881UM 6.1.13) is [F]. Gate:
+  `fpu_sanity` `moveOutTraced`.
+- **Patch 18 — a frame supplied by the host was absorbed by the table
+  search.** Upstream promises "Moira never modifies a frame that has been
+  supplied this way" (`BusError::custom`); the two catch blocks rethrow it.
+  Gate: `moira_rules_test` `tableSearchCustomFrame`, with the same frame on
+  the operand as the control.
+- **Patch 7 — the Quadras were exposed, and it is measured.** The patch
+  took the nonmaskable SNAN/OPERR exception of an FMOVE to B/W/L but left
+  the FPSP handler an idle frame. On a Quadra 605 (ROM FF7439EE, Mac OS 8.1
+  at the Finder), `FMOVE.L FP0,D0` of a signaling NaN with every exception
+  disabled returned `$4088D6BA`, a ROM address, when the memory below the
+  handler's stack was zero, and `$E0000000` otherwise; the OPERR handler
+  took 24 or 32 instructions depending on that memory. A following FSAVE now
+  stores the frame of MC68040UM 9.8, Table 9-16 for opclass 011: CMDREG1B,
+  the unrounded source in ETEMP (SNAN bit set), STAG, E1 and T. With it the
+  ROM's handler leaves the manual's value in all 96 runs (four moves, six
+  operands, four stack fills). T is bit 4 of the byte E1 is bit 2 of: the
+  handler's path followed that bit in the fills. [F]: the frame uses the
+  unimplemented instruction layout ($4130); Table 9-16 also lists WBTEMP for
+  OPERR, which only the busy frame has. Gates: `fpu040_test` (the frame),
+  `q605_fpsp_moveout_etalon` (the ROM's handler; new, 536 gates on each
+  host, `STATUS.md` regenerated for both).
+
+**A finding refuted.** A reviewer reported that patch 19's `readAcross()`
+and `writeAcross()` "drop all bus-cycle accounting". On the 68020 core
+`SYNC()` is empty (`MoiraMacros.h`): no data bus cycle is charged anywhere,
+the misaligned path of `readBus()` included, and the helpers split a long
+word in words exactly as `read2x16()` does there. Nothing to fix; the
+sentence I had added to the patch message is withdrawn.
+
+Each fix was checked by mutation: with the four lines reverted, the new
+cells fail (custom frame, trace frame on four models, traced FMOVE) and
+pass again restored.
+
+**Elsewhere.** `queue.tsv` now states the dependencies it left out (4 on 3,
+9 on 11, 12 on 11 and 5, 16 on 7 and 10, 19 on 12). `oracle/README.md`
+named "queue patch 16" for the DIVS early exit; it is patch 14.
+`POM68K_VENDOR.md` says how its "0 and 2" address-error idle relates to
+patch 13's "2 and 4". The eighth entry below had taken the seventh's anchor.
+
+`moira_queue.py check` proves base + 19 patches. Not rerun: the machine
+tiers on either host, owed before any of this is pushed.
+
+<a id="2026-11-26-machine-tier-19"></a>
 ## 2026-11-26 (eighth) — AArch64 machine tier green on the 19-patch queue
 
 The full machine tier (`ctest -L 'm040|m030|etalon' -j3`) ran on `43d3ab94`
@@ -1479,6 +1694,7 @@ the translation path of every 68030/68040 machine. The run is recorded in
 `STATUS.md`. The x86-64 leg of the same tier is still owed on this tree
 (`TODO.md` § Reprendre ici).
 
+<a id="2026-11-26-patch15-rejustified"></a>
 ## 2026-11-26 (seventh) — Queue patch 15 re-justified: on the 68020/68030 the manuals' rule, on the 68040 a speed setting tied to a 16-bit port the manual rules out
 
 The [2026-11-25 (fifth)](#2026-11-25-clipboard-gate-process) entry left

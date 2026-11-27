@@ -170,7 +170,11 @@ Moira::reset()
                 reset<Core::C68020>();
         }
 
-    } catch (const std::exception &) {
+    } catch (const BusError &) {
+
+        halt();
+
+    } catch (const AddressError &) {
 
         halt();
     }
@@ -224,9 +228,15 @@ Moira::execute()
             // Process pending trace exception (if any)
             if (flags & TRACE_EXC) {
 
-                // A fault while the trace frame is stacked is a double bus fault
-                // (MC68030UM 8.1.2): the processor halts
-                try { execException(M68kException::TRACE); } catch (const std::exception &) { halt(); }
+                // A fault while the trace frame is stacked is an ordinary bus
+                // or address error: a double bus fault needs a fault while a
+                // bus error, an address error or a reset is processed
+                // (MC68030UM 7.5.4, 8.1.2)
+                try {
+                    execException(M68kException::TRACE);
+                } catch (const std::exception &exc) {
+                    processException(exc);
+                }
                 goto done;
             }
 

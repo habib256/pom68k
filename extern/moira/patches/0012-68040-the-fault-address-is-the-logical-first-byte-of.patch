@@ -1,7 +1,7 @@
-From 94bf920d08a84392b28d41fa546d8e0a36673b6f Mon Sep 17 00:00:00 2001
+From 5ec75f251c8c8f8e687169cf828aa45a7a32c4fd Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 01:26:03 +0400
-Subject: [PATCH 12/15] 68040: the fault address is the logical first byte of
+Subject: [PATCH 12/19] 68040: the fault address is the logical first byte of
  the faulted access
 
 MC68040UM 8.4.6.4: "The FA is a physical address only for cache pushes and
@@ -21,9 +21,16 @@ frame stacked in FA, WB3A and EA: with logical page $10000000 mapped to
 physical $00F00000, a bus error on MOVE.L (A0),D0 with A0 = $10000100
 stacked FA = $00F00100 instead of $10000100. Both functions now keep the
 logical address for a 68040; the physical one still drives the access.
-Faults detected by the MMU and instruction fetches already stacked the
-logical address. The 68020 and 68030 receive the physical address, as
-before.
+Faults detected by the MMU already stacked the logical address. A bus
+error raised by the host on a translated instruction fetch stacked the
+physical address as well; it now stacks the logical one (8.4.6.7: "the
+logical address of the instruction prefetch"). The 68020 and 68030 receive
+the physical address, as before.
+
+The frame is what changes here. Completing the faulted access in the
+handler is outside Moira's restart model; the WB3 case above only shows
+which address the frame must carry. That WB3A is logical is read from
+8.4.6.5, which does not say it in so many words.
 
 Example 5 of 8.4.6.7, "Page Fault ... The FA field contains the physical
 address of the faulted instruction", contradicts 8.4.6.4 and note c of

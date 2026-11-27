@@ -1,18 +1,28 @@
-From 9245cdbc352d8448089d55d0348b03ead83cc5a4 Mon Sep 17 00:00:00 2001
+From 002fde56e108c3f1d764a5308491176d3b82f70e Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 08:05:14 +0400
-Subject: [PATCH 14/15] Restore 68000 divide overflow flags and signed timing
+Subject: [PATCH 14/19] Restore 68000 divide overflow flags and signed timing
  in DEFAULT mode
 
+In the default configuration, a 68000 DIVU or DIVS that overflows leaves N
+and Z unchanged and clears C, and a DIVS takes the short overflow exit
+whenever the quotient exceeds the signed 16-bit range, not only when it
+exceeds 16 bits.
+
+The only evidence is the SingleStepTests/680x0 68000/v1 corpus (e0d5ece),
+which an emulator generated: it is not a measurement. M68000PRM calls N
+and Z undefined on overflow and gives no timing for it. A capture of the
+CCR and of the cycle count on a real 68000 settles it. The other
+compatibility modes are unchanged.
 ---
- Moira/MoiraALU_cpp.h | 23 ++++++++++++++++++++---
- 1 file changed, 20 insertions(+), 3 deletions(-)
+ Moira/MoiraALU_cpp.h | 34 +++++++++++++++++++++++++++++++---
+ 1 file changed, 31 insertions(+), 3 deletions(-)
 
 diff --git a/Moira/MoiraALU_cpp.h b/Moira/MoiraALU_cpp.h
-index 5c87dcc..59989a8 100644
+index 5c87dcc..d9383cd 100644
 --- a/Moira/MoiraALU_cpp.h
 +++ b/Moira/MoiraALU_cpp.h
-@@ -955,8 +955,14 @@ Moira::cyclesDiv(u32 op1, u16 op2) const
+@@ -955,8 +955,17 @@ Moira::cyclesDiv(u32 op1, u16 op2) const
          i16 divisor  = (i16)op2;
          int mcycles  = (dividend < 0) ? 7 : 6;
  
@@ -22,14 +32,17 @@ index 5c87dcc..59989a8 100644
 +        u32 aquot = magnitude / u32(abs(divisor));
 +        u32 limit = 0xffff;
 +        if constexpr (compat == Compatibility::DEFAULT) {
++            // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
 +            // The signed-overflow path exits at 16 or 18 clocks.
++            // [F] Not measured. Settled by: the cycle count of an overflowing
++            // DIVS on a real 68000.
 +            limit = (dividend < 0) != (divisor < 0) ? 0x8000 : 0x7fff;
 +        }
 +        if (aquot > limit) {
  
              result = (mcycles + 2) * 2;
  
-@@ -968,7 +974,6 @@ Moira::cyclesDiv(u32 op1, u16 op2) const
+@@ -968,7 +977,6 @@ Moira::cyclesDiv(u32 op1, u16 op2) const
                  mcycles += (dividend < 0) ? 1 : -1;
              }
  
@@ -37,12 +50,16 @@ index 5c87dcc..59989a8 100644
              for (int i = 0; i < 15; i++) {
                  if ( (i16)aquot >= 0) mcycles++;
                  aquot <<= 1;
-@@ -1161,6 +1166,12 @@ Moira::setUndefinedCHK2(i32 lower, i32 upper, i32 value)
+@@ -1161,6 +1169,16 @@ Moira::setUndefinedCHK2(i32 lower, i32 upper, i32 value)
  template <Core C, Size S> void
  Moira::setUndefinedDIVU(u32 dividend, u16 divisor)
  {
 +    if constexpr (C == Core::C68000 && compat == Compatibility::DEFAULT) {
-+        // The measured overflow leaves N and Z unchanged.
++        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
++        // The corpus leaves N and Z unchanged on overflow; M68000PRM calls
++        // them undefined.
++        // [F] Not measured. Settled by: the CCR of an overflowing divide on
++        // a real 68000.
 +        reg.sr.c = 0;
 +        return;
 +    }
@@ -50,12 +67,16 @@ index 5c87dcc..59989a8 100644
      // The 68040 sets V and clears C. N and Z stay unchanged.
      if (cpuModel >= CPUModel::M68EC040) { reg.sr.c = 0; return; }
  
-@@ -1193,6 +1204,12 @@ Moira::setUndefinedDIVU(u32 dividend, u16 divisor)
+@@ -1193,6 +1211,16 @@ Moira::setUndefinedDIVU(u32 dividend, u16 divisor)
  template <Core C, Size S> void
  Moira::setUndefinedDIVS(i32 dividend, i16 divisor)
  {
 +    if constexpr (C == Core::C68000 && compat == Compatibility::DEFAULT) {
-+        // The measured overflow leaves N and Z unchanged.
++        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
++        // The corpus leaves N and Z unchanged on overflow; M68000PRM calls
++        // them undefined.
++        // [F] Not measured. Settled by: the CCR of an overflowing divide on
++        // a real 68000.
 +        reg.sr.c = 0;
 +        return;
 +    }
@@ -64,5 +85,5 @@ index 5c87dcc..59989a8 100644
      if (cpuModel >= CPUModel::M68EC040) { reg.sr.c = 0; return; }
  
 -- 
-2.53.0
+2.54.0 (Apple Git-157)
 

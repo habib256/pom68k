@@ -1,7 +1,7 @@
-From a3398b5cc9cf5e5bf203a9dbf254cf5eba13100e Mon Sep 17 00:00:00 2001
+From 98e06d1765f85bf4c94c787dfe63b3f46184a99d Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 01:20:00 +0400
-Subject: [PATCH 10/15] 68020: the long bus fault frame carries the data output
+Subject: [PATCH 10/19] 68020: the long bus fault frame carries the data output
  buffer
 
 MC68020UM 6.2.2: "For data write faults, the handler must transfer the
@@ -58,5 +58,5 @@ index 77a91a6..ffac228 100644
          // Remember how to restart the instruction
          restart.valid = saved != nullptr;
 -- 
-2.53.0
+2.54.0 (Apple Git-157)
 

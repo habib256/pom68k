@@ -1,26 +1,36 @@
-From 9876755ee3792a2364d6df582648079212815728 Mon Sep 17 00:00:00 2001
+From 2504405129469481e5072421a907a449c0c364b1 Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Tue, 24 Nov 2026 07:53:08 +0400
-Subject: [PATCH 13/15] Restore 68000 address error frame timing in DEFAULT
+Subject: [PATCH 13/19] Restore 68000 address error frame timing in DEFAULT
  mode
 
-SingleStepTests/680x0 68000/v1 times the idle before the group-0 frame. Keep the previously qualified 2/4-clock split by I/N in the default configuration.
+In the default configuration, the idle before the group-0 frame of a 68000
+address error is 2 clocks for a data fault and 4 for an instruction-flow
+fault (the I/N bit of the frame), where the other modes spend 10.
+
+The only evidence is the SingleStepTests/680x0 68000/v1 corpus (e0d5ece),
+which an emulator generated: it is not a measurement, and no manual gives
+this timing. A capture of an address error on a real 68000 settles it.
 ---
- Moira/MoiraExceptions_cpp.h | 11 ++++++++---
- 1 file changed, 8 insertions(+), 3 deletions(-)
+ Moira/MoiraExceptions_cpp.h | 15 ++++++++++++---
+ 1 file changed, 12 insertions(+), 3 deletions(-)
 
 diff --git a/Moira/MoiraExceptions_cpp.h b/Moira/MoiraExceptions_cpp.h
-index ffac228..4d1983c 100644
+index ffac228..f66c973 100644
 --- a/Moira/MoiraExceptions_cpp.h
 +++ b/Moira/MoiraExceptions_cpp.h
-@@ -388,7 +388,13 @@ Moira::execAddressError(StackFrame frame, int delay)
+@@ -388,7 +388,17 @@ Moira::execAddressError(StackFrame frame, int delay)
  
      // Interrupts are taken at an instruction boundary
      reg.pc = reg.pc0;
 -    SYNC(8);
 +    if constexpr (C == Core::C68000 && compat == Compatibility::DEFAULT) {
-+        // The 68000 group-0 address-error idle depends on the I/N bit.
-+        // SingleStepTests/680x0 measures the start of each frame write.
++        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
++        // The 68000 group-0 address-error idle depends on the I/N bit: the
++        // corpus, which an emulator generated, starts the frame writes 2 or
++        // 4 clocks in.
++        // [F] Not measured. Settled by: a capture of an address error on a
++        // real 68000, from the aborted cycle to the first frame write.
 +        SYNC((frame.code & 0x8) ? 4 : 2);
 +    } else {
 +        SYNC(8);
@@ -28,7 +38,7 @@ index ffac228..4d1983c 100644
  
      // A misaligned stack pointer will cause a double fault
      if (misaligned<C>(reg.sp)) throw DoubleFault();
-@@ -396,8 +402,7 @@ Moira::execAddressError(StackFrame frame, int delay)
+@@ -396,8 +406,7 @@ Moira::execAddressError(StackFrame frame, int delay)
      // Write stack frame
      if constexpr (C == Core::C68000) {
  
@@ -39,5 +49,5 @@ index ffac228..4d1983c 100644
  
      } else if constexpr (C == Core::C68010) {
 -- 
-2.53.0
+2.54.0 (Apple Git-157)
 

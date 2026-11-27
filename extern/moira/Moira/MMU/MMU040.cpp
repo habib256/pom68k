@@ -139,7 +139,9 @@ MMU040::translate(u32 addr, u8 fc, bool write, bool *ci)
         //     nonresident entry (bus error during table search or invalid
         //     descriptor encountered)"; § 3.5, § 8.2.1: the access faults when
         //     it is retried.
-        try { physAddr = walk(addr, super, write, status); } catch (const BusError &) { status = 0; }
+        // A frame supplied by the host is passed on.
+        try { physAddr = walk(addr, super, write, status); }
+        catch (const BusError &e) { if (e.custom) throw; status = 0; }
         line = atcInsert(addr, fc, physAddr, status);
     }
 

@@ -1,7 +1,7 @@
-From ec1005cc0d9488c07b2723ea673d6feb40390d29 Mon Sep 17 00:00:00 2001
+From f2e8c7fa451ddf6c21b582f52c39911e631d8f0e Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Mon, 23 Nov 2026 21:31:03 +0400
-Subject: [PATCH 03/15] 68020/68030: do not rerun a data cycle a handler has
+Subject: [PATCH 03/19] 68020/68030: do not rerun a data cycle a handler has
  completed
 
 MC68030UM 8.2.2 lets a bus error handler complete a faulted data cycle in
@@ -171,5 +171,5 @@ index 1ee1c87..e1750ba 100644
  struct CycleBudget {
  
 -- 
-2.53.0
+2.54.0 (Apple Git-157)
 

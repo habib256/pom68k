@@ -65,6 +65,10 @@
 namespace {
 
 constexpr uint32_t kHole = 0x080000;   // a byte the test board answers with /BERR
+// A frame the board supplies itself (BusError::custom): values no path of
+// the core would compute.
+constexpr uint32_t kCustomFa = 0x00C0FFE0;
+constexpr uint16_t kCustomSsw = 0x0123;
 
 class TestCpu : public MoiraCompat {
 public:
@@ -76,6 +80,9 @@ public:
     // Cell 2: the board asserts /BERR on kHole.
     bool holeArmed = false;
     bool holeWritesOnly = false;        // the hole answers reads, faults writes
+    bool holeOnce = false;              // the hole disarms itself on its first /BERR
+    uint32_t holeSpan = 1;              // bytes the hole covers, ending at holeAt
+    bool holeCustomFrame = false;       // the board throws a complete frame of its own
     uint32_t holeAt = kHole;
     mutable unsigned holeTrips = 0;
     bool recordMovem = false;
@@ -113,11 +120,18 @@ private:
     void berr(moira::u32 a, bool write) const {
         ++holeTrips;
         auto& self = *const_cast<TestCpu*>(this);
+        if (holeOnce) self.holeArmed = false;
+        if (holeCustomFrame) {
+            moira::StackFrame f{};
+            f.addr = kCustomFa; f.ssw = kCustomSsw; f.write = write;
+            f.pc = self.getPC(); f.sr = self.getSR();
+            throw moira::BusError(f);
+        }
         if (model_ >= moira::CPUModel::M68EC040) self.extBusError040();
         else if (model_ >= moira::CPUModel::M68EC020) self.extBusError();
         else self.extBusError000(a, write);
     }
-    bool hole(moira::u32 a) const { return holeArmed && (a & 0xffffff) == holeAt; }
+    bool hole(moira::u32 a) const { return holeArmed && holeAt - (a & 0xffffff) < holeSpan; }
     void observeMovem(uint32_t a, bool write) const {
         if (!recordMovem) return;
         if (!write && ((a & ~3u) == 0x50000 || (a & ~3u) == 0x50010)) ++movemPointerReads;
@@ -1026,6 +1040,109 @@ void tableSearchBusError040()
               "%08X), %u trip(s)",
               unsigned(model), write ? "MOVE.L D0,(A0)" : "MOVE.L (A0),D0",
               format, ssw, wantSsw, fa, kLogical, c.holeTrips);
+    }
+}
+
+// A board may answer /BERR with a frame of its own (BusError::custom), which
+// upstream promises to stack as supplied ("Moira never modifies a frame that
+// has been supplied this way", docs/HowToEmulateBusErrors.md). The table
+// search of queue patch 18 turns a plain /BERR on a descriptor into an ATC
+// fault; a supplied frame must pass through it. The control is the same frame
+// thrown on the operand itself: both must stack the same fault address and
+// SSW, the board's.
+void tableSearchCustomFrame()
+{
+    for (bool onDescriptor : {false, true}) {
+        TestCpu c(moira::CPUModel::M68040);
+        p32(c, 2 * 4, kHandler);
+        p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
+        stage(c, 0x2010, 0);                            // MOVE.L (A0),D0
+        c.setA(0, 0x10000100);
+        p32(c, 0x4020, 0x4202); p32(c, 0x4200, 0x6002);
+        p32(c, 0x6000, 0x00F00059);
+        c.setURP040(0x4000); c.setSRP040(0x4000);
+        c.setITT0(0x0000C040); c.setDTT0(0x0000C040);
+        c.setTC040(0x8000);
+        c.holeAt = onDescriptor ? 0x6000 : 0x00F00100;
+        c.holeArmed = true; c.holeCustomFrame = true;
+        const bool contained = executeContained(c);
+        const uint32_t sp = c.getSP();
+        CHECK(contained && c.holeTrips == 1 && c.getPC0() == kHandler &&
+              g32(c, sp + 0x14) == kCustomFa && g16(c, sp + 0x0C) == kCustomSsw,
+              "68040 custom frame on the %s: PC0 %08X, fault address %08X (want "
+              "%08X), SSW %04X (want %04X), %u trip(s)",
+              onDescriptor ? "page descriptor fetch" : "operand", c.getPC0(),
+              g32(c, sp + 0x14), kCustomFa, g16(c, sp + 0x0C), kCustomSsw, c.holeTrips);
+    }
+    constexpr uint32_t kTc  = 0x80000000u | 0xCu << 20 | 0xAu << 12 | 0xAu << 8;
+    constexpr uint32_t kVa  = 0x40000000u;
+    constexpr uint32_t kTable = kHole - 0x100 * 4;      // descriptor $100 on the hole
+    constexpr uint64_t kCrp = uint64_t(0x7FFF0002u) << 32 | kTable;
+    {
+        TestCpu c(moira::CPUModel::M68030);
+        p32(c, 2 * 4, kHandler);
+        p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
+        stage(c, 0x2010, 0);                            // MOVE.L (A0),D0
+        c.setA(0, kVa);
+        c.mmu030(kTc, kCrp, 0x00008124u, 0x00008114u);
+        c.holeArmed = true; c.holeCustomFrame = true;
+        const bool contained = executeContained(c);
+        const uint32_t sp = c.getSP();
+        CHECK(contained && c.holeTrips == 1 && c.getPC0() == kHandler &&
+              g32(c, sp + 0x10) == kCustomFa && g16(c, sp + 0x0A) == kCustomSsw,
+              "68030 custom frame on a descriptor fetch: PC0 %08X, fault address "
+              "%08X (want %08X), SSW %04X (want %04X), %u trip(s)", c.getPC0(),
+              g32(c, sp + 0x10), kCustomFa, g16(c, sp + 0x0A), kCustomSsw, c.holeTrips);
+    }
+}
+
+// [B] MC68030UM-1989 §7.5.4 — "When a bus error or an address error occurs
+// during the exception processing sequence for a previous bus error, a
+// previous address error, or a reset exception, the bus or address error
+// causes a double bus fault"; §8.1.1 for the reset. A /BERR on the trace
+// frame is therefore an ordinary bus error (queue patch 4): the exception is
+// taken, and only a second /BERR, on the bus error frame, halts.
+// [F] Only the 68030 manual was read; the other models follow the same rule
+// here. The SR the bus error frame stacks is not pinned.
+void traceFrameFault()
+{
+    struct Row { moira::CPUModel model; const char* name; };
+    const Row rows[] = {
+        { moira::CPUModel::M68000, "68000" }, { moira::CPUModel::M68020, "68020" },
+        { moira::CPUModel::M68030, "68030" }, { moira::CPUModel::M68040, "68040" },
+    };
+    for (const auto& r : rows)
+    for (bool second : {false, true}) {
+        TestCpu c(r.model);
+        p32(c, 2 * 4, kHandler); p32(c, 9 * 4, kHandler + 0x100);
+        p16(c, kHandler, kNop); p16(c, kHandler + 2, kNop);
+        p16(c, kHandler + 0x100, kNop); p16(c, kHandler + 0x102, kNop);
+        stage(c, kNop, 0);
+        c.setSP(kHole + 2);                 // the first word pushed lands on the hole
+        c.setSR(0xA700);                    // T1: trace every instruction
+        bool contained = executeContained(c);           // NOP
+        c.holeArmed = true; c.holeOnce = !second;
+        if (second) c.holeSpan = 0x400;     // the bus error frame cannot be stacked either
+        contained = executeContained(c) && contained;   // the trace exception
+        if (!second) {
+            CHECK(contained && !c.isHalted() && c.holeTrips == 1 && c.getPC0() == kHandler,
+                  "%s /BERR on the trace frame: %s, %s, %u trip(s), PC0 %08X (want the "
+                  "bus error handler %08X)", r.name, contained ? "contained" : "ESCAPED",
+                  c.isHalted() ? "HALTED" : "running", c.holeTrips, c.getPC0(), kHandler);
+        } else {
+            CHECK(contained && c.isHalted(),
+                  "%s /BERR on the trace frame and on the bus error frame: %s, %s (want "
+                  "a halt)", r.name, contained ? "contained" : "ESCAPED",
+                  c.isHalted() ? "halted" : "RUNNING");
+        }
+    }
+    for (const auto& r : rows) {
+        TestCpu c(r.model);
+        c.holeAt = 0; c.holeArmed = true;               // the initial SSP vector
+        bool escaped = false;
+        try { c.reset(); } catch (...) { escaped = true; }
+        CHECK(!escaped && c.isHalted(), "%s /BERR on the reset vector: %s, %s (want a halt)",
+              r.name, escaped ? "ESCAPED" : "contained", c.isHalted() ? "halted" : "RUNNING");
     }
 }
 
@@ -4207,6 +4324,8 @@ int main(int argc, char** argv)
     movepFaultRestarts040();
     hostBusErrorFaultAddressIsLogical040();
     tableSearchBusError040();
+    tableSearchCustomFrame();
+    traceFrameFault();
     misalignedAccessAcrossPages();
     misalignedAccessUnchangedPaths();
     ordinaryStoreStillAdvances040();

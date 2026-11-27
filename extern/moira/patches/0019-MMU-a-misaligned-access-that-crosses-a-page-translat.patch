@@ -1,4 +1,4 @@
-From 08b3fd349995a89e1e12c6982ef79e4aa7c715b8 Mon Sep 17 00:00:00 2001
+From 427e9d74d5bd57267afb876f260cf6a9a5f5adea Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Thu, 26 Nov 2026 07:46:20 +0400
 Subject: [PATCH 19/19] MMU: a misaligned access that crosses a page translates
@@ -19,7 +19,8 @@ access that spans two pages in memory", and SIZE "corresponds to the
 original access size"; 8.4.6.4: the FA "contains the address of the first
 byte of the transfer, regardless of which of the two or three bus
 transfers for the misaligned access was faulted". MC68030UM 9: "As the MMU
-receives each logical address from the CPU core, it searches the ATC".
+receives each logical address from the CPU core, it searches the ATC", a
+general sentence that does not name a crossing access.
 
 Pages are aligned and at least 256 bytes long (MC68030UM 9.7.2, PS; 4 or
 8 Kbytes on the 68040, MC68040UM 3.1), so only an access that runs past a

@@ -1,12 +1,12 @@
-From 412762ae5f55cfcee588a1d3e5eaa03c93cef350 Mon Sep 17 00:00:00 2001
+From 082b571a53cc4eaacef01c7ae9192dd66144ffe2 Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Thu, 26 Nov 2026 09:00:00 +0400
-Subject: [PATCH 17/17] 68881/68882: an FMOVE of a signaling NaN to an integer is not
- an operand error
+Subject: [PATCH 17/19] 68881/68882: an FMOVE of a signaling NaN to an integer
+ is not an operand error
 
 MC68881/MC68882UM Table 6-2 lists the operand errors of an FMOVE to a byte,
 word or long word: "Integer Overflow/Underflow, Source is Non-Signaling
-NAN, or Source is +-infinity". A signaling NaN raises SNAN only (6.1.2):
+NAN, or Source is +-infinity". For a signaling NaN, 6.1.2 describes SNAN alone:
 "the 8, 16, or 32 most significant bits of the SNAN significand, with the
 SNAN bit set, are written to the destination", and with the trap enabled
 the result is written the same way before the mid-instruction exception.
@@ -14,10 +14,21 @@ the result is written the same way before the mid-instruction exception.
 toInteger() raised the invalid flag for every NaN, so the move set OPERR
 next to SNAN and, with OPERR enabled and SNAN disabled, took an OPERR
 exception the FPU does not report. It now takes a flag that says whether
-a signaling NaN is an operand error, too. The 68040 keeps its rule
-(MC68040UM 9.7.2.2, 9.7.3.2: both conditions are nonmaskable there); its
-Table 9-11 also lists only a nonsignaling NaN, but 9.7.3.2 names any NaN,
-so the 68040 is left as it is. The stored value does not change.
+a signaling NaN is an operand error, too. The stored value does not change.
+
+The manual is not of one voice. 4.5.4.2: with the SNAN trap disabled,
+"the SNAN is converted to a nonsignaling NAN (by setting the SNAN bit in
+the operand to a one), and the operation continues as described in the
+preceding paragraph for nonsignaling NANs", which read with Table 6-2
+gives SNAN and OPERR together, the behaviour this change removes; the
+OPERR entry of the FMOVE instruction page names no NaN at all. This change
+follows Table 6-2. A capture on a 68881 or 68882 settles it: FMOVE.L of a
+signaling NaN to D0 with FPCR = 0, then FPSR.
+
+The 68040 is left as it is, without a manual reason for the difference:
+its Table 9-11 has the wording of Table 6-2 ("nonsignaling NAN"), and
+9.7.3.2 names any NaN. That both conditions are nonmaskable there
+(9.7.2.2, 9.7.3.2) concerns the trap, not the OPERR bit.
 ---
  Moira/FPU/FpuFormats.cpp | 11 +++++++----
  Moira/FPU/FpuFormats.h   |  6 ++++--
@@ -72,7 +83,7 @@ index 2fb1dbe..be5c888 100644
  
      //
 diff --git a/Moira/MoiraExecFPU_cpp.h b/Moira/MoiraExecFPU_cpp.h
-index 3608851..df5cef3 100644
+index a5f17a3..3253100 100644
 --- a/Moira/MoiraExecFPU_cpp.h
 +++ b/Moira/MoiraExecFPU_cpp.h
 @@ -301,9 +301,9 @@ Moira::writeFpuOpRg(int n, const MFloat80 &val, FpuFormat fmt)

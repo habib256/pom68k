@@ -410,8 +410,12 @@ Moira::execAddressError(StackFrame frame, int delay)
     // Interrupts are taken at an instruction boundary
     reg.pc = reg.pc0;
     if constexpr (C == Core::C68000 && compat == Compatibility::DEFAULT) {
-        // The 68000 group-0 address-error idle depends on the I/N bit.
-        // SingleStepTests/680x0 measures the start of each frame write.
+        // [D] SingleStepTests/680x0 68000/v1 @ e0d5ece9670205cc84a0101081837deb446f86a3
+        // The 68000 group-0 address-error idle depends on the I/N bit: the
+        // corpus, which an emulator generated, starts the frame writes 2 or
+        // 4 clocks in.
+        // [F] Not measured. Settled by: a capture of an address error on a
+        // real 68000, from the aborted cycle to the first frame write.
         SYNC((frame.code & 0x8) ? 4 : 2);
     } else {
         SYNC(8);
@@ -775,17 +779,19 @@ Moira::execFpuTrap(u16 vector, bool post, u32 ea)
     // Inform the delegate
     willExecute(M68kException::FPU_ARITHMETIC, vector);
 
-    // Exceptions terminate loop mode and clear any pending trace event
-    flags &= ~(State::LOOPING | State::TRACE_EXC);
+    // Exceptions terminate loop mode and clear any pending trace event. The
+    // mid-instruction exception of a 6888x is part of the execution of its
+    // FMOVE, like a TRAP: the trace of that instruction stays pending and is
+    // taken once this exception is processed (MC68030UM 8.1.7, Table 8-6:
+    // coprocessor mid-instruction in group 2, trace in group 4.1)
+    flags &= ~State::LOOPING;
+    if (!post || hasInternalFPU()) flags &= ~State::TRACE_EXC;
 
     // Enter supervisor mode and leave trace mode
     setSupervisorMode(true);
     clearTraceFlags();
 
-    // Write stack frame. A traced FMOVE that takes a mid-instruction exception
-    // loses its trace event here (TRACE_EXC is cleared above). Open: MC68030UM
-    // 8.1.7 defers a trace past a bus or an address error only and does not say
-    // whether the FMOVE is traced after the RTE of a coprocessor exception.
+    // Write stack frame
     if (post && hasInternalFPU()) {
         writeStackFrame0011<C>(status, reg.pc, ea, vector);
     } else if (post) {

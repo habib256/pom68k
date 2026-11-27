@@ -60,10 +60,13 @@ add_test(NAME q605_nofpu_boot_etalon COMMAND q605_nofpu_boot_etalon
 
 # Q8.2 gate: TRUE bare no-FPU (NOFPU=2, FPUModel::NONE) Finder boot —
 # guards the _FP68K integer-PACK-4 binding (XPRAM $AE combo read).
-add_executable(q605_barefpu_boot_etalon tests/q605_barefpu_boot_etalon.cpp)
-target_link_libraries(q605_barefpu_boot_etalon PRIVATE pom68k_core)
-add_test(NAME q605_barefpu_boot_etalon COMMAND q605_barefpu_boot_etalon
-         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+# FPSP gate: the ROM's handler completes a nonmaskable FMOVE to an integer
+# from the FSAVE state frame (MC68040UM 9.7.3.2, Table 9-16), integrated FPU.
+foreach(t q605_barefpu_boot_etalon q605_fpsp_moveout_etalon)
+    add_executable(${t} tests/${t}.cpp)
+    target_link_libraries(${t} PRIVATE pom68k_core)
+    add_test(NAME ${t} COMMAND ${t} WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+endforeach()
 
 # Phase C gate: the LC 475 identity ($A55A2221, 68LC040) on the Q605
 # machine boots Mac OS 8.1 to the 640x480x8 Finder (soft-skip).

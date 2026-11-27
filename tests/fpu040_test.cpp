@@ -355,6 +355,44 @@ int main()
     CHECK(cpu.getPC0() == 0x3800 && get16(cpu, cpu.getSP() + 6) == 0x30d0,
           "040 integer OPERR was not an immediate nonmaskable exception");
 
+    // The M68040FPSP handler completes the move from the frame of its FSAVE.
+    // [B] MC68040UM-1993 §9.8, Table 9-16 (PDF pp. 283-289), SNAN and OPERR
+    // for opclass 011: CMDREG1B is the FMOVE command word, ETEMP the
+    // unrounded source operand ("with SNAN bit set"), STAG its tag, E1 and T
+    // "Always 1". Without these fields the handler of the Quadra 605 ROM
+    // (FF7439EE) read stale stack memory and stored $4088D6BA for a
+    // signaling NaN; with them it stores the value of §9.7.2.2 and §9.7.3.2
+    // whatever the stack held (run on that ROM, CHANGELOG 2026-11-26).
+    // [F] The frame is written in the unimplemented instruction layout
+    // ($4130). Settled by: the format word an FSAVE gives a 68040 OPERR
+    // handler after FMOVE.L FP0,D0 of an infinity (the busy frame, $4160, has
+    // the WBTEMP Table 9-16 lists for OPERR).
+    struct Row { uint32_t exp; uint64_t man; uint32_t ext; uint8_t vector;
+                 uint32_t stag, etHi; const char* what; };
+    const Row rows[] = {
+        { 0x7fff0000, 0,                     0x6000, 52, 0x40000000, 0x00000000, "+inf to long" },
+        { 0xffff0000, 0,                     0x7000, 52, 0x40000000, 0x00000000, "-inf to word" },
+        { 0x7fff0000, 0xc000000000001234ULL, 0x7800, 52, 0x60000000, 0xc0000000, "NaN to byte" },
+        { 0x7fff0000, 0xa000000000001234ULL, 0x6000, 54, 0x60000000, 0xe0000000, "SNaN to long" },
+    };
+    for (const Row& r : rows) {
+        prepare(cpu, moira::CPUModel::M68040, r.ext);       // fmove.<b|w|l> fp0,d0
+        setFp(cpu, 0, r.exp, r.man);
+        put32(cpu, r.vector * 4, 0x3800);
+        put16(cpu, 0x3800, 0xf310);                         // fsave (a0)
+        cpu.setA(0, 0x7400);
+        cpu.execute(); cpu.execute();
+        CHECK(get32(cpu, 0x7400) == 0x41300000 && get32(cpu, 0x740c) == r.stag &&
+              get32(cpu, 0x7410) == r.ext << 16 && get32(cpu, 0x7418) == 0x14000000 &&
+              get32(cpu, 0x7428) == r.exp && get32(cpu, 0x742c) == r.etHi &&
+              get32(cpu, 0x7430) == uint32_t(r.man),
+              "040 %s: FSAVE %08X STAG %08X CMDREG1B %08X E1/T %08X ETEMP %08X %08X %08X, "
+              "want 41300000 %08X %08X 14000000 %08X %08X %08X", r.what,
+              get32(cpu, 0x7400), get32(cpu, 0x740c), get32(cpu, 0x7410), get32(cpu, 0x7418),
+              get32(cpu, 0x7428), get32(cpu, 0x742c), get32(cpu, 0x7430),
+              r.stag, r.ext << 16, r.exp, r.etHi, uint32_t(r.man));
+    }
+
 #if POM68K_WINUAE_FMOVEM040
     // The integrated 040 has its own FMOVEM register-list and 96-bit word
     // order, distinct from the external 6888x convention.

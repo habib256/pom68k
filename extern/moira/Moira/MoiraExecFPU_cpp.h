@@ -933,6 +933,26 @@ Moira::execFMove(u16 opcode)
 
         if (auto vector = fpu.trapVector(nonmaskable); vector && hasInternalFPU()) {
 
+            // The M68040FPSP completes such a move from the frame of its FSAVE:
+            // the command word, the unrounded source operand (a signaling NaN
+            // with its SNAN bit set) and its tag, E1 and T (MC68040UM 9.8,
+            // Table 9-16, SNAN and OPERR for opclass 011)
+            if (integer) {
+
+                auto &src = fpu.fpr[dst];
+                auto &f = fpu.unimp.frame;
+                u32 hi = u32(src.mantissa() >> 32) | (src.isNaN() ? 1 << 30 : 0);
+
+                for (auto &l : f) l = 0;
+                f[2]  = FPU::frameTag(src) << 29;                       // $0C: STAG
+                f[3]  = u32(ext) << 16;                                 // $10: CMDREG1B
+                f[5]  = 1 << 28 | 1 << 26;                              // $18: T, E1
+                f[6]  = f[9]  = u32(src.signExp()) << 16;               // $1C: FPTEMP, $28: ETEMP
+                f[7]  = f[10] = hi;
+                f[8]  = f[11] = u32(src.mantissa());
+                fpu.unimp.valid = true;
+            }
+
             execFpuTrap<C>(vector, true, ea);
             FINALIZE
             return;

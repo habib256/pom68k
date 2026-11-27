@@ -1,8 +1,8 @@
-From 0b09429f199507bfcd8b4d0466b6d3e868bb0feb Mon Sep 17 00:00:00 2001
+From bebf034914e492c4d4e3bed23e8fe1fd1a6ddd79 Mon Sep 17 00:00:00 2001
 From: VERHILLE Arnaud <gist974@gmail.com>
 Date: Wed, 25 Nov 2026 18:00:00 +0400
-Subject: [PATCH 16/16] 68881/68882: an FMOVE to memory or to a data register takes a
- mid-instruction exception
+Subject: [PATCH 16/19] 68881/68882: an FMOVE to memory or to a data register
+ takes a mid-instruction exception
 
 MC68881/MC68882UM 6.1: "FPCP instruction exceptions that arise from the
 move floating-point data register to external destination instructions
@@ -31,21 +31,37 @@ instruction, and the processor continues at the scan PC (MC68030UM
 
 The MC68882 does not replace the take mid-instruction primitive on the
 acknowledge; only an FSAVE in the handler does (MC68881/MC68882UM 7.5.4.2,
-Figure 7-34). With a handler that does not begin with FSAVE, the RTE reads
-the primitive again and the exception is taken again; the handler the
+Figure 7-34). With a handler that does not begin with FSAVE, the next
+floating-point instruction takes the exception again (7.5.4.2); the handler the
 manual requires is FSAVE, BSET of bit 27 of the BIU flags, FRESTORE, RTE
 (5.2.2). The core takes the exception once on both FPUs: it differs from
 the manual only for a 68882 handler without FSAVE.
 
-A traced FMOVE that takes the exception loses its trace event
-(execFpuTrap() clears it); MC68030UM 8.1.7 defers a trace past a bus or an
-address error only and leaves this case open. The 68040 path (format 3)
-is unchanged.
+A traced FMOVE that takes the exception keeps its trace event:
+execFpuTrap() no longer clears it for the mid-instruction case, so the
+trace exception is taken once the format $9 frame is stacked, before the
+first instruction of the handler, as after a TRAP. MC68030UM 8.1.7: "If
+an instruction forces an exception as part of its normal execution, the
+forced exception processing occurs before the trace exception is
+processed", and Table 8-6 places the coprocessor mid-instruction
+exception in group 2 and the trace in group 4.1. That the trace is due is
+the manual's; where it is taken is open. The reading above is the order
+the core already uses for TRAP, CHK, TRAPV and a zero divide. The other
+reading takes the trace after the RTE that ends the instruction, and has
+more passages for it: MC68030UM 10.4.4 (with a trace pending the
+processor "does not terminate the instruction dialogue until it reads a
+null, CA=0, PF=1 primitive"), 10.4.19 (after the handler the processor
+continues the suspended instruction by reading the response CIR),
+10.5.2.5, 8.1.4 ("a trace exception is taken after the RTE instruction
+from the trap handler is executed"), 8.1.7's own sentence on suspended
+instructions, and MC68881/MC68882UM 6.1.13 and 7.4.2.6. A capture on a
+68020 or 68030 with a 68881 settles it. The 68040 path (format 3) is
+unchanged.
 ---
  Moira/MoiraExceptions.h     | 18 ++++++++++++++----
- Moira/MoiraExceptions_cpp.h | 32 +++++++++++++++++++++++++++++---
+ Moira/MoiraExceptions_cpp.h | 36 ++++++++++++++++++++++++++++++++----
  Moira/MoiraExecFPU_cpp.h    | 13 +++++++++++--
- 3 files changed, 54 insertions(+), 9 deletions(-)
+ 3 files changed, 57 insertions(+), 10 deletions(-)
 
 diff --git a/Moira/MoiraExceptions.h b/Moira/MoiraExceptions.h
 index f59f142..0ea7bc9 100644
@@ -84,7 +100,7 @@ index f59f142..0ea7bc9 100644
  
  // Takes a pending floating-point arithmetic exception (returns false if none is pending)
 diff --git a/Moira/MoiraExceptions_cpp.h b/Moira/MoiraExceptions_cpp.h
-index 4d1983c..6a39b95 100644
+index f66c973..a3a2234 100644
 --- a/Moira/MoiraExceptions_cpp.h
 +++ b/Moira/MoiraExceptions_cpp.h
 @@ -225,9 +225,30 @@ Moira::writeStackFrame1000(StackFrame &frame, u16 sr, u32 pc, u32 ia, u16 nr, u3
@@ -119,16 +135,26 @@ index 4d1983c..6a39b95 100644
  }
  
  template <Core C> void
-@@ -761,9 +782,14 @@ Moira::execFpuTrap(u16 vector, bool post, u32 ea)
+@@ -758,16 +779,23 @@ Moira::execFpuTrap(u16 vector, bool post, u32 ea)
+     // Inform the delegate
+     willExecute(M68kException::FPU_ARITHMETIC, vector);
+ 
+-    // Exceptions terminate loop mode and clear any pending trace event
+-    flags &= ~(State::LOOPING | State::TRACE_EXC);
++    // Exceptions terminate loop mode and clear any pending trace event. The
++    // mid-instruction exception of a 6888x is part of the execution of its
++    // FMOVE, like a TRAP: the trace of that instruction stays pending and is
++    // taken once this exception is processed (MC68030UM 8.1.7, Table 8-6:
++    // coprocessor mid-instruction in group 2, trace in group 4.1)
++    flags &= ~State::LOOPING;
++    if (!post || hasInternalFPU()) flags &= ~State::TRACE_EXC;
+ 
+     // Enter supervisor mode and leave trace mode
      setSupervisorMode(true);
      clearTraceFlags();
  
--    // Write stack frame
+     // Write stack frame
 -    if (post) {
-+    // Write stack frame. A traced FMOVE that takes a mid-instruction exception
-+    // loses its trace event here (TRACE_EXC is cleared above). Open: MC68030UM
-+    // 8.1.7 defers a trace past a bus or an address error only and does not say
-+    // whether the FMOVE is traced after the RTE of a coprocessor exception.
 +    if (post && hasInternalFPU()) {
          writeStackFrame0011<C>(status, reg.pc, ea, vector);
 +    } else if (post) {
@@ -137,7 +163,7 @@ index 4d1983c..6a39b95 100644
          writeStackFrame0000<C>(status, reg.pc0, vector);
      }
 diff --git a/Moira/MoiraExecFPU_cpp.h b/Moira/MoiraExecFPU_cpp.h
-index 6957f9f..3608851 100644
+index 37238b7..a5f17a3 100644
 --- a/Moira/MoiraExecFPU_cpp.h
 +++ b/Moira/MoiraExecFPU_cpp.h
 @@ -923,8 +923,7 @@ Moira::execFMove(u16 opcode)
@@ -150,7 +176,7 @@ index 6957f9f..3608851 100644
          // On the 68040, a move to a byte, word or long word that raises SNAN or
          // OPERR takes the exception even if it is disabled (MC68040UM 9.7.2.2,
          // 9.7.3.2: a nonmaskable post-instruction exception, taken immediately).
-@@ -938,6 +937,16 @@ Moira::execFMove(u16 opcode)
+@@ -958,6 +957,16 @@ Moira::execFMove(u16 opcode)
              FINALIZE
              return;
          }

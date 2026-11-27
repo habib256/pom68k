@@ -226,7 +226,8 @@ MMU030::translate(u32 addr, u8 fc, bool write, bool *ci)
         try {
             physAddr = walk(addr, fc, write, context);
             status = context.status();
-        } catch (const BusError &) {
+        } catch (const BusError &e) {
+            if (e.custom) throw;    // a frame supplied by the host is passed on
             status = MMUSR_BUS_ERROR | MMUSR_INVALID;
             context.ci = false;
         }
