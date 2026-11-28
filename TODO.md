@@ -57,33 +57,29 @@ ses gates enregistrés absents dans `cmake/pom68k_jit_gates.tsv`. Bascule et
 Tout le reste (jalons produit, vitesse hors CPU, NeoST, dépôt) est après les
 deux phases, hors du chemin principal.
 
-**Reprendre ici (état au 2026-11-27, reprise sur x86-64).**
+**Reprendre ici (état au 2026-11-28, sur x86-64).**
 `main` = Moira de Dirk `bf98107f` + 20 correctifs (le 20 depuis le
-2026-11-27 (second) : RM et reprise après RTE des TAS/CAS/CAS2). Quatre sont proposés
-chez lui depuis le 2026-11-27 : PR #50 (correctif 18), #51 (10), #52
-(moitié DBcc du 1) et #53 (12) ; trois autres branches sont prêtes mais
-sans PR (16, et les deux moitiés du 4 ; textes dans
-`extern/moira/pr-drafts/`). Le palier machines AArch64
-complet est vert sur l'arbre de ce commit (`m040|m030|etalon`, 321/321
-avec le nouveau `q605_fpsp_moveout_etalon`), enregistré dans `STATUS.md`.
-Dans l'ordre :
+2026-11-27 (second) : RM et reprise après RTE des TAS/CAS/CAS2). Quatre sont
+proposés chez lui depuis le 2026-11-27 : PR #50 (correctif 18), #51 (10),
+#52 (moitié DBcc du 1) et #53 (12), sans retour au 2026-11-28 ; trois
+autres branches sont prêtes mais sans PR (16, et les deux moitiés du 4 ;
+textes dans `extern/moira/pr-drafts/`). Les sept branches vivent sur le fork
+GitHub `habib256/Moira`. Dans l'ordre :
 
-1. Fait : le palier machines AArch64 (ci-dessus).
-2. **Le même palier sur x86-64.** Sur l'hôte x86-64 :
-   `git pull` ; `cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo` ;
-   `cmake --build build --parallel 4` (jamais `--parallel` nu) ;
-   `ctest --test-dir build -L asset-none --output-on-failure` ;
-   `python3 tools/moira_queue.py check` ; puis
-   `ctest --test-dir build -L 'm040|m030|etalon' -j3` et
-   `tools/status_md.py --record-run` : critère 6 de § Phase 1. À
-   surveiller : `q605_fpsp_moveout_etalon` (nouveau, jamais exécuté sur
-   x86-64), l'empreinte de `fault_transparency_test`, les planchers SST
-   (un écart est un constat à instruire, pas à ré-épingler). Dernier
-   passage complet x86-64 : 320/320 sur `6e7f5179`, avant le rebase et
-   avant les correctifs 12 amendé et 16 à 19.
-   Les sept branches de PR vivent sur le fork GitHub `habib256/Moira`
-   (`git clone https://github.com/habib256/Moira.git`) ; les textes des
-   trois PR non ouvertes sont dans `extern/moira/pr-drafts/`.
+1. Fait : le palier machines (`m040|m030|etalon`, 321/321) sur les deux
+   hôtes avec 19 correctifs — AArch64 sur l'arbre de `39845810`, x86-64 sur
+   `39bc2955` — et sur x86-64 avec le correctif 20 (`329fdb1d`), plus
+   `asset-none`, les 13 gates SST (tous sur leur plancher) et le build
+   `-Werror` ; enregistrés dans `STATUS.md`.
+2. **Le palier machines AArch64 sur le correctif 20** (même recette :
+   `cmake --build build --parallel 4`, `asset-none`, `moira_queue.py
+   check`, `ctest -L 'm040|m030|etalon' -j3`, `status_md.py
+   --record-run`). Sur x86-64, 313 gates s'exécutent sur 321 : les 8
+   etalons de disquette (`*_moof_*`, `lcii_floppy144_etalon`,
+   `maciifdhd_floppy_boot_etalon`) sautent faute de leurs images
+   (`Disk605.moof`, `Oids v1.4.moof`, `System 6.0.8 - System Startup.img`,
+   une image HFS 1,44 Mo) ; les copier dans `disks35/` de cet hôte pour
+   qu'ils s'y exécutent.
 3. **Verdict de stabilité** du cœur de Dirk ; s'il est stable, faire
    approuver par le propriétaire `scratchpad/2026-11-25/JIT_PLAN.md`
    (questions Q1-Q8) avant tout code JIT (§ Phase 2).

@@ -1518,7 +1518,11 @@ the memory-indirect pointer);
 `berr030_test`, `icache020_test`, `moira_rules_test`,
 `fault_transparency_test` unchanged; `sst68030` 2280/3082, `_solo`
 3639/5592, `_rmw` 2566/6000, each on its floor. `moira_queue check`: BASE +
-20.
+20. On `main` (`329fdb1d`, RelWithDebInfo, x86-64): `asset-none` 156/156,
+the 13 SST gates each on its floor (68040 included), the `-Werror` build of
+the whole tree, and the machine tier `m040|m030|etalon` 321/321 in 33 745 s
+— 313 executed, the same 8 floppy etalons soft-skipped as on the baseline
+run of `39bc2955` (321/321, 33 864 s), whose images this host lacks.
 
 **Left open.** The 68040 LK bit (MC68040UM SSW, defined in `SSW040`, never
 set) needs its own reading of §8.4.6. What a handler sees in `(An)+`/`-(An)`
